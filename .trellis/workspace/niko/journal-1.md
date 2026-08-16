@@ -72,3 +72,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 完成操作日志与权限中间件
+
+**Date**: 2026-08-16
+**Task**: 完成操作日志与权限中间件
+**Branch**: `main`
+
+### Summary
+
+实现操作日志采集、敏感字段脱敏、权限码中间件与日志查询接口；优化认证身份查询、路由权限路径复用和路由测试 recorder。通过 go test、go vet、竞态测试与 wire 生成校验。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a9d7442` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -1,1 +1,4 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端质量检查清单（make vet/make test/wire 再生成）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试要求与代码评审检查清单"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对错误码唯一来源、失败响应 data=null 契约"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对无外键/无驱动特定类型/seed 权限码不改动"}

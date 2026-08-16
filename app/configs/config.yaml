@@ -1,0 +1,17 @@
+# 应用配置：环境变量 APP_* 可覆盖（如 APP_DB_DRIVER、APP_DB_PASSWORD、APP_JWT_SECRET）
+server:
+  port: 8000
+db:
+  driver: mysql # mysql | postgres（决策 18）；切 postgres 时改驱动并调整 host/port/user/password/name
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: "123456" # 开发默认；生产用 APP_DB_PASSWORD 覆盖
+  name: niko_vue_admin
+  auto_migrate: true # dev/test 启动时自动建表；生产发版设为 false，表结构变更走 app/migrations SQL 脚本
+jwt:
+  secret: "dev-secret-change-me" # 生产用 APP_JWT_SECRET 覆盖
+  access_ttl: 2h
+  refresh_ttl: 168h
+log:
+  level: info

@@ -23,6 +23,7 @@ type MenuRepository interface {
 	GetByIDs(ctx context.Context, ids []uint64) ([]model.Menu, error)
 	CountByParentID(ctx context.Context, parentID uint64) (int64, error)
 	GetMenuIDsByRoleIDs(ctx context.Context, roleIDs []uint64) ([]uint64, error)
+	GetPermissionsByRoleIDs(ctx context.Context, roleIDs []uint64) ([]string, error)
 }
 
 type menuRepository struct {
@@ -94,11 +95,31 @@ func (r *menuRepository) GetMenuIDsByRoleIDs(ctx context.Context, roleIDs []uint
 		return nil, nil
 	}
 	var menuIDs []uint64
-	if err := r.db.WithContext(ctx).Model(&model.RoleMenu{}).
-		Joins("JOIN roles ON roles.id = role_menus.role_id").
-		Where("role_menus.role_id IN ? AND roles.status = ? AND roles.deleted_at IS NULL", roleIDs, model.StatusEnabled).
+	if err := r.activeRoleMenusByRoleIDs(ctx, roleIDs).
 		Pluck("distinct role_menus.menu_id", &menuIDs).Error; err != nil {
 		return nil, err
 	}
 	return menuIDs, nil
+}
+
+func (r *menuRepository) GetPermissionsByRoleIDs(ctx context.Context, roleIDs []uint64) ([]string, error) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+	var perms []string
+	if err := r.activeRoleMenusByRoleIDs(ctx, roleIDs).
+		Joins("JOIN menus ON menus.id = role_menus.menu_id").
+		Where("menus.status = ? AND menus.deleted_at IS NULL AND menus.permission != ''", model.StatusEnabled).
+		Pluck("distinct menus.permission", &perms).Error; err != nil {
+		return nil, err
+	}
+	return perms, nil
+}
+
+// activeRoleMenusByRoleIDs 返回指定角色下有效的 role_menus 关联（过滤角色软删/禁用），
+// 供菜单 ID 与权限码查询复用同一活跃角色规则。
+func (r *menuRepository) activeRoleMenusByRoleIDs(ctx context.Context, roleIDs []uint64) *gorm.DB {
+	return r.db.WithContext(ctx).Model(&model.RoleMenu{}).
+		Joins("JOIN roles ON roles.id = role_menus.role_id").
+		Where("role_menus.role_id IN ? AND roles.status = ? AND roles.deleted_at IS NULL", roleIDs, model.StatusEnabled)
 }

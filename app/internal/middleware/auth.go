@@ -18,6 +18,7 @@ const authIdentityKey = "auth.identity"
 // Identity 是认证中间件解析出的当前用户身份和有效角色。
 type Identity struct {
 	UserID    uint64
+	Username  string
 	RoleIDs   []uint64
 	RoleCodes []string
 }
@@ -35,6 +36,11 @@ func NewAuthMiddleware(repo repository.AuthRepository, cfg *config.Config) *Auth
 
 // Handler 验证 HS256 access token，并将身份放入 Gin Context。
 func (m *AuthMiddleware) Handler(c *gin.Context) {
+	if isPublicAuthPath(c.Request.URL.Path) {
+		c.Next()
+		return
+	}
+
 	rawToken, ok := bearerToken(c.GetHeader("Authorization"))
 	if !ok || len(m.secret) == 0 {
 		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck // 交给统一错误处理中间件
@@ -71,13 +77,13 @@ func (m *AuthMiddleware) Handler(c *gin.Context) {
 		return
 	}
 
-	roles, err := m.repo.GetActiveRolesByUserID(c.Request.Context(), userID)
+	activeIdentity, err := m.repo.GetActiveIdentity(c.Request.Context(), userID)
 	if err != nil {
 		c.Error(err) //nolint:errcheck // 交给统一错误处理中间件
 		c.Abort()
 		return
 	}
-	if len(roles) == 0 {
+	if activeIdentity == nil || len(activeIdentity.Roles) == 0 {
 		// 用户不存在、被禁用或无任何启用角色，均视为未认证。
 		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck // 交给统一错误处理中间件
 		c.Abort()
@@ -86,10 +92,11 @@ func (m *AuthMiddleware) Handler(c *gin.Context) {
 
 	identity := Identity{
 		UserID:    userID,
-		RoleIDs:   make([]uint64, 0, len(roles)),
-		RoleCodes: make([]string, 0, len(roles)),
+		Username:  activeIdentity.Username,
+		RoleIDs:   make([]uint64, 0, len(activeIdentity.Roles)),
+		RoleCodes: make([]string, 0, len(activeIdentity.Roles)),
 	}
-	for _, role := range roles {
+	for _, role := range activeIdentity.Roles {
 		identity.RoleIDs = append(identity.RoleIDs, role.ID)
 		identity.RoleCodes = append(identity.RoleCodes, role.Code)
 	}
@@ -105,6 +112,15 @@ func IdentityFromContext(c *gin.Context) (Identity, bool) {
 	}
 	identity, ok := value.(Identity)
 	return identity, ok
+}
+
+func isPublicAuthPath(path string) bool {
+	switch path {
+	case "/api/auth/login", "/api/auth/refresh", "/api/auth/logout":
+		return true
+	default:
+		return false
+	}
 }
 
 func bearerToken(header string) (string, bool) {

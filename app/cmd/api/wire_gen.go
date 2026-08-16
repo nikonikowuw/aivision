@@ -33,12 +33,20 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	authRepository := repository.NewAuthRepository(gormDB)
 	authMiddleware := middleware.NewAuthMiddleware(authRepository, cfg)
 	menuRepository := repository.NewMenuRepository(gormDB)
+	permMiddleware := middleware.NewPermMiddleware(menuRepository)
+	operationLogRepository := repository.NewOperationLogRepository(gormDB)
+	operationLogService := service.NewOperationLogService(operationLogRepository)
+	oplogMiddleware := middleware.NewOplogMiddleware(operationLogService, zapLogger)
 	menuService := service.NewMenuService(menuRepository)
 	menuHandler := api.NewMenuHandler(menuService)
+	operationLogHandler := api.NewOperationLogHandler(operationLogService)
 	deps := router.Deps{
-		ErrorHandler:   handlerFunc,
-		AuthMiddleware: authMiddleware,
-		MenuHandler:    menuHandler,
+		ErrorHandler:        handlerFunc,
+		AuthMiddleware:      authMiddleware,
+		PermMiddleware:      permMiddleware,
+		OplogMiddleware:     oplogMiddleware,
+		MenuHandler:         menuHandler,
+		OperationLogHandler: operationLogHandler,
 	}
 	engine := router.New(cfg, deps)
 	app := &App{

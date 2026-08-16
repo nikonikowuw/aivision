@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -55,7 +56,24 @@ func (s *routerTestMenuService) DeleteMenu(context.Context, uint64) error {
 	return nil
 }
 
-func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTestMenuService, string) {
+type routerTestOperationLogService struct {
+	records chan model.OperationLog
+}
+
+func (s *routerTestOperationLogService) Record(_ context.Context, log *model.OperationLog) error {
+	s.records <- *log
+	return nil
+}
+
+func (*routerTestOperationLogService) GetByID(context.Context, uint64) (*model.OperationLog, error) {
+	return nil, nil
+}
+
+func (*routerTestOperationLogService) GetPage(context.Context, *service.LogPageQuery) (*service.LogPageResult, error) {
+	return &service.LogPageResult{}, nil
+}
+
+func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTestMenuService, string, *routerTestOperationLogService) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -89,13 +107,20 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 
 	cfg := &config.Config{JWT: config.JWT{Secret: "test-secret"}, Log: config.Log{Level: "release"}}
 	auth := middleware.NewAuthMiddleware(repository.NewAuthRepository(db), cfg)
+	menuRepo := repository.NewMenuRepository(db)
+	perm := middleware.NewPermMiddleware(menuRepo)
+	oplogSrv := &routerTestOperationLogService{records: make(chan model.OperationLog, 1)}
+	oplogMid := middleware.NewOplogMiddleware(oplogSrv, zap.NewNop())
 	fakeService := &routerTestMenuService{panicOnTree: panicOnTree}
 	engine := New(cfg, Deps{
-		ErrorHandler:   middleware.ErrorHandler(),
-		AuthMiddleware: auth,
-		MenuHandler:    api.NewMenuHandler(fakeService),
+		ErrorHandler:        middleware.ErrorHandler(),
+		AuthMiddleware:      auth,
+		PermMiddleware:      perm,
+		OplogMiddleware:     oplogMid,
+		MenuHandler:         api.NewMenuHandler(fakeService),
+		OperationLogHandler: api.NewOperationLogHandler(oplogSrv),
 	})
-	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID)
+	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID), oplogSrv
 }
 
 func signRouterToken(t *testing.T, secret string, userID uint64) string {
@@ -122,8 +147,26 @@ func readCode(t *testing.T, rec *httptest.ResponseRecorder) int {
 	return body.Code
 }
 
+func waitForLoggedRequest(t *testing.T, records <-chan model.OperationLog, path string) model.OperationLog {
+	t.Helper()
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+
+	for {
+		select {
+		case item := <-records:
+			if item.Path == path {
+				return item
+			}
+		case <-timer.C:
+			t.Fatalf("operation log %q not found", path)
+			return model.OperationLog{}
+		}
+	}
+}
+
 func TestMenuRoutesRequireAuthenticationAndUseActiveRoles(t *testing.T) {
-	engine, fakeService, token := newRouterTestEngine(t, false)
+	engine, fakeService, token, _ := newRouterTestEngine(t, false)
 
 	unauthenticated := httptest.NewRecorder()
 	engine.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/menu/all", nil))
@@ -155,7 +198,7 @@ func TestMenuRoutesRequireAuthenticationAndUseActiveRoles(t *testing.T) {
 }
 
 func TestInvalidMenuRequestUsesBadRequest(t *testing.T) {
-	engine, _, token := newRouterTestEngine(t, false)
+	engine, _, token, oplogSrv := newRouterTestEngine(t, false)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/menu", strings.NewReader("{"))
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -168,10 +211,14 @@ func TestInvalidMenuRequestUsesBadRequest(t *testing.T) {
 	if code := readCode(t, rec); code != errno.CodeInvalidParam {
 		t.Fatalf("invalid request code = %d, want %d", code, errno.CodeInvalidParam)
 	}
+	logItem := waitForLoggedRequest(t, oplogSrv.records, "/api/menu")
+	if logItem.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid request log status = %d, want %d", logItem.StatusCode, http.StatusBadRequest)
+	}
 }
 
 func TestRouterPanicUsesUnifiedResponse(t *testing.T) {
-	engine, _, token := newRouterTestEngine(t, true)
+	engine, _, token, _ := newRouterTestEngine(t, true)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/menu/tree", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -182,5 +229,23 @@ func TestRouterPanicUsesUnifiedResponse(t *testing.T) {
 	}
 	if code := readCode(t, rec); code != errno.CodeInternal {
 		t.Fatalf("panic code = %d, want %d", code, errno.CodeInternal)
+	}
+}
+
+func TestRouterPanicIsLogged(t *testing.T) {
+	engine, _, _, oplogSrv := newRouterTestEngine(t, false)
+	engine.POST("/api/test/panic", func(c *gin.Context) {
+		panic("test panic")
+	})
+
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/test/panic", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("panic status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	logItem := waitForLoggedRequest(t, oplogSrv.records, "/api/test/panic")
+	if logItem.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("panic log status = %d, want %d", logItem.StatusCode, http.StatusInternalServerError)
 	}
 }

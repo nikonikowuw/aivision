@@ -14,12 +14,23 @@ import (
 	"niko-vue-admin/app/internal/pkg/response"
 )
 
+const (
+	apiRoutePath   = "/api"
+	menuRoutePath  = "/menu"
+	oplogRoutePath = "/oplog"
+	pageRoutePath  = "/page"
+	idRoutePath    = "/:id"
+)
+
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
 // （wire.Struct 按字段自动装配，见 cmd/api/wire.go）。
 type Deps struct {
-	ErrorHandler   gin.HandlerFunc
-	AuthMiddleware *middleware.AuthMiddleware
-	MenuHandler    *api.MenuHandler
+	ErrorHandler        gin.HandlerFunc
+	AuthMiddleware      *middleware.AuthMiddleware
+	PermMiddleware      *middleware.PermMiddleware
+	OplogMiddleware     *middleware.OplogMiddleware
+	MenuHandler         *api.MenuHandler
+	OperationLogHandler *api.OperationLogHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -33,10 +44,12 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 	engine := gin.New()
 	// 启用方法不匹配时触发 NoMethod（否则统一走 NoRoute，无法区分 404/405）。
 	engine.HandleMethodNotAllowed = true
+	// 操作日志包住 recovery 与统一错误处理，以便记录最终 HTTP 状态（包括 panic 的 500）。
+	engine.Use(deps.OplogMiddleware.Handler)
 	engine.Use(gin.CustomRecovery(func(c *gin.Context, _ any) {
 		response.WriteFail(c, http.StatusInternalServerError, errno.CodeInternal)
 	}))
-	// 统一错误处理：恢复中间件之后、业务路由之前；handler 仅 c.Error，由中间件输出响应。
+	// 统一错误处理：位于 recovery 之后、业务路由之前；handler 仅 c.Error，由中间件输出。
 	engine.Use(deps.ErrorHandler)
 	// 不信任任何代理：ClientIP 直接用 RemoteAddr，避免伪造 X-Forwarded-For。
 	// 生产若置于反向代理后，需在此显式配置代理网段。
@@ -49,16 +62,29 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		response.WriteFail(c, http.StatusMethodNotAllowed, errno.CodeMethodNotAllowed)
 	})
 
-	apiGroup := engine.Group("/api")
+	apiGroup := engine.Group(apiRoutePath)
+	// 所有 API 路由默认先认证，再执行写操作权限默认拒绝；公共认证接口由中间件白名单放行。
+	apiGroup.Use(deps.AuthMiddleware.Handler)
+	apiGroup.Use(deps.PermMiddleware.Handler)
 	{
-		menuGroup := apiGroup.Group("/menu")
-		menuGroup.Use(deps.AuthMiddleware.Handler)
+		menuGroup := apiGroup.Group(menuRoutePath)
 		{
 			menuGroup.GET("/tree", deps.MenuHandler.GetMenuTree)
 			menuGroup.GET("/all", deps.MenuHandler.GetUserMenuTree)
 			menuGroup.POST("", deps.MenuHandler.CreateMenu)
-			menuGroup.PUT("/:id", deps.MenuHandler.UpdateMenu)
-			menuGroup.DELETE("/:id", deps.MenuHandler.DeleteMenu)
+			menuGroup.PUT(idRoutePath, deps.MenuHandler.UpdateMenu)
+			menuGroup.DELETE(idRoutePath, deps.MenuHandler.DeleteMenu)
+		}
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+menuRoutePath, "system:menu:add")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+menuRoutePath+idRoutePath, "system:menu:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+menuRoutePath+idRoutePath, "system:menu:delete")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+pageRoutePath, "system:log")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
+
+		oplogGroup := apiGroup.Group(oplogRoutePath)
+		{
+			oplogGroup.GET(pageRoutePath, deps.OperationLogHandler.GetPage)
+			oplogGroup.GET(idRoutePath, deps.OperationLogHandler.GetByID)
 		}
 	}
 

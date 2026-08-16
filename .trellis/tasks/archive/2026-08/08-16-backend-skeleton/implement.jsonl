@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "Thinking guides 索引；实施前浏览"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "skeleton 建立 config → logger → gorm → model → router 的纵向链路，8 表字段是贯穿全部 11 个子任务的共享契约，跨层核对适用"}

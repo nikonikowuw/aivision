@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "Thinking guides 索引；检查前浏览"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "8 表 model 存在大量重复模式（BaseModel 组合、索引 tag）；seed 权限码与 design.md §5 契约表一致性核验"}

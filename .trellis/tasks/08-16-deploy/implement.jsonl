@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "Thinking guides 索引；实施前浏览，部署任务跨 3+ 层触发 cross-layer 检查项"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "docker-compose 三服务（MySQL → server → web/nginx）与 /api 反代是典型跨层数据流，需按指南核对层间边界与数据格式"}

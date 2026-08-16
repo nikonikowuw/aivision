@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "Thinking guides 索引；检查前浏览，质量检查时参照验证规则"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查 README、docker-compose.yml、config.yaml、nginx.conf 之间的端口/账号/路径定义是否一致（多处重复定义同一值的典型场景）"}

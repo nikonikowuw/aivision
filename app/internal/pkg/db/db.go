@@ -41,7 +41,9 @@ func New(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 
 	var err error
 	for attempt := 1; attempt <= connectRetries; attempt++ {
-		gdb, openErr := gorm.Open(dialector, &gorm.Config{})
+		// TranslateError 开启驱动错误翻译（如 1062/23505/2067 → gorm.ErrDuplicatedKey），
+		// 供 repository 层统一映射为领域哨兵错误（不依赖具体驱动错误文案）。
+		gdb, openErr := gorm.Open(dialector, &gorm.Config{TranslateError: true})
 		if openErr == nil {
 			sqlDB, dbErr := gdb.DB()
 			if dbErr != nil {

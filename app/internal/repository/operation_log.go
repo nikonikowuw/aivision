@@ -76,16 +76,7 @@ func (r *operationLogRepository) ListPage(ctx context.Context, filter *Operation
 		return nil, 0, err
 	}
 
-	page := filter.Page
-	if page < 1 {
-		page = 1
-	}
-	pageSize := filter.PageSize
-	if pageSize < 1 {
-		pageSize = 20
-	} else if pageSize > 100 {
-		pageSize = 100
-	}
+	page, pageSize := normalizePage(filter.Page, filter.PageSize)
 
 	var items []model.OperationLog
 	offset := (page - 1) * pageSize

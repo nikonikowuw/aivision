@@ -15,11 +15,14 @@ import (
 )
 
 const (
-	apiRoutePath   = "/api"
-	menuRoutePath  = "/menu"
-	oplogRoutePath = "/oplog"
-	pageRoutePath  = "/page"
-	idRoutePath    = "/:id"
+	apiRoutePath     = "/api"
+	menuRoutePath    = "/menu"
+	roleRoutePath    = "/role"
+	oplogRoutePath   = "/oplog"
+	pageRoutePath    = "/page"
+	idRoutePath      = "/:id"
+	menuIDsRoutePath = "/menu-ids"
+	menusRoutePath   = "/menus"
 )
 
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
@@ -30,6 +33,7 @@ type Deps struct {
 	PermMiddleware      *middleware.PermMiddleware
 	OplogMiddleware     *middleware.OplogMiddleware
 	MenuHandler         *api.MenuHandler
+	RoleHandler         *api.RoleHandler
 	OperationLogHandler *api.OperationLogHandler
 }
 
@@ -78,14 +82,28 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+menuRoutePath, "system:menu:add")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+menuRoutePath+idRoutePath, "system:menu:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+menuRoutePath+idRoutePath, "system:menu:delete")
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+pageRoutePath, "system:log")
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
+
+		roleGroup := apiGroup.Group(roleRoutePath)
+		{
+			roleGroup.GET(pageRoutePath, deps.RoleHandler.GetPage)
+			roleGroup.POST("", deps.RoleHandler.CreateRole)
+			roleGroup.PUT(idRoutePath, deps.RoleHandler.UpdateRole)
+			roleGroup.DELETE(idRoutePath, deps.RoleHandler.DeleteRole)
+			roleGroup.GET(idRoutePath+menuIDsRoutePath, deps.RoleHandler.GetMenuIDs)
+			roleGroup.PUT(idRoutePath+menusRoutePath, deps.RoleHandler.AssignMenus)
+		}
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+roleRoutePath, "system:role:add")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+roleRoutePath+idRoutePath, "system:role:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+roleRoutePath+idRoutePath, "system:role:delete")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+roleRoutePath+idRoutePath+menusRoutePath, "system:role:assign-menu")
 
 		oplogGroup := apiGroup.Group(oplogRoutePath)
 		{
 			oplogGroup.GET(pageRoutePath, deps.OperationLogHandler.GetPage)
 			oplogGroup.GET(idRoutePath, deps.OperationLogHandler.GetByID)
 		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+pageRoutePath, "system:log")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
 	}
 
 	return engine

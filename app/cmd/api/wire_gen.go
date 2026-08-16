@@ -39,6 +39,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	oplogMiddleware := middleware.NewOplogMiddleware(operationLogService, zapLogger)
 	menuService := service.NewMenuService(menuRepository)
 	menuHandler := api.NewMenuHandler(menuService)
+	roleRepository := repository.NewRoleRepository(gormDB)
+	roleService := service.NewRoleService(roleRepository, menuRepository)
+	roleHandler := api.NewRoleHandler(roleService)
 	operationLogHandler := api.NewOperationLogHandler(operationLogService)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
@@ -46,6 +49,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		PermMiddleware:      permMiddleware,
 		OplogMiddleware:     oplogMiddleware,
 		MenuHandler:         menuHandler,
+		RoleHandler:         roleHandler,
 		OperationLogHandler: operationLogHandler,
 	}
 	engine := router.New(cfg, deps)

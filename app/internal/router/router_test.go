@@ -56,6 +56,32 @@ func (s *routerTestMenuService) DeleteMenu(context.Context, uint64) error {
 	return nil
 }
 
+type routerTestRoleService struct{}
+
+func (*routerTestRoleService) GetPage(context.Context, *service.RolePageQuery) (*service.RolePageResult, error) {
+	return &service.RolePageResult{Items: []model.Role{}, Total: 0}, nil
+}
+
+func (*routerTestRoleService) CreateRole(context.Context, *service.SaveRoleInput) (*model.Role, error) {
+	return &model.Role{}, nil
+}
+
+func (*routerTestRoleService) UpdateRole(context.Context, uint64, *service.SaveRoleInput) (*model.Role, error) {
+	return &model.Role{}, nil
+}
+
+func (*routerTestRoleService) DeleteRole(context.Context, uint64) error {
+	return nil
+}
+
+func (*routerTestRoleService) GetMenuIDs(context.Context, uint64) ([]uint64, error) {
+	return []uint64{}, nil
+}
+
+func (*routerTestRoleService) AssignMenus(context.Context, uint64, []uint64) error {
+	return nil
+}
+
 type routerTestOperationLogService struct {
 	records chan model.OperationLog
 }
@@ -75,7 +101,7 @@ func (*routerTestOperationLogService) GetPage(context.Context, *service.LogPageQ
 
 func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTestMenuService, string, *routerTestOperationLogService) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{TranslateError: true})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -112,12 +138,14 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 	oplogSrv := &routerTestOperationLogService{records: make(chan model.OperationLog, 1)}
 	oplogMid := middleware.NewOplogMiddleware(oplogSrv, zap.NewNop())
 	fakeService := &routerTestMenuService{panicOnTree: panicOnTree}
+	roleSrv := &routerTestRoleService{}
 	engine := New(cfg, Deps{
 		ErrorHandler:        middleware.ErrorHandler(),
 		AuthMiddleware:      auth,
 		PermMiddleware:      perm,
 		OplogMiddleware:     oplogMid,
 		MenuHandler:         api.NewMenuHandler(fakeService),
+		RoleHandler:         api.NewRoleHandler(roleSrv),
 		OperationLogHandler: api.NewOperationLogHandler(oplogSrv),
 	})
 	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID), oplogSrv
@@ -194,6 +222,19 @@ func TestMenuRoutesRequireAuthenticationAndUseActiveRoles(t *testing.T) {
 	}
 	if len(fakeService.roleCodes) != 1 || fakeService.roleCodes[0] != model.RoleSuperCode {
 		t.Fatalf("role codes = %v, want active super only", fakeService.roleCodes)
+	}
+}
+
+func TestRoleRoutesRequireAuthentication(t *testing.T) {
+	engine, _, _, _ := newRouterTestEngine(t, false)
+
+	unauthenticated := httptest.NewRecorder()
+	engine.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/role/page", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want %d", unauthenticated.Code, http.StatusUnauthorized)
+	}
+	if code := readCode(t, unauthenticated); code != errno.CodeUnauthorized {
+		t.Fatalf("unauthenticated code = %d, want %d", code, errno.CodeUnauthorized)
 	}
 }
 

@@ -3,14 +3,11 @@ package api_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"niko-vue-admin/app/internal/api"
@@ -25,13 +22,7 @@ func setupOplogAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB, service.Operation
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:test_oplog_api_%d?mode=memory&cache=shared&_busy_timeout=5000", time.Now().UnixNano())), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	if err := model.AutoMigrate(db); err != nil {
-		t.Fatalf("migrate sqlite: %v", err)
-	}
+	db := newTestAPIDB(t, "oplog")
 
 	repo := repository.NewOperationLogRepository(db)
 	srv := service.NewOperationLogService(repo)

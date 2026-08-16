@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+
+# Env / local config
+.env
+.env.local
+.env.*.local
+.claude/settings.local.json
+
+# Logs
+*.log
+logs/
+
+# Go (app/)
+app/bin/
+app/tmp/
+coverage.out
+*.test
+*.exe
+*.so
+*.dylib
+
+# Trellis per-developer workspace (journals)
+.trellis/workspace/

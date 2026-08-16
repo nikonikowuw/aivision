@@ -9,7 +9,7 @@
 业务错误是**错误码而非字符串**：每个业务失败都有定义在 `internal/pkg/errno`
 （唯一事实来源）中的数字错误码，API 响应体是 `internal/pkg/response` 中的统一
 `{code,data,message}` 结构。`code=0` 表示成功；失败时 `data` 为 `null`，
-`message` 是来自 `errno.Message` 的面向用户的中文文案。
+`message` 是来自 `errno.Message` 的面向用户文案，**按请求语言本地化**（见下方 i18n 约定）。
 
 ---
 
@@ -17,7 +17,19 @@
 
 - **业务错误码**（`internal/pkg/errno`）：`CodeOK = 0`；类 HTTP 的 `401`
   （未授权）/ `403`（禁止）；业务错误码在 `1xxx` 段（`1001` 凭据错误、
-  `1002` 用户不存在、…）。每个错误码都有对应的 `Message` 条目。
+  `1002` 用户不存在、…）。每个错误码在 `errno` 的按语言文案表中都有条目。
+
+### 文案 i18n 约定
+
+- 文案在 `errno` 内**按语言分组维护**：`messages` 是 `map[语言]map[错误码]文案`，
+  当前支持 `zh-CN`（默认）/ `en-US`，取值对齐前端 vben `preferences.app.locale`。
+- 取文案统一走 `errno.Message(lang, code)`；`lang` 缺失或未收录时回退
+  `errno.DefaultLang`（`zh-CN`），未知错误码返回对应语言的兜底文案。
+- **语言来源**：中间件用 `errno.LangFromHeader(header)` 解析请求头
+  `Accept-Language`（前端 `request.ts` 已发送 `preferences.app.locale`）：
+  取首个 tag、去 `q=` 权重、大小写与基础 tag（en/zh）前缀匹配，**不能把原始
+  header 直接当 `lang` 用**；错误响应按该语言输出；handler 不感知语言，
+  也不得硬编码任何语言的文案。
 - **Go 错误**用于非业务失败：用 `fmt.Errorf("context: %w", err)` 包装并向上
   返回给调用方（例如 `config.Load`、`db.New`、`logger.New`）。
 
@@ -29,10 +41,10 @@
   （`log.Fatal`/`os.Exit`），并给出清晰的信息。
 - 业务处理器不得将内部错误细节泄露到 API 响应中：将失败映射为 `errno` 错误码并
   交给统一错误处理中间件（见下节），由中间件输出
-  `response.Fail(code, errno.Message(code))`。
+  `response.Fail(code, errno.Message(lang, code))`（`lang` 取自 `Accept-Language`）。
 - **错误码与文案只在 `internal/pkg/errno` 统一维护**：处理器/service 层不得内联
-  数字错误码或用户文案，一律引用 `errno` 常量并经由 `errno.Message` 取文案；
-  错误码全局唯一，禁止同一码复用为不同含义。
+  数字错误码或用户文案，一律引用 `errno` 常量并经由 `errno.Message(lang, code)`
+  取文案；错误码全局唯一，禁止同一码复用为不同含义。
 - 用 `%w` 包装错误以保留原因链；不要静默吞掉错误。
 - 可重试的基础设施失败（DB 未就绪）以有界次数重试，在返回错误前以 `warn`
   级别记录日志（`db.New`，3 次/2s）。
@@ -49,8 +61,9 @@
   （`c.AbortWithError` 或统一业务错误类型，具体机制在首个 handler/中间件实现时定），
   成功后返回 `c.JSON(http.StatusOK, response.OK(data))`。
 - **错误处理中间件职责**：
-  - 从 `c.Errors` 取最后一个错误并解析出 `errno` 码，统一输出
-    `response.Fail(code, errno.Message(code))`。
+  - 从 `c.Errors` 取最后一个错误并解析出 `errno` 码，用
+    `errno.LangFromHeader(c.GetHeader("Accept-Language"))` 取语言，统一输出
+    `response.Fail(code, errno.Message(lang, code))`。
   - HTTP 状态按错误类型决定，对齐 scaffold PRD 契约与前端 `request.ts`：业务失败
     200（`code` 为业务码）；认证失败 401（`code=401`）；无权限 403（`code=403`）。
   - panic 由 `gin.Recovery` 恢复为统一 500 响应，不向客户端泄露堆栈。

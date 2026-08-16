@@ -5,10 +5,10 @@ import "sort"
 // Menu 菜单/按钮（表名 menus）。
 type Menu struct {
 	BaseModel
-	ParentID   uint64 `gorm:"column:parent_id;not null;default:0" json:"parentId"` // 0=根
-	Type       string `gorm:"column:type;type:varchar(16);not null" json:"type"`   // catalog / menu / button
-	Name       string `gorm:"column:name;type:varchar(64);not null" json:"name"`   // catalog/menu 为 ASCII 路由标识符；button 为中文展示名
-	Title      string `gorm:"column:title;type:varchar(128)" json:"title"`         // i18n key，如 routes.system.user（决策 17）
+	ParentID   uint64 `gorm:"column:parent_id;not null;default:0;index" json:"parentId"` // 0=根
+	Type       string `gorm:"column:type;type:varchar(16);not null" json:"type"`         // catalog / menu / button
+	Name       string `gorm:"column:name;type:varchar(64);not null" json:"name"`         // catalog/menu 为 ASCII 路由标识符；button 为中文展示名
+	Title      string `gorm:"column:title;type:varchar(128)" json:"title"`               // i18n key，如 routes.system.user（决策 17）
 	Path       string `gorm:"column:path;type:varchar(128)" json:"path"`
 	Component  string `gorm:"column:component;type:varchar(255)" json:"component"` // 视图相对路径；按钮级为空
 	Icon       string `gorm:"column:icon;type:varchar(64)" json:"icon"`
@@ -28,7 +28,36 @@ const (
 	MenuTypeCatalog = "catalog"
 	MenuTypeMenu    = "menu"
 	MenuTypeButton  = "button"
+
+	// MenuComponentBasicLayout 是顶层 catalog 使用的 vben 布局组件。
+	MenuComponentBasicLayout = "BasicLayout"
 )
+
+// IsMenuDescendant 判断 candidateID 是否位于 ancestorID 的子树中。
+// 父链中出现脏数据环时停止遍历，避免校验本身陷入死循环。
+func IsMenuDescendant(menus []Menu, ancestorID, candidateID uint64) bool {
+	parents := make(map[uint64]uint64, len(menus))
+	for _, menu := range menus {
+		parents[menu.ID] = menu.ParentID
+	}
+
+	visited := make(map[uint64]struct{}, len(menus))
+	for current := candidateID; current != 0; {
+		if current == ancestorID {
+			return true
+		}
+		if _, ok := visited[current]; ok {
+			return false
+		}
+		visited[current] = struct{}{}
+		parent, ok := parents[current]
+		if !ok {
+			return false
+		}
+		current = parent
+	}
+	return false
+}
 
 // MenuTreeNode 树形节点视图（后续 menu/service 层消费）。
 type MenuTreeNode struct {

@@ -10,5 +10,8 @@ type Role struct {
 	Remark string `gorm:"column:remark;type:varchar(255)" json:"remark"`
 }
 
+// RoleSuperCode 预置超级管理员角色编码。
+const RoleSuperCode = "super"
+
 // TableName 显式声明表名。
 func (Role) TableName() string { return "roles" }

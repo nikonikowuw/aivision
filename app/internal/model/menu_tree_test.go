@@ -102,3 +102,20 @@ func TestBuildMenuTreeCycleBroken(t *testing.T) {
 		t.Error("cycle not fully broken: grandchild present")
 	}
 }
+
+func TestIsMenuDescendant(t *testing.T) {
+	menus := []Menu{
+		{BaseModel: BaseModel{ID: 1}, ParentID: 0},
+		{BaseModel: BaseModel{ID: 2}, ParentID: 1},
+		{BaseModel: BaseModel{ID: 3}, ParentID: 2},
+	}
+	if !IsMenuDescendant(menus, 1, 3) {
+		t.Error("expected node 3 to be a descendant of node 1")
+	}
+	if IsMenuDescendant(menus, 2, 1) {
+		t.Error("did not expect node 1 to be a descendant of node 2")
+	}
+	if IsMenuDescendant(menus, 1, 99) {
+		t.Error("did not expect missing node to be a descendant")
+	}
+}

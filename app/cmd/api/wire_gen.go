@@ -7,10 +7,14 @@
 package main
 
 import (
+	"niko-vue-admin/app/internal/api"
+	"niko-vue-admin/app/internal/middleware"
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/db"
 	"niko-vue-admin/app/internal/pkg/logger"
+	"niko-vue-admin/app/internal/repository"
 	"niko-vue-admin/app/internal/router"
+	"niko-vue-admin/app/internal/service"
 )
 
 // Injectors from wire.go:
@@ -25,7 +29,18 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := router.New(cfg)
+	handlerFunc := middleware.ErrorHandler()
+	authRepository := repository.NewAuthRepository(gormDB)
+	authMiddleware := middleware.NewAuthMiddleware(authRepository, cfg)
+	menuRepository := repository.NewMenuRepository(gormDB)
+	menuService := service.NewMenuService(menuRepository)
+	menuHandler := api.NewMenuHandler(menuService)
+	deps := router.Deps{
+		ErrorHandler:   handlerFunc,
+		AuthMiddleware: authMiddleware,
+		MenuHandler:    menuHandler,
+	}
+	engine := router.New(cfg, deps)
 	app := &App{
 		DB:     gormDB,
 		Logger: zapLogger,

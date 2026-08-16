@@ -25,15 +25,17 @@ type Server struct {
 
 // DB 数据库连接配置（mysql / postgres 二选一，决策 18）。
 type DB struct {
-	Driver   string `mapstructure:"driver"` // mysql | postgres
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	Name     string `mapstructure:"name"`
-	// AutoMigrate 启动时自动建表/升级：仅 dev/test 使用；生产设为 false，
-	// 表结构变更走 app/migrations 的版本化 SQL 脚本。
-	AutoMigrate bool `mapstructure:"auto_migrate"`
+	Driver      string        `mapstructure:"driver"` // mysql | postgres
+	Host        string        `mapstructure:"host"`
+	Port        int           `mapstructure:"port"`
+	User        string        `mapstructure:"user"`
+	Password    string        `mapstructure:"password"`
+	Name        string        `mapstructure:"name"`
+	TimeZone    string        `mapstructure:"time_zone"`    // 数据库时区，例如 Asia/Shanghai
+	AutoMigrate bool          `mapstructure:"auto_migrate"` // 启动时自动建表/升级：仅 dev/test 使用
+	MaxOpen     int           `mapstructure:"max_open"`     // 最大打开连接数（默认 100）
+	MaxIdle     int           `mapstructure:"max_idle"`     // 最大空闲连接数（默认 10）
+	MaxLifetime time.Duration `mapstructure:"max_lifetime"` // 连接最大生命周期（默认 30m）
 }
 
 // JWT 认证配置，TTL 已解析为 time.Duration。
@@ -51,18 +53,22 @@ type Log struct {
 const (
 	defaultConfigPath = "configs/config.yaml"
 
-	defaultServerPort  = 8000
-	defaultDBDriver    = "mysql"
-	defaultDBHost      = "127.0.0.1"
-	defaultDBPort      = 3306
-	defaultDBUser      = "root"
-	defaultDBPassword  = "123456" // 开发默认；生产用 APP_DB_PASSWORD 覆盖
-	defaultDBName      = "niko_vue_admin"
-	defaultAutoMigrate = true
-	defaultJWTSecret   = "dev-secret-change-me"
-	defaultAccessTTL   = 2 * time.Hour
-	defaultRefreshTTL  = 168 * time.Hour
-	defaultLogLevel    = "info"
+	defaultServerPort    = 8000
+	defaultDBDriver      = "mysql"
+	defaultDBHost        = "127.0.0.1"
+	defaultDBPort        = 3306
+	defaultDBUser        = "root"
+	defaultDBPassword    = "123456" // 开发默认；生产用 APP_DB_PASSWORD 覆盖
+	defaultDBName        = "niko_vue_admin"
+	defaultDBTimeZone    = "Asia/Shanghai"
+	defaultAutoMigrate   = true
+	defaultDBMaxOpen     = 100
+	defaultDBMaxIdle     = 10
+	defaultDBMaxLifetime = 30 * time.Minute
+	defaultJWTSecret     = "dev-secret-change-me"
+	defaultAccessTTL     = 2 * time.Hour
+	defaultRefreshTTL    = 168 * time.Hour
+	defaultLogLevel      = "info"
 )
 
 // Load 读取配置：默认路径 configs/config.yaml，可用环境变量 APP_CONFIG_PATH 覆盖，
@@ -120,7 +126,11 @@ func defaults() []keyValue {
 		{"db.user", defaultDBUser},
 		{"db.password", defaultDBPassword},
 		{"db.name", defaultDBName},
+		{"db.time_zone", defaultDBTimeZone},
 		{"db.auto_migrate", defaultAutoMigrate},
+		{"db.max_open", defaultDBMaxOpen},
+		{"db.max_idle", defaultDBMaxIdle},
+		{"db.max_lifetime", defaultDBMaxLifetime},
 		{"jwt.secret", defaultJWTSecret},
 		{"jwt.access_ttl", defaultAccessTTL},
 		{"jwt.refresh_ttl", defaultRefreshTTL},
@@ -143,6 +153,15 @@ func validate(cfg *Config) error {
 	}
 	if cfg.DB.Port <= 0 || cfg.DB.Port > 65535 {
 		return fmt.Errorf("invalid db.port: %d", cfg.DB.Port)
+	}
+	if strings.TrimSpace(cfg.DB.TimeZone) == "" {
+		return fmt.Errorf("db.time_zone cannot be empty")
+	}
+	if _, err := time.LoadLocation(cfg.DB.TimeZone); err != nil {
+		return fmt.Errorf("invalid db.time_zone %q: %w", cfg.DB.TimeZone, err)
+	}
+	if strings.TrimSpace(cfg.JWT.Secret) == "" {
+		return fmt.Errorf("jwt.secret cannot be empty")
 	}
 	return nil
 }

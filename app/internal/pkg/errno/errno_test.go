@@ -58,7 +58,7 @@ func TestMessagePartialLangMapFallsBack(t *testing.T) {
 	// 注入一张不完整的语言表（缺 unknownCode，且须含 CodeOK 以免破坏
 	// 成功文案不变量测试）；未知码应回退到 DefaultLang 的兜底文案。
 	messages["fr-FR"] = map[int]string{
-		CodeOK:          "ok",
+		CodeOK:           "ok",
 		CodeUserNotFound: "Utilisateur introuvable",
 	}
 	defer delete(messages, "fr-FR")

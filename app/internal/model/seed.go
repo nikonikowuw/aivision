@@ -90,7 +90,6 @@ var seedMenuTree = []seedMenuItem{
 const (
 	seedAdminUsername = "admin"
 	seedAdminPassword = "admin123"
-	seedSuperRoleCode = "super"
 	seedDeptName      = "演示部门"
 )
 
@@ -119,13 +118,13 @@ func Seed(db *gorm.DB) (bool, error) {
 
 func seedAll(tx *gorm.DB) error {
 	// demo 部门
-	dept := Department{Name: seedDeptName, ParentID: 0, Sort: 0, Status: 1}
+	dept := Department{Name: seedDeptName, ParentID: 0, Sort: 0, Status: StatusEnabled}
 	if err := tx.Where("name = ?", dept.Name).FirstOrCreate(&dept).Error; err != nil {
 		return fmt.Errorf("seed department: %w", err)
 	}
 
 	// super 角色
-	role := Role{Name: "超级管理员", Code: seedSuperRoleCode, Status: 1, Sort: 0}
+	role := Role{Name: "超级管理员", Code: RoleSuperCode, Status: StatusEnabled, Sort: 0}
 	if err := tx.Where("code = ?", role.Code).FirstOrCreate(&role).Error; err != nil {
 		return fmt.Errorf("seed role: %w", err)
 	}
@@ -141,7 +140,7 @@ func seedAll(tx *gorm.DB) error {
 		Nickname: "管理员",
 		Email:    "admin@example.com",
 		DeptID:   dept.ID,
-		Status:   1,
+		Status:   StatusEnabled,
 	}
 	if err := tx.Where("username = ?", user.Username).FirstOrCreate(&user).Error; err != nil {
 		return fmt.Errorf("seed admin user: %w", err)
@@ -168,7 +167,7 @@ func seedMenuBranch(tx *gorm.DB, roleID, parentID uint64, items []seedMenuItem) 
 			Component:  item.Component,
 			Icon:       item.Icon,
 			Sort:       i + 1,
-			Status:     1,
+			Status:     StatusEnabled,
 			Permission: item.Permission,
 			Affix:      item.Affix,
 			KeepAlive:  item.KeepAlive,

@@ -83,7 +83,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 
 	// super 角色 + 绑定
 	var super Role
-	if err := gdb.Where("code = ?", seedSuperRoleCode).First(&super).Error; err != nil {
+	if err := gdb.Where("code = ?", RoleSuperCode).First(&super).Error; err != nil {
 		t.Fatalf("find super role: %v", err)
 	}
 	var ur UserRole

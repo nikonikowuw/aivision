@@ -18,22 +18,25 @@ import (
 const (
 	connectRetries = 3
 	retryInterval  = 2 * time.Second
-
-	// 连接池：MySQL wait_timeout（默认 8h）会掐断空闲连接，
-	// ConnMaxLifetime 须小于该值，让连接定期刷新避免 stale connection。
-	maxOpenConns    = 100
-	maxIdleConns    = 10
-	connMaxLifetime = 30 * time.Minute
 )
 
 // New 按 db.driver 连接 mysql/postgres：失败重试 3 次（间隔 2s），仍失败返回错误。
+// 连接池参数直接取 cfg.DB（config.Load 已注入非零默认值，见 config.defaults）。
 func New(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 	switch cfg.DB.Driver {
 	case "postgres":
-		dialector = gormpostgres.Open(postgresDSN(cfg.DB))
+		dsn, err := postgresDSN(cfg.DB)
+		if err != nil {
+			return nil, fmt.Errorf("build postgres DSN: %w", err)
+		}
+		dialector = gormpostgres.Open(dsn)
 	default:
-		dialector = gormmysql.Open(mysqlDSN(cfg.DB))
+		dsn, err := mysqlDSN(cfg.DB)
+		if err != nil {
+			return nil, fmt.Errorf("build mysql DSN: %w", err)
+		}
+		dialector = gormmysql.Open(dsn)
 	}
 
 	var err error
@@ -46,9 +49,9 @@ func New(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 			} else if pingErr := sqlDB.Ping(); pingErr != nil {
 				err = pingErr
 			} else {
-				sqlDB.SetMaxOpenConns(maxOpenConns)
-				sqlDB.SetMaxIdleConns(maxIdleConns)
-				sqlDB.SetConnMaxLifetime(connMaxLifetime)
+				sqlDB.SetMaxOpenConns(cfg.DB.MaxOpen)
+				sqlDB.SetMaxIdleConns(cfg.DB.MaxIdle)
+				sqlDB.SetConnMaxLifetime(cfg.DB.MaxLifetime)
 				return gdb, nil
 			}
 		} else {
@@ -64,11 +67,13 @@ func New(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 	return nil, fmt.Errorf("connect %s after %d retries: %w", cfg.DB.Driver, connectRetries, err)
 }
 
-// mysqlDSN 构造 MySQL DSN。用驱动的 Config.FormatDSN 而非手拼字符串：
-// 由驱动负责 dbname 等的转义，避免 user/password 中的特殊字符破坏 DSN 解析。
-// loc 固定 Asia/Shanghai（格式化为 loc=Asia%2FShanghai），与 postgresDSN 的
-// TimeZone 保持一致，避免隐式依赖服务器本地时区。
-func mysqlDSN(d config.DB) string {
+// mysqlDSN 构造 MySQL DSN。用驱动的 Config.FormatDSN 而非手拼字符串，
+// 由驱动负责密码等特殊字符的转义。
+func mysqlDSN(d config.DB) (string, error) {
+	location, err := time.LoadLocation(d.TimeZone)
+	if err != nil {
+		return "", fmt.Errorf("load time zone %q: %w", d.TimeZone, err)
+	}
 	c := gomysql.Config{
 		User:      d.User,
 		Passwd:    d.Password,
@@ -76,24 +81,25 @@ func mysqlDSN(d config.DB) string {
 		Addr:      fmt.Sprintf("%s:%d", d.Host, d.Port),
 		DBName:    d.Name,
 		ParseTime: true,
-		Loc:       time.FixedZone("Asia/Shanghai", 8*3600),
+		Loc:       location,
 		Params:    map[string]string{"charset": "utf8mb4"},
 	}
-	return c.FormatDSN()
+	return c.FormatDSN(), nil
 }
 
-// postgresDSN 构造 PostgreSQL DSN（决策 18）。用 URL 形式并转义 user/password，
-// 避免特殊字符破坏 DSN 解析。
-func postgresDSN(d config.DB) string {
+// postgresDSN 构造 PostgreSQL DSN，并转义 user/password，避免特殊字符破坏解析。
+// TimeZone 保持未编码的斜杠，是因为 GORM 会直接从原始 DSN 提取该值并调用
+// time.LoadLocation；编码为 %2F 会被 PostgreSQL 当作字面量时区名。
+func postgresDSN(d config.DB) (string, error) {
+	if _, err := time.LoadLocation(d.TimeZone); err != nil {
+		return "", fmt.Errorf("load time zone %q: %w", d.TimeZone, err)
+	}
 	u := &url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(d.User, d.Password),
 		Host:   fmt.Sprintf("%s:%d", d.Host, d.Port),
 		Path:   "/" + d.Name,
 	}
-	q := u.Query()
-	q.Set("sslmode", "disable")
-	q.Set("TimeZone", "Asia/Shanghai")
-	u.RawQuery = q.Encode()
-	return u.String()
+	u.RawQuery = "sslmode=disable&TimeZone=" + d.TimeZone
+	return u.String(), nil
 }

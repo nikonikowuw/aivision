@@ -21,11 +21,16 @@ func TestLoadFull(t *testing.T) {
 server:
   port: 9000
 db:
+  driver: postgres
   host: 10.0.0.1
-  port: 3307
+  port: 5432
   user: app
   password: secret
   name: demo_db
+  time_zone: Asia/Tokyo
+  max_open: 50
+  max_idle: 5
+  max_lifetime: 15m
 jwt:
   secret: test-secret
   access_ttl: 1h
@@ -40,12 +45,15 @@ log:
 	if cfg.Server.Port != 9000 {
 		t.Errorf("server.port = %d, want 9000", cfg.Server.Port)
 	}
-	if cfg.DB.Host != "10.0.0.1" || cfg.DB.Port != 3307 || cfg.DB.User != "app" ||
-		cfg.DB.Password != "secret" || cfg.DB.Name != "demo_db" {
+	if cfg.DB.Driver != "postgres" || cfg.DB.Host != "10.0.0.1" || cfg.DB.Port != 5432 || cfg.DB.User != "app" ||
+		cfg.DB.Password != "secret" || cfg.DB.Name != "demo_db" || cfg.DB.TimeZone != "Asia/Tokyo" {
 		t.Errorf("db = %+v", cfg.DB)
 	}
+	if cfg.DB.MaxOpen != 50 || cfg.DB.MaxIdle != 5 || cfg.DB.MaxLifetime != 15*time.Minute {
+		t.Errorf("db pool = %+v", cfg.DB)
+	}
 	if cfg.JWT.Secret != "test-secret" {
-		t.Errorf("jwt.secret = %q, want test-secret", cfg.JWT.Secret)
+		t.Errorf("jwt.secret = %q", cfg.JWT.Secret)
 	}
 	if cfg.JWT.AccessTTL != time.Hour {
 		t.Errorf("jwt.access_ttl = %v, want 1h", cfg.JWT.AccessTTL)
@@ -67,11 +75,17 @@ func TestLoadDefaultsForMissingKeys(t *testing.T) {
 	if cfg.Server.Port != 8000 {
 		t.Errorf("server.port = %d, want default 8000", cfg.Server.Port)
 	}
-	if cfg.DB.Host != "127.0.0.1" || cfg.DB.Port != 3306 || cfg.DB.User != "root" {
+	if cfg.DB.Driver != "mysql" || cfg.DB.Host != "127.0.0.1" || cfg.DB.Port != 3306 || cfg.DB.User != "root" {
 		t.Errorf("db defaults not applied: %+v", cfg.DB)
 	}
 	if cfg.DB.Name != "only_name" {
 		t.Errorf("db.name = %q, want only_name", cfg.DB.Name)
+	}
+	if cfg.DB.MaxOpen != 100 || cfg.DB.MaxIdle != 10 || cfg.DB.MaxLifetime != 30*time.Minute {
+		t.Errorf("db pool defaults not applied: %+v", cfg.DB)
+	}
+	if cfg.DB.TimeZone != "Asia/Shanghai" {
+		t.Errorf("db.time_zone default = %q, want Asia/Shanghai", cfg.DB.TimeZone)
 	}
 	if cfg.JWT.AccessTTL != 2*time.Hour || cfg.JWT.RefreshTTL != 168*time.Hour {
 		t.Errorf("jwt ttl defaults not applied: %v %v", cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
@@ -91,6 +105,7 @@ db:
   user: root
   password: "123456"
   name: niko_vue_admin
+  time_zone: Asia/Shanghai
 jwt:
   secret: dev
   access_ttl: 2h
@@ -99,6 +114,7 @@ log:
   level: info
 `)
 	t.Setenv("APP_DB_HOST", "10.20.30.40")
+	t.Setenv("APP_DB_TIME_ZONE", "UTC")
 	t.Setenv("APP_JWT_SECRET", "env-secret")
 	t.Setenv("APP_JWT_ACCESS_TTL", "30m")
 	t.Setenv("APP_SERVER_PORT", "9001")
@@ -110,6 +126,9 @@ log:
 	if cfg.DB.Host != "10.20.30.40" {
 		t.Errorf("db.host = %q, want env override 10.20.30.40", cfg.DB.Host)
 	}
+	if cfg.DB.TimeZone != "UTC" {
+		t.Errorf("db.time_zone = %q, want env override UTC", cfg.DB.TimeZone)
+	}
 	if cfg.JWT.Secret != "env-secret" {
 		t.Errorf("jwt.secret = %q, want env-secret", cfg.JWT.Secret)
 	}
@@ -119,7 +138,6 @@ log:
 	if cfg.Server.Port != 9001 {
 		t.Errorf("server.port = %d, want 9001", cfg.Server.Port)
 	}
-	// 未覆盖的键保持 yaml 值
 	if cfg.DB.Name != "niko_vue_admin" {
 		t.Errorf("db.name = %q, want niko_vue_admin", cfg.DB.Name)
 	}
@@ -152,6 +170,13 @@ func TestLoadInvalidDriver(t *testing.T) {
 	}
 }
 
+func TestLoadInvalidTimeZone(t *testing.T) {
+	path := writeConfig(t, "db:\n  time_zone: Mars/Olympus\n")
+	if _, err := load(path); err == nil {
+		t.Fatal("load should fail for invalid db.time_zone")
+	}
+}
+
 func TestLoadInvalidTTL(t *testing.T) {
 	path := writeConfig(t, "jwt:\n  access_ttl: not-a-duration\n")
 	if _, err := load(path); err == nil {
@@ -166,7 +191,6 @@ func TestLoadMissingFile(t *testing.T) {
 }
 
 func TestLoadWithEnvConfigPath(t *testing.T) {
-	// Load 默认读 configs/config.yaml；APP_CONFIG_PATH 可覆盖路径。
 	path := writeConfig(t, "server:\n  port: 7000\n")
 	t.Setenv("APP_CONFIG_PATH", path)
 	cfg, err := Load()
@@ -192,7 +216,6 @@ func TestLoadInvalidPort(t *testing.T) {
 }
 
 func TestLoadAutoMigrateDefaultAndYaml(t *testing.T) {
-	// 缺省：默认 true（dev/test 开箱即用）
 	cfg, err := load(writeConfig(t, "db:\n  name: only_name\n"))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -201,7 +224,6 @@ func TestLoadAutoMigrateDefaultAndYaml(t *testing.T) {
 		t.Error("db.auto_migrate default = false, want true")
 	}
 
-	// yaml 显式 false
 	cfg, err = load(writeConfig(t, "db:\n  auto_migrate: false\n"))
 	if err != nil {
 		t.Fatalf("load: %v", err)

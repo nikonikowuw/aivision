@@ -22,14 +22,22 @@ const (
 	CodeForbidden = 403
 
 	// 业务错误码 1xxx。
-	CodeBadCredential    = 1001 // 用户名或密码错误
-	CodeUserNotFound     = 1002 // 用户不存在
-	CodeUsernameTaken    = 1003 // 用户名已存在
-	CodeRoleCodeTaken    = 1004 // 角色 code 已存在
-	CodeWrongOldPassword = 1005 // 旧密码错误
-	CodeMenuHasChildren  = 1006 // 菜单存在子节点
-	CodeDeptHasChildren  = 1007 // 部门存在子部门
-	CodeUserDisabled     = 1008 // 用户被禁用
+	CodeBadCredential      = 1001 // 用户名或密码错误
+	CodeUserNotFound       = 1002 // 用户不存在
+	CodeUsernameTaken      = 1003 // 用户名已存在
+	CodeRoleCodeTaken      = 1004 // 角色 code 已存在
+	CodeWrongOldPassword   = 1005 // 旧密码错误
+	CodeMenuHasChildren    = 1006 // 菜单存在子节点
+	CodeDeptHasChildren    = 1007 // 部门存在子部门
+	CodeUserDisabled       = 1008 // 用户被禁用
+	CodeInvalidParam       = 1009 // 请求参数错误
+	CodeParentIsSelf       = 1010 // 父节点不能是自身
+	CodeNotFound           = 1011 // 资源不存在
+	CodeMethodNotAllowed   = 1012 // 请求方法不允许
+	CodeParentIsDescendant = 1013 // 父节点不能是当前节点的后代
+
+	// CodeInternal 服务器内部错误（非业务失败，仅作统一响应码）。
+	CodeInternal = 1500
 )
 
 // unknownCode 私有哨兵码：各语言下未知错误码的兜底文案。
@@ -38,32 +46,44 @@ const unknownCode = -1
 // messages 按语言分组的业务文案（全项目唯一文案源）。
 var messages = map[string]map[int]string{
 	DefaultLang: {
-		unknownCode:          "未知错误",
-		CodeOK:               "ok",
-		CodeUnauthorized:     "未认证或 token 已失效",
-		CodeForbidden:        "无权限",
-		CodeBadCredential:    "用户名或密码错误",
-		CodeUserNotFound:     "用户不存在",
-		CodeUsernameTaken:    "用户名已存在",
-		CodeRoleCodeTaken:    "角色 code 已存在",
-		CodeWrongOldPassword: "旧密码错误",
-		CodeMenuHasChildren:  "菜单存在子节点，无法删除",
-		CodeDeptHasChildren:  "部门存在子部门，无法删除",
-		CodeUserDisabled:     "用户已被禁用",
+		unknownCode:            "未知错误",
+		CodeOK:                 "ok",
+		CodeUnauthorized:       "未认证或 token 已失效",
+		CodeForbidden:          "无权限",
+		CodeBadCredential:      "用户名或密码错误",
+		CodeUserNotFound:       "用户不存在",
+		CodeUsernameTaken:      "用户名已存在",
+		CodeRoleCodeTaken:      "角色 code 已存在",
+		CodeWrongOldPassword:   "旧密码错误",
+		CodeMenuHasChildren:    "菜单存在子节点，无法删除",
+		CodeDeptHasChildren:    "部门存在子部门，无法删除",
+		CodeUserDisabled:       "用户已被禁用",
+		CodeInvalidParam:       "请求参数错误",
+		CodeParentIsSelf:       "父节点不能是自身",
+		CodeNotFound:           "资源不存在",
+		CodeMethodNotAllowed:   "请求方法不允许",
+		CodeParentIsDescendant: "父节点不能是当前节点的后代",
+		CodeInternal:           "服务器内部错误",
 	},
 	"en-US": {
-		unknownCode:          "Unknown error",
-		CodeOK:               "ok",
-		CodeUnauthorized:     "Unauthenticated or token expired",
-		CodeForbidden:        "Forbidden",
-		CodeBadCredential:    "Invalid username or password",
-		CodeUserNotFound:     "User not found",
-		CodeUsernameTaken:    "Username already exists",
-		CodeRoleCodeTaken:    "Role code already exists",
-		CodeWrongOldPassword: "Incorrect old password",
-		CodeMenuHasChildren:  "Cannot delete: menu has child nodes",
-		CodeDeptHasChildren:  "Cannot delete: department has child nodes",
-		CodeUserDisabled:     "User has been disabled",
+		unknownCode:            "Unknown error",
+		CodeOK:                 "ok",
+		CodeUnauthorized:       "Unauthenticated or token expired",
+		CodeForbidden:          "Forbidden",
+		CodeBadCredential:      "Invalid username or password",
+		CodeUserNotFound:       "User not found",
+		CodeUsernameTaken:      "Username already exists",
+		CodeRoleCodeTaken:      "Role code already exists",
+		CodeWrongOldPassword:   "Incorrect old password",
+		CodeMenuHasChildren:    "Cannot delete: menu has child nodes",
+		CodeDeptHasChildren:    "Cannot delete: department has child nodes",
+		CodeUserDisabled:       "User has been disabled",
+		CodeInvalidParam:       "Invalid parameter",
+		CodeParentIsSelf:       "Parent node cannot be itself",
+		CodeNotFound:           "Resource not found",
+		CodeMethodNotAllowed:   "Method not allowed",
+		CodeParentIsDescendant: "Parent node cannot be a descendant of the current node",
+		CodeInternal:           "Internal server error",
 	},
 }
 
@@ -97,6 +117,20 @@ func LangFromHeader(header string) string {
 		}
 	}
 	return DefaultLang
+}
+
+// Error 携带业务错误码的业务错误。文案不在此固化，统一由
+// response/middleware 按请求语言经 Message 获取，避免绕过 i18n。
+type Error struct {
+	Code int
+}
+
+func (e *Error) Error() string {
+	return Message(DefaultLang, e.Code)
+}
+
+func NewError(code int) *Error {
+	return &Error{Code: code}
 }
 
 // Message 返回指定语言 lang 下错误码 code 的用户文案；

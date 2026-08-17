@@ -144,16 +144,16 @@ func TestUserServiceCRUD(t *testing.T) {
 		t.Fatalf("Create admin failed: %v", err)
 	}
 	err = srv.UpdateStatus(ctx, admin.ID, model.StatusDisabled)
-	wantErrCode(t, err, errno.CodeInvalidParam)
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
 	err = srv.DeleteUser(ctx, admin.ID)
-	wantErrCode(t, err, errno.CodeInvalidParam)
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
 
 	// UpdateUser 改名 admin 失败
 	_, err = srv.UpdateUser(ctx, admin.ID, &SaveUserInput{Username: "admin_renamed"})
-	wantErrCode(t, err, errno.CodeInvalidParam)
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
 
 	// UpdateUser 禁用 admin 失败
 	statusDisabled := model.StatusDisabled
 	_, err = srv.UpdateUser(ctx, admin.ID, &SaveUserInput{Username: "admin", Status: &statusDisabled})
-	wantErrCode(t, err, errno.CodeInvalidParam)
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
 }

@@ -34,8 +34,11 @@ func (in *SaveRoleInput) FillModel(m *model.Role) {
 
 // RolePageQuery 角色分页查询参数。
 type RolePageQuery struct {
-	Page     int `form:"page"`
-	PageSize int `form:"pageSize"`
+	Page     int    `form:"page"`
+	PageSize int    `form:"pageSize"`
+	Name     string `form:"name"`
+	Code     string `form:"code"`
+	Status   *int8  `form:"status"`
 }
 
 // RolePageResult 角色分页结果。
@@ -65,7 +68,14 @@ func NewRoleService(roleRepo repository.RoleRepository, menuRepo repository.Menu
 }
 
 func (s *roleService) GetPage(ctx context.Context, query *RolePageQuery) (*RolePageResult, error) {
-	items, total, err := s.roleRepo.ListPage(ctx, query.Page, query.PageSize)
+	filter := &repository.RoleFilter{
+		Page:     query.Page,
+		PageSize: query.PageSize,
+		Name:     strings.TrimSpace(query.Name),
+		Code:     strings.TrimSpace(query.Code),
+		Status:   query.Status,
+	}
+	items, total, err := s.roleRepo.ListPage(ctx, filter)
 	if err != nil {
 		return nil, err
 	}

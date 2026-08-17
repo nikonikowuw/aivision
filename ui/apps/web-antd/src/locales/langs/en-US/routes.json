@@ -1,0 +1,15 @@
+{
+  "system": {
+    "dept": "Department Management",
+    "log": "Operation Log",
+    "menu": "Menu Management",
+    "role": "Role Management",
+    "system": "System Management",
+    "user": "User Management"
+  },
+  "dashboard": {
+    "analytics": "Analytics",
+    "workspace": "Workspace",
+    "title": "Dashboard"
+  }
+}

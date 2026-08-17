@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue';
 
+import type { SupportedLanguagesType } from '@vben/locales';
 import type { AnyFunction } from '@vben/types';
 
 import { computed, ref, useTemplateRef, watch } from 'vue';
@@ -282,7 +283,7 @@ function handleLanguageToggleSelect(event?: Event) {
   event?.preventDefault();
   showLanguageList.value = !showLanguageList.value;
 }
-async function handleLocaleChange(event: Event, value: 'en-US' | 'zh-CN') {
+async function handleLocaleChange(event: Event, value: SupportedLanguagesType) {
   // 阻止默认关闭，让用户能继续看到选择结果；选完手动收起
   event.preventDefault();
   updatePreferences({ app: { locale: value } });

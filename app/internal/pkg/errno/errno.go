@@ -36,6 +36,7 @@ const (
 	CodeMethodNotAllowed   = 1012 // 请求方法不允许
 	CodeParentIsDescendant = 1013 // 父节点不能是当前节点的后代
 	CodeSuperRoleProtected = 1014 // 超级管理员角色不可删除、停用或修改编码
+	CodeAdminUserProtected = 1015 // 超级管理员账号不可删除、停用或修改用户名
 
 	// CodeInternal 服务器内部错误（非业务失败，仅作统一响应码）。
 	CodeInternal = 1500
@@ -65,6 +66,7 @@ var messages = map[string]map[int]string{
 		CodeMethodNotAllowed:   "请求方法不允许",
 		CodeParentIsDescendant: "父节点不能是当前节点的后代",
 		CodeSuperRoleProtected: "超级管理员角色不可删除、停用或修改编码",
+		CodeAdminUserProtected: "超级管理员账号受系统保护，不可删除、停用或修改用户名",
 		CodeInternal:           "服务器内部错误",
 	},
 	"en-US": {
@@ -86,6 +88,7 @@ var messages = map[string]map[int]string{
 		CodeMethodNotAllowed:   "Method not allowed",
 		CodeParentIsDescendant: "Parent node cannot be a descendant of the current node",
 		CodeSuperRoleProtected: "Super admin role cannot be deleted, disabled, or renamed",
+		CodeAdminUserProtected: "Super admin user is protected and cannot be deleted, disabled, or renamed",
 		CodeInternal:           "Internal server error",
 	},
 }

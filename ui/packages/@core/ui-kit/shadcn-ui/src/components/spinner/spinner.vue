@@ -21,7 +21,7 @@ defineOptions({
 });
 
 const props = withDefaults(defineProps<Props>(), {
-  minLoadingTime: 50,
+  minLoadingTime: 200,
 });
 // const startTime = ref(0);
 const showSpinner = ref(false);
@@ -63,7 +63,7 @@ function onTransitionEnd() {
   <div
     :class="
       cn(
-        'flex-center bg-overlay-content absolute top-0 left-0 z-100 size-full backdrop-blur-xs transition-all duration-500',
+        'flex-center bg-overlay-content/80 absolute top-0 left-0 z-100 size-full backdrop-blur-xs transition-all duration-200',
         {
           'invisible opacity-0': !showSpinner,
         },

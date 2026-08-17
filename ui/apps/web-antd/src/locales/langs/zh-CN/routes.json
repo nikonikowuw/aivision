@@ -1,0 +1,15 @@
+{
+  "system": {
+    "dept": "部门管理",
+    "log": "操作日志",
+    "menu": "菜单管理",
+    "role": "角色管理",
+    "system": "系统管理",
+    "user": "用户管理"
+  },
+  "dashboard": {
+    "analytics": "分析页",
+    "workspace": "工作台",
+    "title": "概览"
+  }
+}

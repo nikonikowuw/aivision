@@ -115,6 +115,55 @@ func TestRoleServiceCRUDFlow(t *testing.T) {
 	wantErrCode(t, srv.DeleteRole(ctx, r1.ID), errno.CodeNotFound)
 }
 
+func TestRoleServicePageFilters(t *testing.T) {
+	db := setupTestDB(t)
+	srv := newRoleTestService(db)
+	ctx := context.Background()
+
+	if _, err := srv.CreateRole(ctx, &SaveRoleInput{Name: "编辑", Code: "editor"}); err != nil {
+		t.Fatalf("create editor role: %v", err)
+	}
+	disabled := model.StatusDisabled
+	operator, err := srv.CreateRole(ctx, &SaveRoleInput{
+		Name: "运营",
+		Code: "operator",
+	})
+	if err != nil {
+		t.Fatalf("create operator role: %v", err)
+	}
+	if _, err := srv.UpdateRole(ctx, operator.ID, &SaveRoleInput{
+		Name:   "运营",
+		Code:   "operator",
+		Status: &disabled,
+	}); err != nil {
+		t.Fatalf("disable operator role: %v", err)
+	}
+
+	byName, err := srv.GetPage(ctx, &RolePageQuery{Name: " 编辑 "})
+	if err != nil {
+		t.Fatalf("filter by name: %v", err)
+	}
+	if byName.Total != 1 || len(byName.Items) != 1 || byName.Items[0].Code != "editor" {
+		t.Fatalf("filter by name = %+v, want editor only", byName)
+	}
+
+	byCode, err := srv.GetPage(ctx, &RolePageQuery{Code: " operator "})
+	if err != nil {
+		t.Fatalf("filter by code: %v", err)
+	}
+	if byCode.Total != 1 || len(byCode.Items) != 1 || byCode.Items[0].Name != "运营" {
+		t.Fatalf("filter by code = %+v, want operator only", byCode)
+	}
+
+	byStatus, err := srv.GetPage(ctx, &RolePageQuery{Status: &disabled})
+	if err != nil {
+		t.Fatalf("filter by status: %v", err)
+	}
+	if byStatus.Total != 1 || len(byStatus.Items) != 1 || byStatus.Items[0].Code != "operator" {
+		t.Fatalf("filter by status = %+v, want disabled operator only", byStatus)
+	}
+}
+
 func TestRoleServiceCodeUnique(t *testing.T) {
 	db := setupTestDB(t)
 	srv := newRoleTestService(db)

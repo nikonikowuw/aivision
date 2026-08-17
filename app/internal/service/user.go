@@ -218,10 +218,10 @@ func (s *userService) UpdateUser(ctx context.Context, id uint64, input *SaveUser
 	// admin 账号保护：不可修改用户名，不可被禁用
 	if u.Username == model.AdminUsername {
 		if input.Username != model.AdminUsername {
-			return nil, errno.NewError(errno.CodeInvalidParam)
+			return nil, errno.NewError(errno.CodeAdminUserProtected)
 		}
 		if input.Status != nil && *input.Status == model.StatusDisabled {
-			return nil, errno.NewError(errno.CodeInvalidParam)
+			return nil, errno.NewError(errno.CodeAdminUserProtected)
 		}
 	}
 
@@ -278,7 +278,7 @@ func (s *userService) DeleteUser(ctx context.Context, id uint64) error {
 		return mapRepoError(err)
 	}
 	if u.Username == model.AdminUsername {
-		return errno.NewError(errno.CodeInvalidParam) // admin 自身不可删除
+		return errno.NewError(errno.CodeAdminUserProtected) // admin 自身不可删除
 	}
 
 	return s.userRepo.Delete(ctx, id)
@@ -350,7 +350,7 @@ func (s *userService) UpdateStatus(ctx context.Context, id uint64, status int8) 
 	}
 
 	if u.Username == model.AdminUsername && status == model.StatusDisabled {
-		return errno.NewError(errno.CodeInvalidParam) // admin 不可禁用
+		return errno.NewError(errno.CodeAdminUserProtected) // admin 不可禁用
 	}
 
 	return s.userRepo.Update(ctx, u, map[string]interface{}{

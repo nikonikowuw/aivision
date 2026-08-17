@@ -28,6 +28,9 @@ function useAccess() {
    */
   function hasAccessByCodes(codes: string[]) {
     const userCodesSet = new Set(accessStore.accessCodes);
+    if (userCodesSet.has('*')) {
+      return true;
+    }
 
     const intersection = codes.filter((item) => userCodesSet.has(item));
     return intersection.length > 0;

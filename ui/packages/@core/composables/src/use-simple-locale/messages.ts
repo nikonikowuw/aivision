@@ -1,4 +1,4 @@
-export type Locale = 'en-US' | 'zh-CN';
+export type Locale = 'en-US' | 'zh-CN' | 'zh-TW';
 
 export const messages: Record<Locale, Record<string, string>> = {
   'en-US': {
@@ -20,6 +20,16 @@ export const messages: Record<Locale, Record<string, string>> = {
     reset: '重置',
     submit: '提交',
     confirmTitle: '请确认',
+  },
+  'zh-TW': {
+    cancel: '取消',
+    collapse: '收合',
+    confirm: '確認',
+    expand: '展開',
+    prompt: '提示',
+    reset: '重設',
+    submit: '提交',
+    confirmTitle: '請確認',
   },
 };
 

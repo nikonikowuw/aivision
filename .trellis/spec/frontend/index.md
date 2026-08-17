@@ -18,6 +18,7 @@
 | 规范 | 说明 | 状态 |
 | [目录结构](./directory-structure.md) | monorepo + 应用 src 布局、模块组织 | 生效 |
 | [组件规范](./component-guidelines.md) | vben/antd 组合、props、样式 | 生效 |
+| [国际化规范](./i18n-guidelines.md) | 多语言架构、三语对齐、文本与宽度契约 | 生效 |
 | [Hook 规范](./hook-guidelines.md) | Composables、数据获取 | 生效 |
 | [状态管理](./state-management.md) | Pinia、vben stores、服务端状态 | 生效 |
 | [质量规范](./quality-guidelines.md) | 约定、测试、评审检查清单 | 生效 |

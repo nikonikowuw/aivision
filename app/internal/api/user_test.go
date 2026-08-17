@@ -172,12 +172,12 @@ func TestUserAPI_CRUDAndProtection(t *testing.T) {
 	if err := db.Create(&admin).Error; err != nil {
 		t.Fatalf("create admin: %v", err)
 	}
-	// 禁用 admin 失败 → 1009
-	if _, code := doUserRequest(t, engine, http.MethodPut, fmt.Sprintf("/api/user/%d/status", admin.ID), `{"status":0}`); code != errno.CodeInvalidParam {
-		t.Fatalf("disable admin: code = %d, want 1009", code)
+	// 禁用 admin 失败 → 1015
+	if _, code := doUserRequest(t, engine, http.MethodPut, fmt.Sprintf("/api/user/%d/status", admin.ID), `{"status":0}`); code != errno.CodeAdminUserProtected {
+		t.Fatalf("disable admin: code = %d, want 1015", code)
 	}
-	// 删除 admin 失败 → 1009
-	if _, code := doUserRequest(t, engine, http.MethodDelete, fmt.Sprintf("/api/user/%d", admin.ID), ""); code != errno.CodeInvalidParam {
-		t.Fatalf("delete admin: code = %d, want 1009", code)
+	// 删除 admin 失败 → 1015
+	if _, code := doUserRequest(t, engine, http.MethodDelete, fmt.Sprintf("/api/user/%d", admin.ID), ""); code != errno.CodeAdminUserProtected {
+		t.Fatalf("delete admin: code = %d, want 1015", code)
 	}
 }

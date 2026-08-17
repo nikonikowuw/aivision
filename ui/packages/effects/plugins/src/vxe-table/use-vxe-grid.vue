@@ -242,7 +242,7 @@ const options = computed(() => {
       {
         pageSize: 20,
         background: true,
-        pageSizes: [10, 20, 30, 50, 100, 200],
+        pageSizes: [10, 20, 30, 50, 100],
         className: 'mt-2 w-full',
         layouts: isMobile.value ? mobileLayouts : layouts,
         size: 'mini' as const,

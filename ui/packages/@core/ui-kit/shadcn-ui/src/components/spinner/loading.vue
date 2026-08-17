@@ -26,7 +26,7 @@ defineOptions({
 });
 
 const props = withDefaults(defineProps<Props>(), {
-  minLoadingTime: 50,
+  minLoadingTime: 200,
   text: '',
 });
 // const startTime = ref(0);
@@ -69,7 +69,7 @@ function onTransitionEnd() {
   <div
     :class="
       cn(
-        'bg-overlay-content dark:bg-overlay absolute top-0 left-0 z-100 flex size-full flex-col items-center justify-center transition-all duration-500',
+        'bg-overlay-content/80 dark:bg-overlay/80 backdrop-blur-xs absolute top-0 left-0 z-100 flex size-full flex-col items-center justify-center transition-all duration-200',
         {
           'invisible opacity-0': !showSpinner,
         },

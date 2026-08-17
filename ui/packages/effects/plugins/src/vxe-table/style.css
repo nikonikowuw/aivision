@@ -114,6 +114,17 @@
   overflow: visible;
 }
 
+/* 禁用 vxe-grid 全局遮罩，避免覆盖搜索表单区域 */
+.vxe-grid.is--loading::before {
+  display: none !important;
+}
+
+.vxe-grid--table-container,
+.vxe-grid--table-wrapper,
+.vxe-table {
+  position: relative;
+}
+
 .vxe-grid--layout-body-content-wrapper {
   overflow: hidden;
 }

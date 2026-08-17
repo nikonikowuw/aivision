@@ -1,0 +1,245 @@
+{
+  "title": "偏好設定",
+  "subtitle": "自訂偏好設定與即時預覽",
+  "enableStickyPreferencesNavigationBar": "開啟偏好設定導覽列吸頂效果",
+  "disableStickyPreferencesNavigationBar": "關閉偏好設定導覽列吸頂效果",
+  "resetTitle": "重設偏好設定",
+  "resetTip": "資料已變更，點擊即可重設",
+  "resetSuccess": "偏好設定重設成功",
+  "appearance": "外觀",
+  "layout": "版面",
+  "content": "內容",
+  "other": "其他",
+  "wide": "流式",
+  "compact": "固定寬度",
+  "followSystem": "跟隨系統",
+  "vertical": "垂直",
+  "verticalTip": "側邊垂直選單模式",
+  "horizontal": "水平",
+  "horizontalTip": "水平選單模式，選單全部顯示於頂部",
+  "twoColumn": "雙欄選單",
+  "twoColumnTip": "垂直雙欄選單模式",
+  "headerSidebarNav": "側邊導覽",
+  "headerSidebarNavTip": "頂部通欄，側邊導覽模式",
+  "headerTwoColumn": "混合雙欄",
+  "headerTwoColumnTip": "雙欄與水平選單共存模式",
+  "mixedMenu": "混合垂直",
+  "mixedMenuTip": "垂直與水平選單共存",
+  "fullContent": "內容全螢幕",
+  "fullContentTip": "不顯示任何選單，只顯示內容主體",
+  "normal": "一般",
+  "plain": "樸素",
+  "rounded": "圓角",
+  "copyPreferences": "複製偏好設定",
+  "enableCopyPreferences": "顯示複製偏好設定按鈕",
+  "copyPreferencesSuccessTitle": "複製成功",
+  "copyPreferencesSuccess": "複製成功，請在 app 下的 `src/preferences.ts` 中覆寫",
+  "clearAndLogout": "清除快取並登出",
+  "mode": "模式",
+  "general": "一般",
+  "language": "語言",
+  "timezone": "時區",
+  "dynamicTitle": "動態標題",
+  "watermark": "浮水印",
+  "watermarkContent": "請輸入浮水印文字",
+  "checkUpdates": "定時檢查更新",
+  "position": {
+    "title": "偏好設定位置",
+    "header": "頂欄",
+    "auto": "自動",
+    "fixed": "固定",
+    "userDropdown": "使用者下拉選單"
+  },
+  "sidebar": {
+    "buttons": "顯示按鈕",
+    "buttonFixed": "固定按鈕",
+    "buttonCollapsed": "收合按鈕",
+    "title": "側邊欄",
+    "width": "寬度",
+    "visible": "顯示側邊欄",
+    "draggable": "側邊欄選單拖曳",
+    "collapsed": "收合選單",
+    "collapsedShowTitle": "收合時顯示選單名稱",
+    "autoActivateChild": "自動啟用子選單",
+    "autoActivateChildTip": "點擊頂層選單時，自動啟用第一個子選單或上次啟用的子選單",
+    "expandOnHover": "滑鼠懸停展開",
+    "expandOnHoverTip": "滑鼠懸停於收合區域時，啟用則展開目前子選單，停用則展開整個側邊欄"
+  },
+  "tabbar": {
+    "title": "標籤列",
+    "enable": "啟用標籤列",
+    "icon": "顯示標籤列圖示",
+    "showMore": "顯示更多按鈕",
+    "showMaximize": "顯示最大化按鈕",
+    "persist": "持久化標籤頁",
+    "visitHistory": "造訪歷史記錄",
+    "visitHistoryTip": "開啟後，標籤列會記錄標籤造訪歷史\n關閉目前標籤後，會自動選取上一個開啟的標籤",
+    "maxCount": "最大標籤數",
+    "maxCountTip": "每次開啟新標籤時若超過最大標籤數，\n會自動關閉最早開啟的標籤\n設定為 0 則不限制",
+    "draggable": "啟用拖曳排序",
+    "wheelable": "啟用垂直滑鼠滾輪",
+    "middleClickClose": "點擊滑鼠中鍵關閉標籤頁",
+    "wheelableTip": "開啟後，標籤列區域可以回應垂直滾動。\n關閉時，只回應系統的水平滾動（需要按住 Shift 再滾動滑鼠滾輪）",
+    "styleType": {
+      "title": "標籤頁樣式",
+      "chrome": "Chrome",
+      "card": "卡片",
+      "plain": "樸素",
+      "brisk": "輕快"
+    },
+    "contextMenu": {
+      "reload": "重新載入",
+      "close": "關閉",
+      "pin": "固定",
+      "unpin": "取消固定",
+      "closeLeft": "關閉左側標籤頁",
+      "closeRight": "關閉右側標籤頁",
+      "closeOther": "關閉其他標籤頁",
+      "closeAll": "關閉全部標籤頁",
+      "openInNewWindow": "在新視窗開啟",
+      "maximize": "最大化",
+      "restoreMaximize": "還原"
+    }
+  },
+  "navigationMenu": {
+    "title": "導覽選單",
+    "style": "導覽選單樣式",
+    "accordion": "側邊導覽選單手風琴模式",
+    "split": "分離導覽選單",
+    "splitTip": "開啟時，側邊欄顯示頂欄對應選單的子選單"
+  },
+  "breadcrumb": {
+    "title": "麵包屑導覽",
+    "enable": "啟用麵包屑導覽",
+    "icon": "顯示麵包屑圖示",
+    "home": "顯示首頁按鈕",
+    "style": "麵包屑樣式",
+    "hideOnlyOne": "只有一項時隱藏",
+    "background": "背景"
+  },
+  "animation": {
+    "title": "動畫",
+    "loading": "頁面切換載入",
+    "transition": "頁面切換動畫",
+    "progress": "頁面切換進度條"
+  },
+  "theme": {
+    "title": "主題",
+    "radius": "圓角",
+    "fontSize": "字型大小",
+    "fontSizeTip": "調整全域字型大小，即時預覽效果",
+    "light": "淺色",
+    "dark": "深色",
+    "darkSidebar": "深色側邊欄",
+    "darkSidebarTip": "主題為淺色、版面不是水平選單或內容全螢幕時可開啟",
+    "darkSidebarSub": "深色側邊欄子選單",
+    "darkSidebarSubTip": "主題為淺色、開啟深色側邊欄且版面使用雙欄選單時可開啟",
+    "darkHeader": "深色頂欄",
+    "weakMode": "護眼模式",
+    "grayMode": "灰階模式",
+    "builtin": {
+      "title": "內建主題",
+      "default": "預設",
+      "violet": "紫羅蘭",
+      "pink": "櫻花粉",
+      "rose": "玫瑰紅",
+      "skyBlue": "天藍色",
+      "deepBlue": "深藍色",
+      "green": "淺綠色",
+      "deepGreen": "深綠色",
+      "orange": "橙黃色",
+      "yellow": "檸檬黃",
+      "zinc": "鋅灰色",
+      "neutral": "中性色",
+      "slate": "石板灰",
+      "gray": "中灰色",
+      "custom": "自訂"
+    }
+  },
+  "header": {
+    "title": "頂欄",
+    "modeStatic": "靜止",
+    "modeFixed": "固定",
+    "modeAuto": "自動隱藏與顯示",
+    "modeAutoScroll": "隨滾動隱藏與顯示",
+    "visible": "顯示頂欄",
+    "menuAlign": "選單位置",
+    "menuAlignStart": "左側",
+    "menuAlignEnd": "右側",
+    "menuAlignCenter": "置中"
+  },
+  "footer": {
+    "title": "底欄",
+    "visible": "顯示底欄",
+    "fixed": "固定於底部"
+  },
+  "copyright": {
+    "title": "版權",
+    "enable": "啟用版權",
+    "companyName": "公司名稱",
+    "companySiteLink": "公司首頁",
+    "date": "日期",
+    "icp": "ICP 備案號",
+    "icpLink": "ICP 網站連結"
+  },
+  "shortcutKeys": {
+    "title": "快速鍵",
+    "global": "全域",
+    "search": "全域搜尋",
+    "logout": "登出",
+    "escape": "關閉目前視窗",
+    "preferences": "偏好設定"
+  },
+  "widget": {
+    "title": "小工具",
+    "globalSearch": "全域搜尋",
+    "globalSearchPosition": "全域搜尋位置",
+    "fullscreen": "全螢幕",
+    "fullscreenPosition": "全螢幕按鈕位置",
+    "themeToggle": "主題切換",
+    "themeTogglePosition": "主題切換按鈕位置",
+    "languageToggle": "語言切換",
+    "languageTogglePosition": "語言切換按鈕位置",
+    "notification": "通知",
+    "notificationPosition": "通知位置",
+    "sidebarToggle": "啟用側邊欄切換",
+    "lockScreen": "鎖定螢幕",
+    "lockScreenPosition": "鎖定螢幕按鈕位置",
+    "logoutButtonPosition": "登出按鈕位置",
+    "header": "頂欄",
+    "userDropdown": "使用者下拉選單",
+    "hidden": "已隱藏",
+    "refresh": "重新整理",
+    "refreshPosition": "重新整理按鈕位置",
+    "timezone": "時區",
+    "timezonePosition": "時區按鈕位置"
+  },
+  "antd": {
+    "tabLabel": "Antd 擴充",
+    "title": "業務偏好",
+    "fields": {
+      "enableFormFullscreen": {
+        "label": "啟用表單全螢幕模式",
+        "tip": "子專案可在自己的業務場景中讀取此擴充設定。"
+      },
+      "tenantMode": {
+        "label": "租戶模式",
+        "options": {
+          "single": {
+            "label": "單租戶"
+          },
+          "multi": {
+            "label": "多租戶"
+          }
+        }
+      },
+      "defaultTableSize": {
+        "label": "預設分頁筆數"
+      },
+      "reportTitle": {
+        "label": "報表預設標題",
+        "placeholder": "請輸入報表預設標題"
+      }
+    }
+  }
+}

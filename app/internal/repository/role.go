@@ -21,6 +21,15 @@ func writeError(err error) error {
 	return err
 }
 
+// RoleFilter 描述角色列表的筛选与分页条件。
+type RoleFilter struct {
+	Page     int
+	PageSize int
+	Name     string
+	Code     string
+	Status   *int8
+}
+
 // RoleRepository 角色数据访问接口。
 type RoleRepository interface {
 	Create(ctx context.Context, role *model.Role) error
@@ -28,7 +37,7 @@ type RoleRepository interface {
 	Delete(ctx context.Context, id uint64) error
 	GetByID(ctx context.Context, id uint64) (*model.Role, error)
 	GetByIDs(ctx context.Context, ids []uint64) ([]model.Role, error)
-	ListPage(ctx context.Context, page, pageSize int) ([]model.Role, int64, error)
+	ListPage(ctx context.Context, filter *RoleFilter) ([]model.Role, int64, error)
 	GetMenuIDs(ctx context.Context, roleID uint64) ([]uint64, error)
 	ReplaceMenus(ctx context.Context, roleID uint64, menuIDs []uint64) error
 }
@@ -80,15 +89,25 @@ func (r *roleRepository) GetByIDs(ctx context.Context, ids []uint64) ([]model.Ro
 
 // ListPage 分页查询角色；排序 sort asc, id asc。
 // 分页参数归一（page<1→1；pageSize<1→20；>100→100）由 normalizePage 统一处理。
-func (r *roleRepository) ListPage(ctx context.Context, page, pageSize int) ([]model.Role, int64, error) {
+func (r *roleRepository) ListPage(ctx context.Context, filter *RoleFilter) ([]model.Role, int64, error) {
 	db := r.db.WithContext(ctx).Model(&model.Role{})
+
+	if filter.Name != "" {
+		db = db.Where("name LIKE ?", "%"+filter.Name+"%")
+	}
+	if filter.Code != "" {
+		db = db.Where("code LIKE ?", "%"+filter.Code+"%")
+	}
+	if filter.Status != nil {
+		db = db.Where("status = ?", *filter.Status)
+	}
 
 	var total int64
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	page, pageSize = normalizePage(page, pageSize)
+	page, pageSize := normalizePage(filter.Page, filter.PageSize)
 
 	var roles []model.Role
 	offset := (page - 1) * pageSize

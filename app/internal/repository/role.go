@@ -27,6 +27,7 @@ type RoleRepository interface {
 	Update(ctx context.Context, role *model.Role) error
 	Delete(ctx context.Context, id uint64) error
 	GetByID(ctx context.Context, id uint64) (*model.Role, error)
+	GetByIDs(ctx context.Context, ids []uint64) ([]model.Role, error)
 	ListPage(ctx context.Context, page, pageSize int) ([]model.Role, int64, error)
 	GetMenuIDs(ctx context.Context, roleID uint64) ([]uint64, error)
 	ReplaceMenus(ctx context.Context, roleID uint64, menuIDs []uint64) error
@@ -64,6 +65,17 @@ func (r *roleRepository) GetByID(ctx context.Context, id uint64) (*model.Role, e
 		return nil, err
 	}
 	return &role, nil
+}
+
+func (r *roleRepository) GetByIDs(ctx context.Context, ids []uint64) ([]model.Role, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var roles []model.Role
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	return roles, nil
 }
 
 // ListPage 分页查询角色；排序 sort asc, id asc。

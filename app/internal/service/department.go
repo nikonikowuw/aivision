@@ -65,7 +65,7 @@ func (s *deptService) CreateDept(ctx context.Context, input *SaveDeptInput) (*mo
 	if err := normalizeDeptInput(input); err != nil {
 		return nil, err
 	}
-	
+
 	if input.ParentID != 0 {
 		if _, err := s.repo.GetByID(ctx, input.ParentID); err != nil {
 			return nil, mapRepoError(err)
@@ -97,7 +97,7 @@ func (s *deptService) UpdateDept(ctx context.Context, id uint64, input *SaveDept
 	if input.ParentID != 0 && input.ParentID == id {
 		return nil, errno.NewError(errno.CodeParentIsSelf)
 	}
-	
+
 	input.FillModel(dept)
 
 	if err := s.repo.Update(ctx, dept); err != nil {

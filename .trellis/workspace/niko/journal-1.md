@@ -172,3 +172,36 @@ Refactored tree node generic logic into tree.go for reuse across menu and depart
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Implement User Management CRUD
+
+**Date**: 2026-08-17
+**Task**: Implement User Management CRUD
+**Branch**: `main`
+
+### Summary
+
+Implemented user management CRUD operations, role assignment, and password reset functionalities.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `52be9ec` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -1,5 +1,8 @@
 package model
 
+// AdminUsername 系统内置管理员用户名。
+const AdminUsername = "admin"
+
 // User 用户（表名 users）。
 type User struct {
 	BaseModel

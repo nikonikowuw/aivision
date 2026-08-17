@@ -20,7 +20,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.OperationLog{}); err != nil {
+	if err := model.AutoMigrate(db); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 	return db

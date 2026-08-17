@@ -18,6 +18,7 @@ type DepartmentRepository interface {
 	Update(ctx context.Context, dept *model.Department) error
 	Delete(ctx context.Context, id uint64) (bool, error)
 	GetByID(ctx context.Context, id uint64) (*model.Department, error)
+	GetByIDs(ctx context.Context, ids []uint64) ([]model.Department, error)
 	ListAll(ctx context.Context) ([]model.Department, error)
 }
 
@@ -47,7 +48,7 @@ func (r *departmentRepository) Update(ctx context.Context, dept *model.Departmen
 		if err := lockDepartments(tx, dept.ID, dept.ParentID); err != nil {
 			return err
 		}
-		
+
 		// 校验：不能将部门移动到它的子孙部门下（防止成环）。
 		// 在事务内读取，确保并发移动不会产生环状结构。
 		if dept.ParentID != 0 {
@@ -55,7 +56,7 @@ func (r *departmentRepository) Update(ctx context.Context, dept *model.Departmen
 			if err := tx.Find(&allDepts).Error; err != nil {
 				return err
 			}
-			
+
 			// 校验父部门是否存在
 			var parentExists bool
 			for _, d := range allDepts {
@@ -164,6 +165,17 @@ func (r *departmentRepository) GetByID(ctx context.Context, id uint64) (*model.D
 		return nil, err
 	}
 	return &dept, nil
+}
+
+func (r *departmentRepository) GetByIDs(ctx context.Context, ids []uint64) ([]model.Department, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var depts []model.Department
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&depts).Error; err != nil {
+		return nil, err
+	}
+	return depts, nil
 }
 
 func (r *departmentRepository) ListAll(ctx context.Context) ([]model.Department, error) {

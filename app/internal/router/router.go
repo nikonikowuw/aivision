@@ -15,15 +15,19 @@ import (
 )
 
 const (
-	apiRoutePath     = "/api"
-	menuRoutePath    = "/menu"
-	roleRoutePath    = "/role"
-	deptRoutePath    = "/dept"
-	oplogRoutePath   = "/oplog"
-	pageRoutePath    = "/page"
-	idRoutePath      = "/:id"
-	menuIDsRoutePath = "/menu-ids"
-	menusRoutePath   = "/menus"
+	apiRoutePath      = "/api"
+	menuRoutePath     = "/menu"
+	roleRoutePath     = "/role"
+	deptRoutePath     = "/dept"
+	oplogRoutePath    = "/oplog"
+	pageRoutePath     = "/page"
+	idRoutePath       = "/:id"
+	userRoutePath     = "/user"
+	menuIDsRoutePath  = "/menu-ids"
+	menusRoutePath    = "/menus"
+	rolesRoutePath    = "/roles"
+	statusRoutePath   = "/status"
+	resetPasswordPath = "/reset-password"
 )
 
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
@@ -37,6 +41,7 @@ type Deps struct {
 	RoleHandler         *api.RoleHandler
 	DepartmentHandler   *api.DepartmentHandler
 	OperationLogHandler *api.OperationLogHandler
+	UserHandler         *api.UserHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -117,6 +122,24 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+pageRoutePath, "system:log")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
+
+		userGroup := apiGroup.Group(userRoutePath)
+		{
+			userGroup.GET(pageRoutePath, deps.UserHandler.GetPage)
+			userGroup.POST("", deps.UserHandler.CreateUser)
+			userGroup.PUT(idRoutePath, deps.UserHandler.UpdateUser)
+			userGroup.DELETE(idRoutePath, deps.UserHandler.DeleteUser)
+			userGroup.PUT(idRoutePath+resetPasswordPath, deps.UserHandler.ResetPassword)
+			userGroup.GET(idRoutePath+rolesRoutePath, deps.UserHandler.GetRoleIDs)
+			userGroup.PUT(idRoutePath+rolesRoutePath, deps.UserHandler.AssignRoles)
+			userGroup.PUT(idRoutePath+statusRoutePath, deps.UserHandler.UpdateStatus)
+		}
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+userRoutePath, "system:user:add")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+idRoutePath, "system:user:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+userRoutePath+idRoutePath, "system:user:delete")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+idRoutePath+resetPasswordPath, "system:user:reset-password")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+idRoutePath+rolesRoutePath, "system:user:assign-role")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+idRoutePath+statusRoutePath, "system:user:status")
 	}
 
 	return engine

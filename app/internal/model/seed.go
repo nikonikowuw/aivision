@@ -88,7 +88,6 @@ var seedMenuTree = []seedMenuItem{
 }
 
 const (
-	seedAdminUsername = "admin"
 	seedAdminPassword = "admin123"
 	seedDeptName      = "演示部门"
 )
@@ -103,7 +102,7 @@ func Seed(db *gorm.DB) (bool, error) {
 	}
 
 	var count int64
-	if err := db.Model(&User{}).Where("username = ?", seedAdminUsername).Count(&count).Error; err != nil {
+	if err := db.Model(&User{}).Where("username = ?", AdminUsername).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("check admin exists: %w", err)
 	}
 	if count > 0 {
@@ -135,7 +134,7 @@ func seedAll(tx *gorm.DB) error {
 		return fmt.Errorf("hash admin password: %w", err)
 	}
 	user := User{
-		Username: seedAdminUsername,
+		Username: AdminUsername,
 		Password: string(hash),
 		Nickname: "管理员",
 		Email:    "admin@example.com",

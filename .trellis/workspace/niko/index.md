@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
-- **Last Active**: 2026-08-16
+- **Total Sessions**: 5
+- **Last Active**: 2026-08-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~140 | Active |
+| `journal-1.md` | ~174 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-08-17 | Implement department tree CRUD operations | `8b38aa3`, `7b9515e` | `main` |
 | 4 | 2026-08-16 | backend-role 角色 CRUD + 分配菜单（simplify 清理） | `5f46356` | `main` |
 | 3 | 2026-08-16 | 完成操作日志与权限中间件 | `a9d7442` | `main` |
 | 2 | 2026-08-16 | 菜单管理 CRUD + JWT 认证中间件 + 统一错误处理 | `eaffafb` | `main` |

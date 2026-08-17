@@ -138,3 +138,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Implement department tree CRUD operations
+
+**Date**: 2026-08-17
+**Task**: Implement department tree CRUD operations
+**Branch**: `main`
+
+### Summary
+
+Refactored tree node generic logic into tree.go for reuse across menu and department endpoints. Implemented department API covering full tree read, node insertion, parent_id update cycles detection, and recursive soft delete tracking. Applied V2 migration to remove default statuses and add indexes.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8b38aa3` | (see git log) |
+| `7b9515e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

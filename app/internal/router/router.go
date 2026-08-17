@@ -18,6 +18,7 @@ const (
 	apiRoutePath     = "/api"
 	menuRoutePath    = "/menu"
 	roleRoutePath    = "/role"
+	deptRoutePath    = "/dept"
 	oplogRoutePath   = "/oplog"
 	pageRoutePath    = "/page"
 	idRoutePath      = "/:id"
@@ -34,6 +35,7 @@ type Deps struct {
 	OplogMiddleware     *middleware.OplogMiddleware
 	MenuHandler         *api.MenuHandler
 	RoleHandler         *api.RoleHandler
+	DepartmentHandler   *api.DepartmentHandler
 	OperationLogHandler *api.OperationLogHandler
 }
 
@@ -96,6 +98,17 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+roleRoutePath+idRoutePath, "system:role:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+roleRoutePath+idRoutePath, "system:role:delete")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+roleRoutePath+idRoutePath+menusRoutePath, "system:role:assign-menu")
+
+		deptGroup := apiGroup.Group(deptRoutePath)
+		{
+			deptGroup.GET("/tree", deps.DepartmentHandler.GetDeptTree)
+			deptGroup.POST("", deps.DepartmentHandler.CreateDept)
+			deptGroup.PUT(idRoutePath, deps.DepartmentHandler.UpdateDept)
+			deptGroup.DELETE(idRoutePath, deps.DepartmentHandler.DeleteDept)
+		}
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+deptRoutePath, "system:dept:add")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+deptRoutePath+idRoutePath, "system:dept:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+deptRoutePath+idRoutePath, "system:dept:delete")
 
 		oplogGroup := apiGroup.Group(oplogRoutePath)
 		{

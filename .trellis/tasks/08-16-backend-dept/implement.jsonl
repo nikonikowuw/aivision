@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端编码规范入口与开发前检查清单"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "repository/service/api 分层位置、命名约定（部门模块新增文件）"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "GORM 查询/软删模式、不建外键、departments 表约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "errno 错误码唯一来源与统一错误响应契约（1007/1010/1013 复用）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁止/必用模式、gofmt/vet/test 质量门禁"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "树组装逻辑从 menu 提炼共享实现，禁止复制粘贴"}

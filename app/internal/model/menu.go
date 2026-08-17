@@ -1,7 +1,5 @@
 package model
 
-import "sort"
-
 // Menu 菜单/按钮（表名 menus）。
 type Menu struct {
 	BaseModel
@@ -40,23 +38,10 @@ func IsMenuDescendant(menus []Menu, ancestorID, candidateID uint64) bool {
 	for _, menu := range menus {
 		parents[menu.ID] = menu.ParentID
 	}
-
-	visited := make(map[uint64]struct{}, len(menus))
-	for current := candidateID; current != 0; {
-		if current == ancestorID {
-			return true
-		}
-		if _, ok := visited[current]; ok {
-			return false
-		}
-		visited[current] = struct{}{}
-		parent, ok := parents[current]
-		if !ok {
-			return false
-		}
-		current = parent
-	}
-	return false
+	return IsDescendant(func(id uint64) (uint64, bool) {
+		p, ok := parents[id]
+		return p, ok
+	}, ancestorID, candidateID)
 }
 
 // MenuTreeNode 树形节点视图（后续 menu/service 层消费）。
@@ -68,56 +53,35 @@ type MenuTreeNode struct {
 // BuildMenuTree 将扁平菜单列表构建为按 parent_id 组织的树（纯函数，可单测）。
 // 返回排序后的根节点（parent_id=0 或父节点不在列表中的节点）。
 func BuildMenuTree(menus []Menu) []*MenuTreeNode {
-	byID := make(map[uint64]*MenuTreeNode, len(menus))
+	if len(menus) == 0 {
+		return nil
+	}
+	nodes := make([]*MenuTreeNode, len(menus))
+	index := make(map[uint64]int, len(menus))
 	for i := range menus {
-		m := menus[i]
-		byID[m.ID] = &MenuTreeNode{Menu: m}
+		nodes[i] = &MenuTreeNode{Menu: menus[i]}
+		index[menus[i].ID] = i
 	}
-
-	var roots []*MenuTreeNode
-	visited := make(map[uint64]bool, len(menus))
-	for _, node := range byID {
-		if visited[node.ID] {
-			continue
+	roots, childrenOf := BuildTree(len(menus),
+		func(i int) int {
+			if j, ok := index[menus[i].ParentID]; ok {
+				return j
+			}
+			return -1
+		},
+		func(i int) (int, uint64) { return menus[i].Sort, menus[i].ID },
+	)
+	var build func(i int) *MenuTreeNode
+	build = func(i int) *MenuTreeNode {
+		node := nodes[i]
+		for _, c := range childrenOf(i) {
+			node.Children = append(node.Children, build(c))
 		}
-		current := node
-		path := make(map[uint64]bool, 8) // 本次上溯链，用于环检测
-		for {
-			visited[current.ID] = true
-			path[current.ID] = true
-			parent, ok := byID[current.ParentID]
-			if !ok {
-				// 父节点不在列表中（含 parent_id=0），当前链顶端作为根
-				roots = append(roots, current)
-				break
-			}
-			if path[parent.ID] {
-				// 父节点在本次上溯链中 = 环（脏数据）：不挂到父下，current 自身作为根，避免成环
-				roots = append(roots, current)
-				break
-			}
-			if visited[parent.ID] {
-				// 父节点已被挂载过（它已连接到根）：挂到父下即完成，无需继续上溯
-				parent.Children = append(parent.Children, current)
-				break
-			}
-			parent.Children = append(parent.Children, current)
-			current = parent
-		}
+		return node
 	}
-	sortMenuTree(roots)
-	return roots
-}
-
-// sortMenuTree 按 sort 升序递归排序（同值按 ID 稳定）。
-func sortMenuTree(nodes []*MenuTreeNode) {
-	sort.Slice(nodes, func(i, j int) bool {
-		if nodes[i].Sort != nodes[j].Sort {
-			return nodes[i].Sort < nodes[j].Sort
-		}
-		return nodes[i].ID < nodes[j].ID
-	})
-	for _, n := range nodes {
-		sortMenuTree(n.Children)
+	out := make([]*MenuTreeNode, 0, len(roots))
+	for _, r := range roots {
+		out = append(out, build(r))
 	}
+	return out
 }

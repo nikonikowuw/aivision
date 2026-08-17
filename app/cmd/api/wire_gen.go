@@ -42,6 +42,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	roleRepository := repository.NewRoleRepository(gormDB)
 	roleService := service.NewRoleService(roleRepository, menuRepository)
 	roleHandler := api.NewRoleHandler(roleService)
+	departmentRepository := repository.NewDepartmentRepository(gormDB)
+	deptService := service.NewDeptService(departmentRepository)
+	departmentHandler := api.NewDepartmentHandler(deptService)
 	operationLogHandler := api.NewOperationLogHandler(operationLogService)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
@@ -50,6 +53,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		OplogMiddleware:     oplogMiddleware,
 		MenuHandler:         menuHandler,
 		RoleHandler:         roleHandler,
+		DepartmentHandler:   departmentHandler,
 		OperationLogHandler: operationLogHandler,
 	}
 	engine := router.New(cfg, deps)

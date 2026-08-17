@@ -107,3 +107,78 @@ SQL 脚本**。
 - **不要在 `seed.go` 中做数据回填** — seed 只是初始幂等数据；数据迁移走 SQL 脚本。
 - **不要只写 MySQL 语法 / 只在一侧验证** — 项目同时支持 mysql 与 postgres；
   按驱动拆分文件并保持两侧同步。
+
+## GORM 零值与树关系写入契约
+
+### 1. 适用范围
+
+凡是 API 可以显式提交零值、且数据库字段曾使用 `gorm:"default:..."` 的状态字段，
+以及没有数据库外键保护的 parent-child 树关系写操作，都适用本节。
+
+### 2. Schema 与数据层签名
+
+- 业务状态使用 `int8`；当 `0` 是合法输入时，模型字段不要声明会让 GORM 接管
+  零值的 `default` 标签，service 必须负责省略值的默认填充。
+- 树关系的 repository 写操作应保持 `context.Context`，并将需要共同判定的检查与
+  写入放在同一 `db.Transaction` 中。
+
+### 3. 跨层契约
+
+- 请求省略 `status`：新建由 service 写入 `StatusEnabled`；请求显式 `status=0`：
+  必须原样写入并从 API 返回。
+- 删除父节点：只有不存在未软删子节点时成功；不存在返回 `CodeNotFound`，有子节点
+  返回对应业务错误码。
+- 创建或移动到某个父节点与删除该父节点必须使用同一锁定对象，不能只依赖先查后写。
+
+### 4. 校验与错误矩阵
+
+| 条件 | 结果 |
+| --- | --- |
+| 新建省略 status | service 写入 `StatusEnabled` |
+| 新建显式 `status=0` | 持久化 `0`，不得被 ORM default 改写 |
+| 删除目标不存在 | `CodeNotFound` |
+| 删除目标存在未软删子节点 | `CodeDeptHasChildren` |
+| parent 在并发期间被软删 | 创建/编辑映射为 `CodeNotFound` |
+
+### 5. Good / Base / Bad
+
+- Good：事务内锁父/目标行，检查子节点后再软删；状态默认值在 service 明确填充。
+- Base：已软删子节点不计入“有子节点”检查。
+- Bad：先 `Count` 再独立 `Delete`，或在带 `default:1` 的 int8 字段上直接 `Create` 零值。
+
+### 6. 必需测试
+
+- sqlite 测试断言创建显式 `status=0` 后重新查询仍为 `0`。
+- repository/service 测试断言有子节点时删除事务回滚且返回 `CodeDeptHasChildren`。
+- API 测试断言状态往返、树结构和统一错误响应；迁移同时提供 MySQL/PostgreSQL 脚本。
+
+### 7. 错误与正确示例
+
+错误：
+
+```go
+if count == 0 {
+    db.Delete(&model.Department{}, id)
+}
+```
+
+正确：
+
+```go
+return db.Transaction(func(tx *gorm.DB) error {
+    // 锁定目标，检查未软删子节点，然后在同一事务内软删。
+    return nil
+})
+```
+
+错误：
+
+```go
+Status int8 `gorm:"default:1"`
+```
+
+正确：
+
+```go
+Status int8 `gorm:"column:status"` // service 明确填充省略值
+```

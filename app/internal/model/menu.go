@@ -53,35 +53,18 @@ type MenuTreeNode struct {
 // BuildMenuTree 将扁平菜单列表构建为按 parent_id 组织的树（纯函数，可单测）。
 // 返回排序后的根节点（parent_id=0 或父节点不在列表中的节点）。
 func BuildMenuTree(menus []Menu) []*MenuTreeNode {
-	if len(menus) == 0 {
-		return nil
-	}
-	nodes := make([]*MenuTreeNode, len(menus))
-	index := make(map[uint64]int, len(menus))
-	for i := range menus {
-		nodes[i] = &MenuTreeNode{Menu: menus[i]}
-		index[menus[i].ID] = i
-	}
-	roots, childrenOf := BuildTree(len(menus),
-		func(i int) int {
-			if j, ok := index[menus[i].ParentID]; ok {
-				return j
-			}
-			return -1
-		},
-		func(i int) (int, uint64) { return menus[i].Sort, menus[i].ID },
-	)
-	var build func(i int) *MenuTreeNode
-	build = func(i int) *MenuTreeNode {
-		node := nodes[i]
-		for _, c := range childrenOf(i) {
-			node.Children = append(node.Children, build(c))
+	genericRoots := BuildTree(menus, func(m Menu) uint64 { return m.ID }, func(m Menu) uint64 { return m.ParentID }, func(m Menu) int { return m.Sort })
+	var result []*MenuTreeNode
+	var mapNode func(node *TreeNode[Menu]) *MenuTreeNode
+	mapNode = func(node *TreeNode[Menu]) *MenuTreeNode {
+		dto := &MenuTreeNode{Menu: node.Item}
+		for _, child := range node.Children {
+			dto.Children = append(dto.Children, mapNode(child))
 		}
-		return node
+		return dto
 	}
-	out := make([]*MenuTreeNode, 0, len(roots))
-	for _, r := range roots {
-		out = append(out, build(r))
+	for _, root := range genericRoots {
+		result = append(result, mapNode(root))
 	}
-	return out
+	return result
 }

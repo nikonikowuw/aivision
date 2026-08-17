@@ -23,37 +23,20 @@ type DepartmentTreeNode struct {
 // BuildDeptTree 将扁平部门列表构建为按 parent_id 组织的树（纯函数，可单测）。
 // 返回排序后的根节点（parent_id=0 或父节点不在列表中的节点）。
 func BuildDeptTree(depts []Department) []*DepartmentTreeNode {
-	if len(depts) == 0 {
-		return nil
-	}
-	nodes := make([]*DepartmentTreeNode, len(depts))
-	index := make(map[uint64]int, len(depts))
-	for i := range depts {
-		nodes[i] = &DepartmentTreeNode{Department: depts[i]}
-		index[depts[i].ID] = i
-	}
-	roots, childrenOf := BuildTree(len(depts),
-		func(i int) int {
-			if j, ok := index[depts[i].ParentID]; ok {
-				return j
-			}
-			return -1
-		},
-		func(i int) (int, uint64) { return depts[i].Sort, depts[i].ID },
-	)
-	var build func(i int) *DepartmentTreeNode
-	build = func(i int) *DepartmentTreeNode {
-		node := nodes[i]
-		for _, c := range childrenOf(i) {
-			node.Children = append(node.Children, build(c))
+	genericRoots := BuildTree(depts, func(d Department) uint64 { return d.ID }, func(d Department) uint64 { return d.ParentID }, func(d Department) int { return d.Sort })
+	var result []*DepartmentTreeNode
+	var mapNode func(node *TreeNode[Department]) *DepartmentTreeNode
+	mapNode = func(node *TreeNode[Department]) *DepartmentTreeNode {
+		dto := &DepartmentTreeNode{Department: node.Item}
+		for _, child := range node.Children {
+			dto.Children = append(dto.Children, mapNode(child))
 		}
-		return node
+		return dto
 	}
-	out := make([]*DepartmentTreeNode, 0, len(roots))
-	for _, r := range roots {
-		out = append(out, build(r))
+	for _, root := range genericRoots {
+		result = append(result, mapNode(root))
 	}
-	return out
+	return result
 }
 
 // IsDeptDescendant 判断 candidateID 是否位于 ancestorID 的子树中。
@@ -65,6 +48,6 @@ func IsDeptDescendant(depts []Department, ancestorID, candidateID uint64) bool {
 	}
 	return IsDescendant(func(id uint64) (uint64, bool) {
 		p, ok := parents[id]
-		return p, ok
+		return p, ok && p != 0
 	}, ancestorID, candidateID)
 }

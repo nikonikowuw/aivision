@@ -71,7 +71,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 
 	// admin + bcrypt
 	var admin User
-	if err := gdb.Where("username = ?", seedAdminUsername).First(&admin).Error; err != nil {
+	if err := gdb.Where("username = ?", AdminUsername).First(&admin).Error; err != nil {
 		t.Fatalf("find admin: %v", err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(seedAdminPassword)); err != nil {

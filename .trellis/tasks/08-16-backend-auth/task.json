@@ -3,7 +3,7 @@
   "name": "backend-auth",
   "title": "登录/刷新/登出 + JWT + auth 中间件 + user/info + auth/codes",
   "description": "",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

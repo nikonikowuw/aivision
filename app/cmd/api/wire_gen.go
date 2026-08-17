@@ -49,6 +49,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	userRepository := repository.NewUserRepository(gormDB)
 	userService := service.NewUserService(userRepository, departmentRepository, roleRepository)
 	userHandler := api.NewUserHandler(userService)
+	authService := service.NewAuthService(authRepository, userRepository, menuRepository, cfg)
+	authHandler := api.NewAuthHandler(authService, cfg)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
 		AuthMiddleware:      authMiddleware,
@@ -59,6 +61,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		DepartmentHandler:   departmentHandler,
 		OperationLogHandler: operationLogHandler,
 		UserHandler:         userHandler,
+		AuthHandler:         authHandler,
 	}
 	engine := router.New(cfg, deps)
 	app := &App{

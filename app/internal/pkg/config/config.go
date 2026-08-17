@@ -40,9 +40,10 @@ type DB struct {
 
 // JWT 认证配置，TTL 已解析为 time.Duration。
 type JWT struct {
-	Secret     string        `mapstructure:"secret"`
-	AccessTTL  time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
+	Secret       string        `mapstructure:"secret"`
+	AccessTTL    time.Duration `mapstructure:"access_ttl"`
+	RefreshTTL   time.Duration `mapstructure:"refresh_ttl"`
+	SecureCookie bool          `mapstructure:"secure_cookie"`
 }
 
 // Log 日志配置。
@@ -53,22 +54,23 @@ type Log struct {
 const (
 	defaultConfigPath = "configs/config.yaml"
 
-	defaultServerPort    = 8000
-	defaultDBDriver      = "mysql"
-	defaultDBHost        = "127.0.0.1"
-	defaultDBPort        = 3306
-	defaultDBUser        = "root"
-	defaultDBPassword    = "123456" // 开发默认；生产用 APP_DB_PASSWORD 覆盖
-	defaultDBName        = "niko_vue_admin"
-	defaultDBTimeZone    = "Asia/Shanghai"
-	defaultAutoMigrate   = true
-	defaultDBMaxOpen     = 100
-	defaultDBMaxIdle     = 10
-	defaultDBMaxLifetime = 30 * time.Minute
-	defaultJWTSecret     = "dev-secret-change-me"
-	defaultAccessTTL     = 2 * time.Hour
-	defaultRefreshTTL    = 168 * time.Hour
-	defaultLogLevel      = "info"
+	defaultServerPort      = 8000
+	defaultDBDriver        = "mysql"
+	defaultDBHost          = "127.0.0.1"
+	defaultDBPort          = 3306
+	defaultDBUser          = "root"
+	defaultDBPassword      = "123456" // 开发默认；生产用 APP_DB_PASSWORD 覆盖
+	defaultDBName          = "niko_vue_admin"
+	defaultDBTimeZone      = "Asia/Shanghai"
+	defaultAutoMigrate     = true
+	defaultDBMaxOpen       = 100
+	defaultDBMaxIdle       = 10
+	defaultDBMaxLifetime   = 30 * time.Minute
+	defaultJWTSecret       = "dev-secret-change-me"
+	defaultAccessTTL       = 2 * time.Hour
+	defaultRefreshTTL      = 168 * time.Hour
+	defaultJWTSecureCookie = false
+	defaultLogLevel        = "info"
 )
 
 // Load 读取配置：默认路径 configs/config.yaml，可用环境变量 APP_CONFIG_PATH 覆盖，
@@ -134,6 +136,7 @@ func defaults() []keyValue {
 		{"jwt.secret", defaultJWTSecret},
 		{"jwt.access_ttl", defaultAccessTTL},
 		{"jwt.refresh_ttl", defaultRefreshTTL},
+		{"jwt.secure_cookie", defaultJWTSecureCookie},
 		{"log.level", defaultLogLevel},
 	}
 }

@@ -41,6 +41,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		repository.NewUserRepository,
 		service.NewUserService,
 		api.NewUserHandler,
+		service.NewAuthService,
+		api.NewAuthHandler,
 		router.New,
 		wire.Struct(new(router.Deps), "*"),
 		wire.Struct(new(App), "*"),

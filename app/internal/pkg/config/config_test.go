@@ -35,6 +35,7 @@ jwt:
   secret: test-secret
   access_ttl: 1h
   refresh_ttl: 72h
+  secure_cookie: true
 log:
   level: debug
 `)
@@ -60,6 +61,9 @@ log:
 	}
 	if cfg.JWT.RefreshTTL != 72*time.Hour {
 		t.Errorf("jwt.refresh_ttl = %v, want 72h", cfg.JWT.RefreshTTL)
+	}
+	if !cfg.JWT.SecureCookie {
+		t.Error("jwt.secure_cookie = false, want true")
 	}
 	if cfg.Log.Level != "debug" {
 		t.Errorf("log.level = %q, want debug", cfg.Log.Level)
@@ -90,6 +94,9 @@ func TestLoadDefaultsForMissingKeys(t *testing.T) {
 	if cfg.JWT.AccessTTL != 2*time.Hour || cfg.JWT.RefreshTTL != 168*time.Hour {
 		t.Errorf("jwt ttl defaults not applied: %v %v", cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
 	}
+	if cfg.JWT.SecureCookie {
+		t.Error("jwt.secure_cookie default = true, want false")
+	}
 	if cfg.Log.Level != "info" {
 		t.Errorf("log.level = %q, want default info", cfg.Log.Level)
 	}
@@ -117,6 +124,7 @@ log:
 	t.Setenv("APP_DB_TIME_ZONE", "UTC")
 	t.Setenv("APP_JWT_SECRET", "env-secret")
 	t.Setenv("APP_JWT_ACCESS_TTL", "30m")
+	t.Setenv("APP_JWT_SECURE_COOKIE", "true")
 	t.Setenv("APP_SERVER_PORT", "9001")
 
 	cfg, err := load(path)
@@ -131,6 +139,9 @@ log:
 	}
 	if cfg.JWT.Secret != "env-secret" {
 		t.Errorf("jwt.secret = %q, want env-secret", cfg.JWT.Secret)
+	}
+	if !cfg.JWT.SecureCookie {
+		t.Error("jwt.secure_cookie = false, want env override true")
 	}
 	if cfg.JWT.AccessTTL != 30*time.Minute {
 		t.Errorf("jwt.access_ttl = %v, want 30m", cfg.JWT.AccessTTL)

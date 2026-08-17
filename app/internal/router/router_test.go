@@ -158,6 +158,10 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 	fakeService := &routerTestMenuService{panicOnTree: panicOnTree}
 	roleSrv := &routerTestRoleService{}
 	deptSrv := &routerTestDeptService{}
+	deptRepo := repository.NewDepartmentRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	userSvc := service.NewUserService(userRepo, deptRepo, repository.NewRoleRepository(db))
+	authSvc := service.NewAuthService(repository.NewAuthRepository(db), userRepo, menuRepo, cfg)
 	engine := New(cfg, Deps{
 		ErrorHandler:        middleware.ErrorHandler(),
 		AuthMiddleware:      auth,
@@ -167,6 +171,8 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 		RoleHandler:         api.NewRoleHandler(roleSrv),
 		DepartmentHandler:   api.NewDepartmentHandler(deptSrv),
 		OperationLogHandler: api.NewOperationLogHandler(oplogSrv),
+		UserHandler:         api.NewUserHandler(userSvc),
+		AuthHandler:         api.NewAuthHandler(authSvc, cfg),
 	})
 	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID), oplogSrv, db
 }

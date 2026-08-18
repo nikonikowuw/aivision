@@ -1,0 +1,80 @@
+# Repository-wide Git hooks for the Vue frontend and Go backend.
+# Run `lefthook install` from the repository root after cloning.
+
+pre-commit:
+  # Keep checks serial to avoid competing frontend/backend typecheck workloads.
+  parallel: false
+  jobs:
+    - name: reject environment files
+      run: |
+        forbidden_files="$(git diff --cached --name-only --diff-filter=ACMR | awk -F/ '$NF ~ /^\.env($|\.)/ && $NF !~ /^\.env\.(example|template)$/')"
+        if [ -n "$forbidden_files" ]; then
+          printf '%s\n' '拒绝提交环境配置文件，请移除暂存区中的以下文件：'
+          printf '%s\n' "$forbidden_files"
+          exit 1
+        fi
+
+    - name: frontend oxlint
+      root: "ui/"
+      glob: '*.{js,jsx,ts,tsx,vue,cjs,mjs,cts,mts}'
+      run: pnpm exec oxlint --fix --type-aware --threads=4 --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+    - name: frontend oxfmt
+      root: "ui/"
+      glob: '*.{js,jsx,ts,tsx,vue,cjs,mjs,cts,mts,json,jsonc}'
+      run: pnpm exec oxfmt --threads=4 --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+    - name: frontend eslint
+      root: "ui/"
+      glob: '*.{js,jsx,ts,tsx,vue,cjs,mjs,cts,mts}'
+      run: pnpm exec eslint --fix {staged_files}
+      stage_fixed: true
+
+    - name: frontend stylelint
+      root: "ui/"
+      glob: '*.{vue,css,less,scss}'
+      run: pnpm exec stylelint --fix {staged_files}
+      stage_fixed: true
+
+    - name: frontend typecheck
+      root: "ui/"
+      glob: '*.{js,jsx,ts,tsx,vue,cjs,mjs,cts,mts,json,jsonc}'
+      run: pnpm check:type
+
+    - name: backend gofmt
+      root: "app/"
+      glob: '*.go'
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+
+    - name: backend vet
+      root: "app/"
+      glob: '*.go'
+      run: go vet ./...
+
+    - name: backend test
+      root: "app/"
+      glob: '*.go'
+      run: go test ./...
+
+pre-push:
+  parallel: false
+  jobs:
+    - name: backend vet
+      run: make -C app vet
+    - name: backend test
+      run: make -C app test
+    - name: frontend check
+      run: pnpm --dir ui check
+
+post-merge:
+  commands:
+    install:
+      run: pnpm --dir ui install
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm --dir ui exec commitlint --edit "$1"

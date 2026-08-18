@@ -7,8 +7,13 @@
 
 # Env / local config
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.template
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.template
 .claude/settings.local.json
 
 # Logs

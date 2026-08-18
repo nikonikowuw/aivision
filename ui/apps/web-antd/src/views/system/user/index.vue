@@ -177,6 +177,7 @@ const [AssignRoleModal, assignRoleModalApi] = useVbenModal({
 
 const gridOptions: VxeTableGridOptions<UserApi.UserItem> = {
   columns: [
+    { type: 'seq', title: $t('system.common.index'), width: 60, align: 'center' },
     { field: 'username', title: $t('system.user.username'), width: 140 },
     { field: 'nickname', title: $t('system.user.nickname'), width: 140 },
     { field: 'deptName', title: $t('system.user.dept'), width: 140 },

@@ -24,6 +24,10 @@ export const overridesPreferences = defineOverridesPreferences({
     name: import.meta.env.VITE_APP_TITLE,
   },
   copyright: appCopyrightPreferences,
+  shortcutKeys: {
+    enable: true,
+    globalEscape: true,
+  },
 });
 
 export const preferencesExtension =

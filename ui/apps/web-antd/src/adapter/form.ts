@@ -17,6 +17,10 @@ async function initSetupVbenForm() {
 
       // 一些组件是 v-model:checked 或者 v-model:fileList
       modelPropNameMap: {
+        // Api* 组件外层使用 modelValue，内部再映射到 antd 的 value
+        ApiCascader: 'modelValue',
+        ApiSelect: 'modelValue',
+        ApiTreeSelect: 'modelValue',
         Checkbox: 'checked',
         Radio: 'checked',
         Switch: 'checked',

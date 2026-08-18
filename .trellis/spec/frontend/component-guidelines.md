@@ -31,6 +31,107 @@ UI 基于 vben-admin 5.7 + ant-design-vue。可复用的 UI/基础设施组件�
 - 自定义组件上的 v-model 优先使用 `defineModel`（Vue 3.4+），与 vben
   代码库保持一致。
 
+### Api* 包装组件契约
+
+这组契约适用于 `ApiCascader`、`ApiSelect` 和 `ApiTreeSelect`，因为它们都经过 `ApiComponent` 和应用组件适配器两层包装。
+
+#### 1. 范围 / 触发
+
+- **触发条件**：业务页面使用 `Api*` 组件承载接口返回的选项或树数据，并将组件注册到 Vben Form。
+- **边界**：业务字段映射由 `ApiComponent` 负责；表单模型事件由 `apps/web-antd/src/adapter/form.ts` 负责；antd 组件只接收规范化后的 props。
+
+#### 2. 签名
+
+`ApiComponent` 的关键 props 契约：
+
+```ts
+interface ApiComponentProps {
+  labelField?: string;
+  valueField?: string;
+  childrenField?: string;
+  modelPropName?: string;
+  options?: ApiComponentOptionsItem[];
+}
+```
+
+应用适配层的表单模型契约：
+
+```ts
+setupVbenForm<ComponentType>({
+  config: {
+    baseModelPropName: 'value',
+    modelPropNameMap: {
+      ApiCascader: 'modelValue',
+      ApiSelect: 'modelValue',
+      ApiTreeSelect: 'modelValue',
+    },
+  },
+});
+```
+
+外层 `Api*` 组件使用 `modelValue/onUpdate:modelValue`；内部 ant-design-vue 组件使用 `value/onUpdate:value`。
+
+#### 3. 契约
+
+- 原始树节点必须提供 `valueField` 指向的值、`labelField` 指向的文本，以及可选的 `childrenField` 子节点数组。例如部门节点为 `{ id: number, name: string, children?: DeptItem[] }`。
+- `ApiComponent` 必须将原始节点转换为 `{ value, label, children }` 后再传给 TreeSelect/Cascader；业务页面不应将原始字段名传给底层 `fieldNames`。
+- 表单提交前，表单值必须是选中节点的 `value`（部门场景为 `deptId: number | undefined`），而不是完整节点对象或显示名称。
+- 本契约不新增环境变量，也不改变 `/dept/tree`、`/user` API 的请求/响应字段。
+
+#### 4. 校验与错误矩阵
+
+| 条件 | 预期配置/行为 | 可观察结果 |
+| --- | --- | --- |
+| 原始字段为 `id/name/children` | `valueField: 'id'`、`labelField: 'name'`、`childrenField: 'children'` | 节点显示名称，点击后提交对应 ID |
+| `Api*` 注册到 Vben Form | `modelPropNameMap[Api*] = 'modelValue'` | `onUpdate:modelValue` 回写表单值，切换后不会恢复旧值 |
+| 把原始字段写入底层 `fieldNames` | 禁止，例如 `fieldNames: { label: 'name', value: 'id' }` | 转换后的节点字段无法匹配，名称或选中值为空；通常不会抛异常 |
+| 未配置 `modelPropNameMap` | 禁止使用默认的 `value/onUpdate:value` 绑定包装组件 | 点击可能暂时改变视觉状态，但表单值不变，重新渲染后恢复旧值 |
+| `valueField` 对应值不存在 | API 数据或映射错误 | TreeSelect 无法回显该值；应修正数据契约或字段映射，不在页面手动拼显示文本 |
+
+#### 5. 正确 / 基准 / 错误案例
+
+- **正确**：页面只描述接口字段，适配器负责底层字段与模型协议。
+
+  ```ts
+  component: 'ApiTreeSelect',
+  componentProps: () => ({
+    childrenField: 'children',
+    labelField: 'name',
+    options: deptTreeOptions.value,
+    valueField: 'id',
+  }),
+  fieldName: 'deptId',
+  ```
+
+- **基准**：直接使用已经规范化的选项时，底层组件接收 `label/value/children`，外层表单仍通过 `modelValue` 绑定。
+- **错误**：页面同时设置原始 `fieldNames`，或让 `ApiTreeSelect` 继承 antd 的 `value` 表单绑定，绕过包装组件的外层模型协议。
+
+#### 6. 必需测试
+
+- `ApiComponent` 单元测试：断言 `id/name/children` 被转换为 `value/label/children`，并模拟 `update:value` 后断言外层值更新。
+- Vben Form 集成测试：使用名为 `ApiTreeSelect` 的包装组件，断言触发 `update:modelValue` 后 `formApi.getValues().deptId` 等于新节点 ID。
+- 前端质量门禁：运行 `pnpm check`、相关 Vitest 测试、`oxlint` 和 `oxfmt`；断言不应只检查节点是否渲染，还必须检查表单模型是否改变。
+
+#### 7. 错误与正确对照
+
+**错误：**
+
+```ts
+// ApiComponent 已经把节点转换为 { label, value, children }
+fieldNames: { label: 'name', value: 'id', children: 'children' },
+```
+
+**正确：**
+
+```ts
+// 业务字段交给 ApiComponent 转换，底层适配器保持统一字段
+labelField: 'name',
+valueField: 'id',
+childrenField: 'children',
+// 表单适配层：ApiTreeSelect -> modelValue
+modelPropNameMap: { ApiTreeSelect: 'modelValue' },
+```
+
 ---
 
 ## 样式模式

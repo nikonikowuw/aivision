@@ -1,9 +1,11 @@
 import dayjs from 'dayjs';
+import localizedFormat from 'dayjs/plugin/localizedFormat.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+dayjs.extend(localizedFormat);
 
 type FormatDate = Date | dayjs.Dayjs | number | string;
 
@@ -17,9 +19,19 @@ type Format =
   | 'YYYY-MM-DD HH'
   | 'YYYY-MM-DD HH:mm'
   | 'YYYY-MM-DD HH:mm:ss'
+  | 'LT'
+  | 'LTS'
+  | 'L'
+  | 'LL'
+  | 'LLL'
+  | 'LLLL'
+  | 'l'
+  | 'll'
+  | 'lll'
+  | 'llll'
   | (string & {});
 
-export function formatDate(time?: FormatDate, format: Format = 'YYYY-MM-DD') {
+export function formatDate(time?: FormatDate, format: Format = 'L') {
   if (time === undefined || time === null || time === '') {
     return '';
   }
@@ -36,7 +48,7 @@ export function formatDate(time?: FormatDate, format: Format = 'YYYY-MM-DD') {
 }
 
 export function formatDateTime(time?: FormatDate) {
-  return formatDate(time, 'YYYY-MM-DD HH:mm:ss');
+  return formatDate(time, 'L LTS');
 }
 
 export function isDate(value: any): value is Date {

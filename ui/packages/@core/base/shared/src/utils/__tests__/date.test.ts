@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import localizedFormat from 'dayjs/plugin/localizedFormat.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +16,7 @@ import {
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+dayjs.extend(localizedFormat);
 
 describe('dateUtils', () => {
   const sampleISO = '2024-10-30T12:34:56Z';
@@ -41,17 +43,17 @@ describe('dateUtils', () => {
 
     it('should format a timestamp correctly', () => {
       const formatted = formatDate(sampleTimestamp);
-      expect(formatted).toMatch(/2024-10-30/);
+      expect(formatted).toMatch(/10\/30\/2024/);
     });
 
     it('should format a Date object', () => {
       const formatted = formatDate(new Date(sampleISO));
-      expect(formatted).toMatch(/2024-10-30/);
+      expect(formatted).toMatch(/10\/30\/2024/);
     });
 
     it('should format a dayjs object', () => {
       const formatted = formatDate(dayjs(sampleISO));
-      expect(formatted).toMatch(/2024-10-30/);
+      expect(formatted).toMatch(/10\/30\/2024/);
     });
 
     it('should return original input if date is invalid', () => {
@@ -74,7 +76,7 @@ describe('dateUtils', () => {
   describe('formatDateTime', () => {
     it('should format date into full datetime', () => {
       const result = formatDateTime(sampleISO);
-      expect(result).toMatch(/2024-10-30 \d{2}:\d{2}:\d{2}/);
+      expect(result).toMatch(/10\/30\/2024 \d{1,2}:\d{2}:\d{2} [AP]M/);
     });
   });
 

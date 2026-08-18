@@ -1,5 +1,8 @@
 package model
 
+// AdminUserID 系统内置管理员用户 ID。
+const AdminUserID uint64 = 1
+
 // AdminUsername 系统内置管理员用户名。
 const AdminUsername = "admin"
 

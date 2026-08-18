@@ -58,6 +58,14 @@ func TestRoleServiceCRUDFlow(t *testing.T) {
 	srv := newRoleTestService(db)
 	ctx := context.Background()
 
+	reserved := model.Role{BaseModel: model.BaseModel{ID: model.BuiltinAdminRoleID}, Name: "reserved", Code: "reserved", Status: model.StatusEnabled}
+	if err := db.Create(&reserved).Error; err != nil {
+		t.Fatalf("create reserved role: %v", err)
+	}
+	if err := db.Delete(&reserved).Error; err != nil {
+		t.Fatalf("delete reserved role: %v", err)
+	}
+
 	// 1. 创建两个角色（sort 不同，验证排序）。
 	r1, err := srv.CreateRole(ctx, &SaveRoleInput{Name: "编辑", Code: "editor", Sort: 2, Remark: "a"})
 	if err != nil {
@@ -449,5 +457,61 @@ func TestRoleServicePermissionUnion(t *testing.T) {
 	}
 	if len(perms) != 0 {
 		t.Errorf("perms after clear = %v, want empty", perms)
+	}
+}
+
+func TestRoleServiceBatchDelete(t *testing.T) {
+	db := setupTestDB(t)
+	srv := newRoleTestService(db)
+	ctx := context.Background()
+
+	protected := model.Role{BaseModel: model.BaseModel{ID: model.BuiltinAdminRoleID}, Name: "内置管理员", Code: model.RoleAdminCode, Status: model.StatusEnabled}
+	regular := model.Role{Name: "批量角色", Code: "batch-role", Status: model.StatusEnabled}
+	if err := db.Create(&protected).Error; err != nil {
+		t.Fatalf("create protected role: %v", err)
+	}
+	if err := db.Create(&regular).Error; err != nil {
+		t.Fatalf("create regular role: %v", err)
+	}
+	user := model.User{Username: "role-user", Status: model.StatusEnabled}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	menu := createTestMenu(t, db, model.Menu{Type: model.MenuTypeMenu, Name: "批量菜单", Status: model.StatusEnabled})
+	if err := db.Create(&model.RoleMenu{RoleID: regular.ID, MenuID: menu.ID}).Error; err != nil {
+		t.Fatalf("create role-menu: %v", err)
+	}
+	if err := db.Create(&model.UserRole{UserID: user.ID, RoleID: regular.ID}).Error; err != nil {
+		t.Fatalf("create user-role: %v", err)
+	}
+
+	wantErrCode(t, srv.DeleteRole(ctx, protected.ID), errno.CodeSuperRoleProtected)
+	wantErrCode(t, srv.BatchDelete(ctx, []uint64{0}), errno.CodeInvalidParam)
+	wantErrCode(t, srv.BatchDelete(ctx, []uint64{regular.ID, protected.ID}), errno.CodeSuperRoleProtected)
+
+	var untouched model.Role
+	if err := db.First(&untouched, regular.ID).Error; err != nil {
+		t.Fatalf("protected batch must not delete regular role: %v", err)
+	}
+
+	if err := srv.BatchDelete(ctx, []uint64{regular.ID, regular.ID}); err != nil {
+		t.Fatalf("batch delete regular role: %v", err)
+	}
+	var deleted model.Role
+	if err := db.Unscoped().First(&deleted, regular.ID).Error; err != nil {
+		t.Fatalf("find soft-deleted role: %v", err)
+	}
+	if !deleted.DeletedAt.Valid {
+		t.Fatal("batch delete did not soft-delete role")
+	}
+	var roleMenuCount, userRoleCount int64
+	if err := db.Model(&model.RoleMenu{}).Where("role_id = ?", regular.ID).Count(&roleMenuCount).Error; err != nil {
+		t.Fatalf("count role-menu: %v", err)
+	}
+	if err := db.Model(&model.UserRole{}).Where("role_id = ?", regular.ID).Count(&userRoleCount).Error; err != nil {
+		t.Fatalf("count user-role: %v", err)
+	}
+	if roleMenuCount != 0 || userRoleCount != 0 {
+		t.Fatalf("batch delete left relations: roleMenu=%d userRole=%d", roleMenuCount, userRoleCount)
 	}
 }

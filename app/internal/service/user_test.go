@@ -22,6 +22,10 @@ func TestUserServiceCRUD(t *testing.T) {
 	db := setupTestDB(t)
 	srv := newTestUserService(db)
 	ctx := context.Background()
+	admin := model.User{BaseModel: model.BaseModel{ID: model.AdminUserID}, Username: model.AdminUsername, Status: model.StatusEnabled}
+	if err := db.Create(&admin).Error; err != nil {
+		t.Fatalf("create reserved admin: %v", err)
+	}
 
 	dept := model.Department{Name: "研发部", Status: model.StatusEnabled}
 	if err := db.Create(&dept).Error; err != nil {
@@ -139,10 +143,6 @@ func TestUserServiceCRUD(t *testing.T) {
 	}
 
 	// 12. admin 账号保护（不可删、不可停用、不可改用户名、UpdateUser 时不可禁用）
-	admin, err := srv.CreateUser(ctx, &SaveUserInput{Username: "admin"})
-	if err != nil {
-		t.Fatalf("Create admin failed: %v", err)
-	}
 	err = srv.UpdateStatus(ctx, admin.ID, model.StatusDisabled)
 	wantErrCode(t, err, errno.CodeAdminUserProtected)
 	err = srv.DeleteUser(ctx, admin.ID)
@@ -156,4 +156,78 @@ func TestUserServiceCRUD(t *testing.T) {
 	statusDisabled := model.StatusDisabled
 	_, err = srv.UpdateUser(ctx, admin.ID, &SaveUserInput{Username: "admin", Status: &statusDisabled})
 	wantErrCode(t, err, errno.CodeAdminUserProtected)
+}
+
+func TestUserServiceBatchOperations(t *testing.T) {
+	db := setupTestDB(t)
+	srv := newTestUserService(db)
+	ctx := context.Background()
+
+	protected := model.User{BaseModel: model.BaseModel{ID: model.AdminUserID}, Username: "renamed-admin", Status: model.StatusEnabled}
+	user1 := model.User{Username: "batch-user-1", Status: model.StatusEnabled}
+	user2 := model.User{Username: "batch-user-2", Status: model.StatusEnabled}
+	for _, user := range []*model.User{&protected, &user1, &user2} {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("create user %q: %v", user.Username, err)
+		}
+	}
+	role := model.Role{Name: "批量角色", Code: "batch-role", Status: model.StatusEnabled}
+	if err := db.Create(&role).Error; err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+	if err := db.Create(&[]model.UserRole{
+		{UserID: user1.ID, RoleID: role.ID},
+		{UserID: user2.ID, RoleID: role.ID},
+	}).Error; err != nil {
+		t.Fatalf("create user roles: %v", err)
+	}
+
+	wantErrCode(t, srv.BatchDelete(ctx, []uint64{0, user1.ID}), errno.CodeInvalidParam)
+	wantErrCode(t, srv.BatchUpdateStatus(ctx, []uint64{}, model.StatusEnabled), errno.CodeInvalidParam)
+	wantErrCode(t, srv.BatchUpdateStatus(ctx, []uint64{user1.ID}, 2), errno.CodeInvalidParam)
+
+	// ID=1 受保护，即使用户名不是 admin 也不能禁用、删除或改名。
+	wantErrCode(t, srv.UpdateStatus(ctx, protected.ID, model.StatusDisabled), errno.CodeAdminUserProtected)
+	wantErrCode(t, srv.DeleteUser(ctx, protected.ID), errno.CodeAdminUserProtected)
+	_, err := srv.UpdateUser(ctx, protected.ID, &SaveUserInput{Username: protected.Username})
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
+	wantErrCode(t, srv.BatchUpdateStatus(ctx, []uint64{user1.ID, protected.ID}, model.StatusDisabled), errno.CodeAdminUserProtected)
+	wantErrCode(t, srv.BatchDelete(ctx, []uint64{user1.ID, protected.ID}), errno.CodeAdminUserProtected)
+
+	var untouched model.User
+	if err := db.First(&untouched, user1.ID).Error; err != nil {
+		t.Fatalf("protected batch must not delete user1: %v", err)
+	}
+	if untouched.Status != model.StatusEnabled {
+		t.Fatalf("protected batch must not update user1 status: got %d", untouched.Status)
+	}
+
+	if err := srv.BatchUpdateStatus(ctx, []uint64{user1.ID, user2.ID}, model.StatusDisabled); err != nil {
+		t.Fatalf("batch update status: %v", err)
+	}
+	var disabled model.User
+	if err := db.First(&disabled, user2.ID).Error; err != nil {
+		t.Fatalf("find disabled user: %v", err)
+	}
+	if disabled.Status != model.StatusDisabled {
+		t.Fatalf("batch status = %d, want %d", disabled.Status, model.StatusDisabled)
+	}
+
+	if err := srv.BatchDelete(ctx, []uint64{user1.ID, user2.ID, user1.ID}); err != nil {
+		t.Fatalf("batch delete: %v", err)
+	}
+	var deleted model.User
+	if err := db.Unscoped().First(&deleted, user1.ID).Error; err != nil {
+		t.Fatalf("find soft-deleted user: %v", err)
+	}
+	if !deleted.DeletedAt.Valid {
+		t.Fatal("batch delete did not soft-delete user1")
+	}
+	var relationCount int64
+	if err := db.Model(&model.UserRole{}).Where("user_id IN ?", []uint64{user1.ID, user2.ID}).Count(&relationCount).Error; err != nil {
+		t.Fatalf("count deleted user roles: %v", err)
+	}
+	if relationCount != 0 {
+		t.Fatalf("batch delete left %d user-role relations", relationCount)
+	}
 }

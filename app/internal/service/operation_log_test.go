@@ -140,6 +140,22 @@ func TestOperationLogService(t *testing.T) {
 	if !errnoIs(err, errno.CodeNotFound) {
 		t.Errorf("expected CodeNotFound, got %v", e)
 	}
+
+	if err := srv.Delete(ctx, logs[0].ID); err != nil {
+		t.Fatalf("delete operation log: %v", err)
+	}
+	if err := srv.BatchDelete(ctx, []uint64{logs[1].ID, logs[2].ID, logs[1].ID}); err != nil {
+		t.Fatalf("batch delete operation logs: %v", err)
+	}
+	if _, err := srv.GetByID(ctx, logs[0].ID); !errnoIs(err, errno.CodeNotFound) {
+		t.Fatalf("deleted operation log error = %v, want CodeNotFound", err)
+	}
+	if _, err := srv.GetByID(ctx, logs[1].ID); !errnoIs(err, errno.CodeNotFound) {
+		t.Fatalf("batch-deleted operation log error = %v, want CodeNotFound", err)
+	}
+	if !errnoIs(srv.BatchDelete(ctx, []uint64{0}), errno.CodeInvalidParam) {
+		t.Fatal("batch delete with zero ID should return CodeInvalidParam")
+	}
 }
 
 func errnoIs(err error, code int) bool {

@@ -47,3 +47,17 @@ export async function getLogPageApi(params?: LogApi.LogPageQuery) {
 export async function getLogDetailApi(id: number) {
   return requestClient.get<LogApi.LogItem>(`/oplog/${id}`);
 }
+
+/**
+ * 删除单条操作日志
+ */
+export async function deleteLogApi(id: number) {
+  return requestClient.delete<null>(`/oplog/${id}`);
+}
+
+/**
+ * 批量删除操作日志
+ */
+export async function batchDeleteLogApi(ids: number[]) {
+  return requestClient.delete<null>('/oplog/batch', { data: { ids } });
+}

@@ -169,6 +169,13 @@ modelPropNameMap: { ApiTreeSelect: 'modelValue' },
 - VXE 全局表格启用 `showOverflow: true` 时，操作列必须显式设置 `showOverflow: false`，避免英文按钮文案超出单元格后被渲染为省略号。
 - 操作列使用固定宽度时，按最长语言文案预留空间；用户管理、角色/菜单/部门管理、日志详情分别至少预留 `360/280/280/120px`，并在语言切换后验证所有按钮仍可见。
 
+### 5. 批量操作与选中激活提示条 (Selection Alert Bar)
+
+- 表格首列必须配置 `{ type: 'checkbox', width: 50, align: 'center' }`。
+- 复选框必须在 `checkboxConfig.checkMethod` 中对受保护行（如 `admin` 用户、`super/admin` 角色）进行禁用，防止非法勾选。
+- 批量操作区域采用“选中激活提示条”交互模式：未选中时不展示常驻置灰按钮；勾选 1 项及以上时，在表格上方弹出提示条，展示选中数量、清空操作链接及带 Popconfirm 二次确认的批量操作按钮。
+- `useVbenVxeGrid` 的 `gridEvents` 需绑定 `checkboxAll` 与 `checkboxChange` 事件（显式标注 `{ records }: { records: T[] }` 类型），操作成功或清空时需调用 `gridApi.grid?.clearCheckboxRow()` 保持状态同步。
+
 ---
 
 ## 常见错误

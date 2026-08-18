@@ -14,6 +14,7 @@ import { useVbenForm, z } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   assignRoleMenusApi,
+  batchDeleteRoleApi,
   createRoleApi,
   deleteRoleApi,
   getMenuTreeApi,
@@ -21,7 +22,12 @@ import {
   getRolePageApi,
   updateRoleApi,
 } from '#/api';
-import { SYSTEM_STATUS } from '#/constants/system';
+import {
+  SYSTEM_BUILTIN_ROLE_ID,
+  SYSTEM_ROLE_ADMIN_CODE,
+  SYSTEM_ROLE_SUPER_CODE,
+  SYSTEM_STATUS,
+} from '#/constants/system';
 
 type RoleFormValues = Omit<RoleApi.SaveRoleInput, 'sort' | 'status'> & {
   sort: number;
@@ -29,6 +35,7 @@ type RoleFormValues = Omit<RoleApi.SaveRoleInput, 'sort' | 'status'> & {
 };
 
 const currentEditId = ref<null | number>(null);
+const selectedRoles = ref<RoleApi.RoleItem[]>([]);
 
 // 表单配置
 const [Form, formApi] = useVbenForm<RoleFormValues>({
@@ -149,8 +156,21 @@ const [AssignModal, assignModalApi] = useVbenModal({
   title: $t('system.role.assignMenuTitle'),
 });
 
+function isProtectedRole(row: RoleApi.RoleItem) {
+  return (
+    row.id === SYSTEM_BUILTIN_ROLE_ID ||
+    row.code === SYSTEM_ROLE_SUPER_CODE ||
+    row.code === SYSTEM_ROLE_ADMIN_CODE
+  );
+}
+
 const gridOptions: VxeTableGridOptions<RoleApi.RoleItem> = {
+  checkboxConfig: {
+    checkMethod: ({ row }) => !isProtectedRole(row),
+    highlight: true,
+  },
   columns: [
+    { type: 'checkbox', width: 50, align: 'center' },
     { field: 'name', title: $t('system.role.name'), width: 160 },
     { field: 'code', title: $t('system.role.code'), width: 160 },
     { field: 'sort', title: $t('system.common.sort'), width: 80 },
@@ -193,6 +213,14 @@ const gridOptions: VxeTableGridOptions<RoleApi.RoleItem> = {
 };
 
 const [Grid, gridApi] = useVbenVxeGrid({
+  gridEvents: {
+    checkboxAll: ({ records }: { records: RoleApi.RoleItem[] }) => {
+      selectedRoles.value = records;
+    },
+    checkboxChange: ({ records }: { records: RoleApi.RoleItem[] }) => {
+      selectedRoles.value = records;
+    },
+  },
   formOptions: {
     schema: [
       {
@@ -272,6 +300,25 @@ async function handleDelete(row: RoleApi.RoleItem) {
   try {
     await deleteRoleApi(row.id);
     message.success($t('system.common.success'));
+    handleClearSelection();
+    gridApi.reload();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function handleClearSelection() {
+  gridApi.grid?.clearCheckboxRow();
+  selectedRoles.value = [];
+}
+
+async function handleBatchDelete() {
+  const ids = selectedRoles.value.map((r) => r.id);
+  if (ids.length === 0) return;
+  try {
+    await batchDeleteRoleApi(ids);
+    message.success($t('system.common.success'));
+    handleClearSelection();
     gridApi.reload();
   } catch (error) {
     console.error(error);
@@ -281,6 +328,43 @@ async function handleDelete(row: RoleApi.RoleItem) {
 
 <template>
   <Page auto-content-height>
+    <div
+      v-if="selectedRoles.length > 0"
+      class="mb-3 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-sm"
+    >
+      <div class="flex items-center gap-2">
+        <span class="text-foreground font-medium">
+          {{
+            $t('system.common.selectedCount', { count: selectedRoles.length })
+          }}
+        </span>
+        <Button type="link" size="small" @click="handleClearSelection">
+          {{ $t('system.common.clearSelection') }}
+        </Button>
+      </div>
+      <div class="flex items-center gap-2">
+        <Popconfirm
+          :title="
+            $t('system.common.confirmBatchDelete', {
+              count: selectedRoles.length,
+            })
+          "
+          :ok-text="$t('system.common.confirm')"
+          :cancel-text="$t('system.common.cancel')"
+          @confirm="handleBatchDelete"
+        >
+          <Button
+            type="primary"
+            danger
+            size="small"
+            v-access:code="['system:role:delete']"
+          >
+            {{ $t('system.common.batchDelete') }}
+          </Button>
+        </Popconfirm>
+      </div>
+    </div>
+
     <Grid>
       <template #toolbar-tools>
         <Button
@@ -322,6 +406,7 @@ async function handleDelete(row: RoleApi.RoleItem) {
           {{ $t('system.role.assignMenu') }}
         </Button>
         <Popconfirm
+          v-if="!isProtectedRole(row)"
           :title="$t('system.role.confirmDelete')"
           :ok-text="$t('system.common.confirm')"
           :cancel-text="$t('system.common.cancel')"

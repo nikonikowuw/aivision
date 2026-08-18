@@ -108,3 +108,20 @@ export async function assignUserRolesApi(id: number, roleIds: number[]) {
 export async function updateUserStatusApi(id: number, status: SystemStatus) {
   return requestClient.put<null>(`/user/${id}/status`, { status });
 }
+
+/**
+ * 批量删除用户
+ */
+export async function batchDeleteUserApi(ids: number[]) {
+  return requestClient.delete<null>('/user/batch', { data: { ids } });
+}
+
+/**
+ * 批量更新用户状态 (启用/停用)
+ */
+export async function batchUpdateUserStatusApi(
+  ids: number[],
+  status: SystemStatus,
+) {
+  return requestClient.put<null>('/user/batch-status', { ids, status });
+}

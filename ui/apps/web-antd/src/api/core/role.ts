@@ -65,6 +65,13 @@ export async function deleteRoleApi(id: number) {
 }
 
 /**
+ * 批量删除角色
+ */
+export async function batchDeleteRoleApi(ids: number[]) {
+  return requestClient.delete<null>('/role/batch', { data: { ids } });
+}
+
+/**
  * 获取角色关联的菜单 ID 列表
  */
 export async function getRoleMenuIdsApi(id: number) {

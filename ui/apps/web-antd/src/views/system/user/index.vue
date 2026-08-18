@@ -21,6 +21,8 @@ import { useVbenForm, z } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   assignUserRolesApi,
+  batchDeleteUserApi,
+  batchUpdateUserStatusApi,
   createUserApi,
   deleteUserApi,
   getDeptTreeApi,
@@ -31,7 +33,11 @@ import {
   updateUserApi,
   updateUserStatusApi,
 } from '#/api';
-import { SYSTEM_STATUS } from '#/constants/system';
+import {
+  SYSTEM_ADMIN_USER_ID,
+  SYSTEM_ADMIN_USERNAME,
+  SYSTEM_STATUS,
+} from '#/constants/system';
 
 type UserFormValues = Omit<UserApi.SaveUserInput, 'status'> & {
   status: SystemStatus;
@@ -39,6 +45,7 @@ type UserFormValues = Omit<UserApi.SaveUserInput, 'status'> & {
 
 const currentEditId = ref<null | number>(null);
 const deptTreeOptions = ref<DeptApi.DeptItem[]>([]);
+const selectedUsers = ref<UserApi.UserItem[]>([]);
 
 // 用户新增/编辑表单
 const [Form, formApi] = useVbenForm<UserFormValues>({
@@ -79,7 +86,11 @@ const [Form, formApi] = useVbenForm<UserFormValues>({
         placeholder: $t('system.user.deptPlaceholder'),
         treeDefaultExpandAll: true,
         valueField: 'id',
-        dropdownStyle: { maxHeight: '400px', overflow: 'auto', minWidth: '300px' },
+        dropdownStyle: {
+          maxHeight: '400px',
+          overflow: 'auto',
+          minWidth: '300px',
+        },
         popupMatchSelectWidth: false,
       }),
       fieldName: 'deptId',
@@ -176,8 +187,19 @@ const [AssignRoleModal, assignRoleModalApi] = useVbenModal({
 });
 
 const gridOptions: VxeTableGridOptions<UserApi.UserItem> = {
+  checkboxConfig: {
+    checkMethod: ({ row }) =>
+      row.id !== SYSTEM_ADMIN_USER_ID && row.username !== SYSTEM_ADMIN_USERNAME,
+    highlight: true,
+  },
   columns: [
-    { type: 'seq', title: $t('system.common.index'), width: 60, align: 'center' },
+    { type: 'checkbox', width: 50, align: 'center' },
+    {
+      type: 'seq',
+      title: $t('system.common.index'),
+      width: 60,
+      align: 'center',
+    },
     { field: 'username', title: $t('system.user.username'), width: 140 },
     { field: 'nickname', title: $t('system.user.nickname'), width: 140 },
     { field: 'deptName', title: $t('system.user.dept'), width: 140 },
@@ -225,6 +247,14 @@ const gridOptions: VxeTableGridOptions<UserApi.UserItem> = {
 };
 
 const [Grid, gridApi] = useVbenVxeGrid({
+  gridEvents: {
+    checkboxAll: ({ records }: { records: UserApi.UserItem[] }) => {
+      selectedUsers.value = records;
+    },
+    checkboxChange: ({ records }: { records: UserApi.UserItem[] }) => {
+      selectedUsers.value = records;
+    },
+  },
   formOptions: {
     schema: [
       {
@@ -262,7 +292,11 @@ const [Grid, gridApi] = useVbenVxeGrid({
           placeholder: $t('system.user.deptFilterPlaceholder'),
           treeDefaultExpandAll: true,
           valueField: 'id',
-          dropdownStyle: { maxHeight: '400px', overflow: 'auto', minWidth: '300px' },
+          dropdownStyle: {
+            maxHeight: '400px',
+            overflow: 'auto',
+            minWidth: '300px',
+          },
           popupMatchSelectWidth: false,
         }),
         fieldName: 'deptId',
@@ -367,6 +401,38 @@ async function handleDelete(row: UserApi.UserItem) {
   try {
     await deleteUserApi(row.id);
     message.success($t('system.common.success'));
+    handleClearSelection();
+    gridApi.reload();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function handleClearSelection() {
+  gridApi.grid?.clearCheckboxRow();
+  selectedUsers.value = [];
+}
+
+async function handleBatchDelete() {
+  const ids = selectedUsers.value.map((u) => u.id);
+  if (ids.length === 0) return;
+  try {
+    await batchDeleteUserApi(ids);
+    message.success($t('system.common.success'));
+    handleClearSelection();
+    gridApi.reload();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function handleBatchStatus(status: SystemStatus) {
+  const ids = selectedUsers.value.map((u) => u.id);
+  if (ids.length === 0) return;
+  try {
+    await batchUpdateUserStatusApi(ids, status);
+    message.success($t('system.common.success'));
+    handleClearSelection();
     gridApi.reload();
   } catch (error) {
     console.error(error);
@@ -376,6 +442,71 @@ async function handleDelete(row: UserApi.UserItem) {
 
 <template>
   <Page auto-content-height>
+    <div
+      v-if="selectedUsers.length > 0"
+      class="mb-3 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-sm"
+    >
+      <div class="flex items-center gap-2">
+        <span class="text-foreground font-medium">
+          {{
+            $t('system.common.selectedCount', { count: selectedUsers.length })
+          }}
+        </span>
+        <Button type="link" size="small" @click="handleClearSelection">
+          {{ $t('system.common.clearSelection') }}
+        </Button>
+      </div>
+      <div class="flex items-center gap-2">
+        <Popconfirm
+          :title="
+            $t('system.common.confirmBatchEnable', {
+              count: selectedUsers.length,
+            })
+          "
+          :ok-text="$t('system.common.confirm')"
+          :cancel-text="$t('system.common.cancel')"
+          @confirm="() => handleBatchStatus(SYSTEM_STATUS.ENABLED)"
+        >
+          <Button size="small" v-access:code="['system:user:status']">
+            {{ $t('system.common.batchEnable') }}
+          </Button>
+        </Popconfirm>
+        <Popconfirm
+          :title="
+            $t('system.common.confirmBatchDisable', {
+              count: selectedUsers.length,
+            })
+          "
+          :ok-text="$t('system.common.confirm')"
+          :cancel-text="$t('system.common.cancel')"
+          @confirm="() => handleBatchStatus(SYSTEM_STATUS.DISABLED)"
+        >
+          <Button size="small" v-access:code="['system:user:status']">
+            {{ $t('system.common.batchDisable') }}
+          </Button>
+        </Popconfirm>
+        <Popconfirm
+          :title="
+            $t('system.common.confirmBatchDelete', {
+              count: selectedUsers.length,
+            })
+          "
+          :ok-text="$t('system.common.confirm')"
+          :cancel-text="$t('system.common.cancel')"
+          @confirm="handleBatchDelete"
+        >
+          <Button
+            type="primary"
+            danger
+            size="small"
+            v-access:code="['system:user:delete']"
+          >
+            {{ $t('system.common.batchDelete') }}
+          </Button>
+        </Popconfirm>
+      </div>
+    </div>
+
     <Grid>
       <template #toolbar-tools>
         <Button
@@ -389,7 +520,10 @@ async function handleDelete(row: UserApi.UserItem) {
 
       <template #status="{ row }">
         <Tooltip
-          v-if="row.username === 'admin'"
+          v-if="
+            row.id === SYSTEM_ADMIN_USER_ID ||
+            row.username === SYSTEM_ADMIN_USERNAME
+          "
           :title="$t('system.user.adminProtectedTip')"
         >
           <Switch
@@ -438,7 +572,10 @@ async function handleDelete(row: UserApi.UserItem) {
           </Button>
         </Popconfirm>
         <Tooltip
-          v-if="row.username === 'admin'"
+          v-if="
+            row.id === SYSTEM_ADMIN_USER_ID ||
+            row.username === SYSTEM_ADMIN_USERNAME
+          "
           :title="$t('system.user.adminProtectedTip')"
         >
           <Button

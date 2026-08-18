@@ -92,6 +92,10 @@ func (*routerTestRoleService) DeleteRole(context.Context, uint64) error {
 	return nil
 }
 
+func (*routerTestRoleService) BatchDelete(context.Context, []uint64) error {
+	return nil
+}
+
 func (*routerTestRoleService) GetMenuIDs(context.Context, uint64) ([]uint64, error) {
 	return []uint64{}, nil
 }
@@ -111,6 +115,14 @@ func (s *routerTestOperationLogService) Record(_ context.Context, log *model.Ope
 
 func (*routerTestOperationLogService) GetByID(context.Context, uint64) (*model.OperationLog, error) {
 	return nil, nil
+}
+
+func (*routerTestOperationLogService) Delete(context.Context, uint64) error {
+	return nil
+}
+
+func (*routerTestOperationLogService) BatchDelete(context.Context, []uint64) error {
+	return nil
 }
 
 func (*routerTestOperationLogService) GetPage(context.Context, *service.LogPageQuery) (*service.LogPageResult, error) {

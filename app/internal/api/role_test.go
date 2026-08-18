@@ -37,6 +37,7 @@ func setupRoleAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 	{
 		group.GET("/page", handler.GetPage)
 		group.POST("", handler.CreateRole)
+		group.DELETE("/batch", handler.BatchDeleteRole)
 		group.PUT("/:id", handler.UpdateRole)
 		group.DELETE("/:id", handler.DeleteRole)
 		group.GET("/:id/menu-ids", handler.GetMenuIDs)
@@ -216,5 +217,29 @@ func TestRoleAPI_SuperProtection(t *testing.T) {
 	if _, code := doRoleRequest(t, engine, http.MethodPut, fmt.Sprintf("/api/role/%d/menus", super.ID),
 		`{"menuIds":[]}`); code != errno.CodeSuperRoleProtected {
 		t.Fatalf("assign super menus: code = %d, want 1014", code)
+	}
+
+	// 批量删除含 code=admin 的内置角色同样拦截 -> 1014
+	adminRole := model.Role{Name: "内置管理员", Code: model.RoleAdminCode, Status: model.StatusEnabled}
+	if err := db.Create(&adminRole).Error; err != nil {
+		t.Fatalf("create admin role: %v", err)
+	}
+	if _, code := doRoleRequest(t, engine, http.MethodDelete, "/api/role/batch", fmt.Sprintf(`{"ids":[%d]}`, adminRole.ID)); code != errno.CodeSuperRoleProtected {
+		t.Fatalf("batch delete admin role: code = %d, want 1014", code)
+	}
+	if _, code := doRoleRequest(t, engine, http.MethodDelete, "/api/role/batch", `{"ids":[0]}`); code != errno.CodeInvalidParam {
+		t.Fatalf("batch delete zero id: code = %d, want 1009", code)
+	}
+
+	// 批量删除含 super 拦截 -> 1014
+	r1 := model.Role{Name: "r1", Code: "r1", Status: model.StatusEnabled}
+	db.Create(&r1)
+	if _, code := doRoleRequest(t, engine, http.MethodDelete, "/api/role/batch", fmt.Sprintf(`{"ids":[%d,%d]}`, r1.ID, super.ID)); code != errno.CodeSuperRoleProtected {
+		t.Fatalf("batch delete with super: code = %d, want 1014", code)
+	}
+
+	// 批量删除正常
+	if _, code := doRoleRequest(t, engine, http.MethodDelete, "/api/role/batch", fmt.Sprintf(`{"ids":[%d]}`, r1.ID)); code != errno.CodeOK {
+		t.Fatalf("batch delete: code = %d, want 0", code)
 	}
 }

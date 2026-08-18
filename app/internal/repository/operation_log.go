@@ -25,6 +25,8 @@ type OperationLogFilter struct {
 type OperationLogRepository interface {
 	Create(ctx context.Context, log *model.OperationLog) error
 	GetByID(ctx context.Context, id uint64) (*model.OperationLog, error)
+	Delete(ctx context.Context, id uint64) error
+	BatchDelete(ctx context.Context, ids []uint64) error
 	ListPage(ctx context.Context, filter *OperationLogFilter) ([]model.OperationLog, int64, error)
 }
 
@@ -50,6 +52,17 @@ func (r *operationLogRepository) GetByID(ctx context.Context, id uint64) (*model
 		return nil, err
 	}
 	return &item, nil
+}
+
+func (r *operationLogRepository) Delete(ctx context.Context, id uint64) error {
+	return r.db.WithContext(ctx).Delete(&model.OperationLog{}, id).Error
+}
+
+func (r *operationLogRepository) BatchDelete(ctx context.Context, ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Where("id IN ?", ids).Delete(&model.OperationLog{}).Error
 }
 
 func (r *operationLogRepository) ListPage(ctx context.Context, filter *OperationLogFilter) ([]model.OperationLog, int64, error) {

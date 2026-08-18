@@ -40,6 +40,7 @@ type RoleRepository interface {
 	ListPage(ctx context.Context, filter *RoleFilter) ([]model.Role, int64, error)
 	GetMenuIDs(ctx context.Context, roleID uint64) ([]uint64, error)
 	ReplaceMenus(ctx context.Context, roleID uint64, menuIDs []uint64) error
+	BatchDelete(ctx context.Context, ids []uint64) error
 }
 
 type roleRepository struct {
@@ -62,7 +63,37 @@ func (r *roleRepository) Update(ctx context.Context, role *model.Role) error {
 
 // Delete 软删除角色。存在性由 service 层先行校验（GetByID），此处只执行删除。
 func (r *roleRepository) Delete(ctx context.Context, id uint64) error {
-	return r.db.WithContext(ctx).Delete(&model.Role{}, id).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&model.Role{}, id).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("role_id = ?", id).Delete(&model.RoleMenu{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("role_id = ?", id).Delete(&model.UserRole{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// BatchDelete 事务内批量软删除角色及其关联。
+func (r *roleRepository) BatchDelete(ctx context.Context, ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id IN ?", ids).Delete(&model.Role{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("role_id IN ?", ids).Delete(&model.RoleMenu{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("role_id IN ?", ids).Delete(&model.UserRole{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (r *roleRepository) GetByID(ctx context.Context, id uint64) (*model.Role, error) {

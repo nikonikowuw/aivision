@@ -169,3 +169,44 @@ func (h *UserHandler) UpdateStatus(c *gin.Context) {
 	}
 	response.Success(c, nil)
 }
+
+// BatchDeleteUserInput 批量删除用户入参。
+type BatchDeleteUserInput struct {
+	IDs []uint64 `json:"ids" binding:"required,min=1,dive,gt=0"`
+}
+
+// BatchDeleteUser 批量删除用户 (DELETE /api/user/batch)。
+func (h *UserHandler) BatchDeleteUser(c *gin.Context) {
+	var input BatchDeleteUserInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck // 交给统一错误处理中间件
+		return
+	}
+
+	if err := h.svc.BatchDelete(c.Request.Context(), input.IDs); err != nil {
+		c.Error(err) //nolint:errcheck // 交给统一错误处理中间件
+		return
+	}
+	response.Success(c, nil)
+}
+
+// BatchUpdateUserStatusInput 批量更新用户状态入参。
+type BatchUpdateUserStatusInput struct {
+	IDs    []uint64 `json:"ids" binding:"required,min=1,dive,gt=0"`
+	Status *int8    `json:"status" binding:"required"`
+}
+
+// BatchUpdateStatus 批量更新用户状态 (PUT /api/user/batch-status)。
+func (h *UserHandler) BatchUpdateStatus(c *gin.Context) {
+	var input BatchUpdateUserStatusInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck // 交给统一错误处理中间件
+		return
+	}
+
+	if err := h.svc.BatchUpdateStatus(c.Request.Context(), input.IDs, *input.Status); err != nil {
+		c.Error(err) //nolint:errcheck // 交给统一错误处理中间件
+		return
+	}
+	response.Success(c, nil)
+}

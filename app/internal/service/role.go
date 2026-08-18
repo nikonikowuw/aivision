@@ -53,6 +53,7 @@ type RoleService interface {
 	CreateRole(ctx context.Context, input *SaveRoleInput) (*model.Role, error)
 	UpdateRole(ctx context.Context, id uint64, input *SaveRoleInput) (*model.Role, error)
 	DeleteRole(ctx context.Context, id uint64) error
+	BatchDelete(ctx context.Context, ids []uint64) error
 	GetMenuIDs(ctx context.Context, id uint64) ([]uint64, error)
 	AssignMenus(ctx context.Context, id uint64, menuIDs []uint64) error
 }
@@ -65,6 +66,12 @@ type roleService struct {
 // NewRoleService 创建 RoleService 实例。
 func NewRoleService(roleRepo repository.RoleRepository, menuRepo repository.MenuRepository) RoleService {
 	return &roleService{roleRepo: roleRepo, menuRepo: menuRepo}
+}
+
+func isProtectedRole(role *model.Role) bool {
+	return role.ID == model.BuiltinAdminRoleID ||
+		role.Code == model.RoleSuperCode ||
+		role.Code == model.RoleAdminCode
 }
 
 func (s *roleService) GetPage(ctx context.Context, query *RolePageQuery) (*RolePageResult, error) {
@@ -132,11 +139,30 @@ func (s *roleService) DeleteRole(ctx context.Context, id uint64) error {
 	if err != nil {
 		return mapRepoError(err)
 	}
-	if role.Code == model.RoleSuperCode {
+	if isProtectedRole(role) {
 		return errno.NewError(errno.CodeSuperRoleProtected)
 	}
 
 	return s.roleRepo.Delete(ctx, id)
+}
+
+func (s *roleService) BatchDelete(ctx context.Context, ids []uint64) error {
+	uniqueIDs, err := normalizeBatchIDs(ids)
+	if err != nil {
+		return err
+	}
+
+	roles, err := s.roleRepo.GetByIDs(ctx, uniqueIDs)
+	if err != nil {
+		return err
+	}
+	for _, r := range roles {
+		if isProtectedRole(&r) {
+			return errno.NewError(errno.CodeSuperRoleProtected)
+		}
+	}
+
+	return s.roleRepo.BatchDelete(ctx, uniqueIDs)
 }
 
 func (s *roleService) GetMenuIDs(ctx context.Context, id uint64) ([]uint64, error) {
@@ -196,6 +222,19 @@ func mapDuplicateKey(err error) error {
 		return errno.NewError(errno.CodeRoleCodeTaken)
 	}
 	return err
+}
+
+// normalizeBatchIDs 校验批量请求 ID 均为正数，并去除重复项。
+func normalizeBatchIDs(ids []uint64) ([]uint64, error) {
+	if len(ids) == 0 {
+		return nil, errno.NewError(errno.CodeInvalidParam)
+	}
+	for _, id := range ids {
+		if id == 0 {
+			return nil, errno.NewError(errno.CodeInvalidParam)
+		}
+	}
+	return dedupeIDs(ids), nil
 }
 
 // dedupeIDs 去除 uint64 切片中的重复元素，保持首次出现顺序。

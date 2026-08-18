@@ -1,8 +1,10 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -34,10 +36,28 @@ func setupOplogAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB, service.Operation
 	apiGroup := engine.Group("/api/oplog")
 	{
 		apiGroup.GET("/page", handler.GetPage)
+		apiGroup.DELETE("/batch", handler.BatchDelete)
 		apiGroup.GET("/:id", handler.GetByID)
+		apiGroup.DELETE("/:id", handler.Delete)
 	}
 
 	return engine, db, srv
+}
+
+func doOplogRequest(t *testing.T, engine *gin.Engine, method, path, body string) (int, int) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal resp %s %s: %v (body=%s)", method, path, err, rec.Body.String())
+	}
+	return rec.Code, resp.Code
 }
 
 func TestOplogAPI_GetPageAndGetByID(t *testing.T) {
@@ -135,5 +155,39 @@ func TestOplogAPI_InvalidID(t *testing.T) {
 	}
 	if errResp.Code != errno.CodeInvalidParam {
 		t.Errorf("code = %d, want CodeInvalidParam (%d)", errResp.Code, errno.CodeInvalidParam)
+	}
+}
+
+func TestOplogAPI_DeleteAndBatchDelete(t *testing.T) {
+	engine, _, srv := setupOplogAPIEngine(t)
+	ctx := context.Background()
+
+	log1 := &model.OperationLog{
+		UserID: 1, Username: "admin", Module: "menu", Action: "POST", Path: "/api/menu", StatusCode: 200,
+	}
+	log2 := &model.OperationLog{
+		UserID: 1, Username: "admin", Module: "user", Action: "POST", Path: "/api/user", StatusCode: 200,
+	}
+	_ = srv.Record(ctx, log1)
+	_ = srv.Record(ctx, log2)
+
+	// 1. 删除单条
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/oplog/%d", log1.ID), nil)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete log status = %d, want 200", rec.Code)
+	}
+
+	// 2. 批量删除
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/api/oplog/batch", bytes.NewBufferString(fmt.Sprintf(`{"ids":[%d]}`, log2.ID)))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("batch delete log status = %d, want 200", rec.Code)
+	}
+	if _, code := doOplogRequest(t, engine, http.MethodDelete, "/api/oplog/batch", `{"ids":[0]}`); code != errno.CodeInvalidParam {
+		t.Fatalf("batch delete zero id: code = %d, want 1009", code)
 	}
 }

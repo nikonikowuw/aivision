@@ -92,6 +92,26 @@ func (h *RoleHandler) DeleteRole(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// BatchDeleteRoleRequest 批量删除角色请求体。
+type BatchDeleteRoleRequest struct {
+	IDs []uint64 `json:"ids" binding:"required,min=1,dive,gt=0"`
+}
+
+// BatchDeleteRole 批量删除角色 (DELETE /api/role/batch)
+func (h *RoleHandler) BatchDeleteRole(c *gin.Context) {
+	var req BatchDeleteRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck // 交给统一错误处理中间件
+		return
+	}
+
+	if err := h.srv.BatchDelete(c.Request.Context(), req.IDs); err != nil {
+		c.Error(err) //nolint:errcheck // 交给统一错误处理中间件
+		return
+	}
+	response.Success(c, nil)
+}
+
 // GetMenuIDs 获取角色已分配的菜单 id 集 (GET /api/role/:id/menu-ids)
 func (h *RoleHandler) GetMenuIDs(c *gin.Context) {
 	id, ok := parseIDParam(c)

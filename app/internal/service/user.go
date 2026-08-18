@@ -61,6 +61,8 @@ type UserService interface {
 	GetRoleIDs(ctx context.Context, id uint64) ([]uint64, error)
 	AssignRoles(ctx context.Context, id uint64, roleIDs []uint64) error
 	UpdateStatus(ctx context.Context, id uint64, status int8) error
+	BatchDelete(ctx context.Context, ids []uint64) error
+	BatchUpdateStatus(ctx context.Context, ids []uint64, status int8) error
 }
 
 type userService struct {
@@ -96,6 +98,10 @@ func normalizeSaveUserInput(input *SaveUserInput) {
 	input.Email = strings.TrimSpace(input.Email)
 	input.Phone = strings.TrimSpace(input.Phone)
 	input.Remark = strings.TrimSpace(input.Remark)
+}
+
+func isProtectedAdminUser(user *model.User) bool {
+	return user.ID == model.AdminUserID || user.Username == model.AdminUsername
 }
 
 func (s *userService) GetPage(ctx context.Context, query *UserPageQuery) (*UserPageResult, error) {
@@ -216,7 +222,7 @@ func (s *userService) UpdateUser(ctx context.Context, id uint64, input *SaveUser
 	}
 
 	// admin 账号保护：不可修改用户名，不可被禁用
-	if u.Username == model.AdminUsername {
+	if isProtectedAdminUser(u) {
 		if input.Username != model.AdminUsername {
 			return nil, errno.NewError(errno.CodeAdminUserProtected)
 		}
@@ -277,7 +283,7 @@ func (s *userService) DeleteUser(ctx context.Context, id uint64) error {
 	if err != nil {
 		return mapRepoError(err)
 	}
-	if u.Username == model.AdminUsername {
+	if isProtectedAdminUser(u) {
 		return errno.NewError(errno.CodeAdminUserProtected) // admin 自身不可删除
 	}
 
@@ -349,11 +355,61 @@ func (s *userService) UpdateStatus(ctx context.Context, id uint64, status int8) 
 		return mapRepoError(err)
 	}
 
-	if u.Username == model.AdminUsername && status == model.StatusDisabled {
+	if isProtectedAdminUser(u) && status == model.StatusDisabled {
 		return errno.NewError(errno.CodeAdminUserProtected) // admin 不可禁用
 	}
 
 	return s.userRepo.Update(ctx, u, map[string]interface{}{
 		"status": status,
 	})
+}
+
+func (s *userService) BatchDelete(ctx context.Context, ids []uint64) error {
+	uniqueIDs, err := normalizeBatchIDs(ids)
+	if err != nil {
+		return err
+	}
+
+	// 检查是否包含受保护的 admin 用户。
+	for _, id := range uniqueIDs {
+		u, err := s.userRepo.GetByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				continue
+			}
+			return mapRepoError(err)
+		}
+		if isProtectedAdminUser(u) {
+			return errno.NewError(errno.CodeAdminUserProtected)
+		}
+	}
+
+	return s.userRepo.BatchDelete(ctx, uniqueIDs)
+}
+
+func (s *userService) BatchUpdateStatus(ctx context.Context, ids []uint64, status int8) error {
+	if status != model.StatusEnabled && status != model.StatusDisabled {
+		return errno.NewError(errno.CodeInvalidParam)
+	}
+	uniqueIDs, err := normalizeBatchIDs(ids)
+	if err != nil {
+		return err
+	}
+
+	if status == model.StatusDisabled {
+		for _, id := range uniqueIDs {
+			u, err := s.userRepo.GetByID(ctx, id)
+			if err != nil {
+				if errors.Is(err, repository.ErrNotFound) {
+					continue
+				}
+				return mapRepoError(err)
+			}
+			if isProtectedAdminUser(u) {
+				return errno.NewError(errno.CodeAdminUserProtected)
+			}
+		}
+	}
+
+	return s.userRepo.BatchUpdateStatus(ctx, uniqueIDs, status)
 }

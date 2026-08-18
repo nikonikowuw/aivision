@@ -29,6 +29,8 @@ type LogPageResult struct {
 type OperationLogService interface {
 	Record(ctx context.Context, log *model.OperationLog) error
 	GetByID(ctx context.Context, id uint64) (*model.OperationLog, error)
+	Delete(ctx context.Context, id uint64) error
+	BatchDelete(ctx context.Context, ids []uint64) error
 	GetPage(ctx context.Context, query *LogPageQuery) (*LogPageResult, error)
 }
 
@@ -51,6 +53,21 @@ func (s *operationLogService) GetByID(ctx context.Context, id uint64) (*model.Op
 		return nil, mapRepoError(err)
 	}
 	return log, nil
+}
+
+func (s *operationLogService) Delete(ctx context.Context, id uint64) error {
+	if _, err := s.repo.GetByID(ctx, id); err != nil {
+		return mapRepoError(err)
+	}
+	return s.repo.Delete(ctx, id)
+}
+
+func (s *operationLogService) BatchDelete(ctx context.Context, ids []uint64) error {
+	uniqueIDs, err := normalizeBatchIDs(ids)
+	if err != nil {
+		return err
+	}
+	return s.repo.BatchDelete(ctx, uniqueIDs)
 }
 
 func (s *operationLogService) GetPage(ctx context.Context, query *LogPageQuery) (*LogPageResult, error) {

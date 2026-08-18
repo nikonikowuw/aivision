@@ -29,6 +29,8 @@ type UserRepository interface {
 	ListPage(ctx context.Context, filter *UserFilter) ([]model.User, int64, error)
 	ReplaceRoles(ctx context.Context, userID uint64, roleIDs []uint64) error
 	GetRoleIDs(ctx context.Context, userID uint64) ([]uint64, error)
+	BatchDelete(ctx context.Context, ids []uint64) error
+	BatchUpdateStatus(ctx context.Context, ids []uint64, status int8) error
 }
 
 type userRepository struct {
@@ -58,6 +60,28 @@ func (r *userRepository) Delete(ctx context.Context, id uint64) error {
 		}
 		return nil
 	})
+}
+
+func (r *userRepository) BatchDelete(ctx context.Context, ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id IN ?", ids).Delete(&model.User{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id IN ?", ids).Delete(&model.UserRole{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (r *userRepository) BatchUpdateStatus(ctx context.Context, ids []uint64, status int8) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return writeError(r.db.WithContext(ctx).Model(&model.User{}).Where("id IN ?", ids).Update("status", status).Error)
 }
 
 func (r *userRepository) GetByID(ctx context.Context, id uint64) (*model.User, error) {

@@ -49,3 +49,38 @@ func (h *OperationLogHandler) GetByID(c *gin.Context) {
 	}
 	response.Success(c, logItem)
 }
+
+// Delete 删除操作日志 (DELETE /api/oplog/:id)
+func (h *OperationLogHandler) Delete(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+
+	if err := h.srv.Delete(c.Request.Context(), id); err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, nil)
+}
+
+// BatchDeleteLogRequest 批量删除日志请求体。
+type BatchDeleteLogRequest struct {
+	IDs []uint64 `json:"ids" binding:"required,min=1,dive,gt=0"`
+}
+
+// BatchDelete 批量删除操作日志 (DELETE /api/oplog/batch)
+func (h *OperationLogHandler) BatchDelete(c *gin.Context) {
+	var req BatchDeleteLogRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+
+	if err := h.srv.BatchDelete(c.Request.Context(), req.IDs); err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, nil)
+}

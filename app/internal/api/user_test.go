@@ -25,6 +25,10 @@ func setupUserAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 	gin.SetMode(gin.TestMode)
 
 	db := newTestAPIDB(t, "user")
+	admin := model.User{BaseModel: model.BaseModel{ID: model.AdminUserID}, Username: model.AdminUsername, Status: model.StatusEnabled}
+	if err := db.Create(&admin).Error; err != nil {
+		t.Fatalf("create reserved admin: %v", err)
+	}
 
 	userRepo := repository.NewUserRepository(db)
 	deptRepo := repository.NewDepartmentRepository(db)
@@ -37,6 +41,8 @@ func setupUserAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 	{
 		group.GET("/page", handler.GetPage)
 		group.POST("", handler.CreateUser)
+		group.DELETE("/batch", handler.BatchDeleteUser)
+		group.PUT("/batch-status", handler.BatchUpdateStatus)
 		group.PUT("/:id", handler.UpdateUser)
 		group.DELETE("/:id", handler.DeleteUser)
 		group.PUT("/:id/reset-password", handler.ResetPassword)
@@ -168,9 +174,9 @@ func TestUserAPI_CRUDAndProtection(t *testing.T) {
 	}
 
 	// 10. admin 账号保护
-	admin := model.User{Username: "admin", Status: model.StatusEnabled}
-	if err := db.Create(&admin).Error; err != nil {
-		t.Fatalf("create admin: %v", err)
+	var admin model.User
+	if err := db.First(&admin, model.AdminUserID).Error; err != nil {
+		t.Fatalf("find admin: %v", err)
 	}
 	// 禁用 admin 失败 → 1015
 	if _, code := doUserRequest(t, engine, http.MethodPut, fmt.Sprintf("/api/user/%d/status", admin.ID), `{"status":0}`); code != errno.CodeAdminUserProtected {
@@ -179,5 +185,42 @@ func TestUserAPI_CRUDAndProtection(t *testing.T) {
 	// 删除 admin 失败 → 1015
 	if _, code := doUserRequest(t, engine, http.MethodDelete, fmt.Sprintf("/api/user/%d", admin.ID), ""); code != errno.CodeAdminUserProtected {
 		t.Fatalf("delete admin: code = %d, want 1015", code)
+	}
+
+	// 11. 批量操作测试
+	u1 := model.User{Username: "user1", Status: model.StatusEnabled}
+	u2 := model.User{Username: "user2", Status: model.StatusEnabled}
+	db.Create(&u1)
+	db.Create(&u2)
+
+	// 空数组、零 ID 和省略 status 均拒绝
+	if _, code := doUserRequest(t, engine, http.MethodPut, "/api/user/batch-status", fmt.Sprintf(`{"ids":[%d]}`, u1.ID)); code != errno.CodeInvalidParam {
+		t.Fatalf("batch status without status: code = %d, want 1009", code)
+	}
+	if _, code := doUserRequest(t, engine, http.MethodPut, "/api/user/batch-status", `{"ids":[0],"status":1}`); code != errno.CodeInvalidParam {
+		t.Fatalf("batch status with zero id: code = %d, want 1009", code)
+	}
+	if _, code := doUserRequest(t, engine, http.MethodDelete, "/api/user/batch", `{"ids":[]}`); code != errno.CodeInvalidParam {
+		t.Fatalf("batch delete empty ids: code = %d, want 1009", code)
+	}
+
+	// 批量禁用含 admin 拦截 -> 1015
+	if _, code := doUserRequest(t, engine, http.MethodPut, "/api/user/batch-status", fmt.Sprintf(`{"ids":[%d,%d],"status":0}`, u1.ID, admin.ID)); code != errno.CodeAdminUserProtected {
+		t.Fatalf("batch disable with admin: code = %d, want 1015", code)
+	}
+
+	// 批量禁用正常
+	if _, code := doUserRequest(t, engine, http.MethodPut, "/api/user/batch-status", fmt.Sprintf(`{"ids":[%d,%d],"status":0}`, u1.ID, u2.ID)); code != errno.CodeOK {
+		t.Fatalf("batch disable: code = %d, want 0", code)
+	}
+
+	// 批量删除含 admin 拦截 -> 1015
+	if _, code := doUserRequest(t, engine, http.MethodDelete, "/api/user/batch", fmt.Sprintf(`{"ids":[%d,%d]}`, u1.ID, admin.ID)); code != errno.CodeAdminUserProtected {
+		t.Fatalf("batch delete with admin: code = %d, want 1015", code)
+	}
+
+	// 批量删除正常
+	if _, code := doUserRequest(t, engine, http.MethodDelete, "/api/user/batch", fmt.Sprintf(`{"ids":[%d,%d]}`, u1.ID, u2.ID)); code != errno.CodeOK {
+		t.Fatalf("batch delete: code = %d, want 0", code)
 	}
 }

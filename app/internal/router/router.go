@@ -15,25 +15,27 @@ import (
 )
 
 const (
-	apiRoutePath      = "/api"
-	authRoutePath     = "/auth"
-	loginRoutePath    = "/login"
-	refreshRoutePath  = "/refresh"
-	logoutRoutePath   = "/logout"
-	codesRoutePath    = "/codes"
-	infoRoutePath     = "/info"
-	menuRoutePath     = "/menu"
-	roleRoutePath     = "/role"
-	deptRoutePath     = "/dept"
-	oplogRoutePath    = "/oplog"
-	pageRoutePath     = "/page"
-	idRoutePath       = "/:id"
-	userRoutePath     = "/user"
-	menuIDsRoutePath  = "/menu-ids"
-	menusRoutePath    = "/menus"
-	rolesRoutePath    = "/roles"
-	statusRoutePath   = "/status"
-	resetPasswordPath = "/reset-password"
+	apiRoutePath         = "/api"
+	authRoutePath        = "/auth"
+	loginRoutePath       = "/login"
+	refreshRoutePath     = "/refresh"
+	logoutRoutePath      = "/logout"
+	codesRoutePath       = "/codes"
+	infoRoutePath        = "/info"
+	menuRoutePath        = "/menu"
+	roleRoutePath        = "/role"
+	deptRoutePath        = "/dept"
+	oplogRoutePath       = "/oplog"
+	pageRoutePath        = "/page"
+	idRoutePath          = "/:id"
+	userRoutePath        = "/user"
+	menuIDsRoutePath     = "/menu-ids"
+	menusRoutePath       = "/menus"
+	rolesRoutePath       = "/roles"
+	statusRoutePath      = "/status"
+	resetPasswordPath    = "/reset-password"
+	batchRoutePath       = "/batch"
+	batchStatusRoutePath = "/batch-status"
 )
 
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
@@ -98,6 +100,8 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			userGroup.GET(infoRoutePath, deps.AuthHandler.GetUserInfo)
 			userGroup.GET(pageRoutePath, deps.UserHandler.GetPage)
 			userGroup.POST("", deps.UserHandler.CreateUser)
+			userGroup.DELETE(batchRoutePath, deps.UserHandler.BatchDeleteUser)
+			userGroup.PUT(batchStatusRoutePath, deps.UserHandler.BatchUpdateStatus)
 			userGroup.PUT(idRoutePath, deps.UserHandler.UpdateUser)
 			userGroup.DELETE(idRoutePath, deps.UserHandler.DeleteUser)
 			userGroup.PUT(idRoutePath+resetPasswordPath, deps.UserHandler.ResetPassword)
@@ -106,6 +110,8 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			userGroup.PUT(idRoutePath+statusRoutePath, deps.UserHandler.UpdateStatus)
 		}
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+userRoutePath, "system:user:add")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+userRoutePath+batchRoutePath, "system:user:delete")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+batchStatusRoutePath, "system:user:status")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+idRoutePath, "system:user:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+userRoutePath+idRoutePath, "system:user:delete")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+idRoutePath+resetPasswordPath, "system:user:reset-password")
@@ -128,12 +134,14 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		{
 			roleGroup.GET(pageRoutePath, deps.RoleHandler.GetPage)
 			roleGroup.POST("", deps.RoleHandler.CreateRole)
+			roleGroup.DELETE(batchRoutePath, deps.RoleHandler.BatchDeleteRole)
 			roleGroup.PUT(idRoutePath, deps.RoleHandler.UpdateRole)
 			roleGroup.DELETE(idRoutePath, deps.RoleHandler.DeleteRole)
 			roleGroup.GET(idRoutePath+menuIDsRoutePath, deps.RoleHandler.GetMenuIDs)
 			roleGroup.PUT(idRoutePath+menusRoutePath, deps.RoleHandler.AssignMenus)
 		}
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+roleRoutePath, "system:role:add")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+roleRoutePath+batchRoutePath, "system:role:delete")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+roleRoutePath+idRoutePath, "system:role:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+roleRoutePath+idRoutePath, "system:role:delete")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+roleRoutePath+idRoutePath+menusRoutePath, "system:role:assign-menu")
@@ -152,10 +160,14 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		oplogGroup := apiGroup.Group(oplogRoutePath)
 		{
 			oplogGroup.GET(pageRoutePath, deps.OperationLogHandler.GetPage)
+			oplogGroup.DELETE(batchRoutePath, deps.OperationLogHandler.BatchDelete)
 			oplogGroup.GET(idRoutePath, deps.OperationLogHandler.GetByID)
+			oplogGroup.DELETE(idRoutePath, deps.OperationLogHandler.Delete)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+pageRoutePath, "system:log")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+oplogRoutePath+batchRoutePath, "system:log")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
 	}
 
 	return engine

@@ -36,6 +36,7 @@ type RoleRepository interface {
 	Update(ctx context.Context, role *model.Role) error
 	Delete(ctx context.Context, id uint64) error
 	GetByID(ctx context.Context, id uint64) (*model.Role, error)
+	GetByCode(ctx context.Context, code string) (*model.Role, error)
 	GetByIDs(ctx context.Context, ids []uint64) ([]model.Role, error)
 	ListPage(ctx context.Context, filter *RoleFilter) ([]model.Role, int64, error)
 	GetMenuIDs(ctx context.Context, roleID uint64) ([]uint64, error)
@@ -99,6 +100,17 @@ func (r *roleRepository) BatchDelete(ctx context.Context, ids []uint64) error {
 func (r *roleRepository) GetByID(ctx context.Context, id uint64) (*model.Role, error) {
 	var role model.Role
 	if err := r.db.WithContext(ctx).First(&role, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &role, nil
+}
+
+func (r *roleRepository) GetByCode(ctx context.Context, code string) (*model.Role, error) {
+	var role model.Role
+	if err := r.db.WithContext(ctx).Where("code = ?", code).First(&role).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}

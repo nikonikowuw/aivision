@@ -169,6 +169,15 @@ func (s *userService) CreateUser(ctx context.Context, input *SaveUserInput) (*mo
 		return nil, errno.NewError(errno.CodeInvalidParam)
 	}
 
+	// 检查活动用户中是否已存在该用户名
+	if existing, err := s.userRepo.GetByUsername(ctx, input.Username); err == nil {
+		if existing.ID != 0 {
+			return nil, errno.NewError(errno.CodeUsernameTaken)
+		}
+	} else if !errors.Is(err, repository.ErrNotFound) {
+		return nil, mapRepoError(err)
+	}
+
 	// 校验部门存在性
 	if input.DeptID > 0 {
 		if _, err := s.deptRepo.GetByID(ctx, input.DeptID); err != nil {
@@ -202,10 +211,7 @@ func (s *userService) CreateUser(ctx context.Context, input *SaveUserInput) (*mo
 	}
 
 	if err := s.userRepo.Create(ctx, u); err != nil {
-		if errors.Is(err, repository.ErrDuplicateKey) {
-			return nil, errno.NewError(errno.CodeUsernameTaken)
-		}
-		return nil, err
+		return nil, mapRepoError(err)
 	}
 	return u, nil
 }
@@ -228,6 +234,17 @@ func (s *userService) UpdateUser(ctx context.Context, id uint64, input *SaveUser
 		}
 		if input.Status != nil && *input.Status == model.StatusDisabled {
 			return nil, errno.NewError(errno.CodeAdminUserProtected)
+		}
+	}
+
+	// 检查活动用户中是否已存在该用户名
+	if input.Username != u.Username {
+		if existing, err := s.userRepo.GetByUsername(ctx, input.Username); err == nil {
+			if existing.ID != 0 && existing.ID != id {
+				return nil, errno.NewError(errno.CodeUsernameTaken)
+			}
+		} else if !errors.Is(err, repository.ErrNotFound) {
+			return nil, mapRepoError(err)
 		}
 	}
 
@@ -269,10 +286,7 @@ func (s *userService) UpdateUser(ctx context.Context, id uint64, input *SaveUser
 	}
 
 	if err := s.userRepo.Update(ctx, u, updates); err != nil {
-		if errors.Is(err, repository.ErrDuplicateKey) {
-			return nil, errno.NewError(errno.CodeUsernameTaken)
-		}
-		return nil, err
+		return nil, mapRepoError(err)
 	}
 
 	return u, nil

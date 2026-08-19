@@ -62,9 +62,7 @@ func TestUserServiceCRUD(t *testing.T) {
 	_, err = srv.CreateUser(ctx, &SaveUserInput{
 		Username: "testuser",
 	})
-	if err != nil {
-		wantErrCode(t, err, errno.CodeUsernameTaken)
-	}
+	wantErrCode(t, err, errno.CodeUsernameTaken)
 
 	// 3. 创建用户时绑定不存在的部门 → 1011
 	_, err = srv.CreateUser(ctx, &SaveUserInput{
@@ -114,9 +112,7 @@ func TestUserServiceCRUD(t *testing.T) {
 	_, err = srv.UpdateUser(ctx, u2.ID, &SaveUserInput{
 		Username: "testuser_updated",
 	})
-	if err != nil {
-		wantErrCode(t, err, errno.CodeUsernameTaken)
-	}
+	wantErrCode(t, err, errno.CodeUsernameTaken)
 
 	// 7. 分配角色（成功与失败）与查询绑定的角色 ID
 	if err := srv.AssignRoles(ctx, u.ID, []uint64{role.ID}); err != nil {

@@ -188,15 +188,11 @@ func TestRoleServiceCodeUnique(t *testing.T) {
 
 	// 创建重复 code → 1004。
 	_, err = srv.CreateRole(ctx, &SaveRoleInput{Name: "编辑2", Code: "editor"})
-	if err != nil {
-		wantErrCode(t, err, errno.CodeRoleCodeTaken)
-	}
+	wantErrCode(t, err, errno.CodeRoleCodeTaken)
 
 	// 编辑改成他人 code → 1004。
 	_, err = srv.UpdateRole(ctx, other.ID, &SaveRoleInput{Name: "运营", Code: "editor"})
-	if err != nil {
-		wantErrCode(t, err, errno.CodeRoleCodeTaken)
-	}
+	wantErrCode(t, err, errno.CodeRoleCodeTaken)
 
 	// 编辑保持自身 code → 成功。
 	if _, err := srv.UpdateRole(ctx, other.ID, &SaveRoleInput{Name: "运营2", Code: "operator"}); err != nil {
@@ -216,9 +212,7 @@ func TestRoleServiceCodeUnique(t *testing.T) {
 	// 编辑改成已软删角色的 code：因为可以重复，但是这里我们假设如果软删了我们是可以改成那个 code 的，
 	// 但是因为上面又创建了一个新的 "operator"，所以这次应该报错 1004。
 	_, err = srv.UpdateRole(ctx, editor.ID, &SaveRoleInput{Name: "编辑", Code: "operator"})
-	if err != nil {
-		wantErrCode(t, err, errno.CodeRoleCodeTaken)
-	}
+	wantErrCode(t, err, errno.CodeRoleCodeTaken)
 }
 
 func TestRoleServiceSuperProtection(t *testing.T) {
@@ -392,9 +386,7 @@ func TestRoleServiceInputNormalization(t *testing.T) {
 
 	// Create another role with spaces to trigger unique code error
 	_, err = srv.CreateRole(ctx, &SaveRoleInput{Name: "编辑2", Code: " editor "})
-	if err != nil {
-		wantErrCode(t, err, errno.CodeRoleCodeTaken)
-	}
+	wantErrCode(t, err, errno.CodeRoleCodeTaken)
 }
 
 // TestRoleServicePermissionUnion 锁定权限码并集计算四契约：

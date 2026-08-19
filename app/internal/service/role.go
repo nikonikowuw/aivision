@@ -100,8 +100,17 @@ func (s *roleService) CreateRole(ctx context.Context, input *SaveRoleInput) (*mo
 	var role model.Role
 	input.FillModel(&role)
 
+	// 检查活动角色中是否已存在该 code
+	if existing, err := s.roleRepo.GetByCode(ctx, role.Code); err == nil {
+		if existing.ID != 0 {
+			return nil, errno.NewError(errno.CodeRoleCodeTaken)
+		}
+	} else if !errors.Is(err, repository.ErrNotFound) {
+		return nil, mapRepoError(err)
+	}
+
 	if err := s.roleRepo.Create(ctx, &role); err != nil {
-		return nil, mapDuplicateKey(err)
+		return nil, mapRepoError(err)
 	}
 	return &role, nil
 }
@@ -126,10 +135,21 @@ func (s *roleService) UpdateRole(ctx context.Context, id uint64, input *SaveRole
 		}
 	}
 
+	// 检查活动角色中是否已存在该 code（如果 code 变了）
+	if role.Code != input.Code {
+		if existing, err := s.roleRepo.GetByCode(ctx, input.Code); err == nil {
+			if existing.ID != 0 && existing.ID != id {
+				return nil, errno.NewError(errno.CodeRoleCodeTaken)
+			}
+		} else if !errors.Is(err, repository.ErrNotFound) {
+			return nil, mapRepoError(err)
+		}
+	}
+
 	input.FillModel(role)
 
 	if err := s.roleRepo.Update(ctx, role); err != nil {
-		return nil, mapDuplicateKey(err)
+		return nil, mapRepoError(err)
 	}
 	return role, nil
 }
@@ -205,7 +225,6 @@ func (s *roleService) AssignMenus(ctx context.Context, id uint64, menuIDs []uint
 }
 
 // normalizeSaveRoleInput 去除 name/code 首尾空白并校验非空：
-// binding:required 只挡空字符串，挡不住纯空白输入，这里兜底并规范入库值。
 func normalizeSaveRoleInput(input *SaveRoleInput) error {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Code = strings.TrimSpace(input.Code)
@@ -213,15 +232,6 @@ func normalizeSaveRoleInput(input *SaveRoleInput) error {
 		return errno.NewError(errno.CodeInvalidParam)
 	}
 	return nil
-}
-
-// mapDuplicateKey 把 repository 唯一约束冲突映射为 1004：code 唯一索引兜底拦截
-// 所有重复场景（含软删行占位、并发竞争），避免对用户暴露 500。
-func mapDuplicateKey(err error) error {
-	if errors.Is(err, repository.ErrDuplicateKey) {
-		return errno.NewError(errno.CodeRoleCodeTaken)
-	}
-	return err
 }
 
 // normalizeBatchIDs 校验批量请求 ID 均为正数，并去除重复项。

@@ -79,8 +79,13 @@ SQL 脚本**。
   `user_roles`、`refresh_tokens`、`operation_logs`）。
 - 列：每个字段显式声明 `gorm:"column:snake_case"` 标签；JSON 标签为 camelCase
   （`json:"deptId"`）。
-- 共享字段：可软删除的业务表内嵌 `BaseModel`（ID + 时间戳 + 软删除
-  `DeletedAt`）；不可软删除的表（`refresh_tokens`、`operation_logs`）使用
+- 软删除与高并发安全（CRITICAL）：
+  - 凡是需要唯一性约束（如 `users.username`、`roles.code`）且需要软删除的模型，**绝对禁止**使用 GORM 原生的 `gorm.DeletedAt`（其底层使用 `NULL` 标识活跃记录）。
+  - 必须使用 `gorm.io/plugin/soft_delete` 插件，约定 `deleted_at = 0` 表示活跃，非 `0` 时间戳表示已删除。
+  - 这是因为在 PostgreSQL 和 SQLite 中，唯一索引里的 `NULL` 不等于 `NULL`。如果使用原生 `DeletedAt`，当并发插入相同数据时（或高并发事务中），带有 `NULL` 的复合唯一索引（如 `(username, deleted_at)`）不会拦截重复数据，从而引发 Race Condition 插入多个相同的活跃用户名。
+  - 只有使用 `deleted_at = 0`，数据库级别的唯一约束才能在高并发下稳定生效，阻挡脏数据；同时已删除记录带有不同时间戳，互不冲突。
+  - 查询这些表时，必须显式或通过插件自动应用 `deleted_at = 0` 来过滤活跃记录，不得使用 `deleted_at IS NULL`。
+- 共享字段：内嵌 `BaseModel` 必须使用 soft_delete 插件的 `soft_delete.DeletedAt`；不可软删除的表（`refresh_tokens`、`operation_logs`）使用
   `TimeFields`（仅时间戳）。
 - 枚举：字符串常量并带 `String()` 风格的契约，例如 `menus.type` 为
   `catalog|menu|button`（`MenuTypeCatalog` 等）。不要为简单的字符串列发明新的
@@ -97,6 +102,7 @@ SQL 脚本**。
   驱动映射。
 - **不要添加外键** —— 本项目刻意只使用逻辑关系。
 - **不要依赖** gorm 对表/列的默认命名；始终显式声明 `TableName()` 和列标签。
+- **不要使用原生的 `gorm.DeletedAt`** — 带有唯一约束的模型必须使用 `gorm.io/plugin/soft_delete` 且 `deleted_at = 0` 表示活跃，否则高并发下唯一索引对 `NULL` 无效会导致重复插入的安全漏洞。
 - 改动 `seed.go` 时**不要跳过** seed 幂等性保护——它绝不能覆盖用户对
   menus/roles 的修改。
 - **不要修改** `seedMenuTree` 中已有的权限码——它是前端权限的唯一契约

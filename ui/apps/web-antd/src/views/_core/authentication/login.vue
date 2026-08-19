@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
-import type { BasicOption } from '@vben/types';
 
 import { computed, markRaw } from 'vue';
 
@@ -13,49 +12,12 @@ defineOptions({ name: 'Login' });
 
 const authStore = useAuthStore();
 
-const MOCK_USER_OPTIONS: BasicOption[] = [
-  {
-    label: 'Admin (admin / admin123)',
-    value: 'admin',
-  },
-];
-
 const formSchema = computed((): VbenFormSchema[] => {
   return [
-    {
-      component: 'VbenSelect',
-      componentProps: {
-        options: MOCK_USER_OPTIONS,
-        placeholder: $t('authentication.selectAccount'),
-      },
-      fieldName: 'selectAccount',
-      label: $t('authentication.selectAccount'),
-      rules: z
-        .string()
-        .min(1, { message: $t('authentication.selectAccount') })
-        .optional()
-        .default('vben'),
-    },
     {
       component: 'VbenInput',
       componentProps: {
         placeholder: $t('authentication.usernameTip'),
-      },
-      dependencies: {
-        trigger(values, form) {
-          if (values.selectAccount) {
-            const findUser = MOCK_USER_OPTIONS.find(
-              (item) => item.value === values.selectAccount,
-            );
-            if (findUser) {
-              form.setValues({
-                password: '123456',
-                username: findUser.value,
-              });
-            }
-          }
-        },
-        triggerFields: ['selectAccount'],
       },
       fieldName: 'username',
       label: $t('authentication.username'),
@@ -85,6 +47,11 @@ const formSchema = computed((): VbenFormSchema[] => {
   <AuthenticationLogin
     :form-schema="formSchema"
     :loading="authStore.loginLoading"
+    :show-code-login="false"
+    :show-forget-password="false"
+    :show-qrcode-login="false"
+    :show-register="false"
+    :show-third-party-login="false"
     @submit="authStore.authLogin"
   />
 </template>

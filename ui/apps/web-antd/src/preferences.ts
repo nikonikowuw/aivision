@@ -1,5 +1,4 @@
 import {
-  appCopyrightPreferences,
   defineOverridesPreferences,
   definePreferencesExtension,
 } from '@vben/preferences';
@@ -23,7 +22,14 @@ export const overridesPreferences = defineOverridesPreferences({
     defaultHomePath: '/dashboard',
     name: import.meta.env.VITE_APP_TITLE,
   },
-  copyright: appCopyrightPreferences,
+  copyright: {
+    companyName: '',
+    companySiteLink: '',
+    date: '',
+    enable: false,
+    icp: '',
+    icpLink: '',
+  },
   shortcutKeys: {
     enable: true,
     globalEscape: true,

@@ -4,13 +4,18 @@ package errno
 import "strings"
 
 // DefaultLang 默认文案语言；未指定或未收录语言时回退到它。
-// 取值对齐前端 vben preferences.app.locale（zh-CN / en-US）。
+// 取值对齐前端 vben preferences.app.locale（zh-CN / en-US / zh-TW）。
 const DefaultLang = "zh-CN"
 
 // supportedLangs 支持文案的语言表：key 为小写规范形，value 为对外语言标识。
 var supportedLangs = map[string]string{
-	"zh-cn": "zh-CN",
-	"en-us": "en-US",
+	"zh-cn":   "zh-CN",
+	"zh-tw":   "zh-TW",
+	"zh-hk":   "zh-TW",
+	"zh-mo":   "zh-TW",
+	"zh-hant": "zh-TW",
+	"zh-hans": "zh-CN",
+	"en-us":   "en-US",
 }
 
 const (
@@ -91,12 +96,34 @@ var messages = map[string]map[int]string{
 		CodeAdminUserProtected: "Super admin user is protected and cannot be deleted, disabled, or renamed",
 		CodeInternal:           "Internal server error",
 	},
+	"zh-TW": {
+		unknownCode:            "未知錯誤",
+		CodeOK:                 "ok",
+		CodeUnauthorized:       "未認證或 token 已失效",
+		CodeForbidden:          "無權限",
+		CodeBadCredential:      "使用者名稱或密碼錯誤",
+		CodeUserNotFound:       "使用者不存在",
+		CodeUsernameTaken:      "使用者名稱已存在",
+		CodeRoleCodeTaken:      "角色代碼已存在",
+		CodeWrongOldPassword:   "舊密碼錯誤",
+		CodeMenuHasChildren:    "選單存在子節點，無法刪除",
+		CodeDeptHasChildren:    "部門存在子部門，無法刪除",
+		CodeUserDisabled:       "使用者已被停用",
+		CodeInvalidParam:       "請求參數錯誤",
+		CodeParentIsSelf:       "父節點不能是自身",
+		CodeNotFound:           "資源不存在",
+		CodeMethodNotAllowed:   "請求方法不允許",
+		CodeParentIsDescendant: "父節點不能是當前節點的後代",
+		CodeSuperRoleProtected: "超級管理員角色不可刪除、停用或修改編碼",
+		CodeAdminUserProtected: "超級管理員帳號受系統保護，不可刪除、停用或修改使用者名稱",
+		CodeInternal:           "伺服器內部錯誤",
+	},
 }
 
 // LangFromHeader 从 Accept-Language 请求头解析出支持的语言。
 // 浏览器会发送 "zh-CN,zh;q=0.9,en;q=0.8" 这类带逗号与 q 权重的列表，
 // 不能把原始 header 直接当 lang 用：取首个 tag、去掉 q 权重、大小写不敏感匹配；
-// 仅基础 tag（如 en/zh）时按前缀匹配；无匹配回退 DefaultLang。
+// 仅基础 tag（如 en/zh）时按前缀/变体匹配；无匹配回退 DefaultLang。
 func LangFromHeader(header string) string {
 	if header == "" {
 		return DefaultLang
@@ -112,15 +139,19 @@ func LangFromHeader(header string) string {
 	if lang, ok := supportedLangs[tag]; ok {
 		return lang
 	}
-	// 基础 tag 前缀匹配：en → en-US，zh → zh-CN。
+	// 基础 tag / 变体前缀匹配：en → en-US，zh-TW/HK/Hant/MO → zh-TW，zh → zh-CN。
 	base := tag
 	if i := strings.IndexByte(base, '-'); i >= 0 {
 		base = base[:i]
 	}
-	for k, lang := range supportedLangs {
-		if strings.HasPrefix(k, base) {
-			return lang
+	switch base {
+	case "zh":
+		if strings.Contains(tag, "tw") || strings.Contains(tag, "hk") || strings.Contains(tag, "hant") || strings.Contains(tag, "mo") {
+			return "zh-TW"
 		}
+		return "zh-CN"
+	case "en":
+		return "en-US"
 	}
 	return DefaultLang
 }

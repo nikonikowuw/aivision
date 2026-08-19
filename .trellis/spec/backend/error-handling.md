@@ -22,7 +22,7 @@
 ### 文案 i18n 约定
 
 - 文案在 `errno` 内**按语言分组维护**：`messages` 是 `map[语言]map[错误码]文案`，
-  当前支持 `zh-CN`（默认）/ `en-US`，取值对齐前端 vben `preferences.app.locale`。
+  当前支持 `zh-CN`（默认）/ `en-US` / `zh-TW`，取值对齐前端 vben `preferences.app.locale`。
 - 取文案统一走 `errno.Message(lang, code)`；`lang` 缺失或未收录时回退
   `errno.DefaultLang`（`zh-CN`），未知错误码返回对应语言的兜底文案。
 - **语言来源**：中间件用 `errno.LangFromHeader(header)` 解析请求头

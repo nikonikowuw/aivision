@@ -10,12 +10,15 @@ func TestMessageByLanguage(t *testing.T) {
 		want string
 	}{
 		{"zh-CN hit", "zh-CN", CodeBadCredential, "用户名或密码错误"},
+		{"zh-TW hit", "zh-TW", CodeBadCredential, "使用者名稱或密碼錯誤"},
 		{"en-US hit", "en-US", CodeBadCredential, "Invalid username or password"},
 		{"empty lang falls back to default", "", CodeBadCredential, "用户名或密码错误"},
 		{"unknown lang falls back to default", "fr-FR", CodeBadCredential, "用户名或密码错误"},
 		{"unknown code zh", "zh-CN", 9999, "未知错误"},
+		{"unknown code zh-tw", "zh-TW", 9999, "未知錯誤"},
 		{"unknown code en", "en-US", 9999, "Unknown error"},
 		{"success message invariant", "en-US", CodeOK, "ok"},
+		{"success message invariant zh-tw", "zh-TW", CodeOK, "ok"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -34,13 +37,18 @@ func TestLangFromHeader(t *testing.T) {
 	}{
 		{"empty", "", DefaultLang},
 		{"single zh-CN", "zh-CN", "zh-CN"},
+		{"single zh-TW", "zh-TW", "zh-TW"},
+		{"single zh-HK", "zh-HK", "zh-TW"},
+		{"single zh-Hant", "zh-Hant", "zh-TW"},
 		{"single en-US", "en-US", "en-US"},
 		{"browser list zh", "zh-CN,zh;q=0.9,en;q=0.8", "zh-CN"},
+		{"browser list zh-tw", "zh-TW,zh;q=0.9,en;q=0.8", "zh-TW"},
 		{"browser list en", "en-US,en;q=0.9", "en-US"},
 		{"q weight only", "en;q=0.9", "en-US"},
 		{"base tag en", "en", "en-US"},
 		{"base tag zh", "zh", "zh-CN"},
 		{"case-insensitive", "EN-us", "en-US"},
+		{"case-insensitive zh-tw", "ZH-tw", "zh-TW"},
 		{"surrounding spaces", "  zh-CN , zh;q=0.8", "zh-CN"},
 		{"unsupported falls back", "fr-FR,fr;q=0.9", DefaultLang},
 		{"wildcard", "*", DefaultLang},

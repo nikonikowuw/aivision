@@ -44,6 +44,9 @@
     "assignRoleSuccess": "角色分配成功",
     "addUser": "新增用户",
     "editUser": "编辑用户",
+    "deleteUser": "删除用户",
+    "status": "修改用户状态",
+    "batchStatus": "批量修改用户状态",
     "userDetail": "用户详情",
     "usernameMin": "用户名至少2位",
     "statusChangeSuccess": "{status}用户成功",
@@ -54,11 +57,12 @@
     "name": "角色名称",
     "code": "角色编码",
     "codePlaceholder": "如 admin, test_role",
-    "assignMenu": "菜单权限",
+    "assignMenu": "分配菜单权限",
     "assignMenuTitle": "分配菜单权限",
     "assignMenuSuccess": "菜单权限分配成功",
     "addRole": "新增角色",
     "editRole": "编辑角色",
+    "deleteRole": "删除角色",
     "roleDetail": "角色详情",
     "confirmDelete": "确认删除该角色？",
     "nameRequired": "请输入角色名称",
@@ -86,6 +90,7 @@
     "icon": "菜单图标",
     "addMenu": "新增菜单",
     "editMenu": "编辑菜单",
+    "deleteMenu": "删除菜单",
     "addSubItem": "新增子项",
     "menuDetail": "菜单详情",
     "confirmDelete": "确认删除该菜单/权限项？",
@@ -103,6 +108,7 @@
     "phone": "联系电话",
     "addDept": "新增部门",
     "editDept": "编辑部门",
+    "deleteDept": "删除部门",
     "addSubDept": "新增子项",
     "deptDetail": "部门详情",
     "confirmDelete": "确认删除该部门？（若有子部门将无法删除）"
@@ -123,6 +129,9 @@
     "logId": "日志 ID",
     "queryParams": "Query 参数",
     "requestBody": "请求 Body (脱敏)",
-    "userAgent": "User-Agent"
+    "userAgent": "User-Agent",
+    "actionLogin": "用户登录",
+    "actionLogout": "用户登出",
+    "actionRefreshToken": "刷新令牌"
   }
 }

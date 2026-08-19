@@ -160,14 +160,10 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		oplogGroup := apiGroup.Group(oplogRoutePath)
 		{
 			oplogGroup.GET(pageRoutePath, deps.OperationLogHandler.GetPage)
-			oplogGroup.DELETE(batchRoutePath, deps.OperationLogHandler.BatchDelete)
 			oplogGroup.GET(idRoutePath, deps.OperationLogHandler.GetByID)
-			oplogGroup.DELETE(idRoutePath, deps.OperationLogHandler.Delete)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+pageRoutePath, "system:log")
-		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+oplogRoutePath+batchRoutePath, "system:log")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
-		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
 	}
 
 	return engine

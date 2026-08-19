@@ -44,6 +44,9 @@
     "assignRoleSuccess": "Roles assigned successfully",
     "addUser": "Add User",
     "editUser": "Edit User",
+    "deleteUser": "Delete User",
+    "status": "Update User Status",
+    "batchStatus": "Batch Update User Status",
     "userDetail": "User Detail",
     "usernameMin": "Username must be at least 2 characters",
     "statusChangeSuccess": "User {status} successfully",
@@ -54,11 +57,12 @@
     "name": "Role Name",
     "code": "Role Code",
     "codePlaceholder": "e.g. admin, test_role",
-    "assignMenu": "Menu Permission",
+    "assignMenu": "Assign Menu Permissions",
     "assignMenuTitle": "Assign Menu Permissions",
     "assignMenuSuccess": "Menu permissions assigned successfully",
     "addRole": "Add Role",
     "editRole": "Edit Role",
+    "deleteRole": "Delete Role",
     "roleDetail": "Role Detail",
     "confirmDelete": "Are you sure to delete this role?",
     "nameRequired": "Please enter role name",
@@ -86,6 +90,7 @@
     "icon": "Menu Icon",
     "addMenu": "Add Menu",
     "editMenu": "Edit Menu",
+    "deleteMenu": "Delete Menu",
     "addSubItem": "Add Sub Item",
     "menuDetail": "Menu Detail",
     "confirmDelete": "Are you sure to delete this item?",
@@ -103,6 +108,7 @@
     "phone": "Phone",
     "addDept": "Add Department",
     "editDept": "Edit Department",
+    "deleteDept": "Delete Department",
     "addSubDept": "Add Sub Department",
     "deptDetail": "Department Detail",
     "confirmDelete": "Are you sure to delete this department? (Cannot delete if has sub-departments)"
@@ -123,6 +129,9 @@
     "logId": "Log ID",
     "queryParams": "Query Params",
     "requestBody": "Request Body (Masked)",
-    "userAgent": "User-Agent"
+    "userAgent": "User-Agent",
+    "actionLogin": "User Login",
+    "actionLogout": "User Logout",
+    "actionRefreshToken": "Refresh Token"
   }
 }

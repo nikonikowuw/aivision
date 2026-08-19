@@ -92,6 +92,9 @@ func setupMiddlewareTestApp(t *testing.T) (*gin.Engine, *gorm.DB, service.Operat
 			userGroup.POST("", func(c *gin.Context) {
 				response.Success(c, "user created")
 			})
+			userGroup.PUT("/batch-status", func(c *gin.Context) {
+				response.Success(c, "user status updated")
+			})
 			userGroup.DELETE("/:id", func(c *gin.Context) {
 				response.Success(c, "user deleted")
 			})
@@ -100,6 +103,7 @@ func setupMiddlewareTestApp(t *testing.T) (*gin.Engine, *gorm.DB, service.Operat
 			})
 		}
 		permMid.Register(http.MethodPost, "/api/user", "system:user:add")
+		permMid.Register(http.MethodPut, "/api/user/batch-status", "system:user:status")
 		permMid.Register(http.MethodDelete, "/api/user/:id", "system:user:delete")
 
 		// 模拟需要读取权限的日志接口。
@@ -354,5 +358,45 @@ func TestOplogReplaysLargeBody(t *testing.T) {
 	page := waitForPage(t, oplogSrv, &service.LogPageQuery{}, 1)
 	if strings.Contains(page.Items[0].Body, "must-not-leak") {
 		t.Fatal("large request body leaked into operation log")
+	}
+}
+
+func TestOplogActionInference(t *testing.T) {
+	engine, _, oplogSrv, adminToken, _ := setupMiddlewareTestApp(t)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/user", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	page := waitForPage(t, oplogSrv, &service.LogPageQuery{}, 1)
+	if page.Items[0].Action != "system.user.addUser" {
+		t.Fatalf("action = %q, want %q", page.Items[0].Action, "system.user.addUser")
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/batch-status", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("batch status = %d, want 200", rec.Code)
+	}
+
+	page = waitForPage(t, oplogSrv, &service.LogPageQuery{}, 2)
+	var batchStatusLog *model.OperationLog
+	for i := range page.Items {
+		if page.Items[i].Path == "/api/user/batch-status" {
+			batchStatusLog = &page.Items[i]
+			break
+		}
+	}
+	if batchStatusLog == nil {
+		t.Fatal("batch status operation log not found")
+	}
+	if batchStatusLog.Action != "system.user.batchStatus" {
+		t.Fatalf("batch status action = %q, want %q", batchStatusLog.Action, "system.user.batchStatus")
 	}
 }

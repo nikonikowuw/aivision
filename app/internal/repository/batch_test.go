@@ -120,30 +120,3 @@ func TestRoleRepositoryBatchDelete(t *testing.T) {
 		t.Fatalf("batch delete left relations: roleMenu=%d userRole=%d", roleMenuCount, userRoleCount)
 	}
 }
-
-func TestOperationLogRepositoryDeleteOperations(t *testing.T) {
-	db := newBatchRepositoryDB(t)
-	repo := NewOperationLogRepository(db)
-	ctx := context.Background()
-
-	logs := []model.OperationLog{
-		{Username: "admin", Module: "user", Action: "delete", Method: "DELETE", Path: "/api/user/1"},
-		{Username: "admin", Module: "role", Action: "delete", Method: "DELETE", Path: "/api/role/1"},
-	}
-	if err := db.Create(&logs).Error; err != nil {
-		t.Fatalf("create logs: %v", err)
-	}
-	if err := repo.Delete(ctx, logs[0].ID); err != nil {
-		t.Fatalf("delete log: %v", err)
-	}
-	if err := repo.BatchDelete(ctx, []uint64{logs[1].ID}); err != nil {
-		t.Fatalf("batch delete logs: %v", err)
-	}
-	var count int64
-	if err := db.Model(&model.OperationLog{}).Count(&count).Error; err != nil {
-		t.Fatalf("count logs: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("remaining logs = %d, want 0", count)
-	}
-}

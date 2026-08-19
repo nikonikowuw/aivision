@@ -8,18 +8,27 @@ import { Page, useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 import { formatDateTime } from '@vben/utils';
 
-import { Button, Descriptions, message, Popconfirm, Tag } from 'ant-design-vue';
+import { Button, Descriptions, Tag } from 'ant-design-vue';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import {
-  batchDeleteLogApi,
-  deleteLogApi,
-  getLogDetailApi,
-  getLogPageApi,
-} from '#/api';
+import { getLogDetailApi, getLogPageApi } from '#/api';
 
 const currentDetail = ref<LogApi.LogItem | null>(null);
-const selectedLogs = ref<LogApi.LogItem[]>([]);
+
+function formatAction(action?: string) {
+  if (!action) return '-';
+  if (
+    action.startsWith('system.') ||
+    action.startsWith('routes.') ||
+    action.startsWith('auth.')
+  ) {
+    const translated = $t(action);
+    if (translated && translated !== action) {
+      return translated;
+    }
+  }
+  return action;
+}
 
 const [DetailModal, detailModalApi] = useVbenModal({
   showCancelButton: false,
@@ -27,15 +36,16 @@ const [DetailModal, detailModalApi] = useVbenModal({
 });
 
 const gridOptions: VxeTableGridOptions<LogApi.LogItem> = {
-  checkboxConfig: {
-    highlight: true,
-  },
   columns: [
-    { type: 'checkbox', width: 50, align: 'center' },
     { field: 'id', title: 'ID', width: 80 },
     { field: 'username', title: $t('system.log.operator'), width: 120 },
     { field: 'module', title: $t('system.log.module'), width: 120 },
-    { field: 'action', title: $t('system.log.action'), minWidth: 140 },
+    {
+      field: 'action',
+      formatter: ({ cellValue }) => formatAction(cellValue),
+      minWidth: 140,
+      title: $t('system.log.action'),
+    },
     {
       field: 'method',
       slots: { default: 'method' },
@@ -68,7 +78,7 @@ const gridOptions: VxeTableGridOptions<LogApi.LogItem> = {
       showOverflow: false,
       slots: { default: 'actions' },
       title: $t('system.common.action'),
-      width: 180,
+      width: 120,
     },
   ],
   pagerConfig: {
@@ -96,15 +106,7 @@ const gridOptions: VxeTableGridOptions<LogApi.LogItem> = {
   },
 };
 
-const [Grid, gridApi] = useVbenVxeGrid({
-  gridEvents: {
-    checkboxAll: ({ records }: { records: LogApi.LogItem[] }) => {
-      selectedLogs.value = records;
-    },
-    checkboxChange: ({ records }: { records: LogApi.LogItem[] }) => {
-      selectedLogs.value = records;
-    },
-  },
+const [Grid] = useVbenVxeGrid({
   formOptions: {
     schema: [
       {
@@ -146,35 +148,6 @@ async function handleViewDetail(row: LogApi.LogItem) {
   }
 }
 
-function handleClearSelection() {
-  gridApi.grid?.clearCheckboxRow();
-  selectedLogs.value = [];
-}
-
-async function handleDelete(row: LogApi.LogItem) {
-  try {
-    await deleteLogApi(row.id);
-    message.success($t('system.common.success'));
-    handleClearSelection();
-    gridApi.reload();
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-async function handleBatchDelete() {
-  const ids = selectedLogs.value.map((l) => l.id);
-  if (ids.length === 0) return;
-  try {
-    await batchDeleteLogApi(ids);
-    message.success($t('system.common.success'));
-    handleClearSelection();
-    gridApi.reload();
-  } catch (error) {
-    console.error(error);
-  }
-}
-
 function getMethodColor(method: string) {
   switch (method?.toUpperCase()) {
     case 'DELETE': {
@@ -198,43 +171,6 @@ function getMethodColor(method: string) {
 
 <template>
   <Page auto-content-height>
-    <div
-      v-if="selectedLogs.length > 0"
-      class="mb-3 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-sm"
-    >
-      <div class="flex items-center gap-2">
-        <span class="text-foreground font-medium">
-          {{
-            $t('system.common.selectedCount', { count: selectedLogs.length })
-          }}
-        </span>
-        <Button type="link" size="small" @click="handleClearSelection">
-          {{ $t('system.common.clearSelection') }}
-        </Button>
-      </div>
-      <div class="flex items-center gap-2">
-        <Popconfirm
-          :title="
-            $t('system.common.confirmBatchDelete', {
-              count: selectedLogs.length,
-            })
-          "
-          :ok-text="$t('system.common.confirm')"
-          :cancel-text="$t('system.common.cancel')"
-          @confirm="handleBatchDelete"
-        >
-          <Button
-            type="primary"
-            danger
-            size="small"
-            v-access:code="['system:log']"
-          >
-            {{ $t('system.common.batchDelete') }}
-          </Button>
-        </Popconfirm>
-      </div>
-    </div>
-
     <Grid>
       <template #method="{ row }">
         <Tag :color="getMethodColor(row.method)">
@@ -261,21 +197,6 @@ function getMethodColor(method: string) {
         >
           {{ $t('system.log.detail') }}
         </Button>
-        <Popconfirm
-          :title="$t('system.common.confirmDelete')"
-          :ok-text="$t('system.common.confirm')"
-          :cancel-text="$t('system.common.cancel')"
-          @confirm="() => handleDelete(row)"
-        >
-          <Button
-            type="link"
-            danger
-            size="small"
-            v-access:code="['system:log']"
-          >
-            {{ $t('system.common.delete') }}
-          </Button>
-        </Popconfirm>
       </template>
     </Grid>
 
@@ -292,7 +213,7 @@ function getMethodColor(method: string) {
             {{ currentDetail.module }}
           </Descriptions.Item>
           <Descriptions.Item :label="$t('system.log.action')">
-            {{ currentDetail.action }}
+            {{ formatAction(currentDetail.action) }}
           </Descriptions.Item>
           <Descriptions.Item :label="$t('system.log.method')">
             <Tag :color="getMethodColor(currentDetail.method)">

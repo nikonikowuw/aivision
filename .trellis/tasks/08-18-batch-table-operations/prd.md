@@ -1,7 +1,7 @@
 # PRD: 批量表格操作 (Batch Table Operations)
 
 ## 1. 目标与用户价值 (Goal & User Value)
-为系统管理中的核心表格列表（用户管理、角色管理、操作日志）提供表格多选与【选中激活提示条 (Selection Alert Bar)】批量操作功能，提升管理员批量运维与数据管理的效率与交互体验。
+为系统管理中的核心表格列表（用户管理和角色管理）提供表格多选与【选中激活提示条 (Selection Alert Bar)】批量操作功能，提升管理员批量运维与数据管理的效率与交互体验。
 
 ## 2. 已确认事实 (Confirmed Facts)
 - **前端表格体系**：系统管理页面均使用 `@vben/plugins/vxe-table` (`useVbenVxeGrid`)，原生支持多选配置（`checkboxConfig`）和插槽自定义。
@@ -38,28 +38,24 @@
    - 表格支持多选，内置超级管理员角色禁用勾选。
    - 提示条提供：【批量删除】（带 Popconfirm，需 `system:role:delete` 权限）与【清空】。
 3. **操作日志 (`/system/log`)**：
-   - 表格支持多选。
-   - 提示条提供：【批量删除】（带 Popconfirm，需 `system:log` 权限）与【清空】。
-   - 表格操作列补充单条【删除】按钮（带 Popconfirm）。
+   - 保持只读：支持分页列表和详情查看，不提供复选框、单条删除、批量删除或清空操作。
 4. **后端接口与事务**：
    - 用户批量删除：`DELETE /api/user/batch`，入参 `{"ids": [1, 2, 3]}`，事务内软删除用户及其角色绑定，严格拦截含 `admin` 的删除。
    - 用户批量修改状态：`PUT /api/user/batch-status`，入参 `{"ids": [1, 2, 3], "status": 1|0}`，事务内更新状态，严格拦截含 `admin` 且尝试禁用的操作。
    - 角色批量删除：`DELETE /api/role/batch`，入参 `{"ids": [1, 2, 3]}`，事务内软删除角色及其关联，严格拦截含内置超级管理员角色的删除。
-   - 日志单条与批量删除：
-     - `DELETE /api/oplog/:id`：删除单条日志。
-     - `DELETE /api/oplog/batch`：入参 `{"ids": [1, 2, 3]}`，物理批量删除日志。
+   - 操作日志：仅提供 `GET /api/oplog/page` 和 `GET /api/oplog/:id` 查询接口；禁止提供单条删除、批量删除和清空接口，审计日志必须保持 append-only。
 5. **国际化与体验**：
    - 补充批量操作相关 i18n 词条（zh-CN, en-US, zh-TW）：`batchDelete`, `batchEnable`, `batchDisable`, `confirmBatchDelete`, `selectedCount`, `clearSelection` 等。
    - 批量操作成功后提示并刷新当前表格数据，自动清空选中项。
 
 ### 3.3 非本期范围 (Out of Scope)
 - 部门管理和菜单管理的批量操作（层级与树依赖较重，保持单项操作）。
-- 操作日志的按时间段一键清理（日志清理一般为定时运维任务，本次聚焦表格选中批量删除）。
+- 操作日志的删除、清空及按时间段一键清理（审计日志必须保持 append-only）。
 
 ## 4. 验收标准 (Acceptance Criteria)
 - [ ] **AC-1 用户管理批量操作**：勾选用户后展示提示条，支持批量删除、批量启用、批量禁用；`admin` 用户复选框禁用；点击“清空”可重置选择。
 - [ ] **AC-2 角色管理批量删除**：勾选角色后展示提示条，支持批量删除；内置超级管理员角色复选框禁用；点击“清空”可重置选择。
-- [ ] **AC-3 操作日志单删与批量删除**：日志列表支持单条删除；勾选后展示提示条支持批量删除；点击“清空”可重置选择。
+- [ ] **AC-3 操作日志只读**：日志列表支持分页和详情查看，不提供单条删除、批量删除或清空接口。
 - [ ] **AC-4 后端安全与边界防护**：后端接口对 `ids` 空数组、非法参数进行校验；若请求包含受保护的 admin 用户/角色，返回明确的业务错误码（`CodeAdminUserProtected` / `CodeSuperRoleProtected`）且事务回滚。
-- [ ] **AC-5 权限控制一致性**：批量接口复用现有的权限码声明（用户删除 `system:user:delete`、用户状态 `system:user:status`、角色删除 `system:role:delete`、日志 `system:log`），无需新增权限码。
+- [ ] **AC-5 权限控制一致性**：用户和角色批量接口复用现有权限码声明（用户删除 `system:user:delete`、用户状态 `system:user:status`、角色删除 `system:role:delete`）；日志查询继续复用 `system:log`，无需新增权限码。
 - [ ] **AC-6 质量保证**：后端 Go 测试覆盖批量 service/repo/api 及保护逻辑；前端通过 `pnpm check`（无类型错误、无循环依赖）。

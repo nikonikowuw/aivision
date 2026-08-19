@@ -59,7 +59,23 @@ UI 基于 `@vben/locales`（vue-i18n 封装）+ Ant Design Vue 国际化 + Day.j
   const title = item.title?.startsWith('routes.') ? $t(item.title) : item.title;
   ```
 
-### 4. 英文/长文本 UI 宽度预留契约
+### 4. 操作日志语义与国际化契约
+
+- 后端 `operation_logs.action` 存储标准 i18n key（如 `system.user.addUser`、`system.log.actionLogin`）。
+- 日志列表与详情页中渲染 `action` 时，必须使用 i18n 转换并提供优雅降级：
+
+  ```ts
+  function formatAction(action?: string) {
+    if (!action) return '-';
+    if (action.startsWith('system.') || action.startsWith('routes.') || action.startsWith('auth.')) {
+      const translated = $t(action);
+      if (translated && translated !== action) return translated;
+    }
+    return action;
+  }
+  ```
+
+### 5. 英文/长文本 UI 宽度预留契约
 
 - 英文文案通常是中文长度的 1.5x ~ 2.5x。
 - 表格操作列（Actions）：

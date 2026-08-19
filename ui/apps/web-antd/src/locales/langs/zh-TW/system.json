@@ -43,6 +43,9 @@
     "assignRoleSuccess": "角色指派成功",
     "addUser": "新增使用者",
     "editUser": "編輯使用者",
+    "deleteUser": "刪除使用者",
+    "status": "修改使用者狀態",
+    "batchStatus": "批次修改使用者狀態",
     "userDetail": "使用者詳情",
     "usernameMin": "使用者名稱至少需要 2 個字元",
     "statusChangeSuccess": "{status}使用者成功",
@@ -53,11 +56,12 @@
     "name": "角色名稱",
     "code": "角色代碼",
     "codePlaceholder": "例如 admin、test_role",
-    "assignMenu": "選單權限",
+    "assignMenu": "指派選單權限",
     "assignMenuTitle": "指派選單權限",
     "assignMenuSuccess": "選單權限指派成功",
     "addRole": "新增角色",
     "editRole": "編輯角色",
+    "deleteRole": "刪除角色",
     "roleDetail": "角色詳情",
     "confirmDelete": "確定要刪除此角色嗎？",
     "nameRequired": "請輸入角色名稱",
@@ -85,6 +89,7 @@
     "icon": "選單圖示",
     "addMenu": "新增選單",
     "editMenu": "編輯選單",
+    "deleteMenu": "刪除選單",
     "addSubItem": "新增子項目",
     "menuDetail": "選單詳情",
     "confirmDelete": "確定要刪除此選單／權限項目嗎？",
@@ -102,6 +107,7 @@
     "phone": "聯絡電話",
     "addDept": "新增部門",
     "editDept": "編輯部門",
+    "deleteDept": "刪除部門",
     "addSubDept": "新增子部門",
     "deptDetail": "部門詳情",
     "confirmDelete": "確定要刪除此部門嗎？（有子部門時無法刪除）"
@@ -122,6 +128,9 @@
     "logId": "日誌 ID",
     "queryParams": "Query 參數",
     "requestBody": "請求 Body（已遮罩）",
-    "userAgent": "User-Agent"
+    "userAgent": "User-Agent",
+    "actionLogin": "使用者登入",
+    "actionLogout": "使用者登出",
+    "actionRefreshToken": "重新整理權杖"
   }
 }

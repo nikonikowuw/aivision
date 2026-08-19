@@ -117,14 +117,6 @@ func (*routerTestOperationLogService) GetByID(context.Context, uint64) (*model.O
 	return nil, nil
 }
 
-func (*routerTestOperationLogService) Delete(context.Context, uint64) error {
-	return nil
-}
-
-func (*routerTestOperationLogService) BatchDelete(context.Context, []uint64) error {
-	return nil
-}
-
 func (*routerTestOperationLogService) GetPage(context.Context, *service.LogPageQuery) (*service.LogPageResult, error) {
 	return &service.LogPageResult{}, nil
 }
@@ -227,6 +219,16 @@ func waitForLoggedRequest(t *testing.T, records <-chan model.OperationLog, path 
 		case <-timer.C:
 			t.Fatalf("operation log %q not found", path)
 			return model.OperationLog{}
+		}
+	}
+}
+
+func TestOperationLogDeleteRoutesAreNotRegistered(t *testing.T) {
+	engine, _, _, _, _ := newRouterTestEngine(t, false)
+
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodDelete && strings.HasPrefix(route.Path, "/api/oplog") {
+			t.Fatalf("operation log delete route is still registered: %s %s", route.Method, route.Path)
 		}
 	}
 }

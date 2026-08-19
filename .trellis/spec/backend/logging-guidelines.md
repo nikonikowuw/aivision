@@ -50,3 +50,17 @@
   driver/host，但绝不记录 DSN 或密码。
 - 任何形式的**密码哈希或明文密码**。
 - `info` 级别的完整内部堆栈；在 `error` 级别使用 `zap.Error`。
+
+---
+
+## 操作审计日志规范 (Operation Log)
+
+### 1. 核心原则
+- **不可变性（Append-Only）**：操作审计日志严禁提供任何前端可调用的单条删除或批量删除接口（`DELETE /api/oplog/*` 禁止提供）。审计日志必须保证不可抵赖性与合规性（遵循《网络安全法》与等保 2.0 规定）。
+- **语义化与国际化（Human-Readable & i18n）**：
+  - `action` 字段存储语义化的 i18n key（如 `system.user.addUser`、`system.role.assignMenu` 等），前端配合 `$t()` 本地化渲染。
+  - `path` 字段存储 HTTP 技术路径（如 `/api/user`），供开发与运维排错溯源。
+  - 两者不可混用或机械拼接（严禁将 `POST /api/user` 直接作为 `action`）。
+
+### 2. 路由到 Action 的语义映射
+所有新增的写操作接口（`POST`、`PUT`、`DELETE`），必须在 `internal/middleware/oplog.go` 的 `actionI18nMap` 中注册对应的 i18n key，并在前端各语言包中维护对应翻译。

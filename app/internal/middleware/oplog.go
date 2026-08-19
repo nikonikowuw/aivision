@@ -95,7 +95,7 @@ func (m *OplogMiddleware) Handler(c *gin.Context) {
 
 	module := mask.Truncate(inferModule(c), maxOperationLogModuleLen)
 	storedPath := mask.Truncate(path, maxOperationLogPathLen)
-	action := mask.Truncate(method+" "+storedPath, maxOperationLogActionLen)
+	action := mask.Truncate(inferAction(c, method, storedPath), maxOperationLogActionLen)
 
 	logItem := &model.OperationLog{
 		CreatedAt:  start,
@@ -165,6 +165,53 @@ func isWriteMethod(method string) bool {
 
 func isAPIPath(path string) bool {
 	return path == "/api" || strings.HasPrefix(path, "/api/")
+}
+
+// actionI18nMap 路由与动作 i18n key 的映射表。
+var actionI18nMap = map[string]string{
+	// Auth
+	"POST /api/auth/login":   "system.log.actionLogin",
+	"POST /api/auth/logout":  "system.log.actionLogout",
+	"POST /api/auth/refresh": "system.log.actionRefreshToken",
+
+	// User
+	"POST /api/user":                   "system.user.addUser",
+	"PUT /api/user/:id":                "system.user.editUser",
+	"DELETE /api/user/:id":             "system.user.deleteUser",
+	"DELETE /api/user/batch":           "system.common.batchDelete",
+	"PUT /api/user/batch-status":       "system.user.batchStatus",
+	"PUT /api/user/:id/reset-password": "system.user.resetPassword",
+	"PUT /api/user/:id/roles":          "system.user.assignRole",
+	"PUT /api/user/:id/status":         "system.user.status",
+
+	// Menu
+	"POST /api/menu":       "system.menu.addMenu",
+	"PUT /api/menu/:id":    "system.menu.editMenu",
+	"DELETE /api/menu/:id": "system.menu.deleteMenu",
+
+	// Role
+	"POST /api/role":          "system.role.addRole",
+	"PUT /api/role/:id":       "system.role.editRole",
+	"DELETE /api/role/:id":    "system.role.deleteRole",
+	"DELETE /api/role/batch":  "system.common.batchDelete",
+	"PUT /api/role/:id/menus": "system.role.assignMenu",
+
+	// Department
+	"POST /api/dept":       "system.dept.addDept",
+	"PUT /api/dept/:id":    "system.dept.editDept",
+	"DELETE /api/dept/:id": "system.dept.deleteDept",
+}
+
+// inferAction 根据 Gin FullPath 和 Method 推断语义化的 i18n action key，未匹配则 fallback 到 "Method Path"。
+func inferAction(c *gin.Context, method, fallbackPath string) string {
+	fullPath := c.FullPath()
+	if fullPath != "" {
+		key := strings.ToUpper(method) + " " + fullPath
+		if actionKey, ok := actionI18nMap[key]; ok {
+			return actionKey
+		}
+	}
+	return method + " " + fallbackPath
 }
 
 // inferModule 推断模块名称，优先使用 FullPath，退化使用 URL Path。

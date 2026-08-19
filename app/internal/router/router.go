@@ -6,7 +6,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
+	_ "niko-vue-admin/app/docs"
 	"niko-vue-admin/app/internal/api"
 	"niko-vue-admin/app/internal/middleware"
 	"niko-vue-admin/app/internal/pkg/config"
@@ -15,6 +18,7 @@ import (
 )
 
 const (
+	swaggerRoutePath     = "/swagger/*any"
 	apiRoutePath         = "/api"
 	authRoutePath        = "/auth"
 	loginRoutePath       = "/login"
@@ -81,6 +85,9 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 	engine.NoMethod(func(c *gin.Context) {
 		response.WriteFail(c, http.StatusMethodNotAllowed, errno.CodeMethodNotAllowed)
 	})
+
+	// 注册 Swagger 接口文档 UI，访问路径为 /swagger/index.html。
+	engine.GET(swaggerRoutePath, ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	apiGroup := engine.Group(apiRoutePath)
 	// 所有 API 路由默认先认证，再执行写操作权限默认拒绝；公共认证接口由中间件白名单放行。

@@ -20,6 +20,14 @@ func NewMenuHandler(srv service.MenuService) *MenuHandler {
 }
 
 // GetMenuTree 获取全量菜单树 (GET /api/menu/tree)
+// @Summary 获取全量菜单树
+// @Description 查询系统所有菜单/按钮并构建为树形结构（用于菜单管理页面）
+// @Tags 菜单模块
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} MenuTreeResponse "菜单树数据"
+// @Failure 401 {object} response.Result "未授权"
+// @Router /api/menu/tree [get]
 func (h *MenuHandler) GetMenuTree(c *gin.Context) {
 	tree, err := h.srv.GetMenuTree(c.Request.Context())
 	if err != nil {
@@ -30,6 +38,14 @@ func (h *MenuHandler) GetMenuTree(c *gin.Context) {
 }
 
 // GetUserMenuTree 获取当前用户关联的菜单树 (GET /api/menu/all)
+// @Summary 获取当前用户可访问菜单树
+// @Description 根据当前用户角色权限，生成用于前端动态挂载路由的菜单结构
+// @Tags 菜单模块
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} UserMenuTreeResponse "前端动态路由树"
+// @Failure 401 {object} response.Result "未授权"
+// @Router /api/menu/all [get]
 func (h *MenuHandler) GetUserMenuTree(c *gin.Context) {
 	identity, ok := middleware.IdentityFromContext(c)
 	if !ok {
@@ -46,6 +62,18 @@ func (h *MenuHandler) GetUserMenuTree(c *gin.Context) {
 }
 
 // CreateMenu 创建菜单 (POST /api/menu)
+// @Summary 创建菜单/按钮
+// @Description 新增菜单、目录或权限按钮节点
+// @Tags 菜单模块
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body service.SaveMenuInput true "创建菜单参数"
+// @Success 200 {object} MenuResponse "创建成功的菜单信息"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Failure 403 {object} response.Result "无权限"
+// @Router /api/menu [post]
 func (h *MenuHandler) CreateMenu(c *gin.Context) {
 	var req service.SaveMenuInput
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -62,6 +90,19 @@ func (h *MenuHandler) CreateMenu(c *gin.Context) {
 }
 
 // UpdateMenu 更新菜单 (PUT /api/menu/:id)
+// @Summary 更新菜单/按钮
+// @Description 更新指定 ID 的菜单节点信息
+// @Tags 菜单模块
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "菜单ID"
+// @Param request body service.SaveMenuInput true "更新菜单参数"
+// @Success 200 {object} MenuResponse "更新后的菜单信息"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Failure 403 {object} response.Result "无权限"
+// @Router /api/menu/{id} [put]
 func (h *MenuHandler) UpdateMenu(c *gin.Context) {
 	id, ok := parseIDParam(c)
 	if !ok {
@@ -84,6 +125,17 @@ func (h *MenuHandler) UpdateMenu(c *gin.Context) {
 }
 
 // DeleteMenu 删除菜单 (DELETE /api/menu/:id)
+// @Summary 删除菜单/按钮
+// @Description 删除指定 ID 的菜单（有子菜单时不可删除）
+// @Tags 菜单模块
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "菜单ID"
+// @Success 200 {object} NilResponse "删除成功"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Failure 403 {object} response.Result "无权限"
+// @Router /api/menu/{id} [delete]
 func (h *MenuHandler) DeleteMenu(c *gin.Context) {
 	id, ok := parseIDParam(c)
 	if !ok {

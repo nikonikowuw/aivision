@@ -1,0 +1,1807 @@
+basePath: /
+definitions:
+  internal_api.AccessCodesResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        items:
+          type: string
+        type: array
+      message:
+        type: string
+    type: object
+  internal_api.AssignRoleMenusRequest:
+    properties:
+      menuIds:
+        description: 省略/空数组 = 清空分配
+        items:
+          type: integer
+        type: array
+    type: object
+  internal_api.AssignRolesInput:
+    properties:
+      roleIds:
+        items:
+          type: integer
+        type: array
+    type: object
+  internal_api.BatchDeleteRoleRequest:
+    properties:
+      ids:
+        items:
+          type: integer
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
+  internal_api.BatchDeleteUserInput:
+    properties:
+      ids:
+        items:
+          type: integer
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
+  internal_api.BatchUpdateUserStatusInput:
+    properties:
+      ids:
+        items:
+          type: integer
+        minItems: 1
+        type: array
+      status:
+        type: integer
+    required:
+    - ids
+    - status
+    type: object
+  internal_api.DeptResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_model.Department'
+      message:
+        type: string
+    type: object
+  internal_api.DeptTreeResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.DepartmentTreeNode'
+        type: array
+      message:
+        type: string
+    type: object
+  internal_api.LogPageResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.LogPageResult'
+      message:
+        type: string
+    type: object
+  internal_api.LogResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_model.OperationLog'
+      message:
+        type: string
+    type: object
+  internal_api.LoginInput:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  internal_api.LoginResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.LoginResult'
+      message:
+        type: string
+    type: object
+  internal_api.MenuIDsResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        items:
+          type: integer
+        type: array
+      message:
+        type: string
+    type: object
+  internal_api.MenuResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_model.Menu'
+      message:
+        type: string
+    type: object
+  internal_api.MenuTreeResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.MenuTreeNode'
+        type: array
+      message:
+        type: string
+    type: object
+  internal_api.NilResponse:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+    type: object
+  internal_api.RoleIDsResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        items:
+          type: integer
+        type: array
+      message:
+        type: string
+    type: object
+  internal_api.RolePageResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.RolePageResult'
+      message:
+        type: string
+    type: object
+  internal_api.RoleResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_model.Role'
+      message:
+        type: string
+    type: object
+  internal_api.UpdateStatusInput:
+    properties:
+      status:
+        enum:
+        - 0
+        - 1
+        type: integer
+    type: object
+  internal_api.UserInfoResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.UserInfoDTO'
+      message:
+        type: string
+    type: object
+  internal_api.UserMenuTreeResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.VbenRouteRecord'
+        type: array
+      message:
+        type: string
+    type: object
+  internal_api.UserPageResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.UserPageResult'
+      message:
+        type: string
+    type: object
+  internal_api.UserResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_model.User'
+      message:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_model.Department:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: integer
+      leader:
+        type: string
+      name:
+        type: string
+      parentId:
+        description: 0=根
+        type: integer
+      phone:
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 1 启用 / 0 禁用；新建默认值由 service 明确填充
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_model.DepartmentTreeNode:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.DepartmentTreeNode'
+        type: array
+      createdAt:
+        type: string
+      id:
+        type: integer
+      leader:
+        type: string
+      name:
+        type: string
+      parentId:
+        description: 0=根
+        type: integer
+      phone:
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 1 启用 / 0 禁用；新建默认值由 service 明确填充
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_model.Menu:
+    properties:
+      affix:
+        type: boolean
+      component:
+        description: 视图相对路径；按钮级为空
+        type: string
+      createdAt:
+        type: string
+      homePath:
+        type: string
+      icon:
+        type: string
+      id:
+        type: integer
+      keepAlive:
+        type: boolean
+      name:
+        description: catalog/menu 为 ASCII 路由标识符；button 为中文展示名
+        type: string
+      parentId:
+        description: 0=根
+        type: integer
+      path:
+        type: string
+      permission:
+        description: catalog/menu 存模块码，button 存动作码
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 类型由 gorm 按驱动映射（决策 18）
+        type: integer
+      title:
+        description: i18n key，如 routes.system.user（决策 17）
+        type: string
+      type:
+        description: catalog / menu / button
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_model.MenuTreeNode:
+    properties:
+      affix:
+        type: boolean
+      children:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.MenuTreeNode'
+        type: array
+      component:
+        description: 视图相对路径；按钮级为空
+        type: string
+      createdAt:
+        type: string
+      homePath:
+        type: string
+      icon:
+        type: string
+      id:
+        type: integer
+      keepAlive:
+        type: boolean
+      name:
+        description: catalog/menu 为 ASCII 路由标识符；button 为中文展示名
+        type: string
+      parentId:
+        description: 0=根
+        type: integer
+      path:
+        type: string
+      permission:
+        description: catalog/menu 存模块码，button 存动作码
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 类型由 gorm 按驱动映射（决策 18）
+        type: integer
+      title:
+        description: i18n key，如 routes.system.user（决策 17）
+        type: string
+      type:
+        description: catalog / menu / button
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_model.OperationLog:
+    properties:
+      action:
+        type: string
+      body:
+        description: 已脱敏 JSON
+        type: string
+      createdAt:
+        description: CreatedAt 覆盖 TimeFields：操作日志按时间范围查询，需要索引（设计 §2）。
+        type: string
+      durationMs:
+        type: integer
+      id:
+        type: integer
+      ip:
+        type: string
+      method:
+        type: string
+      module:
+        type: string
+      path:
+        type: string
+      query:
+        type: string
+      statusCode:
+        type: integer
+      updatedAt:
+        type: string
+      userAgent:
+        type: string
+      userId:
+        description: 登录失败等场景可为空
+        type: integer
+      username:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_model.Role:
+    properties:
+      code:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      remark:
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_model.User:
+    properties:
+      avatar:
+        type: string
+      createdAt:
+        type: string
+      deptId:
+        type: integer
+      email:
+        type: string
+      id:
+        type: integer
+      nickname:
+        type: string
+      phone:
+        type: string
+      remark:
+        type: string
+      status:
+        description: 1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）
+        type: integer
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_pkg_response.Result:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_service.LogPageResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.OperationLog'
+        type: array
+      total:
+        type: integer
+    type: object
+  niko-vue-admin_app_internal_service.LoginResult:
+    properties:
+      accessToken:
+        type: string
+      avatar:
+        type: string
+      desc:
+        type: string
+      homePath:
+        type: string
+      realName:
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      userId:
+        type: string
+      username:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_service.RolePageResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.Role'
+        type: array
+      total:
+        type: integer
+    type: object
+  niko-vue-admin_app_internal_service.SaveDeptInput:
+    properties:
+      leader:
+        type: string
+      name:
+        type: string
+      parentId:
+        description: 0=根
+        type: integer
+      phone:
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 省略时新建默认启用；编辑省略表示不变
+        type: integer
+    required:
+    - name
+    type: object
+  niko-vue-admin_app_internal_service.SaveMenuInput:
+    properties:
+      affix:
+        type: boolean
+      component:
+        type: string
+      homePath:
+        type: string
+      icon:
+        type: string
+      keepAlive:
+        type: boolean
+      name:
+        type: string
+      parentId:
+        type: integer
+      path:
+        type: string
+      permission:
+        type: string
+      sort:
+        type: integer
+      status:
+        type: integer
+      title:
+        type: string
+      type:
+        enum:
+        - catalog
+        - menu
+        - button
+        type: string
+    required:
+    - name
+    - type
+    type: object
+  niko-vue-admin_app_internal_service.SaveRoleInput:
+    properties:
+      code:
+        type: string
+      name:
+        type: string
+      remark:
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 省略时新建默认启用；编辑省略表示不变
+        type: integer
+    required:
+    - code
+    - name
+    type: object
+  niko-vue-admin_app_internal_service.SaveUserInput:
+    properties:
+      deptId:
+        type: integer
+      email:
+        type: string
+      nickname:
+        maxLength: 64
+        type: string
+      password:
+        description: 编辑时可空，新增时需处理默认密码
+        maxLength: 32
+        minLength: 6
+        type: string
+      phone:
+        maxLength: 32
+        type: string
+      remark:
+        maxLength: 255
+        type: string
+      status:
+        enum:
+        - 0
+        - 1
+        type: integer
+      username:
+        maxLength: 64
+        minLength: 2
+        type: string
+    required:
+    - username
+    type: object
+  niko-vue-admin_app_internal_service.UserInfoDTO:
+    properties:
+      avatar:
+        type: string
+      desc:
+        type: string
+      homePath:
+        type: string
+      realName:
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      userId:
+        type: string
+      username:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_service.UserPageItem:
+    properties:
+      avatar:
+        type: string
+      createdAt:
+        type: string
+      deptId:
+        type: integer
+      deptName:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      nickname:
+        type: string
+      phone:
+        type: string
+      remark:
+        type: string
+      status:
+        description: 1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）
+        type: integer
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_service.UserPageResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.UserPageItem'
+        type: array
+      total:
+        type: integer
+    type: object
+  niko-vue-admin_app_internal_service.VbenRouteMeta:
+    properties:
+      affixTab:
+        type: boolean
+      icon:
+        type: string
+      keepAlive:
+        type: boolean
+      order:
+        type: integer
+      title:
+        type: string
+    type: object
+  niko-vue-admin_app_internal_service.VbenRouteRecord:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.VbenRouteRecord'
+        type: array
+      component:
+        type: string
+      id:
+        type: integer
+      meta:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.VbenRouteMeta'
+      name:
+        type: string
+      path:
+        type: string
+      pid:
+        type: integer
+      type:
+        type: string
+    type: object
+host: localhost:8000
+info:
+  contact: {}
+  description: niko-vue-admin 后端 API 接口文档
+  title: niko-vue-admin API
+  version: "1.0"
+paths:
+  /api/auth/codes:
+    get:
+      description: 获取当前登录用户拥有的全部按钮权限码
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 权限码列表
+          schema:
+            $ref: '#/definitions/internal_api.AccessCodesResponse'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取当前用户权限码集合
+      tags:
+      - 认证模块
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 使用用户名和密码登录获取 AccessToken，同时在 Cookie 中写入 RefreshToken
+      parameters:
+      - description: 登录参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功返回用户信息及 AccessToken
+          schema:
+            $ref: '#/definitions/internal_api.LoginResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 用户名或密码错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      summary: 用户登录
+      tags:
+      - 认证模块
+  /api/auth/logout:
+    post:
+      description: 注销当前的 RefreshToken 并清除客户端 Cookie
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登出成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+      summary: 用户登出
+      tags:
+      - 认证模块
+  /api/auth/refresh:
+    post:
+      description: 从 HttpOnly Cookie 中读取 RefreshToken，签发新的 AccessToken 并轮换 RefreshToken
+        Cookie
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: 新的 AccessToken
+          schema:
+            type: string
+        "401":
+          description: 未授权或 RefreshToken 无效
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      summary: 刷新令牌
+      tags:
+      - 认证模块
+  /api/dept:
+    post:
+      consumes:
+      - application/json
+      description: 新增部门节点
+      parameters:
+      - description: 创建部门参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveDeptInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功的部门信息
+          schema:
+            $ref: '#/definitions/internal_api.DeptResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 创建部门
+      tags:
+      - 部门模块
+  /api/dept/{id}:
+    delete:
+      description: 删除指定 ID 的部门（有子部门或包含用户时不可删除）
+      parameters:
+      - description: 部门ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 删除部门
+      tags:
+      - 部门模块
+    put:
+      consumes:
+      - application/json
+      description: 更新指定 ID 的部门信息
+      parameters:
+      - description: 部门ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新部门参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveDeptInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新后的部门信息
+          schema:
+            $ref: '#/definitions/internal_api.DeptResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新部门
+      tags:
+      - 部门模块
+  /api/dept/tree:
+    get:
+      description: 查询系统所有部门并构建为树形结构
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 部门树数据
+          schema:
+            $ref: '#/definitions/internal_api.DeptTreeResponse'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取全量部门树
+      tags:
+      - 部门模块
+  /api/menu:
+    post:
+      consumes:
+      - application/json
+      description: 新增菜单、目录或权限按钮节点
+      parameters:
+      - description: 创建菜单参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveMenuInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功的菜单信息
+          schema:
+            $ref: '#/definitions/internal_api.MenuResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 创建菜单/按钮
+      tags:
+      - 菜单模块
+  /api/menu/{id}:
+    delete:
+      description: 删除指定 ID 的菜单（有子菜单时不可删除）
+      parameters:
+      - description: 菜单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 删除菜单/按钮
+      tags:
+      - 菜单模块
+    put:
+      consumes:
+      - application/json
+      description: 更新指定 ID 的菜单节点信息
+      parameters:
+      - description: 菜单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新菜单参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveMenuInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新后的菜单信息
+          schema:
+            $ref: '#/definitions/internal_api.MenuResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新菜单/按钮
+      tags:
+      - 菜单模块
+  /api/menu/all:
+    get:
+      description: 根据当前用户角色权限，生成用于前端动态挂载路由的菜单结构
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 前端动态路由树
+          schema:
+            $ref: '#/definitions/internal_api.UserMenuTreeResponse'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取当前用户可访问菜单树
+      tags:
+      - 菜单模块
+  /api/menu/tree:
+    get:
+      description: 查询系统所有菜单/按钮并构建为树形结构（用于菜单管理页面）
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 菜单树数据
+          schema:
+            $ref: '#/definitions/internal_api.MenuTreeResponse'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取全量菜单树
+      tags:
+      - 菜单模块
+  /api/oplog/{id}:
+    get:
+      description: 根据 ID 查询单条操作日志详情
+      parameters:
+      - description: 日志ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作日志详情
+          schema:
+            $ref: '#/definitions/internal_api.LogResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取操作日志详情
+      tags:
+      - 操作日志模块
+  /api/oplog/page:
+    get:
+      description: 分页查询用户操作日志，支持用户名、模块名称、状态码以及时间范围筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页条数
+        in: query
+        name: pageSize
+        type: integer
+      - description: 操作用户名
+        in: query
+        name: username
+        type: string
+      - description: 功能模块
+        in: query
+        name: module
+        type: string
+      - description: HTTP响应状态码
+        in: query
+        name: statusCode
+        type: integer
+      - description: '开始时间 (RFC3339 格式: 2006-01-02T15:04:05Z07:00)'
+        in: query
+        name: startTime
+        type: string
+      - description: '结束时间 (RFC3339 格式: 2006-01-02T15:04:05Z07:00)'
+        in: query
+        name: endTime
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作日志分页数据
+          schema:
+            $ref: '#/definitions/internal_api.LogPageResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 分页获取操作日志列表
+      tags:
+      - 操作日志模块
+  /api/role:
+    post:
+      consumes:
+      - application/json
+      description: 创建新的系统角色
+      parameters:
+      - description: 创建角色参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveRoleInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功的角色信息
+          schema:
+            $ref: '#/definitions/internal_api.RoleResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 创建角色
+      tags:
+      - 角色模块
+  /api/role/{id}:
+    delete:
+      description: 删除指定 ID 的角色（内置角色禁止删除）
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 删除角色
+      tags:
+      - 角色模块
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 更新角色信息
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新角色参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveRoleInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新后的角色信息
+          schema:
+            $ref: '#/definitions/internal_api.RoleResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新角色
+      tags:
+      - 角色模块
+  /api/role/{id}/menu-ids:
+    get:
+      description: 查询指定角色当前关联的菜单 ID 集合
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 菜单ID列表
+          schema:
+            $ref: '#/definitions/internal_api.MenuIDsResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取角色拥有的菜单ID列表
+      tags:
+      - 角色模块
+  /api/role/{id}/menus:
+    put:
+      consumes:
+      - application/json
+      description: 覆盖更新指定角色的菜单关联关系
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 分配菜单参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.AssignRoleMenusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 分配成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 为角色分配菜单权限
+      tags:
+      - 角色模块
+  /api/role/batch:
+    delete:
+      consumes:
+      - application/json
+      description: 批量删除指定 ID 列表的角色
+      parameters:
+      - description: 批量删除参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.BatchDeleteRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 批量删除角色
+      tags:
+      - 角色模块
+  /api/role/page:
+    get:
+      description: 分页查询角色数据，支持角色名称、角色编码、状态筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页条数
+        in: query
+        name: pageSize
+        type: integer
+      - description: 角色名称
+        in: query
+        name: name
+        type: string
+      - description: 角色编码
+        in: query
+        name: code
+        type: string
+      - description: 状态 (0:禁用, 1:启用)
+        in: query
+        name: status
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 角色分页数据
+          schema:
+            $ref: '#/definitions/internal_api.RolePageResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 分页获取角色列表
+      tags:
+      - 角色模块
+  /api/user:
+    post:
+      consumes:
+      - application/json
+      description: 创建系统用户账号，默认初始密码为 password123
+      parameters:
+      - description: 创建用户参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveUserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功的用户信息
+          schema:
+            $ref: '#/definitions/internal_api.UserResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 创建新用户
+      tags:
+      - 用户模块
+  /api/user/{id}:
+    delete:
+      description: 软删除指定 ID 的用户
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 删除指定用户
+      tags:
+      - 用户模块
+    put:
+      consumes:
+      - application/json
+      description: 根据 ID 修改指定用户的信息
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新用户参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.SaveUserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新后的用户信息
+          schema:
+            $ref: '#/definitions/internal_api.UserResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新用户信息
+      tags:
+      - 用户模块
+  /api/user/{id}/reset-password:
+    put:
+      description: 将指定用户的密码重置为系统默认密码 (password123)
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 重置成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 重置用户密码
+      tags:
+      - 用户模块
+  /api/user/{id}/roles:
+    get:
+      description: 查询指定用户当前分配的角色 ID 列表
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 角色ID数组
+          schema:
+            $ref: '#/definitions/internal_api.RoleIDsResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取用户绑定的角色ID列表
+      tags:
+      - 用户模块
+    put:
+      consumes:
+      - application/json
+      description: 覆盖更新指定用户的角色分配关系
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 角色分配参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.AssignRolesInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 分配成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 为用户分配角色
+      tags:
+      - 用户模块
+  /api/user/{id}/status:
+    put:
+      consumes:
+      - application/json
+      description: 启用或禁用指定用户账号
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 状态修改参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.UpdateStatusInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 修改成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 修改用户状态
+      tags:
+      - 用户模块
+  /api/user/batch:
+    delete:
+      consumes:
+      - application/json
+      description: 批量软删除指定 ID 列表的用户
+      parameters:
+      - description: 批量删除参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.BatchDeleteUserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 批量删除用户
+      tags:
+      - 用户模块
+  /api/user/batch-status:
+    put:
+      consumes:
+      - application/json
+      description: 批量启用或禁用指定用户
+      parameters:
+      - description: 批量状态修改参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.BatchUpdateUserStatusInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 批量更新用户状态
+      tags:
+      - 用户模块
+  /api/user/info:
+    get:
+      description: 根据请求头中的 Bearer Token 获取当前登录用户的详细信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 当前用户信息
+          schema:
+            $ref: '#/definitions/internal_api.UserInfoResponse'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取当前登录用户信息
+      tags:
+      - 认证模块
+  /api/user/page:
+    get:
+      description: 分页查询用户数据，支持用户名、昵称、状态、部门筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页条数
+        in: query
+        name: pageSize
+        type: integer
+      - description: 用户名
+        in: query
+        name: username
+        type: string
+      - description: 昵称
+        in: query
+        name: nickname
+        type: string
+      - description: 状态 (0:禁用, 1:启用)
+        in: query
+        name: status
+        type: integer
+      - description: 部门ID
+        in: query
+        name: deptId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 用户分页数据
+          schema:
+            $ref: '#/definitions/internal_api.UserPageResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 分页获取用户列表
+      tags:
+      - 用户模块
+securityDefinitions:
+  BearerAuth:
+    description: 在 Header 中传入 `Bearer <token>` 进行身份认证
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

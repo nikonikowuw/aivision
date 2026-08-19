@@ -1,12 +1,21 @@
-.PHONY: wire dev build test vet
+.PHONY: wire dev build test vet swagger air
 
 wire:
 	cd cmd/api && wire
 
+swagger:
+	swag init -g cmd/api/main.go -o docs --parseDependency --parseInternal
+
 dev:
+	air -c .air.toml
+
+dev-raw:
 	go run ./cmd/api
 
-build:
+air:
+	air -c .air.toml
+
+build: swagger
 	go build -o bin/api ./cmd/api
 
 test:
@@ -14,3 +23,4 @@ test:
 
 vet:
 	go vet ./...
+

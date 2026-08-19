@@ -391,3 +391,31 @@ func TestRouterPanicIsLogged(t *testing.T) {
 		t.Fatalf("panic log status = %d, want %d", logItem.StatusCode, http.StatusInternalServerError)
 	}
 }
+
+func TestSwaggerEndpointAccessible(t *testing.T) {
+	engine, _, _, _, _ := newRouterTestEngine(t, false)
+
+	// 测试 /swagger/index.html 可以正常访问，状态码 200
+	req := httptest.NewRequest(http.MethodGet, "/swagger/index.html", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /swagger/index.html status = %d, want %d, body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "swagger") {
+		t.Fatalf("GET /swagger/index.html body does not contain 'swagger'")
+	}
+
+	// 测试 /swagger/doc.json 可以获取 OpenAPI 文档
+	docReq := httptest.NewRequest(http.MethodGet, "/swagger/doc.json", nil)
+	docRec := httptest.NewRecorder()
+	engine.ServeHTTP(docRec, docReq)
+
+	if docRec.Code != http.StatusOK {
+		t.Fatalf("GET /swagger/doc.json status = %d, want %d", docRec.Code, http.StatusOK)
+	}
+	if !strings.Contains(docRec.Body.String(), "niko-vue-admin API") {
+		t.Fatalf("GET /swagger/doc.json body does not contain 'niko-vue-admin API'")
+	}
+}

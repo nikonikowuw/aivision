@@ -51,6 +51,16 @@ func clientInfo(c *gin.Context) service.ClientInfo {
 }
 
 // Login 处理用户登录 (POST /api/auth/login)。
+// @Summary 用户登录
+// @Description 使用用户名和密码登录获取 AccessToken，同时在 Cookie 中写入 RefreshToken
+// @Tags 认证模块
+// @Accept json
+// @Produce json
+// @Param request body LoginInput true "登录参数"
+// @Success 200 {object} LoginResponse "成功返回用户信息及 AccessToken"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "用户名或密码错误"
+// @Router /api/auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var input LoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -79,6 +89,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // RefreshToken 刷新 access token 并轮换 refresh token (POST /api/auth/refresh)。
 // 响应体为裸 token 字符串，对齐 vben doRefreshToken 契约。
+// @Summary 刷新令牌
+// @Description 从 HttpOnly Cookie 中读取 RefreshToken，签发新的 AccessToken 并轮换 RefreshToken Cookie
+// @Tags 认证模块
+// @Produce plain
+// @Success 200 {string} string "新的 AccessToken"
+// @Failure 401 {object} response.Result "未授权或 RefreshToken 无效"
+// @Router /api/auth/refresh [post]
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	cookieToken, err := c.Cookie(refreshTokenCookieName)
 	if err != nil || cookieToken == "" {
@@ -102,6 +119,12 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 }
 
 // Logout 处理用户登出 (POST /api/auth/logout)。
+// @Summary 用户登出
+// @Description 注销当前的 RefreshToken 并清除客户端 Cookie
+// @Tags 认证模块
+// @Produce json
+// @Success 200 {object} NilResponse "登出成功"
+// @Router /api/auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	cookieToken, _ := c.Cookie(refreshTokenCookieName)
 	var revokeErr error
@@ -121,6 +144,14 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 // GetUserInfo 获取当前登录用户信息 (GET /api/user/info)。
+// @Summary 获取当前登录用户信息
+// @Description 根据请求头中的 Bearer Token 获取当前登录用户的详细信息
+// @Tags 认证模块
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} UserInfoResponse "当前用户信息"
+// @Failure 401 {object} response.Result "未授权"
+// @Router /api/user/info [get]
 func (h *AuthHandler) GetUserInfo(c *gin.Context) {
 	identity, ok := middleware.IdentityFromContext(c)
 	if !ok {
@@ -138,6 +169,14 @@ func (h *AuthHandler) GetUserInfo(c *gin.Context) {
 }
 
 // GetAccessCodes 获取当前登录用户的权限码集合 (GET /api/auth/codes)。
+// @Summary 获取当前用户权限码集合
+// @Description 获取当前登录用户拥有的全部按钮权限码
+// @Tags 认证模块
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} AccessCodesResponse "权限码列表"
+// @Failure 401 {object} response.Result "未授权"
+// @Router /api/auth/codes [get]
 func (h *AuthHandler) GetAccessCodes(c *gin.Context) {
 	identity, ok := middleware.IdentityFromContext(c)
 	if !ok {

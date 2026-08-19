@@ -1,3 +1,13 @@
+// @title niko-vue-admin API
+// @version 1.0
+// @description niko-vue-admin 后端 API 接口文档
+// @host localhost:8000
+// @BasePath /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description 在 Header 中传入 `Bearer <token>` 进行身份认证
 package main
 
 import (

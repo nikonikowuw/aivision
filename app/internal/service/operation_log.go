@@ -54,6 +54,15 @@ func (s *operationLogService) GetByID(ctx context.Context, id uint64) (*model.Op
 }
 
 func (s *operationLogService) GetPage(ctx context.Context, query *LogPageQuery) (*LogPageResult, error) {
+	if query.StartTime == nil && query.EndTime == nil {
+		now := time.Now()
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		// use end of day (23:59:59) + 1 second = start of next day to act as exclusive upper bound
+		endOfDay := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+		query.StartTime = &startOfDay
+		query.EndTime = &endOfDay
+	}
+
 	filter := &repository.OperationLogFilter{
 		Page:       query.Page,
 		PageSize:   query.PageSize,

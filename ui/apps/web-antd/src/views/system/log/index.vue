@@ -13,6 +13,14 @@ import { Button, Descriptions, Tag } from 'ant-design-vue';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { getLogDetailApi, getLogPageApi } from '#/api';
 
+function getTimezoneOffset(date: Date): string {
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+  const minutes = String(Math.abs(offset) % 60).padStart(2, '0');
+  return `${sign}${hours}:${minutes}`;
+}
+
 const currentDetail = ref<LogApi.LogItem | null>(null);
 
 function formatAction(action?: string) {
@@ -93,6 +101,15 @@ const gridOptions: VxeTableGridOptions<LogApi.LogItem> = {
         if (dateRange && Array.isArray(dateRange) && dateRange.length === 2) {
           startTime = dateRange[0];
           endTime = dateRange[1];
+        } else {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          const todayPrefix = `${year}-${month}-${day}`;
+
+          startTime = `${todayPrefix}T00:00:00${getTimezoneOffset(now)}`;
+          endTime = `${todayPrefix}T23:59:59${getTimezoneOffset(now)}`;
         }
         return await getLogPageApi({
           endTime,

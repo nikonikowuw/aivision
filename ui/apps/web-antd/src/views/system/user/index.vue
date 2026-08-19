@@ -47,6 +47,12 @@ const currentEditId = ref<null | number>(null);
 const deptTreeOptions = ref<DeptApi.DeptItem[]>([]);
 const selectedUsers = ref<UserApi.UserItem[]>([]);
 
+function isProtectedUser(row: UserApi.UserItem) {
+  return (
+    row.id === SYSTEM_ADMIN_USER_ID || row.username === SYSTEM_ADMIN_USERNAME
+  );
+}
+
 // 用户新增/编辑表单
 const [Form, formApi] = useVbenForm<UserFormValues>({
   schema: [
@@ -188,8 +194,7 @@ const [AssignRoleModal, assignRoleModalApi] = useVbenModal({
 
 const gridOptions: VxeTableGridOptions<UserApi.UserItem> = {
   checkboxConfig: {
-    checkMethod: ({ row }) =>
-      row.id !== SYSTEM_ADMIN_USER_ID && row.username !== SYSTEM_ADMIN_USERNAME,
+    checkMethod: ({ row }) => !isProtectedUser(row),
     highlight: true,
   },
   columns: [
@@ -347,6 +352,24 @@ async function handleStatusChange(row: UserApi.UserItem, checked: boolean) {
   }
 }
 
+function handleClearSelection() {
+  gridApi.grid?.clearCheckboxRow();
+  selectedUsers.value = [];
+}
+
+async function handleBatchDelete() {
+  const ids = selectedUsers.value.map((u) => u.id);
+  if (ids.length === 0) return;
+  try {
+    await batchDeleteUserApi(ids);
+    message.success($t('system.common.success'));
+    handleClearSelection();
+    gridApi.reload();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 async function handleResetPassword(row: UserApi.UserItem) {
   try {
     await resetUserPasswordApi(row.id);
@@ -408,25 +431,7 @@ async function handleDelete(row: UserApi.UserItem) {
   }
 }
 
-function handleClearSelection() {
-  gridApi.grid?.clearCheckboxRow();
-  selectedUsers.value = [];
-}
-
-async function handleBatchDelete() {
-  const ids = selectedUsers.value.map((u) => u.id);
-  if (ids.length === 0) return;
-  try {
-    await batchDeleteUserApi(ids);
-    message.success($t('system.common.success'));
-    handleClearSelection();
-    gridApi.reload();
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-async function handleBatchStatus(status: SystemStatus) {
+async function handleBatchStatusChange(status: SystemStatus) {
   const ids = selectedUsers.value.map((u) => u.id);
   if (ids.length === 0) return;
   try {
@@ -457,34 +462,20 @@ async function handleBatchStatus(status: SystemStatus) {
         </Button>
       </div>
       <div class="flex items-center gap-2">
-        <Popconfirm
-          :title="
-            $t('system.common.confirmBatchEnable', {
-              count: selectedUsers.length,
-            })
-          "
-          :ok-text="$t('system.common.confirm')"
-          :cancel-text="$t('system.common.cancel')"
-          @confirm="() => handleBatchStatus(SYSTEM_STATUS.ENABLED)"
+        <Button
+          size="small"
+          v-access:code="['system:user:status']"
+          @click="() => handleBatchStatusChange(SYSTEM_STATUS.ENABLED)"
         >
-          <Button size="small" v-access:code="['system:user:status']">
-            {{ $t('system.common.batchEnable') }}
-          </Button>
-        </Popconfirm>
-        <Popconfirm
-          :title="
-            $t('system.common.confirmBatchDisable', {
-              count: selectedUsers.length,
-            })
-          "
-          :ok-text="$t('system.common.confirm')"
-          :cancel-text="$t('system.common.cancel')"
-          @confirm="() => handleBatchStatus(SYSTEM_STATUS.DISABLED)"
+          {{ $t('system.common.batchEnable') }}
+        </Button>
+        <Button
+          size="small"
+          v-access:code="['system:user:status']"
+          @click="() => handleBatchStatusChange(SYSTEM_STATUS.DISABLED)"
         >
-          <Button size="small" v-access:code="['system:user:status']">
-            {{ $t('system.common.batchDisable') }}
-          </Button>
-        </Popconfirm>
+          {{ $t('system.common.batchDisable') }}
+        </Button>
         <Popconfirm
           :title="
             $t('system.common.confirmBatchDelete', {

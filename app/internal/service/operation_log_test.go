@@ -140,6 +140,25 @@ func TestOperationLogService(t *testing.T) {
 	if !errnoIs(err, errno.CodeNotFound) {
 		t.Errorf("expected CodeNotFound, got %v", e)
 	}
+
+	// 8. 默认时间范围测试 (今天)
+	todayRes, err := srv.GetPage(ctx, &service.LogPageQuery{})
+	if err != nil {
+		t.Fatalf("GetPage with no time range failed: %v", err)
+	}
+	if todayRes.Total != 3 { // logs generated today (now)
+		t.Errorf("expected total 3 for default time range (today), got %d", todayRes.Total)
+	}
+
+	// 9. 筛选时间范围 (未来, 预期0条)
+	tomorrow := now.Add(24 * time.Hour)
+	futureRes, err := srv.GetPage(ctx, &service.LogPageQuery{StartTime: &tomorrow})
+	if err != nil {
+		t.Fatalf("GetPage with future time failed: %v", err)
+	}
+	if futureRes.Total != 0 {
+		t.Errorf("expected 0 for future time, got %d", futureRes.Total)
+	}
 }
 
 func errnoIs(err error, code int) bool {

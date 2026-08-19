@@ -68,7 +68,7 @@ func (r *operationLogRepository) ListPage(ctx context.Context, filter *Operation
 		db = db.Where("created_at >= ?", *filter.StartTime)
 	}
 	if filter.EndTime != nil {
-		db = db.Where("created_at <= ?", *filter.EndTime)
+		db = db.Where("created_at < ?", *filter.EndTime)
 	}
 
 	var total int64

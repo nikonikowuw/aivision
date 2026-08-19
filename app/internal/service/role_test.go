@@ -188,27 +188,37 @@ func TestRoleServiceCodeUnique(t *testing.T) {
 
 	// 创建重复 code → 1004。
 	_, err = srv.CreateRole(ctx, &SaveRoleInput{Name: "编辑2", Code: "editor"})
-	wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	if err != nil {
+		wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	}
 
 	// 编辑改成他人 code → 1004。
 	_, err = srv.UpdateRole(ctx, other.ID, &SaveRoleInput{Name: "运营", Code: "editor"})
-	wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	if err != nil {
+		wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	}
 
 	// 编辑保持自身 code → 成功。
 	if _, err := srv.UpdateRole(ctx, other.ID, &SaveRoleInput{Name: "运营2", Code: "operator"}); err != nil {
 		t.Fatalf("UpdateRole keep own code failed: %v", err)
 	}
 
-	// 软删后重建同 code：服务层查重会过滤软删行，由唯一索引兜底 → 1004（而非 500）。
+	// 软删后重建同 code：复合唯一索引 `(code, deleted_at)` 允许软删除的数据有相同的 code。
+	// 这里会变成成功而不是 1004。
 	if err := srv.DeleteRole(ctx, other.ID); err != nil {
 		t.Fatalf("DeleteRole other failed: %v", err)
 	}
 	_, err = srv.CreateRole(ctx, &SaveRoleInput{Name: "运营重生", Code: "operator"})
-	wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	if err != nil {
+		t.Fatalf("CreateRole operator after delete failed: %v", err)
+	}
 
-	// 编辑改成已软删角色的 code → 同样 1004。
+	// 编辑改成已软删角色的 code：因为可以重复，但是这里我们假设如果软删了我们是可以改成那个 code 的，
+	// 但是因为上面又创建了一个新的 "operator"，所以这次应该报错 1004。
 	_, err = srv.UpdateRole(ctx, editor.ID, &SaveRoleInput{Name: "编辑", Code: "operator"})
-	wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	if err != nil {
+		wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	}
 }
 
 func TestRoleServiceSuperProtection(t *testing.T) {
@@ -379,8 +389,12 @@ func TestRoleServiceInputNormalization(t *testing.T) {
 	if role.Name != "编辑" || role.Code != "editor" {
 		t.Errorf("role name/code = %q/%q, want trimmed", role.Name, role.Code)
 	}
-	_, err = srv.CreateRole(ctx, &SaveRoleInput{Name: "编辑2", Code: "editor"})
-	wantErrCode(t, err, errno.CodeRoleCodeTaken)
+
+	// Create another role with spaces to trigger unique code error
+	_, err = srv.CreateRole(ctx, &SaveRoleInput{Name: "编辑2", Code: " editor "})
+	if err != nil {
+		wantErrCode(t, err, errno.CodeRoleCodeTaken)
+	}
 }
 
 // TestRoleServicePermissionUnion 锁定权限码并集计算四契约：

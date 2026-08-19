@@ -166,7 +166,7 @@ func (r *roleRepository) GetMenuIDs(ctx context.Context, roleID uint64) ([]uint6
 	var menuIDs []uint64
 	if err := r.db.WithContext(ctx).Model(&model.RoleMenu{}).
 		Joins("JOIN menus ON menus.id = role_menus.menu_id").
-		Where("role_menus.role_id = ? AND menus.deleted_at IS NULL", roleID).
+		Where("role_menus.role_id = ? AND menus.deleted_at = 0", roleID).
 		Pluck("distinct role_menus.menu_id", &menuIDs).Error; err != nil {
 		return nil, err
 	}

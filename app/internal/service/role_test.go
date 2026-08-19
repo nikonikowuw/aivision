@@ -507,7 +507,7 @@ func TestRoleServiceBatchDelete(t *testing.T) {
 	if err := db.Unscoped().First(&deleted, regular.ID).Error; err != nil {
 		t.Fatalf("find soft-deleted role: %v", err)
 	}
-	if !deleted.DeletedAt.Valid {
+	if deleted.DeletedAt == 0 {
 		t.Fatal("batch delete did not soft-delete role")
 	}
 	var roleMenuCount, userRoleCount int64

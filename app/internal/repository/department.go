@@ -136,13 +136,13 @@ func isSQLite(tx *gorm.DB) bool {
 func lockDepartment(tx *gorm.DB, id uint64) (*model.Department, error) {
 	if isSQLite(tx) {
 		if err := tx.Model(&model.Department{}).
-			Where("id = ? AND deleted_at IS NULL", id).
+			Where("id = ? AND deleted_at = 0", id).
 			UpdateColumn("updated_at", gorm.Expr("updated_at")).Error; err != nil {
 			return nil, err
 		}
 	}
 
-	query := tx.Where("id = ? AND deleted_at IS NULL", id)
+	query := tx.Where("id = ? AND deleted_at = 0", id)
 	if !isSQLite(tx) {
 		query = query.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate})
 	}

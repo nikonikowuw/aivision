@@ -55,7 +55,7 @@ func (r *authRepository) GetActiveIdentity(ctx context.Context, userID uint64) (
 		Select("users.username, roles.id AS role_id, roles.code AS role_code").
 		Joins("JOIN user_roles ON user_roles.user_id = users.id").
 		Joins("JOIN roles ON roles.id = user_roles.role_id").
-		Where("users.id = ? AND users.status = ? AND users.deleted_at IS NULL AND roles.status = ? AND roles.deleted_at IS NULL", userID, model.StatusEnabled, model.StatusEnabled).
+		Where("users.id = ? AND users.status = ? AND users.deleted_at = 0 AND roles.status = ? AND roles.deleted_at = 0", userID, model.StatusEnabled, model.StatusEnabled).
 		Order("roles.sort asc, roles.id asc").
 		Find(&rows).Error; err != nil {
 		return nil, err

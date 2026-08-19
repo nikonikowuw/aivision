@@ -230,7 +230,7 @@ func TestUserServiceBatchOperations(t *testing.T) {
 	if err := db.Unscoped().First(&deleted, user1.ID).Error; err != nil {
 		t.Fatalf("find soft-deleted user: %v", err)
 	}
-	if !deleted.DeletedAt.Valid {
+	if deleted.DeletedAt == 0 {
 		t.Fatal("batch delete did not soft-delete user1")
 	}
 	var relationCount int64

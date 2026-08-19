@@ -161,7 +161,7 @@ func (r *userRepository) GetRoleIDs(ctx context.Context, userID uint64) ([]uint6
 	var roleIDs []uint64
 	if err := r.db.WithContext(ctx).Model(&model.UserRole{}).
 		Joins("JOIN roles ON roles.id = user_roles.role_id").
-		Where("user_roles.user_id = ? AND roles.deleted_at IS NULL", userID).
+		Where("user_roles.user_id = ? AND roles.deleted_at = 0", userID).
 		Pluck("distinct user_roles.role_id", &roleIDs).Error; err != nil {
 		return nil, err
 	}

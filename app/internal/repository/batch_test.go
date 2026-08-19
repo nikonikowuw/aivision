@@ -63,7 +63,7 @@ func TestUserRepositoryBatchOperations(t *testing.T) {
 	if err := db.Unscoped().First(&deleted, users[0].ID).Error; err != nil {
 		t.Fatalf("find deleted user: %v", err)
 	}
-	if !deleted.DeletedAt.Valid {
+	if deleted.DeletedAt == 0 {
 		t.Fatal("user was not soft-deleted")
 	}
 	var relationCount int64
@@ -106,7 +106,7 @@ func TestRoleRepositoryBatchDelete(t *testing.T) {
 	if err := db.Unscoped().First(&deleted, role.ID).Error; err != nil {
 		t.Fatalf("find deleted role: %v", err)
 	}
-	if !deleted.DeletedAt.Valid {
+	if deleted.DeletedAt == 0 {
 		t.Fatal("role was not soft-deleted")
 	}
 	var roleMenuCount, userRoleCount int64

@@ -1,18 +1,18 @@
 package model
 
 import (
-	"gorm.io/gorm"
+	"gorm.io/plugin/soft_delete"
 )
 
 // Role 角色（表名 roles）。
 type Role struct {
 	BaseModel
-	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index;uniqueIndex:uk_roles_code" json:"-"`
-	Name      string         `gorm:"column:name;type:varchar(64);not null" json:"name"`
-	Code      string         `gorm:"column:code;type:varchar(64);not null;uniqueIndex:uk_roles_code" json:"code"`
-	Status    int8           `gorm:"column:status;default:1" json:"status"` // 1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）
-	Sort      int            `gorm:"column:sort" json:"sort"`
-	Remark    string         `gorm:"column:remark;type:varchar(255)" json:"remark"`
+	DeletedAt soft_delete.DeletedAt `gorm:"column:deleted_at;softDelete:milli;default:0;uniqueIndex:uk_roles_code" json:"-"`
+	Name      string                `gorm:"column:name;type:varchar(64);not null" json:"name"`
+	Code      string                `gorm:"column:code;type:varchar(64);not null;uniqueIndex:uk_roles_code" json:"code"`
+	Status    int8                  `gorm:"column:status;default:1" json:"status"` // 1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）
+	Sort      int                   `gorm:"column:sort" json:"sort"`
+	Remark    string                `gorm:"column:remark;type:varchar(255)" json:"remark"`
 }
 
 // BuiltinAdminRoleID 系统内置超级管理员角色 ID。

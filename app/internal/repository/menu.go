@@ -109,7 +109,7 @@ func (r *menuRepository) GetPermissionsByRoleIDs(ctx context.Context, roleIDs []
 	var perms []string
 	if err := r.activeRoleMenusByRoleIDs(ctx, roleIDs).
 		Joins("JOIN menus ON menus.id = role_menus.menu_id").
-		Where("menus.status = ? AND menus.deleted_at IS NULL AND menus.permission != ''", model.StatusEnabled).
+		Where("menus.status = ? AND menus.deleted_at = 0 AND menus.permission != ''", model.StatusEnabled).
 		Pluck("distinct menus.permission", &perms).Error; err != nil {
 		return nil, err
 	}
@@ -121,5 +121,5 @@ func (r *menuRepository) GetPermissionsByRoleIDs(ctx context.Context, roleIDs []
 func (r *menuRepository) activeRoleMenusByRoleIDs(ctx context.Context, roleIDs []uint64) *gorm.DB {
 	return r.db.WithContext(ctx).Model(&model.RoleMenu{}).
 		Joins("JOIN roles ON roles.id = role_menus.role_id").
-		Where("role_menus.role_id IN ? AND roles.status = ? AND roles.deleted_at IS NULL", roleIDs, model.StatusEnabled)
+		Where("role_menus.role_id IN ? AND roles.status = ? AND roles.deleted_at = 0", roleIDs, model.StatusEnabled)
 }

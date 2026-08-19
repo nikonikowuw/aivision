@@ -394,7 +394,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div :class="cn('h-full rounded-md bg-card', className)">
+  <div :class="cn('min-h-full rounded-md bg-card', className)">
     <VxeGrid
       ref="gridRef"
       :class="

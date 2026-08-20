@@ -275,3 +275,24 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 修复登出审计日志操作人记录
+
+**Date**: 2026-08-20
+**Task**: 修复登出审计日志操作人记录
+**Branch**: `main`
+
+### Summary
+
+在用户登出接口中支持优先通过 RefreshToken 解析用户身份并在吊销前捕获，同时备选支持校验 Authorization Bearer Token 提取操作人身份并注入 Gin Context，使操作日志中间件能准确记录登出操作人。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba9eaad` | (see git log) |
+
+### Status
+
+[OK] **Completed**

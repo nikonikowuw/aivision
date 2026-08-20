@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
-- **Last Active**: 2026-08-19
+- **Total Sessions**: 9
+- **Last Active**: 2026-08-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~277 | Active |
+| `journal-1.md` | ~298 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-08-20 | 修复登出审计日志操作人记录 | `ba9eaad` | `main` |
 | 8 | 2026-08-19 | Backend and Frontend Batch Operations | `9fc7eea`, `be1f41d`, `1068a93`, `e7c8a0b`, `f2e3875` | `main` |
 | 7 | 2026-08-17 | Implement backend authentication | `bf166c4` | `main` |
 | 6 | 2026-08-17 | Implement User Management CRUD | `52be9ec` | `main` |

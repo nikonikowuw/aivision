@@ -1,15 +1,33 @@
 {
   "auth": {
-    "login": "登录",
-    "register": "注册",
     "codeLogin": "验证码登录",
-    "qrcodeLogin": "二维码登录",
     "forgetPassword": "忘记密码",
-    "profile": "个人中心"
+    "login": "登录",
+    "profile": "个人中心",
+    "qrcodeLogin": "二维码登录",
+    "register": "注册"
   },
   "dashboard": {
-    "title": "概览",
     "analytics": "分析页",
     "workspace": "工作台"
+  },
+  "profile": {
+    "basicTab": "基本设置",
+    "changePasswordSuccess": "密码修改成功，请重新登录",
+    "confirmPassword": "确认密码",
+    "confirmPasswordPlaceholder": "请再次输入新密码",
+    "email": "邮箱",
+    "newPassword": "新密码",
+    "newPasswordPlaceholder": "请输入新密码",
+    "nickname": "昵称",
+    "oldPassword": "旧密码",
+    "oldPasswordPlaceholder": "请输入旧密码",
+    "passwordMismatch": "两次输入的密码不一致",
+    "passwordTab": "修改密码",
+    "phone": "手机号",
+    "remark": "个人简介",
+    "title": "个人中心",
+    "updateProfileSuccess": "个人资料更新成功",
+    "username": "用户名"
   }
 }

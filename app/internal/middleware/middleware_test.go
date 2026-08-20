@@ -101,10 +101,17 @@ func setupMiddlewareTestApp(t *testing.T) (*gin.Engine, *gorm.DB, service.Operat
 			userGroup.POST("/unregistered", func(c *gin.Context) {
 				response.Success(c, "unregistered write")
 			})
+			userGroup.PUT("/profile", func(c *gin.Context) {
+				response.Success(c, "profile updated")
+			})
+			userGroup.PUT("/unregistered-action", func(c *gin.Context) {
+				response.Success(c, "unregistered put")
+			})
 		}
 		permMid.Register(http.MethodPost, "/api/user", "system:user:add")
 		permMid.Register(http.MethodPut, "/api/user/batch-status", "system:user:status")
 		permMid.Register(http.MethodDelete, "/api/user/:id", "system:user:delete")
+		permMid.Register(http.MethodPut, "/api/user/profile", middleware.PermCodeAuthenticated)
 
 		// 模拟需要读取权限的日志接口。
 		oplogGroup := apiGroup.Group("/oplog")
@@ -285,6 +292,33 @@ func TestOplogAndPermMiddleware(t *testing.T) {
 	_ = json.Unmarshal([]byte(loginLog.Body), &parsedBody)
 	if parsedBody["password"] != "***" {
 		t.Errorf("password in failed login log not masked: %s", loginLog.Body)
+	}
+
+	// 7. 测试 Authenticated 写路由放行与未登录拦截
+	// 7.1 未登录请求 Authenticated 路由 → 401
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/profile", nil)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated put profile status = %d, want 401, got %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	// 7.2 普通用户请求 Authenticated 路由（无特定角色权限码） → 200 放行
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/profile", nil)
+	req.Header.Set("Authorization", "Bearer "+normalToken)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("normal user put profile status = %d, want 200", rec.Code)
+	}
+
+	// 7.3 普通用户请求未登记写路由 → 仍返回 403
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/unregistered-action", nil)
+	req.Header.Set("Authorization", "Bearer "+normalToken)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("normal user unregistered write status = %d, want 403", rec.Code)
 	}
 }
 

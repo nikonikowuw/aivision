@@ -1,65 +1,85 @@
 <script setup lang="ts">
-import type { BasicOption } from '@vben/types';
+import type { Recordable } from '@vben/types';
 
 import type { VbenFormSchema } from '#/adapter/form';
 
 import { computed, onMounted, ref } from 'vue';
 
 import { ProfileBaseSetting } from '@vben/common-ui';
+import { $t } from '@vben/locales';
 
-import { getUserInfoApi } from '#/api';
+import { message } from 'ant-design-vue';
+
+import { getCurrentProfileApi, updateCurrentProfileApi } from '#/api';
+import { useAuthStore } from '#/store';
+
+const authStore = useAuthStore();
 
 const profileBaseSettingRef = ref();
-
-const MOCK_ROLES_OPTIONS: BasicOption[] = [
-  {
-    label: '管理员',
-    value: 'super',
-  },
-  {
-    label: '用户',
-    value: 'user',
-  },
-  {
-    label: '测试',
-    value: 'test',
-  },
-];
+const submitting = ref(false);
 
 const formSchema = computed((): VbenFormSchema[] => {
   return [
     {
-      fieldName: 'realName',
       component: 'Input',
-      label: '姓名',
-    },
-    {
-      fieldName: 'username',
-      component: 'Input',
-      label: '用户名',
-    },
-    {
-      fieldName: 'roles',
-      component: 'Select',
       componentProps: {
-        mode: 'tags',
-        options: MOCK_ROLES_OPTIONS,
+        disabled: true,
       },
-      label: '角色',
+      fieldName: 'username',
+      label: $t('page.profile.username'),
     },
     {
-      fieldName: 'introduction',
+      component: 'Input',
+      fieldName: 'nickname',
+      label: $t('page.profile.nickname'),
+    },
+    {
+      component: 'Input',
+      fieldName: 'email',
+      label: $t('page.profile.email'),
+    },
+    {
+      component: 'Input',
+      fieldName: 'phone',
+      label: $t('page.profile.phone'),
+    },
+    {
       component: 'Textarea',
-      label: '个人简介',
+      fieldName: 'remark',
+      label: $t('page.profile.remark'),
     },
   ];
 });
 
+async function handleSubmit(values: Recordable<any>) {
+  if (submitting.value) {
+    return;
+  }
+  submitting.value = true;
+  try {
+    const updated = await updateCurrentProfileApi({
+      email: values.email,
+      nickname: values.nickname,
+      phone: values.phone,
+      remark: values.remark,
+    });
+    profileBaseSettingRef.value?.getFormApi()?.setValues(updated);
+    await authStore.fetchUserInfo();
+    message.success($t('page.profile.updateProfileSuccess'));
+  } finally {
+    submitting.value = false;
+  }
+}
+
 onMounted(async () => {
-  const data = await getUserInfoApi();
-  profileBaseSettingRef.value.getFormApi().setValues(data);
+  const data = await getCurrentProfileApi();
+  profileBaseSettingRef.value?.getFormApi()?.setValues(data);
 });
 </script>
 <template>
-  <ProfileBaseSetting ref="profileBaseSettingRef" :form-schema="formSchema" />
+  <ProfileBaseSetting
+    ref="profileBaseSettingRef"
+    :form-schema="formSchema"
+    @submit="handleSubmit"
+  />
 </template>

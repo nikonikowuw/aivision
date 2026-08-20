@@ -458,6 +458,34 @@ definitions:
       message:
         type: string
     type: object
+  niko-vue-admin_app_internal_service.ChangeCurrentPasswordInput:
+    properties:
+      newPassword:
+        maxLength: 32
+        minLength: 6
+        type: string
+      oldPassword:
+        minLength: 1
+        type: string
+    required:
+    - newPassword
+    - oldPassword
+    type: object
+  niko-vue-admin_app_internal_service.CurrentProfileDTO:
+    properties:
+      avatar:
+        type: string
+      email:
+        type: string
+      nickname:
+        type: string
+      phone:
+        type: string
+      remark:
+        type: string
+      username:
+        type: string
+    type: object
   niko-vue-admin_app_internal_service.LogPageResult:
     properties:
       items:
@@ -600,6 +628,20 @@ definitions:
         type: string
     required:
     - username
+    type: object
+  niko-vue-admin_app_internal_service.UpdateCurrentProfileInput:
+    properties:
+      email:
+        type: string
+      nickname:
+        maxLength: 64
+        type: string
+      phone:
+        maxLength: 32
+        type: string
+      remark:
+        maxLength: 255
+        type: string
     type: object
   niko-vue-admin_app_internal_service.UserInfoDTO:
     properties:
@@ -1796,6 +1838,88 @@ paths:
       security:
       - BearerAuth: []
       summary: 分页获取用户列表
+      tags:
+      - 用户模块
+  /api/user/profile:
+    get:
+      description: 获取当前认证用户的基本资料（包含昵称、邮箱、手机号等）
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 个人资料
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_service.CurrentProfileDTO'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取当前登录用户个人资料
+      tags:
+      - 用户模块
+    put:
+      consumes:
+      - application/json
+      description: 修改当前认证用户的昵称、邮箱、手机号和个人简介
+      parameters:
+      - description: 修改资料参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.UpdateCurrentProfileInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新后的个人资料
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_service.CurrentProfileDTO'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 修改当前登录用户个人资料
+      tags:
+      - 用户模块
+  /api/user/profile/password:
+    put:
+      consumes:
+      - application/json
+      description: 校验旧密码并更新为新密码，同时吊销当前用户的所有 Refresh Token
+      parameters:
+      - description: 修改密码参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.ChangeCurrentPasswordInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 修改成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误或旧密码错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 修改当前登录用户密码
       tags:
       - 用户模块
 securityDefinitions:

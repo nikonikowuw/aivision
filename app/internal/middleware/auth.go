@@ -114,6 +114,12 @@ func IdentityFromContext(c *gin.Context) (Identity, bool) {
 	return identity, ok
 }
 
+// SetIdentityForTest 为单元测试设置请求认证身份。
+// 仅供测试包使用，生产代码不应调用。
+func SetIdentityForTest(c *gin.Context, identity Identity) {
+	c.Set(authIdentityKey, identity)
+}
+
 func isPublicAuthPath(path string) bool {
 	switch path {
 	case "/api/auth/login", "/api/auth/refresh", "/api/auth/logout":

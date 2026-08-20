@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"niko-vue-admin/app/internal/model"
@@ -166,6 +168,122 @@ func TestUserServiceCRUD(t *testing.T) {
 	statusDisabled := model.StatusDisabled
 	_, err = srv.UpdateUser(ctx, admin.ID, &SaveUserInput{Username: "admin", Status: &statusDisabled})
 	wantErrCode(t, err, errno.CodeAdminUserProtected)
+}
+
+func TestUserServiceProfileAndPassword(t *testing.T) {
+	db := setupTestDB(t)
+	srv := newTestUserService(db)
+	ctx := context.Background()
+
+	rawPassword := "oldPassword123"
+	hashed, err := hashPassword(rawPassword)
+	if err != nil {
+		t.Fatalf("hashPassword: %v", err)
+	}
+
+	user := model.User{
+		Username: "profile_user",
+		Password: hashed,
+		Nickname: "原始昵称",
+		Email:    "old@example.com",
+		Phone:    "13800000000",
+		Avatar:   "https://example.com/avatar.png",
+		Remark:   "原始备注",
+		Status:   model.StatusEnabled,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	// 插入两条 Refresh Token（一条有效，一条已撤销）
+	validToken := model.RefreshToken{
+		UserID:    user.ID,
+		Token:     "valid-refresh-token",
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Revoked:   false,
+	}
+	revokedToken := model.RefreshToken{
+		UserID:    user.ID,
+		Token:     "already-revoked-token",
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Revoked:   true,
+	}
+	if err := db.Create(&validToken).Error; err != nil {
+		t.Fatalf("create valid token: %v", err)
+	}
+	if err := db.Create(&revokedToken).Error; err != nil {
+		t.Fatalf("create revoked token: %v", err)
+	}
+
+	// 1. 获取本人资料
+	profile, err := srv.GetCurrentProfile(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetCurrentProfile failed: %v", err)
+	}
+	if profile.Username != "profile_user" || profile.Nickname != "原始昵称" || profile.Avatar != "https://example.com/avatar.png" {
+		t.Fatalf("unexpected profile: %+v", profile)
+	}
+
+	// 2. 更新本人资料（只允许白名单字段）
+	updatedProfile, err := srv.UpdateCurrentProfile(ctx, user.ID, &UpdateCurrentProfileInput{
+		Nickname: " 新昵称 ",
+		Email:    " new@example.com ",
+		Phone:    " 13900000000 ",
+		Remark:   " 新备注 ",
+	})
+	if err != nil {
+		t.Fatalf("UpdateCurrentProfile failed: %v", err)
+	}
+	if updatedProfile.Nickname != "新昵称" || updatedProfile.Email != "new@example.com" || updatedProfile.Phone != "13900000000" || updatedProfile.Remark != "新备注" {
+		t.Fatalf("unexpected updated profile: %+v", updatedProfile)
+	}
+
+	// 验证数据库中 username / avatar / status 未被改变
+	var persistedUser model.User
+	if err := db.First(&persistedUser, user.ID).Error; err != nil {
+		t.Fatalf("find persisted user: %v", err)
+	}
+	if persistedUser.Username != "profile_user" || persistedUser.Avatar != "https://example.com/avatar.png" || persistedUser.Status != model.StatusEnabled {
+		t.Fatalf("tampered protected fields in user: %+v", persistedUser)
+	}
+
+	// 3. 错误旧密码改密 → CodeWrongOldPassword
+	err = srv.ChangeCurrentPassword(ctx, user.ID, &ChangeCurrentPasswordInput{
+		OldPassword: "wrongPassword",
+		NewPassword: "newPassword123",
+	})
+	wantErrCode(t, err, errno.CodeWrongOldPassword)
+
+	// 4. 正确旧密码改密成功
+	err = srv.ChangeCurrentPassword(ctx, user.ID, &ChangeCurrentPasswordInput{
+		OldPassword: rawPassword,
+		NewPassword: "newPassword123",
+	})
+	if err != nil {
+		t.Fatalf("ChangeCurrentPassword failed: %v", err)
+	}
+
+	// 验证数据库中密码已更新且旧密码无法匹配
+	if err := db.First(&persistedUser, user.ID).Error; err != nil {
+		t.Fatalf("find persisted user: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(persistedUser.Password), []byte("newPassword123")); err != nil {
+		t.Fatalf("new password does not match: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(persistedUser.Password), []byte(rawPassword)); err == nil {
+		t.Fatal("old password still matches after password change")
+	}
+
+	// 验证所有 Refresh Token 均已 revoked
+	var tokens []model.RefreshToken
+	if err := db.Where("user_id = ?", user.ID).Find(&tokens).Error; err != nil {
+		t.Fatalf("find tokens: %v", err)
+	}
+	for _, tok := range tokens {
+		if !tok.Revoked {
+			t.Fatalf("token %s was not revoked after password change", tok.Token)
+		}
+	}
 }
 
 func TestUserServiceBatchOperations(t *testing.T) {

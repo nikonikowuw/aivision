@@ -44,6 +44,52 @@ export namespace UserApi {
     remark?: string;
     deptId?: number;
   }
+
+  export interface CurrentProfile {
+    username: string;
+    nickname: string;
+    email: string;
+    phone: string;
+    avatar: string;
+    remark: string;
+  }
+
+  export interface UpdateCurrentProfileInput {
+    nickname?: string;
+    email?: string;
+    phone?: string;
+    remark?: string;
+  }
+
+  export interface ChangeCurrentPasswordInput {
+    oldPassword: string;
+    newPassword: string;
+  }
+}
+
+/**
+ * 获取当前登录用户的个人资料
+ */
+export async function getCurrentProfileApi() {
+  return requestClient.get<UserApi.CurrentProfile>('/user/profile');
+}
+
+/**
+ * 更新当前登录用户的个人资料
+ */
+export async function updateCurrentProfileApi(
+  data: UserApi.UpdateCurrentProfileInput,
+) {
+  return requestClient.put<UserApi.CurrentProfile>('/user/profile', data);
+}
+
+/**
+ * 修改当前登录用户密码
+ */
+export async function changeCurrentPasswordApi(
+  data: UserApi.ChangeCurrentPasswordInput,
+) {
+  return requestClient.put<null>('/user/profile/password', data);
 }
 
 /**

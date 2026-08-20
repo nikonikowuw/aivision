@@ -37,6 +37,8 @@ const (
 	menusRoutePath       = "/menus"
 	rolesRoutePath       = "/roles"
 	statusRoutePath      = "/status"
+	profileRoutePath     = "/profile"
+	passwordRoutePath    = "/password"
 	resetPasswordPath    = "/reset-password"
 	batchRoutePath       = "/batch"
 	batchStatusRoutePath = "/batch-status"
@@ -105,6 +107,9 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		userGroup := apiGroup.Group(userRoutePath)
 		{
 			userGroup.GET(infoRoutePath, deps.AuthHandler.GetUserInfo)
+			userGroup.GET(profileRoutePath, deps.UserHandler.GetProfile)
+			userGroup.PUT(profileRoutePath, deps.UserHandler.UpdateProfile)
+			userGroup.PUT(profileRoutePath+passwordRoutePath, deps.UserHandler.ChangePassword)
 			userGroup.GET(pageRoutePath, deps.UserHandler.GetPage)
 			userGroup.POST("", deps.UserHandler.CreateUser)
 			userGroup.DELETE(batchRoutePath, deps.UserHandler.BatchDeleteUser)
@@ -116,6 +121,8 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			userGroup.PUT(idRoutePath+rolesRoutePath, deps.UserHandler.AssignRoles)
 			userGroup.PUT(idRoutePath+statusRoutePath, deps.UserHandler.UpdateStatus)
 		}
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+profileRoutePath, middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+profileRoutePath+passwordRoutePath, middleware.PermCodeAuthenticated)
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+userRoutePath, "system:user:add")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+userRoutePath+batchRoutePath, "system:user:delete")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+userRoutePath+batchStatusRoutePath, "system:user:status")

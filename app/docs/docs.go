@@ -1402,6 +1402,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/user/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取当前认证用户的基本资料（包含昵称、邮箱、手机号等）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "获取当前登录用户个人资料",
+                "responses": {
+                    "200": {
+                        "description": "个人资料",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_service.CurrentProfileDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "修改当前认证用户的昵称、邮箱、手机号和个人简介",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "修改当前登录用户个人资料",
+                "parameters": [
+                    {
+                        "description": "修改资料参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_service.UpdateCurrentProfileInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的个人资料",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_service.CurrentProfileDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/profile/password": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "校验旧密码并更新为新密码，同时吊销当前用户的所有 Refresh Token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "修改当前登录用户密码",
+                "parameters": [
+                    {
+                        "description": "修改密码参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_service.ChangeCurrentPasswordInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "修改成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误或旧密码错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/user/{id}": {
             "put": {
                 "security": [
@@ -2429,6 +2560,47 @@ const docTemplate = `{
                 }
             }
         },
+        "niko-vue-admin_app_internal_service.ChangeCurrentPasswordInput": {
+            "type": "object",
+            "required": [
+                "newPassword",
+                "oldPassword"
+            ],
+            "properties": {
+                "newPassword": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 6
+                },
+                "oldPassword": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            }
+        },
+        "niko-vue-admin_app_internal_service.CurrentProfileDTO": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "nickname": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "niko-vue-admin_app_internal_service.LogPageResult": {
             "type": "object",
             "properties": {
@@ -2636,6 +2808,26 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 64,
                     "minLength": 2
+                }
+            }
+        },
+        "niko-vue-admin_app_internal_service.UpdateCurrentProfileInput": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "nickname": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "remark": {
+                    "type": "string",
+                    "maxLength": 255
                 }
             }
         },

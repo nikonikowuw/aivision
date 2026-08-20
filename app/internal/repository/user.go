@@ -31,6 +31,7 @@ type UserRepository interface {
 	GetRoleIDs(ctx context.Context, userID uint64) ([]uint64, error)
 	BatchDelete(ctx context.Context, ids []uint64) error
 	BatchUpdateStatus(ctx context.Context, ids []uint64, status int8) error
+	ChangePasswordAndRevokeSessions(ctx context.Context, userID uint64, passwordHash string) error
 }
 
 type userRepository struct {
@@ -166,4 +167,20 @@ func (r *userRepository) GetRoleIDs(ctx context.Context, userID uint64) ([]uint6
 		return nil, err
 	}
 	return roleIDs, nil
+}
+
+func (r *userRepository) ChangePasswordAndRevokeSessions(ctx context.Context, userID uint64, passwordHash string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.User{}).Where("id = ? AND deleted_at = 0", userID).Update("password", passwordHash)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
+
+		return tx.Model(&model.RefreshToken{}).
+			Where("user_id = ? AND revoked = ?", userID, false).
+			Update("revoked", true).Error
+	})
 }

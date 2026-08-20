@@ -158,3 +158,12 @@ func parseIDParam(c *gin.Context) (uint64, bool) {
 	}
 	return id, true
 }
+
+// requireIdentity 从上下文获取认证身份；未认证时自动设置 401 错误并返回 false。
+func requireIdentity(c *gin.Context) (middleware.Identity, bool) {
+	identity, ok := middleware.IdentityFromContext(c)
+	if !ok {
+		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck
+	}
+	return identity, ok
+}

@@ -332,3 +332,89 @@ func (h *UserHandler) BatchUpdateStatus(c *gin.Context) {
 	}
 	response.Success(c, nil)
 }
+
+// GetProfile 获取当前登录用户的个人资料 (GET /api/user/profile)。
+// @Summary 获取当前登录用户个人资料
+// @Description 获取当前认证用户的基本资料（包含昵称、邮箱、手机号等）
+// @Tags 用户模块
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} service.CurrentProfileDTO "个人资料"
+// @Failure 401 {object} response.Result "未授权"
+// @Router /api/user/profile [get]
+func (h *UserHandler) GetProfile(c *gin.Context) {
+	identity, ok := requireIdentity(c)
+	if !ok {
+		return
+	}
+
+	profile, err := h.svc.GetCurrentProfile(c.Request.Context(), identity.UserID)
+	if err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, profile)
+}
+
+// UpdateProfile 更新当前登录用户的个人资料 (PUT /api/user/profile)。
+// @Summary 修改当前登录用户个人资料
+// @Description 修改当前认证用户的昵称、邮箱、手机号和个人简介
+// @Tags 用户模块
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body service.UpdateCurrentProfileInput true "修改资料参数"
+// @Success 200 {object} service.CurrentProfileDTO "更新后的个人资料"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Router /api/user/profile [put]
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	identity, ok := requireIdentity(c)
+	if !ok {
+		return
+	}
+
+	var input service.UpdateCurrentProfileInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+
+	profile, err := h.svc.UpdateCurrentProfile(c.Request.Context(), identity.UserID, &input)
+	if err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, profile)
+}
+
+// ChangePassword 修改当前登录用户的密码 (PUT /api/user/profile/password)。
+// @Summary 修改当前登录用户密码
+// @Description 校验旧密码并更新为新密码，同时吊销当前用户的所有 Refresh Token
+// @Tags 用户模块
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body service.ChangeCurrentPasswordInput true "修改密码参数"
+// @Success 200 {object} NilResponse "修改成功"
+// @Failure 400 {object} response.Result "参数错误或旧密码错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Router /api/user/profile/password [put]
+func (h *UserHandler) ChangePassword(c *gin.Context) {
+	identity, ok := requireIdentity(c)
+	if !ok {
+		return
+	}
+
+	var input service.ChangeCurrentPasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+
+	if err := h.svc.ChangeCurrentPassword(c.Request.Context(), identity.UserID, &input); err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, nil)
+}

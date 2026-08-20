@@ -1,57 +1,87 @@
 <script setup lang="ts">
+import type { Recordable } from '@vben/types';
+
 import type { VbenFormSchema } from '#/adapter/form';
 
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 import { ProfilePasswordSetting, z } from '@vben/common-ui';
+import { $t } from '@vben/locales';
 
 import { message } from 'ant-design-vue';
+
+import { changeCurrentPasswordApi } from '#/api';
+import { useAuthStore } from '#/store';
+
+const authStore = useAuthStore();
+
+const submitting = ref(false);
 
 const formSchema = computed((): VbenFormSchema[] => {
   return [
     {
+      component: 'VbenInputPassword',
+      componentProps: {
+        placeholder: $t('page.profile.oldPasswordPlaceholder'),
+      },
       fieldName: 'oldPassword',
-      label: '旧密码',
-      component: 'VbenInputPassword',
-      componentProps: {
-        placeholder: '请输入旧密码',
-      },
+      label: $t('page.profile.oldPassword'),
+      rules: z
+        .string({ error: $t('page.profile.oldPasswordPlaceholder') })
+        .min(1, { message: $t('page.profile.oldPasswordPlaceholder') }),
     },
     {
+      component: 'VbenInputPassword',
+      componentProps: {
+        passwordStrength: true,
+        placeholder: $t('page.profile.newPasswordPlaceholder'),
+      },
       fieldName: 'newPassword',
-      label: '新密码',
-      component: 'VbenInputPassword',
-      componentProps: {
-        passwordStrength: true,
-        placeholder: '请输入新密码',
-      },
+      label: $t('page.profile.newPassword'),
+      rules: z
+        .string({ error: $t('page.profile.newPasswordPlaceholder') })
+        .min(6, { message: $t('page.profile.newPasswordPlaceholder') })
+        .max(32, { message: $t('page.profile.newPasswordPlaceholder') }),
     },
     {
-      fieldName: 'confirmPassword',
-      label: '确认密码',
       component: 'VbenInputPassword',
       componentProps: {
         passwordStrength: true,
-        placeholder: '请再次输入新密码',
+        placeholder: $t('page.profile.confirmPasswordPlaceholder'),
       },
       dependencies: {
         rules(values) {
           const { newPassword } = values;
           return z
-            .string({ error: '请再次输入新密码' })
-            .min(1, { message: '请再次输入新密码' })
+            .string({ error: $t('page.profile.confirmPasswordPlaceholder') })
+            .min(1, { message: $t('page.profile.confirmPasswordPlaceholder') })
             .refine((value) => value === newPassword, {
-              message: '两次输入的密码不一致',
+              message: $t('page.profile.passwordMismatch'),
             });
         },
         triggerFields: ['newPassword'],
       },
+      fieldName: 'confirmPassword',
+      label: $t('page.profile.confirmPassword'),
     },
   ];
 });
 
-function handleSubmit() {
-  message.success('密码修改成功');
+async function handleSubmit(values: Recordable<any>) {
+  if (submitting.value) {
+    return;
+  }
+  submitting.value = true;
+  try {
+    await changeCurrentPasswordApi({
+      newPassword: values.newPassword,
+      oldPassword: values.oldPassword,
+    });
+    message.success($t('page.profile.changePasswordSuccess'));
+    await authStore.logout(true);
+  } finally {
+    submitting.value = false;
+  }
 }
 </script>
 <template>

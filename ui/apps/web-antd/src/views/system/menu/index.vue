@@ -68,7 +68,11 @@ const [Form, formApi] = useVbenForm<MenuFormValues>({
         placeholder: $t('system.menu.parentPlaceholder'),
         treeDefaultExpandAll: true,
         valueField: 'id',
-        dropdownStyle: { maxHeight: '400px', overflow: 'auto', minWidth: '300px' },
+        dropdownStyle: {
+          maxHeight: '400px',
+          overflow: 'auto',
+          minWidth: '300px',
+        },
         popupMatchSelectWidth: false,
       }),
       fieldName: 'parentId',

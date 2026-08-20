@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"niko-vue-admin/app/internal/api"
@@ -39,6 +40,9 @@ func setupUserAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 	engine.Use(middleware.ErrorHandler())
 	group := engine.Group("/api/user")
 	{
+		group.GET("/profile", handler.GetProfile)
+		group.PUT("/profile", handler.UpdateProfile)
+		group.PUT("/profile/password", handler.ChangePassword)
 		group.GET("/page", handler.GetPage)
 		group.POST("", handler.CreateUser)
 		group.DELETE("/batch", handler.BatchDeleteUser)
@@ -234,5 +238,150 @@ func TestUserAPI_CRUDAndProtection(t *testing.T) {
 	// 批量删除正常
 	if _, code := doUserRequest(t, engine, http.MethodDelete, "/api/user/batch", fmt.Sprintf(`{"ids":[%d,%d]}`, u1.ID, u2.ID)); code != errno.CodeOK {
 		t.Fatalf("batch delete: code = %d, want 0", code)
+	}
+}
+
+func TestUserAPI_Profile(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := newTestAPIDB(t, "user_profile")
+	rawPassword := "password123"
+	hashed, err := bcrypt.GenerateFromPassword([]byte(rawPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	user := model.User{
+		Username: "alice",
+		Password: string(hashed),
+		Nickname: "Alice",
+		Email:    "alice@example.com",
+		Phone:    "13800000001",
+		Avatar:   "https://example.com/alice.png",
+		Status:   model.StatusEnabled,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	userRepo := repository.NewUserRepository(db)
+	deptRepo := repository.NewDepartmentRepository(db)
+	roleRepo := repository.NewRoleRepository(db)
+	handler := api.NewUserHandler(service.NewUserService(userRepo, deptRepo, roleRepo))
+
+	engine := gin.New()
+	engine.Use(middleware.ErrorHandler())
+	// 注入 identity 中间件
+	engine.Use(func(c *gin.Context) {
+		if c.GetHeader("X-No-Auth") != "true" {
+			middleware.SetIdentityForTest(c, middleware.Identity{
+				UserID:   user.ID,
+				Username: user.Username,
+			})
+		}
+		c.Next()
+	})
+
+	engine.GET("/api/user/profile", handler.GetProfile)
+	engine.PUT("/api/user/profile", handler.UpdateProfile)
+	engine.PUT("/api/user/profile/password", handler.ChangePassword)
+
+	// 1. 未认证访问 → 401
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/user/profile", nil)
+	req.Header.Set("X-No-Auth", "true")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized GET: status = %d, want 401", rec.Code)
+	}
+
+	// 2. 正常读取个人资料
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/user/profile", nil)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/user/profile status = %d, want 200", rec.Code)
+	}
+	var getResp struct {
+		Code int                       `json:"code"`
+		Data service.CurrentProfileDTO `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("unmarshal get profile resp: %v", err)
+	}
+	if getResp.Data.Username != "alice" || getResp.Data.Nickname != "Alice" || getResp.Data.Avatar != "https://example.com/alice.png" {
+		t.Fatalf("unexpected profile data: %+v", getResp.Data)
+	}
+
+	// 3. 更新资料
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/profile", bytes.NewBufferString(`{
+		"nickname": "Alice New",
+		"email": "alicenew@example.com",
+		"phone": "13900000002",
+		"remark": "new remark",
+		"username": "mallory",
+		"avatar": "https://example.com/tampered.png",
+		"status": 0,
+		"deptId": 999,
+		"roleIds": [999],
+		"userId": 999
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/user/profile status = %d, want 200", rec.Code)
+	}
+	var updateResp struct {
+		Code int                       `json:"code"`
+		Data service.CurrentProfileDTO `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &updateResp); err != nil {
+		t.Fatalf("unmarshal update profile resp: %v", err)
+	}
+	if updateResp.Data.Nickname != "Alice New" || updateResp.Data.Email != "alicenew@example.com" {
+		t.Fatalf("unexpected updated data: %+v", updateResp.Data)
+	}
+	var persistedUser model.User
+	if err := db.First(&persistedUser, user.ID).Error; err != nil {
+		t.Fatalf("find persisted profile user: %v", err)
+	}
+	if persistedUser.Username != "alice" || persistedUser.Avatar != "https://example.com/alice.png" || persistedUser.Status != model.StatusEnabled || persistedUser.DeptID != 0 {
+		t.Fatalf("profile update modified protected fields: %+v", persistedUser)
+	}
+
+	// 4. 改密：旧密码错误 → CodeWrongOldPassword
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/profile/password", bytes.NewBufferString(`{
+		"oldPassword": "wrongPassword",
+		"newPassword": "newPassword123"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	var pwdResp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &pwdResp); err != nil {
+		t.Fatalf("unmarshal change pwd resp: %v", err)
+	}
+	if pwdResp.Code != errno.CodeWrongOldPassword {
+		t.Fatalf("change pwd with wrong old pwd code = %d, want %d", pwdResp.Code, errno.CodeWrongOldPassword)
+	}
+
+	// 5. 改密：正确旧密码 → 成功
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/profile/password", bytes.NewBufferString(fmt.Sprintf(`{
+		"oldPassword": %q,
+		"newPassword": "newPassword456"
+	}`, rawPassword)))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(rec, req)
+	var pwdOkResp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &pwdOkResp); err != nil {
+		t.Fatalf("unmarshal change pwd ok resp: %v", err)
+	}
+	if pwdOkResp.Code != errno.CodeOK {
+		t.Fatalf("change pwd with correct old pwd code = %d, want %d", pwdOkResp.Code, errno.CodeOK)
 	}
 }

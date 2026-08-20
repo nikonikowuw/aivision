@@ -51,6 +51,30 @@ type SaveUserInput struct {
 	DeptID   uint64 `json:"deptId" binding:"omitempty"`
 }
 
+// CurrentProfileDTO 描述个人中心资料。
+type CurrentProfileDTO struct {
+	Username string `json:"username"`
+	Nickname string `json:"nickname"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	Avatar   string `json:"avatar"`
+	Remark   string `json:"remark"`
+}
+
+// UpdateCurrentProfileInput 描述修改个人资料入参。
+type UpdateCurrentProfileInput struct {
+	Nickname string `json:"nickname" binding:"omitempty,max=64"`
+	Email    string `json:"email" binding:"omitempty,email"`
+	Phone    string `json:"phone" binding:"omitempty,max=32"`
+	Remark   string `json:"remark" binding:"omitempty,max=255"`
+}
+
+// ChangeCurrentPasswordInput 描述修改本人密码入参。
+type ChangeCurrentPasswordInput struct {
+	OldPassword string `json:"oldPassword" binding:"required,min=1"`
+	NewPassword string `json:"newPassword" binding:"required,min=6,max=32"`
+}
+
 // UserService 封装用户管理的业务逻辑。
 type UserService interface {
 	GetPage(ctx context.Context, query *UserPageQuery) (*UserPageResult, error)
@@ -63,6 +87,9 @@ type UserService interface {
 	UpdateStatus(ctx context.Context, id uint64, status int8) error
 	BatchDelete(ctx context.Context, ids []uint64) error
 	BatchUpdateStatus(ctx context.Context, ids []uint64, status int8) error
+	GetCurrentProfile(ctx context.Context, userID uint64) (*CurrentProfileDTO, error)
+	UpdateCurrentProfile(ctx context.Context, userID uint64, input *UpdateCurrentProfileInput) (*CurrentProfileDTO, error)
+	ChangeCurrentPassword(ctx context.Context, userID uint64, input *ChangeCurrentPasswordInput) error
 }
 
 type userService struct {
@@ -426,4 +453,70 @@ func (s *userService) BatchUpdateStatus(ctx context.Context, ids []uint64, statu
 	}
 
 	return s.userRepo.BatchUpdateStatus(ctx, uniqueIDs, status)
+}
+
+func userToProfileDTO(u *model.User) *CurrentProfileDTO {
+	return &CurrentProfileDTO{
+		Username: u.Username,
+		Nickname: u.Nickname,
+		Email:    u.Email,
+		Phone:    u.Phone,
+		Avatar:   u.Avatar,
+		Remark:   u.Remark,
+	}
+}
+
+func (s *userService) GetCurrentProfile(ctx context.Context, userID uint64) (*CurrentProfileDTO, error) {
+	u, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, mapRepoError(err)
+	}
+	return userToProfileDTO(u), nil
+}
+
+func (s *userService) UpdateCurrentProfile(ctx context.Context, userID uint64, input *UpdateCurrentProfileInput) (*CurrentProfileDTO, error) {
+	u, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, mapRepoError(err)
+	}
+
+	nickname := strings.TrimSpace(input.Nickname)
+	email := strings.TrimSpace(input.Email)
+	phone := strings.TrimSpace(input.Phone)
+	remark := strings.TrimSpace(input.Remark)
+
+	updates := map[string]interface{}{
+		"nickname": nickname,
+		"email":    email,
+		"phone":    phone,
+		"remark":   remark,
+	}
+
+	u.Nickname = nickname
+	u.Email = email
+	u.Phone = phone
+	u.Remark = remark
+
+	if err := s.userRepo.Update(ctx, u, updates); err != nil {
+		return nil, mapRepoError(err)
+	}
+	return userToProfileDTO(u), nil
+}
+
+func (s *userService) ChangeCurrentPassword(ctx context.Context, userID uint64, input *ChangeCurrentPasswordInput) error {
+	u, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return mapRepoError(err)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(input.OldPassword)); err != nil {
+		return errno.NewError(errno.CodeWrongOldPassword)
+	}
+
+	hashed, err := hashPassword(input.NewPassword)
+	if err != nil {
+		return err
+	}
+
+	return mapRepoError(s.userRepo.ChangePasswordAndRevokeSessions(ctx, userID, hashed))
 }

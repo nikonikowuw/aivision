@@ -329,3 +329,35 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: 完成项目部署物、文档与脚手架总任务归档
+
+**Date**: 2026-08-20
+**Task**: 完成项目部署物、文档与脚手架总任务归档
+**Branch**: `main`
+
+### Summary
+
+交付 app/Dockerfile、deploy/docker-compose.yml、deploy/nginx.conf 以及根目录完整 README.md，完成全栈脚手架最终集成回归验收与全部子父任务归档
+
+### Main Changes
+
+- 编写 Go 后端多阶段构建镜像 Dockerfile
+- 编写 deploy/ 目录下的 docker-compose.yml 与 nginx.conf 反代静态托管配置
+- 完善根目录 README.md，包含特性、环境要求、启动指南与二次开发指引
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `57d930c` | (see git log) |
+
+### Testing
+
+- [OK] 后端 make test 与 make vet 校验通过
+- [OK] 前端 pnpm check 与 pnpm build:antd 构建通过
+
+### Status
+
+[OK] **Completed**

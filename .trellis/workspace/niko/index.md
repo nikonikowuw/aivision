@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-08-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~363 | Active |
+| `journal-1.md` | ~384 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-08-20 | 全量审查并补齐项目规范文档与完成引导任务归档 | `d36edeb` | `main` |
 | 11 | 2026-08-20 | 完成项目部署物、文档与脚手架总任务归档 | `57d930c` | `main` |
 | 10 | 2026-08-20 | 个人中心资料与密码修改功能交付与归档 | `bd715f6`, `ba9eaad` | `main` |
 | 9 | 2026-08-20 | 修复登出审计日志操作人记录 | `ba9eaad` | `main` |

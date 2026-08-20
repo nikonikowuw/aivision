@@ -361,3 +361,24 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: 全量审查并补齐项目规范文档与完成引导任务归档
+
+**Date**: 2026-08-20
+**Task**: 全量审查并补齐项目规范文档与完成引导任务归档
+**Branch**: `main`
+
+### Summary
+
+审查并更新后端与前端目录结构、Hook 规范与类型安全规范，完成 00-bootstrap-guidelines 检查项并归档
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d36edeb` | (see git log) |
+
+### Status
+
+[OK] **Completed**

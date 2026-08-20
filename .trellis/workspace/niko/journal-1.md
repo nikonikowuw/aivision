@@ -296,3 +296,36 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: 个人中心资料与密码修改功能交付与归档
+
+**Date**: 2026-08-20
+**Task**: 个人中心资料与密码修改功能交付与归档
+**Branch**: `main`
+
+### Summary
+
+完成个人中心个人资料修改与密码修改功能全流程交付，修复登出审计日志操作人记录，并通过全面质量门禁与任务归档
+
+### Main Changes
+
+- 后端新增 PUT /api/v1/user/profile 与 PUT /api/v1/user/password 接口及完整校验和测试
+- 前端实现个人中心资料修改、密码修改表单、多语言支持及右上角快捷下拉菜单跳转
+- 修复登出接口在 Token 失效前解析 Claims 捕获操作人并在审计日志准确记录
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bd715f6` | (see git log) |
+| `ba9eaad` | (see git log) |
+
+### Testing
+
+- [OK] 后端 go test ./... 与 go vet 单元与集成测试全部通过
+- [OK] 前端 pnpm check (typecheck, lint, circular, cspell) 全量检查通过
+
+### Status
+
+[OK] **Completed**

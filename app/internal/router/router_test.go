@@ -176,7 +176,7 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 		DepartmentHandler:   api.NewDepartmentHandler(deptSrv),
 		OperationLogHandler: api.NewOperationLogHandler(oplogSrv),
 		UserHandler:         api.NewUserHandler(userSvc),
-		AuthHandler:         api.NewAuthHandler(authSvc, cfg),
+		AuthHandler:         api.NewAuthHandler(authSvc, auth, cfg),
 	})
 	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID), oplogSrv, db
 }

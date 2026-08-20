@@ -26,15 +26,17 @@ type LoginInput struct {
 
 // AuthHandler 处理用户认证、令牌刷新、登出及用户信息/权限码查询。
 type AuthHandler struct {
-	svc service.AuthService
-	cfg *config.Config
+	svc     service.AuthService
+	authMid *middleware.AuthMiddleware
+	cfg     *config.Config
 }
 
 // NewAuthHandler 创建 AuthHandler 实例。
-func NewAuthHandler(svc service.AuthService, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(svc service.AuthService, authMid *middleware.AuthMiddleware, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		svc: svc,
-		cfg: cfg,
+		svc:     svc,
+		authMid: authMid,
+		cfg:     cfg,
 	}
 }
 
@@ -127,9 +129,21 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 // @Router /api/auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	cookieToken, _ := c.Cookie(refreshTokenCookieName)
-	var revokeErr error
-	if cookieToken != "" {
-		revokeErr = h.svc.Logout(c.Request.Context(), cookieToken)
+
+	// 1. 先通过 service 登出（内部通过 refresh token 查出操作人并吊销）
+	operator, revokeErr := h.svc.Logout(c.Request.Context(), cookieToken)
+	if operator != nil {
+		middleware.SetIdentity(c, middleware.Identity{
+			UserID:    operator.UserID,
+			Username:  operator.Username,
+			RoleIDs:   operator.RoleIDs,
+			RoleCodes: operator.RoleCodes,
+		})
+	} else if h.authMid != nil {
+		// 2. 备用：从 Bearer token 中提取并验证操作人身份（应对 cookie 缺失或无对应记录）
+		if identity, ok := h.authMid.ExtractBearerIdentity(c); ok {
+			middleware.SetIdentity(c, identity)
+		}
 	}
 
 	// 清除 cookie

@@ -50,7 +50,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	userService := service.NewUserService(userRepository, departmentRepository, roleRepository)
 	userHandler := api.NewUserHandler(userService)
 	authService := service.NewAuthService(authRepository, userRepository, menuRepository, cfg)
-	authHandler := api.NewAuthHandler(authService, cfg)
+	authHandler := api.NewAuthHandler(authService, authMiddleware, cfg)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
 		AuthMiddleware:      authMiddleware,

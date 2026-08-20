@@ -62,16 +62,16 @@ func setupAuthAPITestApp(t *testing.T) (*gin.Engine, *gorm.DB) {
 	userSvc := service.NewUserService(userRepo, deptRepo, roleRepo)
 	oplogSvc := service.NewOperationLogService(oplogRepo)
 
-	authHandler := api.NewAuthHandler(authSvc, cfg)
+	authMid := middleware.NewAuthMiddleware(authRepo, cfg)
+	permMid := middleware.NewPermMiddleware(menuRepo)
+	oplogMid := middleware.NewOplogMiddleware(oplogSvc, zap.NewNop())
+
+	authHandler := api.NewAuthHandler(authSvc, authMid, cfg)
 	menuHandler := api.NewMenuHandler(menuSvc)
 	roleHandler := api.NewRoleHandler(roleSvc)
 	deptHandler := api.NewDepartmentHandler(deptSvc)
 	userHandler := api.NewUserHandler(userSvc)
 	oplogHandler := api.NewOperationLogHandler(oplogSvc)
-
-	authMid := middleware.NewAuthMiddleware(authRepo, cfg)
-	permMid := middleware.NewPermMiddleware(menuRepo)
-	oplogMid := middleware.NewOplogMiddleware(oplogSvc, zap.NewNop())
 
 	deps := router.Deps{
 		ErrorHandler:        middleware.ErrorHandler(),
@@ -95,8 +95,8 @@ type failingLogoutAuthService struct {
 	err error
 }
 
-func (s failingLogoutAuthService) Logout(context.Context, string) error {
-	return s.err
+func (s failingLogoutAuthService) Logout(context.Context, string) (*service.LogoutOperator, error) {
+	return nil, s.err
 }
 
 func TestAuthAPIEndToEnd(t *testing.T) {
@@ -262,16 +262,61 @@ func TestAuthAPIEndToEnd(t *testing.T) {
 	// 7. 登出 (POST /api/auth/logout)
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+newAccessToken)
 	req.AddCookie(newJwtCookie)
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("logout status = %d, want 200", rec.Code)
 	}
 
+	// 7.1 登出日志应记录操作人（异步落库，轮询等待）
+	var logoutOplog model.OperationLog
+	found := false
+	for i := 0; i < 20; i++ {
+		time.Sleep(10 * time.Millisecond)
+		if err := db.Where("path = ? AND method = ?", "/api/auth/logout", "POST").Last(&logoutOplog).Error; err == nil {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("find logout oplog: record not found after waiting")
+	}
+	if logoutOplog.UserID == 0 || logoutOplog.Username == "" {
+		t.Fatalf("logout oplog missing operator: user_id=%d, username=%q", logoutOplog.UserID, logoutOplog.Username)
+	}
+
 	var logoutRT model.RefreshToken
 	db.Where("token = ?", newJwtCookie.Value).First(&logoutRT)
 	if !logoutRT.Revoked {
 		t.Errorf("refresh token was not revoked on logout")
+	}
+
+	// 7.2 测试伪造 Bearer Token 登出时不会记录伪造操作人身份
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	req.Header.Set("Authorization", "Bearer forged.invalid.token")
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unauthenticated logout status = %d, want 200", rec.Code)
+	}
+
+	var forgedLogoutOplog model.OperationLog
+	foundForged := false
+	for i := 0; i < 20; i++ {
+		time.Sleep(10 * time.Millisecond)
+		if err := db.Where("path = ? AND method = ?", "/api/auth/logout", "POST").Order("id desc").First(&forgedLogoutOplog).Error; err == nil {
+			if forgedLogoutOplog.ID != logoutOplog.ID {
+				foundForged = true
+				break
+			}
+		}
+	}
+	if !foundForged {
+		t.Fatalf("find forged logout oplog: record not found after waiting")
+	}
+	if forgedLogoutOplog.UserID != 0 || forgedLogoutOplog.Username != "" {
+		t.Fatalf("forged token should not set operator: user_id=%d, username=%q", forgedLogoutOplog.UserID, forgedLogoutOplog.Username)
 	}
 }
 
@@ -348,7 +393,7 @@ func TestAuthAPIFailures(t *testing.T) {
 func TestAuthAPILogoutPropagatesFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{JWT: config.JWT{RefreshTTL: time.Hour}}
-	handler := api.NewAuthHandler(failingLogoutAuthService{err: errors.New("database unavailable")}, cfg)
+	handler := api.NewAuthHandler(failingLogoutAuthService{err: errors.New("database unavailable")}, nil, cfg)
 
 	engine := gin.New()
 	engine.Use(middleware.ErrorHandler())

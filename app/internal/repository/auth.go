@@ -22,6 +22,20 @@ type AuthIdentity struct {
 	Roles    []AuthRole
 }
 
+// ToIdentity 将 AuthIdentity 转换为指定 UserID 的通用 Identity 数据结构。
+func (a *AuthIdentity) ToIdentity(userID uint64) (username string, roleIDs []uint64, roleCodes []string) {
+	if a == nil {
+		return "", nil, nil
+	}
+	roleIDs = make([]uint64, 0, len(a.Roles))
+	roleCodes = make([]string, 0, len(a.Roles))
+	for _, r := range a.Roles {
+		roleIDs = append(roleIDs, r.ID)
+		roleCodes = append(roleCodes, r.Code)
+	}
+	return a.Username, roleIDs, roleCodes
+}
+
 // AuthRepository 提供认证与令牌管理所需的数据访问。
 type AuthRepository interface {
 	GetActiveIdentity(ctx context.Context, userID uint64) (*AuthIdentity, error)

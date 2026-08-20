@@ -34,18 +34,10 @@ func NewAuthMiddleware(repo repository.AuthRepository, cfg *config.Config) *Auth
 	return &AuthMiddleware{repo: repo, secret: []byte(cfg.JWT.Secret)}
 }
 
-// Handler 验证 HS256 access token，并将身份放入 Gin Context。
-func (m *AuthMiddleware) Handler(c *gin.Context) {
-	if isPublicAuthPath(c.Request.URL.Path) {
-		c.Next()
-		return
-	}
-
-	rawToken, ok := bearerToken(c.GetHeader("Authorization"))
-	if !ok || len(m.secret) == 0 {
-		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck // 交给统一错误处理中间件
-		c.Abort()
-		return
+// VerifyToken 解析并验证 Bearer access token 签名与时效，成功返回已激活的用户身份。
+func (m *AuthMiddleware) VerifyToken(c *gin.Context, rawToken string) (Identity, error) {
+	if len(m.secret) == 0 {
+		return Identity{}, errno.NewError(errno.CodeUnauthorized)
 	}
 
 	var claims jwt.RegisteredClaims
@@ -65,43 +57,67 @@ func (m *AuthMiddleware) Handler(c *gin.Context) {
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 	)
 	if err != nil || !token.Valid || claims.ExpiresAt == nil {
-		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck // 交给统一错误处理中间件
-		c.Abort()
-		return
+		return Identity{}, errno.NewError(errno.CodeUnauthorized)
 	}
 
 	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
 	if err != nil || userID == 0 {
+		return Identity{}, errno.NewError(errno.CodeUnauthorized)
+	}
+
+	activeIdentity, err := m.repo.GetActiveIdentity(c.Request.Context(), userID)
+	if err != nil {
+		return Identity{}, err
+	}
+	if activeIdentity == nil || len(activeIdentity.Roles) == 0 {
+		return Identity{}, errno.NewError(errno.CodeUnauthorized)
+	}
+
+	username, roleIDs, roleCodes := activeIdentity.ToIdentity(userID)
+	return Identity{
+		UserID:    userID,
+		Username:  username,
+		RoleIDs:   roleIDs,
+		RoleCodes: roleCodes,
+	}, nil
+}
+
+// Handler 验证 HS256 access token，并将身份放入 Gin Context。
+func (m *AuthMiddleware) Handler(c *gin.Context) {
+	if isPublicAuthPath(c.Request.URL.Path) {
+		c.Next()
+		return
+	}
+
+	rawToken, ok := bearerToken(c.GetHeader("Authorization"))
+	if !ok {
 		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck // 交给统一错误处理中间件
 		c.Abort()
 		return
 	}
 
-	activeIdentity, err := m.repo.GetActiveIdentity(c.Request.Context(), userID)
+	identity, err := m.VerifyToken(c, rawToken)
 	if err != nil {
 		c.Error(err) //nolint:errcheck // 交给统一错误处理中间件
 		c.Abort()
 		return
 	}
-	if activeIdentity == nil || len(activeIdentity.Roles) == 0 {
-		// 用户不存在、被禁用或无任何启用角色，均视为未认证。
-		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck // 交给统一错误处理中间件
-		c.Abort()
-		return
-	}
 
-	identity := Identity{
-		UserID:    userID,
-		Username:  activeIdentity.Username,
-		RoleIDs:   make([]uint64, 0, len(activeIdentity.Roles)),
-		RoleCodes: make([]string, 0, len(activeIdentity.Roles)),
-	}
-	for _, role := range activeIdentity.Roles {
-		identity.RoleIDs = append(identity.RoleIDs, role.ID)
-		identity.RoleCodes = append(identity.RoleCodes, role.Code)
-	}
 	c.Set(authIdentityKey, identity)
 	c.Next()
+}
+
+// ExtractBearerIdentity 尝试从请求头 Authorization 中验证并提取操作人身份（供公共接口如登出日志使用）。
+func (m *AuthMiddleware) ExtractBearerIdentity(c *gin.Context) (Identity, bool) {
+	rawToken, ok := bearerToken(c.GetHeader("Authorization"))
+	if !ok {
+		return Identity{}, false
+	}
+	identity, err := m.VerifyToken(c, rawToken)
+	if err != nil {
+		return Identity{}, false
+	}
+	return identity, true
 }
 
 // IdentityFromContext 读取当前请求的认证身份。
@@ -112,6 +128,11 @@ func IdentityFromContext(c *gin.Context) (Identity, bool) {
 	}
 	identity, ok := value.(Identity)
 	return identity, ok
+}
+
+// SetIdentity 将认证身份写入请求上下文，供 oplog 等下游读取。
+func SetIdentity(c *gin.Context, identity Identity) {
+	c.Set(authIdentityKey, identity)
 }
 
 // SetIdentityForTest 为单元测试设置请求认证身份。

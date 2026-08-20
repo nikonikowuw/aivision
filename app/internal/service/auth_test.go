@@ -251,8 +251,12 @@ func TestAuthServiceLogout(t *testing.T) {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	if err := svc.Logout(ctx, loginRes.RefreshToken); err != nil {
+	op, err := svc.Logout(ctx, loginRes.RefreshToken)
+	if err != nil {
 		t.Fatalf("Logout failed: %v", err)
+	}
+	if op == nil || op.UserID != user.ID || op.Username != "alice" {
+		t.Fatalf("Logout operator mismatch: %+v", op)
 	}
 
 	var rt model.RefreshToken

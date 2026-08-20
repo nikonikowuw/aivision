@@ -61,11 +61,19 @@ type TokenIssuer interface {
 	RevokeRefreshToken(ctx context.Context, refreshTokenStr string) error
 }
 
+// LogoutOperator 描述登出操作人信息（用于审计日志）。
+type LogoutOperator struct {
+	UserID    uint64
+	Username  string
+	RoleIDs   []uint64
+	RoleCodes []string
+}
+
 // AuthService 认证与令牌管理业务接口。
 type AuthService interface {
 	Login(ctx context.Context, username, password string, client ClientInfo) (*LoginResult, error)
 	RefreshToken(ctx context.Context, refreshTokenStr string, client ClientInfo) (*TokenPair, error)
-	Logout(ctx context.Context, refreshTokenStr string) error
+	Logout(ctx context.Context, refreshTokenStr string) (*LogoutOperator, error)
 	GetUserInfo(ctx context.Context, userID uint64) (*UserInfoDTO, error)
 	GetAccessCodes(ctx context.Context, roleCodes []string, roleIDs []uint64) ([]string, error)
 }
@@ -242,9 +250,31 @@ func (s *authService) RefreshToken(ctx context.Context, refreshTokenStr string, 
 	return s.RotateRefreshToken(ctx, refreshTokenStr, client)
 }
 
-// Logout 退出登录流程编排。
-func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error {
-	return s.RevokeRefreshToken(ctx, refreshTokenStr)
+// Logout 退出登录流程编排：先查找关联用户身份（供审计日志记录），再吊销 refresh token。
+func (s *authService) Logout(ctx context.Context, refreshTokenStr string) (*LogoutOperator, error) {
+	if refreshTokenStr == "" {
+		return nil, nil
+	}
+
+	var operator *LogoutOperator
+	tokenRecord, err := s.authRepo.GetRefreshToken(ctx, refreshTokenStr)
+	if err == nil && tokenRecord != nil && tokenRecord.UserID > 0 {
+		identity, err := s.authRepo.GetActiveIdentity(ctx, tokenRecord.UserID)
+		if err == nil && identity != nil {
+			username, roleIDs, roleCodes := identity.ToIdentity(tokenRecord.UserID)
+			operator = &LogoutOperator{
+				UserID:    tokenRecord.UserID,
+				Username:  username,
+				RoleIDs:   roleIDs,
+				RoleCodes: roleCodes,
+			}
+		}
+	}
+
+	if err := s.RevokeRefreshToken(ctx, refreshTokenStr); err != nil {
+		return nil, err
+	}
+	return operator, nil
 }
 
 func (s *authService) getActiveIdentity(ctx context.Context, userID uint64) (*repository.AuthIdentity, error) {

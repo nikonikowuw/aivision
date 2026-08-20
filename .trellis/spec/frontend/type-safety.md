@@ -38,7 +38,9 @@
 ## 常见模式
 
 - 带显式结果类型的泛型请求函数：
-  `requestClient.get<RouteRecordStringComponent[]>('/menu/all')`。
+  `requestClient.get<RouteRecordStringComponent[]>('/menu/all')`、`requestClient.post<UserApi.UserItem>('/user', data)`。
+- 表格与表单的数据模型泛型化：
+  `useVbenVxeGrid<UserApi.UserItem>({ ... })`。
 - 类型专用导入使用 `import type`（vben 约定）。
 
 ---

@@ -6,21 +6,28 @@
 
 ## 概览
 
-组合式逻辑来自 vben 包（`@vben/hooks`、`@vben/stores`、`@vben/preferences`）：
-例如 `useAppConfig` 读取 env/api 配置，`useAccessStore` / `useUserStore` 暴露
-认证状态。目前尚无项目本地自定义 hook；共享的有状态逻辑迄今都放在 pinia
-store 中（见 `store/auth.ts`），数据访问通过 API 函数而非 hooks。
+组合式逻辑大量复用 vben 核心包（`@vben/hooks`、`@vben/stores`、`@vben/preferences`、`@vben/common-ui`）：
+例如 `useAppConfig` 读取 env/api 配置，`useAccessStore` / `useUserStore` 暴露认证状态，`useVbenModal` / `useVbenDrawer` 驱动弹窗与抽屉，`useVbenVxeGrid` 驱动表格，`useVbenForm` 驱动表单。
+共享的应用级有状态逻辑放在 Pinia Store（如 `store/auth.ts`），数据访问通过类型化 API 函数（`api/core/*`）。
+
+---
+
+## 常用组合式 API (Vben Built-ins)
+
+- **弹窗与抽屉**：
+  - 使用 `useVbenModal` 或 `useVbenDrawer`，结合 `connectedComponent` 实现解耦式挂载。
+  - 父组件通过 `modalApi.setData(...)` 传递入参并 `modalApi.open()`；子弹窗通过 `modalApi.getData()` 接收入参并在提交时 `modalApi.lock()` / `modalApi.close()`。
+- **表格与表单**：
+  - 表格通过 `useVbenVxeGrid` 声明配置（`gridOptions`、`formOptions`、`gridEvents`），数据代理通过 `proxyConfig.ajax.query` 直接绑定 API 函数。
+  - 表单通过 `useVbenForm` 声明 `schema` 与校验规则，通过 `formApi.getValues()` / `formApi.setValues()` 读写。
 
 ---
 
 ## 自定义 Hook 模式
 
-- 当需要共享组合式逻辑时，遵循 vben 约定：文件位于 `apps/web-antd/src`，
-  命名为 `useXxx.ts`，使用 `<script setup>` 兼容的 composables（返回
-  refs/computed 的普通函数）。
-- 当状态必须在无关组件间共享时，优先用 pinia store 而非自定义 hook
-  （本项目迄今的模式）。
-- 保持 hook 单一职责且可依赖注入；不要有隐藏的全局单例。
+- 当需要共享业务逻辑时，遵循 vben 约定：文件位于 `apps/web-antd/src/hooks/` 或组件内局部复用，命名为 `useXxx.ts`，使用 `<script setup>` 兼容的 composables（返回 refs/computed 的普通函数）。
+- 当状态必须在全局或跨导航存活时，优先用 Pinia Store。
+- 保持 hook 单一职责且可依赖注入；不要有隐藏的全局隐式依赖。
 
 ---
 

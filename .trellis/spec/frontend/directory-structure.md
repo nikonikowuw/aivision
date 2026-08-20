@@ -20,16 +20,17 @@
 ui/
 ├── apps/web-antd/
 │   └── src/
+│       ├── adapter/         # UI 适配器（component、vxe-table、form）
 │       ├── api/             # request client + 后端 API 模块
 │       │   ├── request.ts   # 带拦截器的 RequestClient（单实例）
-│       │   └── core/        # 每个领域一个文件：auth.ts、user.ts、menu.ts
+│       │   └── core/        # 每个领域一个文件：auth.ts、user.ts、role.ts、menu.ts、dept.ts、log.ts
+│       ├── constants/       # 业务常量定义（system.ts 等）
+│       ├── layouts/         # 布局组件（auth.vue、basic.vue）
+│       ├── locales/         # i18n 多语言目录（langs/zh-CN、en-US、zh-TW）
+│       ├── router/          # 守卫 + 动态路由加载（access.ts、guard.ts、routes/）
 │       ├── store/           # 应用级 pinia stores（auth.ts → useAuthStore）
-│       ├── router/          # 守卫 + 路由定义（routes/modules/*.ts）
-│       ├── views/           # 页面组件，按模块分组
-│       ├── locales/         # i18n（菜单标题引用这里的 key）
-│       ├── adapter/         # UI 适配器（ant-design-vue）
-│       └── layouts/         # 布局组件
-├── packages/                # @vben/* 可复用包（types、stores、utils、…）
+│       └── views/           # 页面组件，按业务模块分组（system/、_core/、dashboard/ 等）
+├── packages/                # @vben/* 可复用包（types、stores、utils、effects、locales、…）
 └── internal/                # 工具链配置（lint-configs、vite-config、tsconfig、…）
 ```
 
@@ -37,15 +38,11 @@ ui/
 
 ## 模块组织
 
-- **API 模块**：`api/core/` 中每个领域一个文件（`auth.ts`、`user.ts`、
-  `menu.ts`），各自导出一个 `namespace <Domain>Api`，含类型化
-  params/result 接口以及调用 `requestClient` / `baseRequestClient` 的异步函数。
-  通过 `api/index.ts` 重新导出（`export * from './core'`）。
-- **Stores**：`store/` 中的应用级 pinia stores（`auth.ts`）；框架 stores
-  （access/user/preferences）来自 `@vben/stores`，不重新实现。
-- **路由**：`router/routes/modules/` 中的路由模块（`vben.ts`、`dashboard.ts`、
-  `demos.ts`）；守卫在 `router/guard.ts`。
-- **视图**：`views/<module>/<page>/` 下的页面，遵循 vben 约定。
+- **API 模块**：`api/core/` 中每个领域一个文件（`auth.ts`、`user.ts`、`role.ts`、`menu.ts`、`dept.ts`、`log.ts`），各自导出一个 `namespace <Domain>Api`，含类型化 params/result 接口以及调用 `requestClient` / `baseRequestClient` 的异步函数。通过 `api/index.ts` 重新导出（`export * from './core'`）。
+- **Stores**：`store/` 中的应用级 pinia stores（`auth.ts`）；框架 stores（access/user/preferences）来自 `@vben/stores`，不重复造轮子。
+- **路由与权限**：`router/access.ts` 生成动态可访问路由表，`router/guard.ts` 执行守卫鉴权；基础路由在 `router/routes/core.ts`。
+- **视图**：`views/<module>/<page>/` 下的页面，如 `views/system/user/`、`views/system/role/`、`views/system/menu/`、`views/system/dept/`、`views/system/log/`，遵循 vben 5.7 页面与 VxeTable/VbenForm 规范。
+- **适配器**：`adapter/` 统一封装 UI 控件行为，包括表单组件适配 `adapter/form.ts` 与表格适配 `adapter/vxe-table.ts`。
 
 ---
 
@@ -61,6 +58,8 @@ ui/
 
 ## 示例
 
-- API 模块模式：`apps/web-antd/src/api/core/auth.ts`
+- API 模块模式：`apps/web-antd/src/api/core/auth.ts`、`apps/web-antd/src/api/core/user.ts`
 - Request client + 拦截器契约：`apps/web-antd/src/api/request.ts`
 - 应用 store 模式：`apps/web-antd/src/store/auth.ts`
+- 系统管理视图组件：`apps/web-antd/src/views/system/user/index.vue`
+- UI 适配层扩展：`apps/web-antd/src/adapter/form.ts`、`apps/web-antd/src/adapter/vxe-table.ts`

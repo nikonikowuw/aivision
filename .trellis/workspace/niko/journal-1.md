@@ -422,3 +422,24 @@ Migrated backend schema and data initialization to golang-migrate with embedded 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: Quality-check and commit personal profile avatar feature
+
+**Date**: 2026-08-21
+**Task**: Quality-check and commit personal profile avatar feature
+**Branch**: `main`
+
+### Summary
+
+Follow-up to the file upload task: added avatar support to the personal profile. Ran trellis-check quality verification against specs — fixed app/uploads/ not being git-ignored, oxlint prefer-set-has violation in base-setting.vue, and avatar fallback showing full nickname in the circular avatar. Verified gofmt/vet/test, pnpm check, unit tests, swagger regen, 3-locale i18n, router/perm/oplog registrations and deploy config consistency. Committed as feat(project).
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6bd8502` | (see git log) |
+
+### Status
+
+[OK] **Completed**

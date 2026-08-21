@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
+- **Total Sessions**: 15
 - **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~424 | Active |
+| `journal-1.md` | ~445 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-08-21 | Quality-check and commit personal profile avatar feature | `6bd8502` | `main` |
 | 14 | 2026-08-21 | Adopt golang-migrate for PostgreSQL migrations | - | `main` |
 | 13 | 2026-08-21 | Add pluggable file upload API | `ec5aeb2` | `main` |
 | 12 | 2026-08-20 | 全量审查并补齐项目规范文档与完成引导任务归档 | `d36edeb` | `main` |

@@ -133,6 +133,8 @@
     "actionLogin": "用户登录",
     "actionLogout": "用户登出",
     "actionRefreshToken": "刷新令牌",
-    "actionUpload": "上传文件"
+    "actionUpload": "上传文件",
+    "actionUpdateProfile": "更新个人资料",
+    "actionChangePassword": "修改密码"
   }
 }

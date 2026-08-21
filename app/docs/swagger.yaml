@@ -640,6 +640,9 @@ definitions:
     type: object
   niko-vue-admin_app_internal_service.UpdateCurrentProfileInput:
     properties:
+      avatar:
+        maxLength: 255
+        type: string
       email:
         type: string
       nickname:
@@ -1919,7 +1922,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: 修改当前认证用户的昵称、邮箱、手机号和个人简介
+      description: 修改当前认证用户的昵称、邮箱、手机号、头像和个人简介
       parameters:
       - description: 修改资料参数
         in: body

@@ -23,6 +23,7 @@ logs/
 # Go (app/)
 app/bin/
 app/tmp/
+app/uploads/
 coverage.out
 *.test
 *.exe

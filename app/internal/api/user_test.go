@@ -318,9 +318,9 @@ func TestUserAPI_Profile(t *testing.T) {
 		"nickname": "Alice New",
 		"email": "alicenew@example.com",
 		"phone": "13900000002",
+		"avatar": "/uploads/avatar/alice-new.png",
 		"remark": "new remark",
 		"username": "mallory",
-		"avatar": "https://example.com/tampered.png",
 		"status": 0,
 		"deptId": 999,
 		"roleIds": [999],
@@ -338,14 +338,14 @@ func TestUserAPI_Profile(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &updateResp); err != nil {
 		t.Fatalf("unmarshal update profile resp: %v", err)
 	}
-	if updateResp.Data.Nickname != "Alice New" || updateResp.Data.Email != "alicenew@example.com" {
+	if updateResp.Data.Nickname != "Alice New" || updateResp.Data.Email != "alicenew@example.com" || updateResp.Data.Avatar != "/uploads/avatar/alice-new.png" {
 		t.Fatalf("unexpected updated data: %+v", updateResp.Data)
 	}
 	var persistedUser model.User
 	if err := db.First(&persistedUser, user.ID).Error; err != nil {
 		t.Fatalf("find persisted profile user: %v", err)
 	}
-	if persistedUser.Username != "alice" || persistedUser.Avatar != "https://example.com/alice.png" || persistedUser.Status != model.StatusEnabled || persistedUser.DeptID != 0 {
+	if persistedUser.Username != "alice" || persistedUser.Avatar != "/uploads/avatar/alice-new.png" || persistedUser.Status != model.StatusEnabled || persistedUser.DeptID != 0 {
 		t.Fatalf("profile update modified protected fields: %+v", persistedUser)
 	}
 

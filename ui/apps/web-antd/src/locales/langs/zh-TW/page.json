@@ -12,7 +12,11 @@
     "workspace": "工作台"
   },
   "profile": {
+    "avatarInvalidType": "僅支援 JPG、PNG、GIF、WebP 格式圖片",
+    "avatarTooLarge": "圖片大小不能超過 10 MiB",
+    "avatarUploadSuccess": "頭像已上傳，儲存資料後生效",
     "basicTab": "基本設定",
+    "changeAvatar": "更換頭像",
     "changePasswordSuccess": "密碼修改成功，請重新登入",
     "confirmPassword": "確認密碼",
     "confirmPasswordPlaceholder": "請再次輸入新密碼",

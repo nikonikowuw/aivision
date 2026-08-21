@@ -133,6 +133,8 @@
     "actionLogin": "User Login",
     "actionLogout": "User Logout",
     "actionRefreshToken": "Refresh Token",
-    "actionUpload": "Upload File"
+    "actionUpload": "Upload File",
+    "actionUpdateProfile": "Update Profile",
+    "actionChangePassword": "Change Password"
   }
 }

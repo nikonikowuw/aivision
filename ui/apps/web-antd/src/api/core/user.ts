@@ -58,6 +58,7 @@ export namespace UserApi {
     nickname?: string;
     email?: string;
     phone?: string;
+    avatar?: string;
     remark?: string;
   }
 

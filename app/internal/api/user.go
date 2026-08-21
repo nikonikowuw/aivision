@@ -358,7 +358,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 
 // UpdateProfile 更新当前登录用户的个人资料 (PUT /api/user/profile)。
 // @Summary 修改当前登录用户个人资料
-// @Description 修改当前认证用户的昵称、邮箱、手机号和个人简介
+// @Description 修改当前认证用户的昵称、邮箱、手机号、头像和个人简介
 // @Tags 用户模块
 // @Security BearerAuth
 // @Accept json

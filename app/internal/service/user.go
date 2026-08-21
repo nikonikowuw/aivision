@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -66,6 +67,7 @@ type UpdateCurrentProfileInput struct {
 	Nickname string `json:"nickname" binding:"omitempty,max=64"`
 	Email    string `json:"email" binding:"omitempty,email"`
 	Phone    string `json:"phone" binding:"omitempty,max=32"`
+	Avatar   string `json:"avatar" binding:"omitempty,max=255"`
 	Remark   string `json:"remark" binding:"omitempty,max=255"`
 }
 
@@ -129,6 +131,30 @@ func normalizeSaveUserInput(input *SaveUserInput) {
 
 func isProtectedAdminUser(user *model.User) bool {
 	return user.ID == model.AdminUserID || user.Username == model.AdminUsername
+}
+
+// validateAvatarURL 校验头像地址：仅允许站内根相对路径或 http(s) 绝对 URL，
+// 拒绝 javascript:/data: 等危险 scheme（该值会回显到页面 <img src>）。
+func validateAvatarURL(avatar string) error {
+	if avatar == "" {
+		return nil
+	}
+	if strings.HasPrefix(avatar, "/") {
+		if strings.HasPrefix(avatar, "//") || strings.Contains(avatar, "\\") {
+			return errno.NewError(errno.CodeInvalidParam)
+		}
+		for _, r := range avatar {
+			if r < 0x20 || r == 0x7f {
+				return errno.NewError(errno.CodeInvalidParam)
+			}
+		}
+		return nil
+	}
+	parsed, err := url.Parse(avatar)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return errno.NewError(errno.CodeInvalidParam)
+	}
+	return nil
 }
 
 func (s *userService) GetPage(ctx context.Context, query *UserPageQuery) (*UserPageResult, error) {
@@ -483,18 +509,25 @@ func (s *userService) UpdateCurrentProfile(ctx context.Context, userID uint64, i
 	nickname := strings.TrimSpace(input.Nickname)
 	email := strings.TrimSpace(input.Email)
 	phone := strings.TrimSpace(input.Phone)
+	avatar := strings.TrimSpace(input.Avatar)
 	remark := strings.TrimSpace(input.Remark)
+
+	if err := validateAvatarURL(avatar); err != nil {
+		return nil, err
+	}
 
 	updates := map[string]interface{}{
 		"nickname": nickname,
 		"email":    email,
 		"phone":    phone,
+		"avatar":   avatar,
 		"remark":   remark,
 	}
 
 	u.Nickname = nickname
 	u.Email = email
 	u.Phone = phone
+	u.Avatar = avatar
 	u.Remark = remark
 
 	if err := s.userRepo.Update(ctx, u, updates); err != nil {

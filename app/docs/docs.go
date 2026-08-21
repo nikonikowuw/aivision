@@ -1493,7 +1493,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "修改当前认证用户的昵称、邮箱、手机号和个人简介",
+                "description": "修改当前认证用户的昵称、邮箱、手机号、头像和个人简介",
                 "consumes": [
                     "application/json"
                 ],
@@ -2883,6 +2883,10 @@ const docTemplate = `{
         "niko-vue-admin_app_internal_service.UpdateCurrentProfileInput": {
             "type": "object",
             "properties": {
+                "avatar": {
+                    "type": "string",
+                    "maxLength": 255
+                },
                 "email": {
                     "type": "string"
                 },

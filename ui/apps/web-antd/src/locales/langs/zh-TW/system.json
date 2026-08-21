@@ -132,6 +132,8 @@
     "actionLogin": "使用者登入",
     "actionLogout": "使用者登出",
     "actionRefreshToken": "重新整理權杖",
-    "actionUpload": "上傳檔案"
+    "actionUpload": "上傳檔案",
+    "actionUpdateProfile": "更新個人資料",
+    "actionChangePassword": "修改密碼"
   }
 }

@@ -177,6 +177,10 @@ var actionI18nMap = map[string]string{
 	// File
 	"POST /api/file/upload": "system.log.actionUpload",
 
+	// Profile（个人中心）
+	"PUT /api/user/profile":          "system.log.actionUpdateProfile",
+	"PUT /api/user/profile/password": "system.log.actionChangePassword",
+
 	// User
 	"POST /api/user":                   "system.user.addUser",
 	"PUT /api/user/:id":                "system.user.editUser",

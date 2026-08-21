@@ -12,7 +12,11 @@
     "workspace": "Workspace"
   },
   "profile": {
+    "avatarInvalidType": "Only JPG, PNG, GIF or WebP images are allowed",
+    "avatarTooLarge": "Image must be no larger than 10 MiB",
+    "avatarUploadSuccess": "Avatar uploaded. It takes effect after you save the profile",
     "basicTab": "Basic Settings",
+    "changeAvatar": "Change Avatar",
     "changePasswordSuccess": "Password changed successfully, please log in again",
     "confirmPassword": "Confirm Password",
     "confirmPasswordPlaceholder": "Please confirm your new password",

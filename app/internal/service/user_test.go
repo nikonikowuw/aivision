@@ -229,21 +229,22 @@ func TestUserServiceProfileAndPassword(t *testing.T) {
 		Nickname: " 新昵称 ",
 		Email:    " new@example.com ",
 		Phone:    " 13900000000 ",
+		Avatar:   " /uploads/avatar/new-avatar.png ",
 		Remark:   " 新备注 ",
 	})
 	if err != nil {
 		t.Fatalf("UpdateCurrentProfile failed: %v", err)
 	}
-	if updatedProfile.Nickname != "新昵称" || updatedProfile.Email != "new@example.com" || updatedProfile.Phone != "13900000000" || updatedProfile.Remark != "新备注" {
+	if updatedProfile.Nickname != "新昵称" || updatedProfile.Email != "new@example.com" || updatedProfile.Phone != "13900000000" || updatedProfile.Avatar != "/uploads/avatar/new-avatar.png" || updatedProfile.Remark != "新备注" {
 		t.Fatalf("unexpected updated profile: %+v", updatedProfile)
 	}
 
-	// 验证数据库中 username / avatar / status 未被改变
+	// 验证数据库中 username / status 未被改变，avatar 已更新
 	var persistedUser model.User
 	if err := db.First(&persistedUser, user.ID).Error; err != nil {
 		t.Fatalf("find persisted user: %v", err)
 	}
-	if persistedUser.Username != "profile_user" || persistedUser.Avatar != "https://example.com/avatar.png" || persistedUser.Status != model.StatusEnabled {
+	if persistedUser.Username != "profile_user" || persistedUser.Avatar != "/uploads/avatar/new-avatar.png" || persistedUser.Status != model.StatusEnabled {
 		t.Fatalf("tampered protected fields in user: %+v", persistedUser)
 	}
 
@@ -282,6 +283,26 @@ func TestUserServiceProfileAndPassword(t *testing.T) {
 	for _, tok := range tokens {
 		if !tok.Revoked {
 			t.Fatalf("token %s was not revoked after password change", tok.Token)
+		}
+	}
+
+	// 5. 头像地址校验：危险 scheme 与非法格式拒绝，合法 http(s) / 根相对路径通过
+	for _, tc := range []struct {
+		name   string
+		avatar string
+	}{
+		{"javascript scheme", "javascript:alert(1)"},
+		{"data scheme", "data:image/png;base64,AAAA"},
+		{"protocol relative", "//evil.example.com/a.png"},
+		{"backslash path", "/uploads\\evil.png"},
+		{"relative path", "uploads/a.png"},
+	} {
+		_, err := srv.UpdateCurrentProfile(ctx, user.ID, &UpdateCurrentProfileInput{Avatar: tc.avatar})
+		wantErrCode(t, err, errno.CodeInvalidParam)
+	}
+	for _, avatar := range []string{"https://cdn.example.com/a.png", "/uploads/2026/08/21/x.png"} {
+		if _, err := srv.UpdateCurrentProfile(ctx, user.ID, &UpdateCurrentProfileInput{Avatar: avatar}); err != nil {
+			t.Fatalf("UpdateCurrentProfile with valid avatar %q failed: %v", avatar, err)
 		}
 	}
 }

@@ -433,4 +433,28 @@ func TestOplogActionInference(t *testing.T) {
 	if batchStatusLog.Action != "system.user.batchStatus" {
 		t.Fatalf("batch status action = %q, want %q", batchStatusLog.Action, "system.user.batchStatus")
 	}
+
+	// 个人中心路由应映射到语义化 i18n key 而非 fallback 的 "Method Path"
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/user/profile", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile = %d, want 200", rec.Code)
+	}
+
+	page = waitForPage(t, oplogSrv, &service.LogPageQuery{}, 3)
+	var profileLog *model.OperationLog
+	for i := range page.Items {
+		if page.Items[i].Path == "/api/user/profile" {
+			profileLog = &page.Items[i]
+			break
+		}
+	}
+	if profileLog == nil {
+		t.Fatal("profile operation log not found")
+	}
+	if profileLog.Action != "system.log.actionUpdateProfile" {
+		t.Fatalf("profile action = %q, want %q", profileLog.Action, "system.log.actionUpdateProfile")
+	}
 }

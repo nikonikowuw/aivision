@@ -3,6 +3,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 
 	"niko-vue-admin/app/internal/pkg/config"
 )
+
+// ErrSizeMismatch 表示写入字节数与声明大小不匹配。
+var ErrSizeMismatch = errors.New("storage size mismatch")
 
 // FileStorage 保存一个已经完成业务校验的文件对象。
 type FileStorage interface {

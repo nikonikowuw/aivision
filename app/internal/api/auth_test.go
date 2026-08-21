@@ -22,6 +22,7 @@ import (
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/errno"
 	"niko-vue-admin/app/internal/pkg/response"
+	"niko-vue-admin/app/internal/pkg/storage"
 	"niko-vue-admin/app/internal/repository"
 	"niko-vue-admin/app/internal/router"
 	"niko-vue-admin/app/internal/service"
@@ -85,7 +86,7 @@ func setupAuthAPITestApp(t *testing.T) (*gin.Engine, *gorm.DB) {
 		OperationLogHandler: oplogHandler,
 		UserHandler:         userHandler,
 		AuthHandler:         authHandler,
-		FileHandler:         api.NewFileHandler(service.NewFileService(nil, cfg), cfg),
+		FileHandler:         api.NewFileHandler(service.NewFileService(storage.NopStorage(), cfg), cfg),
 	}
 
 	engine := router.New(cfg, deps)

@@ -21,6 +21,7 @@ import (
 	"niko-vue-admin/app/internal/model"
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/errno"
+	"niko-vue-admin/app/internal/pkg/storage"
 	"niko-vue-admin/app/internal/repository"
 	"niko-vue-admin/app/internal/service"
 )
@@ -185,7 +186,7 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 		OperationLogHandler: api.NewOperationLogHandler(oplogSrv),
 		UserHandler:         api.NewUserHandler(userSvc),
 		AuthHandler:         api.NewAuthHandler(authSvc, auth, cfg),
-		FileHandler:         api.NewFileHandler(service.NewFileService(nil, cfg), cfg),
+		FileHandler:         api.NewFileHandler(service.NewFileService(storage.NopStorage(), cfg), cfg),
 	})
 	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID), oplogSrv, db
 }

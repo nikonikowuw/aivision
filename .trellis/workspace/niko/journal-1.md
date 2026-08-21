@@ -382,3 +382,24 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: Add pluggable file upload API
+
+**Date**: 2026-08-21
+**Task**: Add pluggable file upload API
+**Branch**: `main`
+
+### Summary
+
+Implemented authenticated multipart file upload with local and MinIO storage providers, validation, public URLs, frontend API wrapper, Swagger, deployment wiring, tests, and storage spec.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec5aeb2` | (see git log) |
+
+### Status
+
+[OK] **Completed**

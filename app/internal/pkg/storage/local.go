@@ -15,19 +15,15 @@ type localStorage struct {
 }
 
 // NewLocalStorage 创建本地文件系统存储，并确保根目录存在。
+// urlPrefix 应由 config.validateLocalURLPrefix 预校验，此处只做基本断言。
 func NewLocalStorage(root, urlPrefix string) (FileStorage, error) {
 	root = strings.TrimSpace(root)
-	urlPrefix = strings.TrimRight(strings.TrimSpace(urlPrefix), "/")
+	urlPrefix = strings.TrimSpace(urlPrefix)
 	if root == "" {
 		return nil, fmt.Errorf("local storage root is empty")
 	}
-	if urlPrefix == "" || urlPrefix == "/" || !strings.HasPrefix(urlPrefix, "/") || strings.ContainsAny(urlPrefix, "?#") || strings.Contains(urlPrefix, `\`) || strings.HasPrefix(urlPrefix, "//") {
-		return nil, fmt.Errorf("local storage URL prefix must be a non-root path without query or fragment")
-	}
-	for _, segment := range strings.Split(strings.TrimPrefix(urlPrefix, "/"), "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return nil, fmt.Errorf("local storage URL prefix contains an invalid path segment")
-		}
+	if urlPrefix == "" || !strings.HasPrefix(urlPrefix, "/") {
+		return nil, fmt.Errorf("local storage URL prefix must be a non-empty absolute path")
 	}
 	if err := os.MkdirAll(root, 0o750); err != nil {
 		return nil, fmt.Errorf("create local storage root: %w", err)
@@ -70,7 +66,7 @@ func (s *localStorage) Put(ctx context.Context, input PutInput) (StoredObject, e
 	}
 	if written != input.Size {
 		_ = temporary.Close()
-		return StoredObject{}, fmt.Errorf("local storage size mismatch: wrote %d, want %d", written, input.Size)
+		return StoredObject{}, fmt.Errorf("local storage wrote %d, want %d: %w", written, input.Size, ErrSizeMismatch)
 	}
 	if err := temporary.Sync(); err != nil {
 		_ = temporary.Close()

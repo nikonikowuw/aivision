@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -60,8 +61,11 @@ type fileService struct {
 	maxSize int64
 }
 
-// NewFileService 创建文件上传服务。
+// NewFileService 创建文件上传服务。store 不能为 nil。
 func NewFileService(store storage.FileStorage, cfg *config.Config) FileService {
+	if store == nil {
+		panic("NewFileService: store must not be nil")
+	}
 	var maxSize int64
 	if cfg != nil {
 		maxSize = cfg.Storage.MaxSize
@@ -72,9 +76,6 @@ func NewFileService(store storage.FileStorage, cfg *config.Config) FileService {
 func (s *fileService) Upload(ctx context.Context, input *UploadInput) (*UploadedFile, error) {
 	if input == nil {
 		return nil, errno.NewError(errno.CodeInvalidParam)
-	}
-	if s.store == nil {
-		return nil, fmt.Errorf("file storage is nil")
 	}
 	if s.maxSize <= 0 {
 		return nil, fmt.Errorf("file upload max size is invalid")
@@ -115,6 +116,9 @@ func (s *fileService) Upload(ctx context.Context, input *UploadInput) (*Uploaded
 		ContentType: expectedType,
 	})
 	if err != nil {
+		if errors.Is(err, storage.ErrSizeMismatch) {
+			return nil, errno.NewError(errno.CodeInvalidParam)
+		}
 		return nil, fmt.Errorf("store uploaded file: %w", err)
 	}
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -98,6 +99,27 @@ func TestFileServiceUploadPropagatesStorageError(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "storage unavailable") {
 		t.Fatalf("Upload error = %v, want storage error", err)
+	}
+}
+
+func TestFileServiceUploadSizeMismatchReturnsInvalidParam(t *testing.T) {
+	store := &captureFileStorage{err: fmt.Errorf("wrote 4, want 8: %w", storage.ErrSizeMismatch)}
+	svc := newTestFileService(store, 1024)
+
+	_, err := svc.Upload(context.Background(), &UploadInput{
+		Name:   "image.png",
+		Size:   8,
+		Reader: bytes.NewReader([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}),
+	})
+	if err == nil {
+		t.Fatal("Upload should fail")
+	}
+	var businessErr *errno.Error
+	if !errors.As(err, &businessErr) {
+		t.Fatalf("Upload error = %T %v, want errno.Error", err, err)
+	}
+	if businessErr.Code != errno.CodeInvalidParam {
+		t.Fatalf("error code = %d, want %d", businessErr.Code, errno.CodeInvalidParam)
 	}
 }
 

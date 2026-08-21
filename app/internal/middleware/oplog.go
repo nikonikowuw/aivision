@@ -174,6 +174,9 @@ var actionI18nMap = map[string]string{
 	"POST /api/auth/logout":  "system.log.actionLogout",
 	"POST /api/auth/refresh": "system.log.actionRefreshToken",
 
+	// File
+	"POST /api/file/upload": "system.log.actionUpload",
+
 	// User
 	"POST /api/user":                   "system.user.addUser",
 	"PUT /api/user/:id":                "system.user.editUser",

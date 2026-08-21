@@ -11,6 +11,7 @@ import (
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/db"
 	"niko-vue-admin/app/internal/pkg/logger"
+	"niko-vue-admin/app/internal/pkg/storage"
 	"niko-vue-admin/app/internal/repository"
 	"niko-vue-admin/app/internal/router"
 	"niko-vue-admin/app/internal/service"
@@ -21,6 +22,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	wire.Build(
 		db.New,
 		logger.New,
+		storage.New,
 		middleware.ErrorHandler,
 		repository.NewAuthRepository,
 		middleware.NewAuthMiddleware,
@@ -43,6 +45,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		api.NewUserHandler,
 		service.NewAuthService,
 		api.NewAuthHandler,
+		service.NewFileService,
+		api.NewFileHandler,
 		router.New,
 		wire.Struct(new(router.Deps), "*"),
 		wire.Struct(new(App), "*"),

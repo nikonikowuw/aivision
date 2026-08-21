@@ -20,6 +20,7 @@
 | [错误处理](./error-handling.md) | errno 错误码、响应契约 | 生效 |
 | [日志规范](./logging-guidelines.md) | 结构化 zap 日志、日志级别 | 生效 |
 | [质量规范](./quality-guidelines.md) | 禁止/必用模式、测试 | 生效 |
+| [文件存储规范](./file-storage-guidelines.md) | 上传接口、存储抽象、local/MinIO 契约 | 生效 |
 
 ---
 
@@ -37,6 +38,8 @@
       handler 只交错误/返回数据，绝不泄露内部细节：[error-handling.md](./error-handling.md)
 - [ ] **质量关卡** — `make vet` + `make test` 全部通过、DI 变更后重新生成 wire、
       测试使用 sqlite 内存库：[quality-guidelines.md](./quality-guidelines.md)
+- [ ] **文件存储** — 上传接口、存储抽象、文件校验和 local/MinIO 配置遵循：
+      [file-storage-guidelines.md](./file-storage-guidelines.md)
 
 另请阅读共享思考指南：`../guides/index.md`。
 

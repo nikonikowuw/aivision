@@ -79,6 +79,15 @@ definitions:
       message:
         type: string
     type: object
+  internal_api.FileUploadResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.UploadedFile'
+      message:
+        type: string
+    type: object
   internal_api.LogPageResponse:
     properties:
       code:
@@ -643,6 +652,19 @@ definitions:
         maxLength: 255
         type: string
     type: object
+  niko-vue-admin_app_internal_service.UploadedFile:
+    properties:
+      contentType:
+        type: string
+      key:
+        type: string
+      name:
+        type: string
+      size:
+        type: integer
+      url:
+        type: string
+    type: object
   niko-vue-admin_app_internal_service.UserInfoDTO:
     properties:
       avatar:
@@ -948,6 +970,41 @@ paths:
       summary: 获取全量部门树
       tags:
       - 部门模块
+  /api/file/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传图片或 PDF 文件，返回不需要认证即可访问的文件 URL
+      parameters:
+      - description: 上传文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 上传成功
+          schema:
+            $ref: '#/definitions/internal_api.FileUploadResponse'
+        "400":
+          description: 文件参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "500":
+          description: 存储失败
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 上传文件
+      tags:
+      - 文件模块
   /api/menu:
     post:
       consumes:

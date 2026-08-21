@@ -340,6 +340,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/file/upload": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "上传图片或 PDF 文件，返回不需要认证即可访问的文件 URL",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "文件模块"
+                ],
+                "summary": "上传文件",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "上传文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "上传成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.FileUploadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "文件参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "500": {
+                        "description": "存储失败",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/menu": {
             "post": {
                 "security": [
@@ -1993,6 +2048,20 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_api.FileUploadResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/niko-vue-admin_app_internal_service.UploadedFile"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_api.LogPageResponse": {
             "type": "object",
             "properties": {
@@ -2828,6 +2897,26 @@ const docTemplate = `{
                 "remark": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "niko-vue-admin_app_internal_service.UploadedFile": {
+            "type": "object",
+            "properties": {
+                "contentType": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
                 }
             }
         },

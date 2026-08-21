@@ -45,7 +45,8 @@ func setupAuthAPITestApp(t *testing.T) (*gin.Engine, *gorm.DB) {
 			RefreshTTL:   7 * 24 * time.Hour,
 			SecureCookie: true,
 		},
-		Log: config.Log{Level: "release"},
+		Log:     config.Log{Level: "release"},
+		Storage: config.Storage{MaxSize: 10 * 1024 * 1024},
 	}
 
 	authRepo := repository.NewAuthRepository(db)
@@ -84,6 +85,7 @@ func setupAuthAPITestApp(t *testing.T) (*gin.Engine, *gorm.DB) {
 		OperationLogHandler: oplogHandler,
 		UserHandler:         userHandler,
 		AuthHandler:         authHandler,
+		FileHandler:         api.NewFileHandler(service.NewFileService(nil, cfg), cfg),
 	}
 
 	engine := router.New(cfg, deps)

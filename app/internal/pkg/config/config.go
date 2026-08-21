@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -12,10 +13,11 @@ import (
 
 // Config 应用配置聚合。
 type Config struct {
-	Server Server
-	DB     DB
-	JWT    JWT
-	Log    Log
+	Server  Server
+	DB      DB
+	JWT     JWT
+	Log     Log
+	Storage Storage `mapstructure:"storage"`
 }
 
 // Server HTTP 服务配置。
@@ -51,6 +53,30 @@ type Log struct {
 	Level string `mapstructure:"level"`
 }
 
+// Storage 文件存储配置。
+type Storage struct {
+	Driver  string `mapstructure:"driver"` // local | minio
+	MaxSize int64  `mapstructure:"max_size"`
+	Local   Local  `mapstructure:"local"`
+	MinIO   MinIO  `mapstructure:"minio"`
+}
+
+// Local 本地文件存储配置。
+type Local struct {
+	Root      string `mapstructure:"root"`
+	URLPrefix string `mapstructure:"url_prefix"`
+}
+
+// MinIO MinIO 文件存储配置。
+type MinIO struct {
+	Endpoint      string `mapstructure:"endpoint"`
+	AccessKey     string `mapstructure:"access_key"`
+	SecretKey     string `mapstructure:"secret_key"`
+	Bucket        string `mapstructure:"bucket"`
+	UseSSL        bool   `mapstructure:"use_ssl"`
+	PublicBaseURL string `mapstructure:"public_base_url"`
+}
+
 const (
 	defaultConfigPath = "configs/config.yaml"
 
@@ -71,6 +97,17 @@ const (
 	defaultRefreshTTL      = 168 * time.Hour
 	defaultJWTSecureCookie = false
 	defaultLogLevel        = "info"
+
+	// StorageDriverLocal 使用本地文件系统存储。
+	StorageDriverLocal = "local"
+	// StorageDriverMinIO 使用 MinIO 对象存储。
+	StorageDriverMinIO = "minio"
+
+	defaultStorageDriver               = StorageDriverLocal
+	defaultStorageMaxSize        int64 = 10 * 1024 * 1024
+	defaultStorageLocalRoot            = "./uploads"
+	defaultStorageLocalURLPrefix       = "/uploads"
+	defaultStorageMinIOUseSSL          = false
 )
 
 // Load 读取配置：默认路径 configs/config.yaml，可用环境变量 APP_CONFIG_PATH 覆盖，
@@ -138,6 +175,16 @@ func defaults() []keyValue {
 		{"jwt.refresh_ttl", defaultRefreshTTL},
 		{"jwt.secure_cookie", defaultJWTSecureCookie},
 		{"log.level", defaultLogLevel},
+		{"storage.driver", defaultStorageDriver},
+		{"storage.max_size", defaultStorageMaxSize},
+		{"storage.local.root", defaultStorageLocalRoot},
+		{"storage.local.url_prefix", defaultStorageLocalURLPrefix},
+		{"storage.minio.endpoint", ""},
+		{"storage.minio.access_key", ""},
+		{"storage.minio.secret_key", ""},
+		{"storage.minio.bucket", ""},
+		{"storage.minio.use_ssl", defaultStorageMinIOUseSSL},
+		{"storage.minio.public_base_url", ""},
 	}
 }
 
@@ -165,6 +212,82 @@ func validate(cfg *Config) error {
 	}
 	if strings.TrimSpace(cfg.JWT.Secret) == "" {
 		return fmt.Errorf("jwt.secret cannot be empty")
+	}
+	return validateStorage(&cfg.Storage)
+}
+
+func validateStorage(storage *Storage) error {
+	if storage.MaxSize <= 0 {
+		return fmt.Errorf("storage.max_size must be greater than zero")
+	}
+	if storage.Driver != StorageDriverLocal && storage.Driver != StorageDriverMinIO {
+		return fmt.Errorf("invalid storage.driver %q: must be local or minio", storage.Driver)
+	}
+
+	switch storage.Driver {
+	case StorageDriverLocal:
+		if strings.TrimSpace(storage.Local.Root) == "" {
+			return fmt.Errorf("storage.local.root cannot be empty")
+		}
+		if err := validateLocalURLPrefix(storage.Local.URLPrefix); err != nil {
+			return err
+		}
+	case StorageDriverMinIO:
+		if strings.TrimSpace(storage.MinIO.Endpoint) == "" {
+			return fmt.Errorf("storage.minio.endpoint cannot be empty")
+		}
+		if strings.TrimSpace(storage.MinIO.AccessKey) == "" {
+			return fmt.Errorf("storage.minio.access_key cannot be empty")
+		}
+		if strings.TrimSpace(storage.MinIO.SecretKey) == "" {
+			return fmt.Errorf("storage.minio.secret_key cannot be empty")
+		}
+		if strings.TrimSpace(storage.MinIO.Bucket) == "" {
+			return fmt.Errorf("storage.minio.bucket cannot be empty")
+		}
+		if err := validateMinIOPublicBaseURL(storage.MinIO.PublicBaseURL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateLocalURLPrefix(prefix string) error {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return fmt.Errorf("storage.local.url_prefix cannot be empty")
+	}
+	if prefix == "/" {
+		return fmt.Errorf("storage.local.url_prefix cannot be root path")
+	}
+	if strings.ContainsAny(prefix, "?#") || strings.Contains(prefix, `\`) || strings.HasPrefix(prefix, "//") {
+		return fmt.Errorf("storage.local.url_prefix %q contains invalid path characters", prefix)
+	}
+	if !strings.HasPrefix(prefix, "/") {
+		return fmt.Errorf("storage.local.url_prefix %q must start with /", prefix)
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(prefix, "/"), "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("storage.local.url_prefix %q contains an invalid path segment", prefix)
+		}
+	}
+	return nil
+}
+
+func validateMinIOPublicBaseURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid storage.minio.public_base_url %q: %w", rawURL, err)
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("invalid storage.minio.public_base_url %q: must use http or https", rawURL)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("invalid storage.minio.public_base_url %q: host is required", rawURL)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("invalid storage.minio.public_base_url %q: credentials, query, or fragment are not allowed", rawURL)
 	}
 	return nil
 }

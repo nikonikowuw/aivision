@@ -12,6 +12,7 @@ import (
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/db"
 	"niko-vue-admin/app/internal/pkg/logger"
+	"niko-vue-admin/app/internal/pkg/storage"
 	"niko-vue-admin/app/internal/repository"
 	"niko-vue-admin/app/internal/router"
 	"niko-vue-admin/app/internal/service"
@@ -51,6 +52,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	userHandler := api.NewUserHandler(userService)
 	authService := service.NewAuthService(authRepository, userRepository, menuRepository, cfg)
 	authHandler := api.NewAuthHandler(authService, authMiddleware, cfg)
+	fileStorage, err := storage.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	fileService := service.NewFileService(fileStorage, cfg)
+	fileHandler := api.NewFileHandler(fileService, cfg)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
 		AuthMiddleware:      authMiddleware,
@@ -62,6 +69,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		OperationLogHandler: operationLogHandler,
 		UserHandler:         userHandler,
 		AuthHandler:         authHandler,
+		FileHandler:         fileHandler,
 	}
 	engine := router.New(cfg, deps)
 	app := &App{

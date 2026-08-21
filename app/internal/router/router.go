@@ -31,6 +31,8 @@ const (
 	deptRoutePath        = "/dept"
 	oplogRoutePath       = "/oplog"
 	pageRoutePath        = "/page"
+	fileRoutePath        = "/file"
+	uploadRoutePath      = "/upload"
 	idRoutePath          = "/:id"
 	userRoutePath        = "/user"
 	menuIDsRoutePath     = "/menu-ids"
@@ -57,6 +59,7 @@ type Deps struct {
 	OperationLogHandler *api.OperationLogHandler
 	UserHandler         *api.UserHandler
 	AuthHandler         *api.AuthHandler
+	FileHandler         *api.FileHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -90,6 +93,11 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 
 	// 注册 Swagger 接口文档 UI，访问路径为 /swagger/index.html。
 	engine.GET(swaggerRoutePath, ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// 本地文件由后端提供公开读取路径；MinIO 文件直接使用存储实现返回的公开 URL。
+	if cfg.Storage.Driver == config.StorageDriverLocal && cfg.Storage.Local.Root != "" && cfg.Storage.Local.URLPrefix != "" {
+		engine.StaticFS(cfg.Storage.Local.URLPrefix, http.Dir(cfg.Storage.Local.Root))
+	}
 
 	apiGroup := engine.Group(apiRoutePath)
 	// 所有 API 路由默认先认证，再执行写操作权限默认拒绝；公共认证接口由中间件白名单放行。
@@ -170,6 +178,12 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+deptRoutePath, "system:dept:add")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+deptRoutePath+idRoutePath, "system:dept:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+deptRoutePath+idRoutePath, "system:dept:delete")
+
+		fileGroup := apiGroup.Group(fileRoutePath)
+		{
+			fileGroup.POST(uploadRoutePath, deps.FileHandler.Upload)
+		}
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+fileRoutePath+uploadRoutePath, middleware.PermCodeAuthenticated)
 
 		oplogGroup := apiGroup.Group(oplogRoutePath)
 		{

@@ -153,7 +153,15 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 		t.Fatalf("create disabled user role: %v", err)
 	}
 
-	cfg := &config.Config{JWT: config.JWT{Secret: "test-secret"}, Log: config.Log{Level: "release"}}
+	cfg := &config.Config{
+		JWT: config.JWT{Secret: "test-secret"},
+		Log: config.Log{Level: "release"},
+		Storage: config.Storage{
+			Driver:  config.StorageDriverLocal,
+			MaxSize: 10 * 1024 * 1024,
+			Local:   config.Local{Root: t.TempDir(), URLPrefix: "/uploads"},
+		},
+	}
 	auth := middleware.NewAuthMiddleware(repository.NewAuthRepository(db), cfg)
 	menuRepo := repository.NewMenuRepository(db)
 	perm := middleware.NewPermMiddleware(menuRepo)
@@ -177,6 +185,7 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 		OperationLogHandler: api.NewOperationLogHandler(oplogSrv),
 		UserHandler:         api.NewUserHandler(userSvc),
 		AuthHandler:         api.NewAuthHandler(authSvc, auth, cfg),
+		FileHandler:         api.NewFileHandler(service.NewFileService(nil, cfg), cfg),
 	})
 	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID), oplogSrv, db
 }
@@ -276,6 +285,41 @@ func TestRoleRoutesRequireAuthentication(t *testing.T) {
 	if code := readCode(t, unauthenticated); code != errno.CodeUnauthorized {
 		t.Fatalf("unauthenticated code = %d, want %d", code, errno.CodeUnauthorized)
 	}
+}
+
+func TestFileUploadRouteRequiresAuthentication(t *testing.T) {
+	engine, _, token, _, _ := newRouterTestEngine(t, false)
+
+	unauthenticated := httptest.NewRecorder()
+	engine.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodPost, "/api/file/upload", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want %d", unauthenticated.Code, http.StatusUnauthorized)
+	}
+	if code := readCode(t, unauthenticated); code != errno.CodeUnauthorized {
+		t.Fatalf("unauthenticated code = %d, want %d", code, errno.CodeUnauthorized)
+	}
+
+	authenticated := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/file/upload", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	engine.ServeHTTP(authenticated, req)
+	if authenticated.Code != http.StatusBadRequest {
+		t.Fatalf("authenticated request without file status = %d, want %d", authenticated.Code, http.StatusBadRequest)
+	}
+	if code := readCode(t, authenticated); code != errno.CodeInvalidParam {
+		t.Fatalf("authenticated request without file code = %d, want %d", code, errno.CodeInvalidParam)
+	}
+}
+
+func TestLocalFileRouteIsRegistered(t *testing.T) {
+	engine, _, _, _, _ := newRouterTestEngine(t, false)
+
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodGet && route.Path == "/uploads/*filepath" {
+			return
+		}
+	}
+	t.Fatal("local file GET route is not registered")
 }
 
 func TestDeptRoutesRequireAuthentication(t *testing.T) {

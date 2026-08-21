@@ -132,6 +132,7 @@
     "userAgent": "User-Agent",
     "actionLogin": "用户登录",
     "actionLogout": "用户登出",
-    "actionRefreshToken": "刷新令牌"
+    "actionRefreshToken": "刷新令牌",
+    "actionUpload": "上传文件"
   }
 }

@@ -132,6 +132,7 @@
     "userAgent": "User-Agent",
     "actionLogin": "User Login",
     "actionLogout": "User Logout",
-    "actionRefreshToken": "Refresh Token"
+    "actionRefreshToken": "Refresh Token",
+    "actionUpload": "Upload File"
   }
 }

@@ -42,6 +42,8 @@ services:
       APP_LOG_LEVEL: info
     ports:
       - "8000:8000"
+    volumes:
+      - uploads_data:/app/uploads
 
   # Frontend Web & Nginx Proxy
   web:
@@ -58,3 +60,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

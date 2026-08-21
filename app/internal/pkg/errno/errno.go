@@ -42,6 +42,8 @@ const (
 	CodeParentIsDescendant = 1013 // 父节点不能是当前节点的后代
 	CodeSuperRoleProtected = 1014 // 超级管理员角色不可删除、停用或修改编码
 	CodeAdminUserProtected = 1015 // 超级管理员账号不可删除、停用或修改用户名
+	CodeFileTooLarge       = 1016 // 文件超过大小限制
+	CodeFileTypeNotAllowed = 1017 // 文件类型不允许
 
 	// CodeInternal 服务器内部错误（非业务失败，仅作统一响应码）。
 	CodeInternal = 1500
@@ -72,6 +74,8 @@ var messages = map[string]map[int]string{
 		CodeParentIsDescendant: "父节点不能是当前节点的后代",
 		CodeSuperRoleProtected: "超级管理员角色不可删除、停用或修改编码",
 		CodeAdminUserProtected: "超级管理员账号受系统保护，不可删除、停用或修改用户名",
+		CodeFileTooLarge:       "文件大小超出限制",
+		CodeFileTypeNotAllowed: "不支持的文件类型",
 		CodeInternal:           "服务器内部错误",
 	},
 	"en-US": {
@@ -94,6 +98,8 @@ var messages = map[string]map[int]string{
 		CodeParentIsDescendant: "Parent node cannot be a descendant of the current node",
 		CodeSuperRoleProtected: "Super admin role cannot be deleted, disabled, or renamed",
 		CodeAdminUserProtected: "Super admin user is protected and cannot be deleted, disabled, or renamed",
+		CodeFileTooLarge:       "File size exceeds the limit",
+		CodeFileTypeNotAllowed: "File type is not allowed",
 		CodeInternal:           "Internal server error",
 	},
 	"zh-TW": {
@@ -116,6 +122,8 @@ var messages = map[string]map[int]string{
 		CodeParentIsDescendant: "父節點不能是當前節點的後代",
 		CodeSuperRoleProtected: "超級管理員角色不可刪除、停用或修改編碼",
 		CodeAdminUserProtected: "超級管理員帳號受系統保護，不可刪除、停用或修改使用者名稱",
+		CodeFileTooLarge:       "檔案大小超出限制",
+		CodeFileTypeNotAllowed: "不支援的檔案類型",
 		CodeInternal:           "伺服器內部錯誤",
 	},
 }

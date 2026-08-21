@@ -20,3 +20,16 @@ jwt:
   secure_cookie: false # 本地 HTTP 开发关闭；生产 HTTPS 用 APP_JWT_SECURE_COOKIE=true
 log:
   level: info
+storage:
+  driver: local # local | minio
+  max_size: 10485760 # 10 MiB per file; override with APP_STORAGE_MAX_SIZE
+  local:
+    root: ./uploads
+    url_prefix: /uploads
+  minio:
+    endpoint: 127.0.0.1:9000
+    access_key: "" # MinIO driver: use APP_STORAGE_MINIO_ACCESS_KEY
+    secret_key: "" # MinIO driver: use APP_STORAGE_MINIO_SECRET_KEY
+    bucket: niko-vue-admin
+    use_ssl: false
+    public_base_url: http://127.0.0.1:9000/niko-vue-admin

@@ -131,6 +131,7 @@
     "userAgent": "User-Agent",
     "actionLogin": "使用者登入",
     "actionLogout": "使用者登出",
-    "actionRefreshToken": "重新整理權杖"
+    "actionRefreshToken": "重新整理權杖",
+    "actionUpload": "上傳檔案"
   }
 }

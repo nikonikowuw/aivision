@@ -104,6 +104,12 @@ type DeptResponse struct {
 	Data model.Department `json:"data"`
 }
 
+// FileUploadResponse 文件上传成功响应
+type FileUploadResponse struct {
+	response.Result
+	Data service.UploadedFile `json:"data"`
+}
+
 // LogPageResponse 操作日志分页响应
 type LogPageResponse struct {
 	response.Result

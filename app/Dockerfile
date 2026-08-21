@@ -14,7 +14,9 @@ RUN go mod download
 COPY . .
 
 # Build binary with CGO disabled
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/api ./cmd/api && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/migrate ./cmd/migrate && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/bin/bootstrap ./cmd/bootstrap
 
 # Final runtime stage
 FROM alpine:3.20
@@ -27,8 +29,9 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy binary and configuration files
 COPY --from=builder /build/bin/api /app/bin/api
+COPY --from=builder /build/bin/migrate /app/bin/migrate
+COPY --from=builder /build/bin/bootstrap /app/bin/bootstrap
 COPY --from=builder /build/configs /app/configs
-COPY --from=builder /build/migrations /app/migrations
 
 ENV TZ=Asia/Shanghai
 

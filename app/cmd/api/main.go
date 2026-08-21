@@ -24,8 +24,8 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"niko-vue-admin/app/internal/model"
 	"niko-vue-admin/app/internal/pkg/config"
+	"niko-vue-admin/app/internal/pkg/migration"
 )
 
 // App 是 wire 装配产物：main 启动所需的全部依赖。
@@ -62,27 +62,15 @@ func main() {
 		log.Warn("仍在使用默认 JWT 密钥（dev-secret-change-me），生产环境请通过 APP_JWT_SECRET 覆盖")
 	}
 
-	// AutoMigrate：8 张表（仅 dev/test；生产 db.auto_migrate=false 时结构变更走 app/migrations SQL 脚本）
-	if cfg.DB.AutoMigrate {
-		if err := model.AutoMigrate(app.DB); err != nil {
-			log.Fatal("AutoMigrate failed", zap.Error(err))
-		}
-		log.Info("AutoMigrate 完成")
-	} else {
-		log.Info("AutoMigrate 已禁用（db.auto_migrate=false），表结构变更走 app/migrations 版本化 SQL 脚本")
-	}
-
-	// seed：幂等（admin 存在则跳过）
-	seeded, err := model.Seed(app.DB)
+	// 数据库 schema 与数据迁移状态检查：生产/运行期不再自动建表或 seed 数据
+	migRunner, err := migration.New(app.DB)
 	if err != nil {
-		log.Fatal("seed failed", zap.Error(err))
+		log.Fatal("initialize migration runner failed", zap.Error(err))
 	}
-	if seeded {
-		log.Info("seed 完成")
-		log.Warn("已创建默认管理员 admin（默认密码 admin123），生产环境请立即修改密码")
-	} else {
-		log.Info("seed 跳过（admin 已存在，不覆盖）")
+	if err := migRunner.CheckSchemaReady(); err != nil {
+		log.Fatal("database schema check failed; please run `make migrate-up` or `go run ./cmd/migrate up` first", zap.Error(err))
 	}
+	log.Info("database schema ready", zap.Uint("version", migRunner.LatestVersion()))
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),

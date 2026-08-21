@@ -403,3 +403,22 @@ Implemented authenticated multipart file upload with local and MinIO storage pro
 ### Status
 
 [OK] **Completed**
+
+
+## Session 14: Adopt golang-migrate for PostgreSQL migrations
+
+**Date**: 2026-08-21
+**Task**: Adopt golang-migrate for PostgreSQL migrations
+**Branch**: `main`
+
+### Summary
+
+Migrated backend schema and data initialization to golang-migrate with embedded PostgreSQL migrations, removed MySQL driver, separated API startup from admin bootstrap, and updated specs and dev commands.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Status
+
+[OK] **Completed**

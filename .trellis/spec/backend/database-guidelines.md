@@ -6,16 +6,12 @@
 
 ## 概览
 
-- ORM：GORM（`gorm.io/gorm` v1.31），支持 mysql / postgres / sqlite 驱动。应用
-  驱动由 `db.driver` 决定（默认 `mysql`，支持 `postgres` —— 决策 18）；
-  测试使用 sqlite 内存库。
-- Schema 管理按环境拆分：dev/test 由启动时的 GORM `AutoMigrate` 建库；
-  生产环境表结构变更走 `app/migrations/` 下的版本化 SQL 脚本（见下文"迁移"）。
-  MVP 尚未接入迁移工具——脚本按发版清单人工执行。
-- **不建外键。** 关系纯为逻辑关系（连接表 `user_roles`、`role_menus` 使用
-  复合唯一索引）。
-- Seed 是幂等的：当 `admin` 已存在时 `model.Seed` 整体跳过；行通过业务唯一键
-  上的 `FirstOrCreate` 插入。
+- ORM：GORM（`gorm.io/gorm` v1.31），仅使用 `postgres` 驱动；单元测试使用 sqlite 内存库。
+- Schema 管理采用 `golang-migrate` 版本化迁移（`app/migrations/` 下嵌入式 `.sql` 文件）。
+- 生产环境禁止在 API 启动时运行 GORM `AutoMigrate` 或自动 Seed；API 启动只做迁移版本就绪校验。
+- `model.AutoMigrate` 与 `model.Seed` 仅保留给开发/测试本地 fixture 和 sqlite 单元测试使用。
+- **不建外键。** 关系纯为逻辑关系（连接表 `user_roles`、`role_menus` 使用复合唯一索引）。
+- 默认管理员不硬编码在源码中；通过 `cmd/bootstrap` 独立创建，密码通过环境变量注入。
 
 ---
 
@@ -31,45 +27,24 @@
 
 ## 迁移
 
-**策略：AutoMigrate 只是 dev/test 的便利手段；生产环境的表结构变更全部走版本化
-SQL 脚本**。
+## 迁移
 
-- **开发 / 测试**：继续使用 GORM `AutoMigrate`（`model.AutoMigrate`）快速建好 8 张表；
-  `make dev` 即可就绪。
-- **生产 / 发版**：必须禁用 `AutoMigrate`（配置项 `db.auto_migrate=false`，如
-  `APP_DB_AUTO_MIGRATE=false`）；表结构变更通过随发版执行的版本化 SQL 脚本应用。
-- **首次生产部署**：初始 8 表 schema 二选一——先跑一次 AutoMigrate 建库再关闭，
-  或随 V1 基线脚本建库；在发版说明中记录所选方式。
-- **每次 model 变更必须携带迁移**：结构变更需要**同时**更新 gorm 模型/标签
-  （保持 dev/test 的 AutoMigrate 同步）**和**新增一个版本化 SQL 脚本（生产实际
-  应用的内容）。二者不允许漂移。
+**策略：生产环境与开发环境统一采用 `golang-migrate` 执行版本化 PostgreSQL SQL 脚本**。
+
+- **迁移文件**：统一命名为 `app/migrations/<序号>_<名称>.up.sql` 与 `.down.sql`，由 `embed.FS` 嵌入进二进制。
+- **执行命令**：通过 `go run ./cmd/migrate up`（或 `make migrate-up`）执行迁移；发布流程必须先跑迁移再启动/滚动更新 API 容器。
+- **测试环境**：sqlite 内存库单测继续使用 `model.AutoMigrate`，不把 sqlite 视为生产迁移执行器。
+- **结构变更契约**：新增模型或变更字段必须同时更新 GORM 模型标签与对应的新增 migration SQL，保持两者一致。
+- **数据迁移**：系统角色、菜单、权限码的初始化与增量补齐属于版本化 data migration（如 `000005_seed_system_rbac.up.sql`），不放在 API 启动流程中。
+- **管理员创建**：通过 `cmd/bootstrap` 或 `make bootstrap-admin` 显式创建，密码来自环境变量 `APP_BOOTSTRAP_ADMIN_PASSWORD`，绝不硬编码。
 
 ### SQL 脚本约定
 
-- **位置**：`app/migrations/`，**每次 SQL 变更一个目录**：
-  ```
-  app/migrations/
-  └── V<序号>__<简短描述>/       # 如 V1__add_user_email
-      ├── README.md             # 介绍本次 SQL 变更：用途、前提条件、执行方式
-      └── <简短描述>.sql        # 本次变更的脚本（驱动拆分见下）
-  ```
-- **目录/命名**：目录名 `V<递增序号>__<简短描述>`；目录内脚本按 `<简短描述>.sql`
-  命名，语句因驱动而异时按驱动拆分 `<desc>.mysql.sql` / `<desc>.pg.sql`；仅当语句
-  在两个驱动上完全一致时才使用单文件。
-- **每个目录的 README.md**：介绍**本次** SQL 变更——用途、**前提条件**（前置
-  schema 版本、依赖的先前迁移、数据/权限要求、是否需备份或停机窗口）、执行方式
-  与影响（顺序、锁表/耗时、失败如何重试或回滚）。发版时按该 README 的清单与前提
-  条件核验后再执行。
-- **版本化**：新变更 = 新的更高版本号**目录**。**已发布的迁移目录不可修改**——
-  绝不编辑已应用过的内容；向前修复（新增更高版本目录）。
-- **幂等性**：尽量使用可重复执行的语句（`IF NOT EXISTS`、有保护的插入），这样
-  发版中途失败后可以安全重试。
-- **破坏性变更**（删列/删表、改类型、重命名）：必须经评审批准，并随附回滚脚本
-  （放在同目录，如 `<desc>.rollback.sql`）。
-- **数据迁移**（回填、值转换）属于 SQL 脚本，**不要**放进 `seed.go`——seed 只
-  保留初始幂等的演示/权限数据。
-- **执行方式**：MVP 阶段无迁移工具——脚本由发版清单人工执行（先于或伴随应用
-  发布）；建议在 V1 迁移目录的脚本中创建 `schema_migrations` 表记录已应用版本，便于审计。
+- **位置**：`app/migrations/` 下标准扁平文件结构。
+- **版本化**：新变更 = 新递增序号的前缀文件（如 `000006_xxx.up.sql` 与 `000006_xxx.down.sql`）。已合并发布的迁移不可修改；向前修复。
+- **幂等性与兼容性**：DDL 尽量使用 `IF NOT EXISTS` / `IF EXISTS`；数据迁移优先使用明确业务键与 `ON CONFLICT DO NOTHING`。
+- **破坏性变更**：必须评审批准并经过全量数据升级验证。
+- **禁止项**：禁止在 API 启动中写库补表或补数据；禁止把数据回填写进 `seed.go`。
 
 ---
 
@@ -107,12 +82,10 @@ SQL 脚本**。
   menus/roles 的修改。
 - **不要修改** `seedMenuTree` 中已有的权限码——它是前端权限的唯一契约
   （"严禁增删权限码"）。
-- **不要依赖生产环境中的 AutoMigrate** — `db.auto_migrate=false` 时它会被静默跳过，
-  只改 model 会导致生产 schema 滞后。每次 model 变更必须同步携带 SQL 脚本。
+- **不要在 API 启动时自动建表或 seed** — 结构与系统权限数据必须由 `golang-migrate` 显式管理。
 - **不要编辑已发布的迁移脚本** — 已发布脚本不可修改；向前修复（新增更高版本）。
-- **不要在 `seed.go` 中做数据回填** — seed 只是初始幂等数据；数据迁移走 SQL 脚本。
-- **不要只写 MySQL 语法 / 只在一侧验证** — 项目同时支持 mysql 与 postgres；
-  按驱动拆分文件并保持两侧同步。
+- **不要在 `seed.go` 中做数据回填** — seed 只是开发/测试初始 fixture；数据迁移走 SQL 脚本。
+- **不要引入除 PostgreSQL 以外的第二生产方言** — 本项目生产环境专注 PostgreSQL。
 
 ## GORM 零值与树关系写入契约
 

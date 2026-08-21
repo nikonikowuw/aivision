@@ -8,15 +8,17 @@
 
 ### 技术栈
 
-- 后端 `app/`：Go 1.26、Gin、GORM（mysql/postgres/sqlite 驱动）、google/wire（DI）、viper（配置）、zap（日志）、bcrypt（密码）。
+- 后端 `app/`：Go 1.26、Gin、GORM（postgres/sqlite 驱动）、golang-migrate（数据库迁移）、google/wire（DI）、viper（配置）、zap（日志）、bcrypt（密码）。
 - 前端 `ui/`：Vue 3 + Vite + TypeScript、ant-design-vue、Pinia、pnpm 11 + turbo monorepo、vben-admin 5.7.0。
 
 ### 常用命令
 
 后端（在 `app/` 下）：
 
-- 开发：`make dev`（`go run ./cmd/api`）
-- 构建：`make build`（输出 `bin/api`）
+- 迁移：`make migrate-up`（`go run ./cmd/migrate up`）/ `make migrate-version`
+- 初始化管理员：`APP_BOOTSTRAP_ADMIN_PASSWORD="<pass>" make bootstrap-admin`
+- 开发：`make dev`（自动执行 `migrate-up` 后启动 air）
+- 构建：`make build`（输出 `bin/api`、`bin/migrate`、`bin/bootstrap`）
 - 测试：`make test`（`go test ./...`）
 - 检查：`make vet`（`go vet ./...`）
 - 重新生成 DI 代码：`make wire`（改动 `cmd/api/wire.go` 后必须重新生成）
@@ -39,10 +41,10 @@
 
 ### 架构事实
 
-- 后端启动链：`config.Load()` → zap logger → GORM 连接（重试 3 次/2s）→ `AutoMigrate` → 幂等 `Seed` → wire 装配 gin engine → 监听 `:8000`，SIGINT/SIGTERM 优雅退出（10s 超时）。
+- 后端启动链：`config.Load()` → zap logger → PostgreSQL GORM 连接（重试 3 次/2s）→ migration.CheckSchemaReady → wire 装配 gin engine → 监听 `:8000`，SIGINT/SIGTERM 优雅退出（10s 超时）。
 - 统一响应体 `{code,data,message}`：`code=0` 成功；业务错误码集中定义在 `internal/pkg/errno`（1xxx 业务码 + 401/403）。响应格式对齐前端 `defaultResponseInterceptor`（codeField/dataField/successCode=0）。
-- 配置：`app/configs/config.yaml` + `APP_*` 环境变量覆盖（如 `APP_DB_DRIVER`、`APP_JWT_SECRET`、`APP_DB_PASSWORD`）；`db.driver` 仅接受 `mysql`/`postgres`。
-- 数据层约定：表名/列名显式声明（snake_case），不建外键，`status` 用 `int8`（决策 18）；`menus.title` 存 i18n key（决策 17）；`menus.type` 为 `catalog|menu|button` 字符串枚举。生产环境表结构变更走版本化 SQL 脚本（`app/migrations/`，详见 `.trellis/spec/backend/database-guidelines.md`），AutoMigrate 仅 dev/test 建库。
+- 配置：`app/configs/config.yaml` + `APP_*` 环境变量覆盖（如 `APP_DB_PASSWORD`、`APP_JWT_SECRET`）；仅支持 PostgreSQL。
+- 数据层约定：表名/列名显式声明（snake_case），不建外键，`status` 用 `int8`；`menus.title` 存 i18n key（决策 17）；`menus.type` 为 `catalog|menu|button` 字符串枚举。生产与开发环境 schema 变更统一走版本化 SQL 脚本（`app/migrations/`），AutoMigrate 仅供 sqlite 单元测试使用。
 - 前端 API：`apps/web-antd/src/api/request.ts` 统一 `RequestClient`（Bearer token、自动刷新、code=0 成功）；已定义 `/auth/*`、`/user/info`、`/menu/all`。
 - 开发代理：vite 把 `/api` 代理到 `http://localhost:5320/api`（当前为 mock，`apps/web-antd/vite.config.ts`）；后端 Go 服务在 `:8000`。
 

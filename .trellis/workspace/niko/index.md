@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~405 | Active |
+| `journal-1.md` | ~424 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-08-21 | Adopt golang-migrate for PostgreSQL migrations | - | `main` |
 | 13 | 2026-08-21 | Add pluggable file upload API | `ec5aeb2` | `main` |
 | 12 | 2026-08-20 | 全量审查并补齐项目规范文档与完成引导任务归档 | `d36edeb` | `main` |
 | 11 | 2026-08-20 | 完成项目部署物、文档与脚手架总任务归档 | `57d930c` | `main` |

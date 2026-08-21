@@ -25,16 +25,14 @@ type Server struct {
 	Port int `mapstructure:"port"`
 }
 
-// DB 数据库连接配置（mysql / postgres 二选一，决策 18）。
+// DB 数据库连接配置（PostgreSQL）。
 type DB struct {
-	Driver      string        `mapstructure:"driver"` // mysql | postgres
 	Host        string        `mapstructure:"host"`
 	Port        int           `mapstructure:"port"`
 	User        string        `mapstructure:"user"`
 	Password    string        `mapstructure:"password"`
 	Name        string        `mapstructure:"name"`
 	TimeZone    string        `mapstructure:"time_zone"`    // 数据库时区，例如 Asia/Shanghai
-	AutoMigrate bool          `mapstructure:"auto_migrate"` // 启动时自动建表/升级：仅 dev/test 使用
 	MaxOpen     int           `mapstructure:"max_open"`     // 最大打开连接数（默认 100）
 	MaxIdle     int           `mapstructure:"max_idle"`     // 最大空闲连接数（默认 10）
 	MaxLifetime time.Duration `mapstructure:"max_lifetime"` // 连接最大生命周期（默认 30m）
@@ -81,14 +79,12 @@ const (
 	defaultConfigPath = "configs/config.yaml"
 
 	defaultServerPort      = 8000
-	defaultDBDriver        = "mysql"
 	defaultDBHost          = "127.0.0.1"
-	defaultDBPort          = 3306
-	defaultDBUser          = "root"
-	defaultDBPassword      = "123456" // 开发默认；生产用 APP_DB_PASSWORD 覆盖
-	defaultDBName          = "niko_vue_admin"
+	defaultDBPort          = 5432
+	defaultDBUser          = "postgres"
+	defaultDBPassword      = "postgres" // 开发默认；生产用 APP_DB_PASSWORD 覆盖
+	defaultDBName          = "niko_vue_admin_go"
 	defaultDBTimeZone      = "Asia/Shanghai"
-	defaultAutoMigrate     = true
 	defaultDBMaxOpen       = 100
 	defaultDBMaxIdle       = 10
 	defaultDBMaxLifetime   = 30 * time.Minute
@@ -159,14 +155,12 @@ type keyValue struct {
 func defaults() []keyValue {
 	return []keyValue{
 		{"server.port", defaultServerPort},
-		{"db.driver", defaultDBDriver},
 		{"db.host", defaultDBHost},
 		{"db.port", defaultDBPort},
 		{"db.user", defaultDBUser},
 		{"db.password", defaultDBPassword},
 		{"db.name", defaultDBName},
 		{"db.time_zone", defaultDBTimeZone},
-		{"db.auto_migrate", defaultAutoMigrate},
 		{"db.max_open", defaultDBMaxOpen},
 		{"db.max_idle", defaultDBMaxIdle},
 		{"db.max_lifetime", defaultDBMaxLifetime},
@@ -197,9 +191,6 @@ func (c *Config) UsingDefaultJWTSecret() bool {
 func validate(cfg *Config) error {
 	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
 		return fmt.Errorf("invalid server.port: %d", cfg.Server.Port)
-	}
-	if cfg.DB.Driver != "mysql" && cfg.DB.Driver != "postgres" {
-		return fmt.Errorf("invalid db.driver %q: must be mysql or postgres", cfg.DB.Driver)
 	}
 	if cfg.DB.Port <= 0 || cfg.DB.Port > 65535 {
 		return fmt.Errorf("invalid db.port: %d", cfg.DB.Port)

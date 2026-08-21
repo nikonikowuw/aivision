@@ -22,7 +22,6 @@ func TestLoadFull(t *testing.T) {
 server:
   port: 9000
 db:
-  driver: postgres
   host: 10.0.0.1
   port: 5432
   user: app
@@ -60,7 +59,7 @@ storage:
 	if cfg.Server.Port != 9000 {
 		t.Errorf("server.port = %d, want 9000", cfg.Server.Port)
 	}
-	if cfg.DB.Driver != "postgres" || cfg.DB.Host != "10.0.0.1" || cfg.DB.Port != 5432 || cfg.DB.User != "app" ||
+	if cfg.DB.Host != "10.0.0.1" || cfg.DB.Port != 5432 || cfg.DB.User != "app" ||
 		cfg.DB.Password != "secret" || cfg.DB.Name != "demo_db" || cfg.DB.TimeZone != "Asia/Tokyo" {
 		t.Errorf("db = %+v", cfg.DB)
 	}
@@ -105,7 +104,7 @@ func TestLoadDefaultsForMissingKeys(t *testing.T) {
 	if cfg.Server.Port != 8000 {
 		t.Errorf("server.port = %d, want default 8000", cfg.Server.Port)
 	}
-	if cfg.DB.Driver != "mysql" || cfg.DB.Host != "127.0.0.1" || cfg.DB.Port != 3306 || cfg.DB.User != "root" {
+	if cfg.DB.Host != "127.0.0.1" || cfg.DB.Port != 5432 || cfg.DB.User != "postgres" {
 		t.Errorf("db defaults not applied: %+v", cfg.DB)
 	}
 	if cfg.DB.Name != "only_name" {
@@ -140,9 +139,9 @@ server:
   port: 8000
 db:
   host: 127.0.0.1
-  port: 3306
-  user: root
-  password: "123456"
+  port: 5432
+  user: postgres
+  password: "postgres"
   name: niko_vue_admin
   time_zone: Asia/Shanghai
 jwt:
@@ -292,33 +291,6 @@ func TestLoadInvalidMinIOStorageConfig(t *testing.T) {
 	}
 }
 
-func TestLoadDriverDefaultsAndEnvOverride(t *testing.T) {
-	path := writeConfig(t, "db:\n  name: only_name\n")
-	cfg, err := load(path)
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if cfg.DB.Driver != "mysql" {
-		t.Errorf("db.driver = %q, want default mysql", cfg.DB.Driver)
-	}
-
-	t.Setenv("APP_DB_DRIVER", "postgres")
-	cfg, err = load(path)
-	if err != nil {
-		t.Fatalf("load with env: %v", err)
-	}
-	if cfg.DB.Driver != "postgres" {
-		t.Errorf("db.driver = %q, want env override postgres", cfg.DB.Driver)
-	}
-}
-
-func TestLoadInvalidDriver(t *testing.T) {
-	path := writeConfig(t, "db:\n  driver: oracle\n")
-	if _, err := load(path); err == nil {
-		t.Fatal("load should fail for invalid db.driver")
-	}
-}
-
 func TestLoadInvalidTimeZone(t *testing.T) {
 	path := writeConfig(t, "db:\n  time_zone: Mars/Olympus\n")
 	if _, err := load(path); err == nil {
@@ -361,34 +333,5 @@ func TestLoadInvalidPort(t *testing.T) {
 		if _, err := load(writeConfig(t, content)); err == nil {
 			t.Errorf("load should fail for %q", content)
 		}
-	}
-}
-
-func TestLoadAutoMigrateDefaultAndYaml(t *testing.T) {
-	cfg, err := load(writeConfig(t, "db:\n  name: only_name\n"))
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if !cfg.DB.AutoMigrate {
-		t.Error("db.auto_migrate default = false, want true")
-	}
-
-	cfg, err = load(writeConfig(t, "db:\n  auto_migrate: false\n"))
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if cfg.DB.AutoMigrate {
-		t.Error("db.auto_migrate = true, want false from yaml")
-	}
-}
-
-func TestLoadAutoMigrateEnvOverride(t *testing.T) {
-	t.Setenv("APP_DB_AUTO_MIGRATE", "false")
-	cfg, err := load(writeConfig(t, "db:\n  auto_migrate: true\n"))
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if cfg.DB.AutoMigrate {
-		t.Error("db.auto_migrate = true, want env override false")
 	}
 }

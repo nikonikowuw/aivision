@@ -1,15 +1,14 @@
-# 应用配置：APP_* 环境变量可覆盖（如 APP_DB_DRIVER、APP_DB_PASSWORD、APP_JWT_SECRET、APP_JWT_SECURE_COOKIE）
+# 应用配置：APP_* 环境变量可覆盖（如 APP_DB_PASSWORD、APP_JWT_SECRET、APP_JWT_SECURE_COOKIE）
 server:
   port: 8000
+# 数据库 schema 由 `go run ./cmd/migrate up` 管理，API 启动不会自动建表
 db:
-  driver: postgres # mysql | postgres（决策 18）；切 postgres 时改驱动并调整 host/port/user/password/name
   host: 127.0.0.1
   port: 5432
   user: postgres
   password: "postgres" # 开发默认；生产用 APP_DB_PASSWORD 覆盖
   name: niko_vue_admin_go
   time_zone: Asia/Shanghai
-  auto_migrate: true # dev/test 启动时自动建表；生产发版设为 false，表结构变更走 app/migrations SQL 脚本
   max_open: 100
   max_idle: 10
   max_lifetime: 30m

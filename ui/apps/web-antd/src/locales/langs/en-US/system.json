@@ -74,6 +74,7 @@
     "menuTitlePlaceholder": "i18n key or display text, e.g. routes.system.user",
     "name": "Route Name",
     "namePlaceholder": "Route identifier, e.g. User / System",
+    "nameButtonPlaceholder": "Button i18n key, e.g. system.user.addUser",
     "type": "Menu Type",
     "catalog": "Catalog",
     "menu": "Menu",

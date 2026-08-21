@@ -11,7 +11,7 @@ import (
 // seedMenuItem 种子菜单声明（设计 §5 权限码契约表，全项目唯一权限码源）。
 type seedMenuItem struct {
 	Type       string
-	Name       string // 路由标识符，ASCII
+	Name       string // catalog/menu 为 ASCII 路由标识符；button 为 i18n key（如 system.user.addUser）
 	Title      string // i18n key，如 routes.system.user（决策 17）
 	Path       string
 	Component  string
@@ -32,40 +32,40 @@ var seedMenuTree = []seedMenuItem{
 				Type: MenuTypeMenu, Name: "User", Title: "routes.system.user", Path: "/system/user", Component: "/system/user/index",
 				Icon: "ant-design:user-outlined", Permission: "system:user",
 				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "新增用户", Permission: "system:user:add"},
-					{Type: MenuTypeButton, Name: "编辑用户", Permission: "system:user:edit"},
-					{Type: MenuTypeButton, Name: "删除用户", Permission: "system:user:delete"},
-					{Type: MenuTypeButton, Name: "重置密码", Permission: "system:user:reset-password"},
-					{Type: MenuTypeButton, Name: "分配角色", Permission: "system:user:assign-role"},
-					{Type: MenuTypeButton, Name: "启停用", Permission: "system:user:status"},
+					{Type: MenuTypeButton, Name: "system.user.addUser", Permission: "system:user:add"},
+					{Type: MenuTypeButton, Name: "system.user.editUser", Permission: "system:user:edit"},
+					{Type: MenuTypeButton, Name: "system.user.deleteUser", Permission: "system:user:delete"},
+					{Type: MenuTypeButton, Name: "system.user.resetPassword", Permission: "system:user:reset-password"},
+					{Type: MenuTypeButton, Name: "system.user.assignRole", Permission: "system:user:assign-role"},
+					{Type: MenuTypeButton, Name: "system.user.status", Permission: "system:user:status"},
 				},
 			},
 			{
 				Type: MenuTypeMenu, Name: "Role", Title: "routes.system.role", Path: "/system/role", Component: "/system/role/index",
 				Icon: "ant-design:team-outlined", Permission: "system:role",
 				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "新增角色", Permission: "system:role:add"},
-					{Type: MenuTypeButton, Name: "编辑角色", Permission: "system:role:edit"},
-					{Type: MenuTypeButton, Name: "删除角色", Permission: "system:role:delete"},
-					{Type: MenuTypeButton, Name: "分配菜单", Permission: "system:role:assign-menu"},
+					{Type: MenuTypeButton, Name: "system.role.addRole", Permission: "system:role:add"},
+					{Type: MenuTypeButton, Name: "system.role.editRole", Permission: "system:role:edit"},
+					{Type: MenuTypeButton, Name: "system.role.deleteRole", Permission: "system:role:delete"},
+					{Type: MenuTypeButton, Name: "system.role.assignMenu", Permission: "system:role:assign-menu"},
 				},
 			},
 			{
 				Type: MenuTypeMenu, Name: "Menu", Title: "routes.system.menu", Path: "/system/menu", Component: "/system/menu/index",
 				Icon: "ant-design:menu-outlined", Permission: "system:menu",
 				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "新增菜单", Permission: "system:menu:add"},
-					{Type: MenuTypeButton, Name: "编辑菜单", Permission: "system:menu:edit"},
-					{Type: MenuTypeButton, Name: "删除菜单", Permission: "system:menu:delete"},
+					{Type: MenuTypeButton, Name: "system.menu.addMenu", Permission: "system:menu:add"},
+					{Type: MenuTypeButton, Name: "system.menu.editMenu", Permission: "system:menu:edit"},
+					{Type: MenuTypeButton, Name: "system.menu.deleteMenu", Permission: "system:menu:delete"},
 				},
 			},
 			{
 				Type: MenuTypeMenu, Name: "Dept", Title: "routes.system.dept", Path: "/system/dept", Component: "/system/dept/index",
 				Icon: "ant-design:apartment-outlined", Permission: "system:dept",
 				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "新增部门", Permission: "system:dept:add"},
-					{Type: MenuTypeButton, Name: "编辑部门", Permission: "system:dept:edit"},
-					{Type: MenuTypeButton, Name: "删除部门", Permission: "system:dept:delete"},
+					{Type: MenuTypeButton, Name: "system.dept.addDept", Permission: "system:dept:add"},
+					{Type: MenuTypeButton, Name: "system.dept.editDept", Permission: "system:dept:edit"},
+					{Type: MenuTypeButton, Name: "system.dept.deleteDept", Permission: "system:dept:delete"},
 				},
 			},
 			{

@@ -74,6 +74,7 @@
     "menuTitlePlaceholder": "i18n key 或显示名称，如 routes.system.user",
     "name": "路由名称",
     "namePlaceholder": "路由名称/标识，如 User / System",
+    "nameButtonPlaceholder": "按钮 i18n key，如 system.user.addUser",
     "type": "菜单类型",
     "catalog": "目录",
     "menu": "菜单",

@@ -73,6 +73,7 @@
     "menuTitlePlaceholder": "i18n 金鑰或顯示文字，例如 routes.system.user",
     "name": "路由名稱",
     "namePlaceholder": "路由識別名稱，例如 User / System",
+    "nameButtonPlaceholder": "按鈕 i18n 金鑰，例如 system.user.addUser",
     "type": "選單類型",
     "catalog": "目錄",
     "menu": "選單",

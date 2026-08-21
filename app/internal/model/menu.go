@@ -5,7 +5,7 @@ type Menu struct {
 	BaseModel
 	ParentID   uint64 `gorm:"column:parent_id;not null;default:0;index" json:"parentId"` // 0=根
 	Type       string `gorm:"column:type;type:varchar(16);not null" json:"type"`         // catalog / menu / button
-	Name       string `gorm:"column:name;type:varchar(64);not null" json:"name"`         // catalog/menu 为 ASCII 路由标识符；button 为中文展示名
+	Name       string `gorm:"column:name;type:varchar(64);not null" json:"name"`         // catalog/menu 为 ASCII 路由标识符；button 为 i18n key（如 system.user.addUser）
 	Title      string `gorm:"column:title;type:varchar(128)" json:"title"`               // i18n key，如 routes.system.user（决策 17）
 	Path       string `gorm:"column:path;type:varchar(128)" json:"path"`
 	Component  string `gorm:"column:component;type:varchar(255)" json:"component"` // 视图相对路径；按钮级为空

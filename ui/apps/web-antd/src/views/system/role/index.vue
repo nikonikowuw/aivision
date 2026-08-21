@@ -28,6 +28,7 @@ import {
   SYSTEM_ROLE_SUPER_CODE,
   SYSTEM_STATUS,
 } from '#/constants/system';
+import { translateMenuLabel } from '#/utils/menu';
 
 type RoleFormValues = Omit<RoleApi.SaveRoleInput, 'sort' | 'status'> & {
   sort: number;
@@ -129,7 +130,10 @@ const checkedMenuKeys = ref<number[]>([]);
 function transformMenuToTreeData(items: MenuApi.MenuItem[]): MenuTreeNode[] {
   return items.map((item) => ({
     key: item.id,
-    title: `${item.title.startsWith('routes.') ? $t(item.title) : item.title} (${item.name})`,
+    title:
+      item.type === 'button'
+        ? translateMenuLabel(item.name)
+        : `${translateMenuLabel(item.title)} (${item.name})`,
     children: item.children
       ? transformMenuToTreeData(item.children)
       : undefined,

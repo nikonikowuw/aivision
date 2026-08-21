@@ -2395,7 +2395,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
-                    "description": "catalog/menu 为 ASCII 路由标识符；button 为中文展示名",
+                    "description": "catalog/menu 为 ASCII 路由标识符；button 为 i18n key（如 system.user.addUser）",
                     "type": "string"
                 },
                 "parentId": {
@@ -2461,7 +2461,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
-                    "description": "catalog/menu 为 ASCII 路由标识符；button 为中文展示名",
+                    "description": "catalog/menu 为 ASCII 路由标识符；button 为 i18n key（如 system.user.addUser）",
                     "type": "string"
                 },
                 "parentId": {

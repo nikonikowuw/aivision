@@ -11,6 +11,7 @@
 - `000003_add_department_parent_index_and_fix_status_default`: 部门父节点索引并移除 status 默认值。
 - `000004_use_unix_millisecond_soft_delete`: 软删除毫秒时间戳与高并发复合唯一索引。
 - `000005_seed_system_rbac`: 系统角色、初始菜单树与超级管理员绑定（数据迁移，不创建管理员用户）。
+- `000006_menu_button_name_i18n`: 按钮级菜单 `name` 由中文展示名迁移为标准 i18n key（数据迁移）。
 
 ## 常用命令
 

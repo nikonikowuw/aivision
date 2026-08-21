@@ -19,6 +19,7 @@ import {
   updateMenuApi,
 } from '#/api';
 import { SYSTEM_STATUS } from '#/constants/system';
+import { translateMenuLabel } from '#/utils/menu';
 
 type MenuFormValues = Omit<MenuApi.SaveMenuInput, 'sort' | 'status'> & {
   sort: number;
@@ -58,10 +59,10 @@ const [Form, formApi] = useVbenForm<MenuFormValues>({
         allowClear: true,
         childrenField: 'children',
         labelFn: (item) => {
-          const title =
-            typeof item.title === 'string' && item.title.startsWith('routes.')
-              ? $t(item.title)
-              : item.title;
+          if (item.type === 'button') {
+            return translateMenuLabel(item.name);
+          }
+          const title = translateMenuLabel(item.title);
           return item.name ? `${title} (${item.name})` : title;
         },
         options: menuTreeOptions.value,
@@ -80,8 +81,16 @@ const [Form, formApi] = useVbenForm<MenuFormValues>({
     },
     {
       component: 'Input',
-      componentProps: {
-        placeholder: $t('system.menu.namePlaceholder'),
+      dependencies: {
+        resolve: ({ values }) => ({
+          componentProps: {
+            placeholder:
+              values.type === 'button'
+                ? $t('system.menu.nameButtonPlaceholder')
+                : $t('system.menu.namePlaceholder'),
+          },
+        }),
+        triggerFields: ['type'],
       },
       fieldName: 'name',
       label: $t('system.menu.name'),
@@ -211,7 +220,12 @@ const gridOptions: VxeGridProps<MenuApi.MenuItem> = {
       treeNode: true,
       width: 220,
     },
-    { field: 'name', title: $t('system.menu.name'), width: 140 },
+    {
+      field: 'name',
+      formatter: ({ cellValue }) => translateMenuLabel(cellValue),
+      title: $t('system.menu.name'),
+      width: 140,
+    },
     {
       field: 'type',
       slots: { default: 'type' },

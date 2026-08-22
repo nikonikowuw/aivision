@@ -688,6 +688,68 @@ Webhook 统一使用以下事件信封：
 
 日志至少包含操作者、时间、来源 IP、模块、动作、操作对象、结果和变更摘要。请求体沿用现有脱敏机制，不记录完整人脸图片、摄像头密码或 Webhook 敏感头内容。普通查看行为不写操作日志。
 
+### 7.17 菜单与导航布局
+
+#### 7.17.1 导航原则
+
+- 登录默认首页为“实时预览”，默认路径为 `/live`。
+- 移除脚手架现有“概览/分析页”菜单及 `/dashboard` 默认首页配置。
+- 一级菜单按用户工作流组织，不按 Go、C++、RKNN、ZLM 等技术组件组织。
+- 页面和按钮均接入现有后端 RBAC 菜单树；页面权限码采用 `<domain>:<resource>`，按钮权限采用 `<domain>:<resource>:<action>`。
+- 菜单标题使用 `routes.*` 国际化键，路由名使用 ASCII PascalCase。
+- 新菜单图标统一沿用项目现有 `ant-design` Iconify 图标集。
+
+#### 7.17.2 菜单树
+
+| 顺序 | 一级菜单 | 二级菜单 |
+| --- | --- | --- |
+| 1 | 实时预览 | 无可见子菜单，直接进入默认首页 |
+| 2 | 资源管理 | 摄像头管理、任务管理、算法包管理、人员管理 |
+| 3 | 智能记录 | 抓拍记录、识别记录、告警记录 |
+| 4 | 运维管理 | Webhook 管理、推送记录、设备监控、平台信息、存储管理 |
+| 5 | 系统管理 | 用户管理、角色管理、菜单管理、部门管理、操作日志 |
+
+“平台信息”只展示当前运行平台及能力档案，不提供运行时切换 `platform_id` 的操作。
+
+#### 7.17.3 路由与页面权限
+
+| 一级菜单 | 页面 | 路径 | 路由名 | 页面权限码 | 图标 |
+| --- | --- | --- | --- | --- | --- |
+| 实时预览 | 实时预览 | `/live` | `LivePreview` | `live:preview` | `ant-design:video-camera-outlined` |
+| 资源管理 | 摄像头管理 | `/resource/camera` | `ResourceCamera` | `resource:camera` | `ant-design:camera-outlined` |
+| 资源管理 | 任务管理 | `/resource/task` | `ResourceTask` | `resource:task` | `ant-design:profile-outlined` |
+| 资源管理 | 算法包管理 | `/resource/algorithm` | `ResourceAlgorithm` | `resource:algorithm` | `ant-design:deployment-unit-outlined` |
+| 资源管理 | 人员管理 | `/resource/person` | `ResourcePerson` | `resource:person` | `ant-design:idcard-outlined` |
+| 智能记录 | 抓拍记录 | `/record/capture` | `RecordCapture` | `record:capture` | `ant-design:camera-outlined` |
+| 智能记录 | 识别记录 | `/record/recognition` | `RecordRecognition` | `record:recognition` | `ant-design:scan-outlined` |
+| 智能记录 | 告警记录 | `/record/alarm` | `RecordAlarm` | `record:alarm` | `ant-design:alert-outlined` |
+| 运维管理 | Webhook 管理 | `/ops/webhook` | `OpsWebhook` | `ops:webhook` | `ant-design:api-outlined` |
+| 运维管理 | 推送记录 | `/ops/delivery` | `OpsDelivery` | `ops:delivery` | `ant-design:send-outlined` |
+| 运维管理 | 设备监控 | `/ops/monitor` | `OpsMonitor` | `ops:monitor` | `ant-design:dashboard-outlined` |
+| 运维管理 | 平台信息 | `/ops/platform` | `OpsPlatform` | `ops:platform` | `ant-design:info-circle-outlined` |
+| 运维管理 | 存储管理 | `/ops/storage` | `OpsStorage` | `ops:storage` | `ant-design:hdd-outlined` |
+| 系统管理 | 现有页面 | `/system/*` | 保持现状 | `system:*` | 保持现状 |
+
+一级目录图标分别为：资源管理 `ant-design:appstore-outlined`、智能记录 `ant-design:database-outlined`、运维管理 `ant-design:tool-outlined`、系统管理保持 `ant-design:setting-outlined`。
+
+#### 7.17.4 实时预览顶层路由
+
+现有菜单模型中，顶层目录使用 `catalog + BasicLayout`。为实现“实时预览”无可见二级菜单，菜单元数据必须增加并向 vben 路由透传 `hideChildrenInMenu`：
+
+- 顶层目录：`Live`，路径 `/live`，组件 `BasicLayout`，`hideChildrenInMenu=true`。
+- 隐藏子页面：`LivePreview`，路径 `/live`，组件 `/live/index`，权限码 `live:preview`。
+- 左侧导航、面包屑和标签页均只显示“实时预览”。
+- `affix=true`，作为默认首页固定在标签栏。
+- `keepAlive=false`，离开页面时销毁预览组件并释放播放会话。
+- 再次进入时使用默认 4 画面空布局，不恢复摄像头选择。
+
+#### 7.17.5 缓存规则
+
+- `keepAlive=true`：摄像头管理、任务管理、算法包管理、人员管理、抓拍记录、识别记录、告警记录、Webhook 管理、推送记录。
+- 上述缓存页面重新激活时刷新服务端数据，同时保留筛选条件、分页和滚动位置。
+- `keepAlive=false`：实时预览、设备监控、平台信息、存储管理。
+- 除实时预览外，其他业务页面均为 `affix=false`。
+
 ## 8. 核心流程
 
 ### 8.1 多平台分层关系
@@ -923,6 +985,17 @@ flowchart TD
 - [ ] 上述两个平台性能场景分别连续运行 72 小时并完成资源数据记录。
 - [ ] 独立人脸算法包项目验证 4 路、每路 5 FPS，并执行同等 72 小时稳定性测试。
 - [ ] 平台未发生磁盘写满、不可恢复任务中断或服务永久退出。
+
+### 11.9 菜单与导航
+
+- [ ] 登录后默认进入 `/live`，不再进入 `/dashboard`。
+- [ ] 左侧导航仅显示实时预览、资源管理、智能记录、运维管理和系统管理 5 个一级菜单。
+- [ ] 实时预览不显示可见二级菜单，左侧导航、面包屑和标签页名称一致。
+- [ ] 实时预览标签固定且页面不缓存，离开页面后释放播放会话。
+- [ ] 资源、记录和推送类列表页面返回时保留筛选、分页和滚动位置，并在激活时刷新数据。
+- [ ] 设备监控、平台信息和存储管理不使用路由缓存。
+- [ ] 无页面权限的用户无法从菜单或直接 URL 访问对应页面。
+- [ ] 新增页面的菜单标题均使用完整国际化键，路由名、路径和页面权限码与 PRD 表格一致。
 
 ## 12. 交付物
 

@@ -75,6 +75,22 @@ var seedMenuTree = []seedMenuItem{
 		},
 	},
 	{
+		Type: MenuTypeCatalog, Name: "Ops", Title: "routes.ops.ops", Path: "/ops", Component: "BasicLayout",
+		Icon: "ant-design:tool-outlined",
+		Children: []seedMenuItem{
+			{
+				Type: MenuTypeMenu, Name: "Network", Title: "routes.ops.network", Path: "/ops/network", Component: "/ops/network/index",
+				Icon: "ant-design:global-outlined", Permission: "ops:network",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "system.common.edit", Permission: "ops:network:edit"},
+					{Type: MenuTypeButton, Name: "ops.network.confirm", Permission: "ops:network:confirm"},
+					{Type: MenuTypeButton, Name: "ops.network.cancel", Permission: "ops:network:cancel"},
+					{Type: MenuTypeButton, Name: "ops.network.reset", Permission: "ops:network:reset"},
+				},
+			},
+		},
+	},
+	{
 		Type: MenuTypeCatalog, Name: "Dashboard", Title: "routes.dashboard.title", Path: "/dashboard", Component: "BasicLayout",
 		Icon: "ant-design:home-outlined",
 		Children: []seedMenuItem{

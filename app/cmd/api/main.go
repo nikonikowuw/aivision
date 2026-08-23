@@ -26,13 +26,15 @@ import (
 
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/migration"
+	"niko-vue-admin/app/internal/service"
 )
 
 // App 是 wire 装配产物：main 启动所需的全部依赖。
 type App struct {
-	DB     *gorm.DB
-	Logger *zap.Logger
-	Engine *gin.Engine
+	DB         *gorm.DB
+	Logger     *zap.Logger
+	Engine     *gin.Engine
+	NTPService service.NTPService
 }
 
 const (
@@ -71,6 +73,13 @@ func main() {
 		log.Fatal("database schema check failed; please run `make migrate-up` or `go run ./cmd/migrate up` first", zap.Error(err))
 	}
 	log.Info("database schema ready", zap.Uint("version", migRunner.LatestVersion()))
+
+	// 开机重放对时配置（从 DB 恢复并应用到底层系统）
+	if app.NTPService != nil {
+		if err := app.NTPService.ReplayOnBoot(context.Background()); err != nil {
+			log.Warn("failed to replay ntp config on boot", zap.Error(err))
+		}
+	}
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),

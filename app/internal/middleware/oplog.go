@@ -207,6 +207,11 @@ var actionI18nMap = map[string]string{
 	"POST /api/dept":       "system.dept.addDept",
 	"PUT /api/dept/:id":    "system.dept.editDept",
 	"DELETE /api/dept/:id": "system.dept.deleteDept",
+
+	// Time / NTP
+	"PUT /api/ntp/config":    "ops.time.updateConfig",
+	"POST /api/ntp/sync":     "ops.time.sync",
+	"POST /api/ntp/set-time": "ops.time.setTime",
 }
 
 // inferAction 根据 Gin FullPath 和 Method 推断语义化的 i18n action key，未匹配则 fallback 到 "Method Path"。

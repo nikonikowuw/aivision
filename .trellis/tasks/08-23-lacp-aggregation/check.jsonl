@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"质量检查需要后端规范入口与预提交门禁。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"检查 1114 只用于平台确实无法建立聚合，对端未协商不误报为错误。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查枚举映射无字符串透传、netlink 资源释放与测试不触碰真实网络。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"检查交换机配置提示、单流不跨链路说明与协商状态文案的三语完整性。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"检查 Vitest、pnpm check 与既有模式面板无回归。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查 xmit_hash_policy 枚举与 LACP 状态字段的类型和 nullable 处理。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查协商状态在平台层、API 与页面的端到端一致，未协商时诊断提示可达。"}
+{"file":".trellis/tasks/archive/2026-08/08-23-active-backup-bonding/prd.md","reason":"核对本 child 未重建模式框架，且未破坏 active-backup 的既有行为。"}

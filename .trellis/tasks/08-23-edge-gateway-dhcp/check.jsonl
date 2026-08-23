@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"质量检查需要后端规范入口与预提交门禁。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"检查 1115/1116 的触发条件覆盖全部非法池组合与冲突场景。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"检查租约分配未写操作日志、ip_forward 变更已写审计、日志无敏感路径。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查 DHCP server 生命周期由 Start/Close 管理、socket 绑定单接口、无 goroutine 泄漏。"}
+{"file":".trellis/spec/backend/file-storage-guidelines.md","reason":"检查租约表的原子替换、权限与损坏处理。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"检查风险警示与不做 NAT 的后果说明三语完整且在提交前可见。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"检查 Vitest、pnpm check 与既有模式面板无回归。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查地址池与租约 DTO 的类型和 nullable 处理。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查网关配置与租约数据在后端、API、页面的端到端一致。"}
+{"file":".trellis/tasks/archive/2026-08/08-23-active-backup-bonding/prd.md","reason":"核对本 child 未重建模式框架，且未破坏既有模式行为；前置 child 已归档。"}

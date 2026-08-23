@@ -1,0 +1,14 @@
+{"file":".trellis/spec/backend/index.md","reason":"后端实现前的规范入口与预开发清单。"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"约束 DHCP server、ip_forward 与租约存储在 netconfig / service 的目录边界。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"新增 1115/1116 errno 的定义、HTTP 映射与错误脱敏。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"区分需审计的模式切换/ip_forward 变更与只写 zap 的租约分配事件。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"DHCP server 的 goroutine 生命周期、socket 释放、并发租约与测试隔离要求。"}
+{"file":".trellis/spec/backend/file-storage-guidelines.md","reason":"租约表落盘的原子写入、权限与版本化 envelope 约定。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"约束地址池表单、ip_forward 开关、风险警示与租约列表组件。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"网关警示、NAT 缺失说明、租约字段与错误文案的三语 key 同步。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"地址池、租约时长与租约条目 DTO 的类型约束。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"复用 08-22 的 insomniacslk/dhcp 依赖、状态存储与事务机制，禁止引入外部进程。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"网关配置、租约数据与风险提示在后端、API 与页面的一致性。"}
+{"file":".trellis/tasks/archive/2026-08/08-23-active-backup-bonding/prd.md","reason":"模式框架与 capability 协商的定义来源，本 child 在其上注册 gateway 模式；前置 child 已归档。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/design.md","reason":"NetworkService 生命周期、root-only 状态存储与原子写入的原始约定；上游任务已归档。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/research/linux-network-stack.md","reason":"DHCP 库使用、接口绑定与 sysctl 写入不经 shell 的实现依据；上游研究已归档。"}

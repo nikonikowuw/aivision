@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/index.md","reason":"后端实现前的规范入口与预开发清单。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"新增 1114 errno 的定义、HTTP 映射与错误脱敏；区分平台失败与对端未协商。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"聚合模式切换与 LACP 协商状态变化的日志与审计规则。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"bond 参数枚举映射、netlink 状态读取与测试隔离要求。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"约束 xmit_hash_policy 选择器、交换机配置前置提示与协商状态展示组件。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"LACP 提示文案、协商状态与错误的三语 key 同步。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"xmit_hash_policy 封闭枚举与 LACP 状态 DTO 的类型约束。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"mode 4 必须复用 active-backup 建立的 bond rtnetlink 封装与模式框架。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"协商状态从 netlink 到 overview 到页面的三层一致性。"}
+{"file":".trellis/tasks/archive/2026-08/08-23-active-backup-bonding/prd.md","reason":"模式框架、capability 协商与 bond 通用需求的定义来源，本 child 在其上注册新模式。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/research/linux-network-stack.md","reason":"rtnetlink 结构化调用依据；LACP 状态须经 netlink 查询而非解析 /proc 文本。"}

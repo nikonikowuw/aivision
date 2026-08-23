@@ -138,6 +138,7 @@
     "actionUpdateProfile": "更新个人资料",
     "actionChangePassword": "修改密码",
     "actionNetworkModeSwitch": "切换网络工作模式",
+    "actionNetworkGatewaySwitch": "切换网关模式",
     "actionNetworkApply": "应用网络配置",
     "actionNetworkCancel": "取消网络变更",
     "actionNetworkConfirm": "确认网络变更",

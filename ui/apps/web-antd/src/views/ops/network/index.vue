@@ -22,6 +22,7 @@ import {
   Tag,
   Tooltip,
 } from 'ant-design-vue';
+import dayjs from 'dayjs';
 
 import {
   applyInterfaceApi,
@@ -45,10 +46,20 @@ let timer: ReturnType<typeof setInterval> | null = null;
 // 工作模式切换抽屉
 const modeDrawerVisible = ref(false);
 const modeSubmitting = ref(false);
+const targetMode = ref<NetworkApi.NetworkMode>(NETWORK_MODES.ActiveBackup);
+
 interface ModeFormState {
   slaveIds: string[];
   primarySlaveId: string;
   ipv4: NetworkApi.ApplyInterfaceParams;
+  gateway: {
+    downstreamInterfaceId: string;
+    poolStart: string;
+    poolEnd: string;
+    prefix: number;
+    leaseDurationSeconds: number;
+    ipForward: boolean;
+  };
 }
 
 const modeForm = ref<ModeFormState>({
@@ -59,6 +70,14 @@ const modeForm = ref<ModeFormState>({
     primary: true,
     dnsServers: [],
   },
+  gateway: {
+    downstreamInterfaceId: '',
+    poolStart: '',
+    poolEnd: '',
+    prefix: 24,
+    leaseDurationSeconds: 3600,
+    ipForward: false,
+  },
 });
 
 // 当前可作 slave 的物理网卡：可写、未被 bond 占用（isBond/masterId 为空）
@@ -68,9 +87,29 @@ const eligibleSlaves = computed(() =>
   ),
 );
 
+// 当前可作下行网关的接口：静态 IPv4、可写、非 bond、非 slave、非 primary
+const eligibleGatewayIfaces = computed(() =>
+  (overview.value?.interfaces ?? []).filter(
+    (i) =>
+      i.writable &&
+      !i.isBond &&
+      !i.masterId &&
+      !i.isPrimary &&
+      i.ipv4.mode === 'static' &&
+      i.ipv4.address &&
+      i.ipv4.prefix,
+  ),
+);
+
 const activeBackupSupported = computed(() =>
   (overview.value?.capabilities.supportedModes ?? []).includes(
     NETWORK_MODES.ActiveBackup,
+  ),
+);
+
+const gatewaySupported = computed(() =>
+  (overview.value?.capabilities.supportedModes ?? []).includes(
+    NETWORK_MODES.Gateway,
   ),
 );
 
@@ -78,19 +117,62 @@ const canEnterActiveBackup = computed(
   () => activeBackupSupported.value && eligibleSlaves.value.length >= 2,
 );
 
-function openModeDrawer() {
-  // 预选前两块可写物理网卡
-  const candidates = eligibleSlaves.value.slice(0, 2);
-  modeForm.value = {
-    slaveIds: candidates.map((i) => i.id),
-    primarySlaveId: candidates[0]?.id ?? '',
-    ipv4: {
+const canEnterGateway = computed(
+  () => gatewaySupported.value && eligibleGatewayIfaces.value.length >= 1,
+);
+
+function deriveDefaultPool(ip?: string | null): { start: string; end: string } {
+  if (!ip) return { start: '', end: '' };
+  const parts = ip.split('.');
+  if (parts.length === 4) {
+    return {
+      start: `${parts[0]}.${parts[1]}.${parts[2]}.100`,
+      end: `${parts[0]}.${parts[1]}.${parts[2]}.200`,
+    };
+  }
+  return { start: '', end: '' };
+}
+
+function formatDateTime(timeStr?: string | null): string {
+  if (!timeStr) return '-';
+  const d = dayjs(timeStr);
+  return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : timeStr;
+}
+
+function openModeDrawer(mode: NetworkApi.NetworkMode = NETWORK_MODES.ActiveBackup) {
+  targetMode.value = mode;
+  if (mode === NETWORK_MODES.ActiveBackup) {
+    const candidates = eligibleSlaves.value.slice(0, 2);
+    modeForm.value.slaveIds = candidates.map((i) => i.id);
+    modeForm.value.primarySlaveId = candidates[0]?.id ?? '';
+    modeForm.value.ipv4 = {
       mode: 'dhcp',
       primary: true,
       dnsServers: [],
-    },
-  };
+    };
+  } else if (mode === NETWORK_MODES.Gateway) {
+    const candidate = eligibleGatewayIfaces.value[0];
+    const ifacePrefix = candidate?.ipv4.prefix ?? 24;
+    const pool = deriveDefaultPool(candidate?.ipv4.address);
+    modeForm.value.gateway = {
+      downstreamInterfaceId: candidate?.id ?? '',
+      poolStart: pool.start,
+      poolEnd: pool.end,
+      prefix: ifacePrefix,
+      leaseDurationSeconds: 3600,
+      ipForward: false,
+    };
+  }
   modeDrawerVisible.value = true;
+}
+
+function onGatewayIfaceChange(ifaceId: string) {
+  const iface = eligibleGatewayIfaces.value.find((i) => i.id === ifaceId);
+  if (!iface || !iface.ipv4.address || !iface.ipv4.prefix) return;
+  modeForm.value.gateway.prefix = iface.ipv4.prefix;
+  const pool = deriveDefaultPool(iface.ipv4.address);
+  modeForm.value.gateway.poolStart = pool.start;
+  modeForm.value.gateway.poolEnd = pool.end;
 }
 
 function toggleSlave(ifaceId: string) {
@@ -111,11 +193,10 @@ function toggleSlave(ifaceId: string) {
 }
 
 async function handleModeSwitch() {
-  const target = NETWORK_MODES.ActiveBackup;
   modeSubmitting.value = true;
   try {
-    const params: NetworkApi.SwitchModeParams = { mode: target };
-    if (modeForm.value.slaveIds.length === 2) {
+    const params: NetworkApi.SwitchModeParams = { mode: targetMode.value };
+    if (targetMode.value === NETWORK_MODES.ActiveBackup && modeForm.value.slaveIds.length === 2) {
       const ipv4: NetworkApi.ApplyInterfaceParams = {
         mode: modeForm.value.ipv4.mode,
         primary: modeForm.value.ipv4.primary,
@@ -134,6 +215,15 @@ async function handleModeSwitch() {
         slaveIds: modeForm.value.slaveIds,
         primarySlaveId: modeForm.value.primarySlaveId,
         ipv4,
+      };
+    } else if (targetMode.value === NETWORK_MODES.Gateway) {
+      params.gateway = {
+        downstreamInterfaceId: modeForm.value.gateway.downstreamInterfaceId,
+        poolStart: modeForm.value.gateway.poolStart,
+        poolEnd: modeForm.value.gateway.poolEnd,
+        prefix: modeForm.value.gateway.prefix,
+        leaseDurationSeconds: modeForm.value.gateway.leaseDurationSeconds,
+        ipForward: modeForm.value.gateway.ipForward,
       };
     }
     await switchNetworkModeApi(params);
@@ -535,6 +625,35 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- 边缘网关状态（gateway 模式时展示下行接口、地址池、ip_forward 与冲突告警） -->
+        <div v-if="overview?.gateway" class="mb-4">
+          <Alert
+            v-if="overview.gateway.conflictDetected"
+            type="error"
+            show-icon
+            :message="$t('ops.network.gatewayConflictWarning')"
+            class="!text-xs mb-3"
+          />
+          <div class="text-muted-foreground text-xs mb-2">
+            {{ $t('ops.network.modeGatewayTitle') }}
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <Tag color="blue" class="border-0 font-mono font-semibold">
+              <IconifyIcon icon="lucide:router" class="size-3 inline mr-1" />
+              LAN: {{ overview.gateway.downstreamInterfaceId }}
+            </Tag>
+            <Tag color="cyan" class="border-0 font-mono">
+              Pool: {{ overview.gateway.poolStart }} ~ {{ overview.gateway.poolEnd }} /{{ overview.gateway.prefix }}
+            </Tag>
+            <Tag color="default" class="border-0 font-mono text-xs">
+              Lease: {{ overview.gateway.leaseDurationSeconds }}s
+            </Tag>
+            <Tag :color="overview.gateway.ipForward ? 'green' : 'default'" class="border-0 font-mono text-xs">
+              ip_forward: {{ overview.gateway.ipForward ? 'ON' : 'OFF' }}
+            </Tag>
+          </div>
+        </div>
+
         <div class="flex items-center justify-between">
           <div class="text-xs text-muted-foreground">
             {{ $t('ops.network.modeSupported') }}:
@@ -546,50 +665,62 @@ onUnmounted(() => {
             </template>
           </div>
           <div class="flex items-center gap-2">
-            <Tooltip
-              v-if="!activeBackupSupported"
-              :title="$t('ops.network.modeUnsupportedTip')"
-            >
+            <!-- Active-Backup 按钮 -->
+            <template v-if="overview?.mode === NETWORK_MODES.ActiveBackup">
+              <Popconfirm
+                :title="$t('ops.network.modeExitConfirm')"
+                @confirm="handleModeExit"
+              >
+                <Button
+                  v-access:code="['ops:network:mode']"
+                  danger
+                  :disabled="!!overview?.pendingTransaction"
+                >
+                  {{ $t('ops.network.modeExit') }}
+                </Button>
+              </Popconfirm>
+            </template>
+            <!-- Gateway 按钮 -->
+            <template v-else-if="overview?.mode === NETWORK_MODES.Gateway">
+              <Popconfirm
+                :title="$t('ops.network.modeExitGatewayConfirm')"
+                @confirm="handleModeExit"
+              >
+                <Button
+                  v-access:code="['ops:network:mode']"
+                  danger
+                  :disabled="!!overview?.pendingTransaction"
+                >
+                  {{ $t('ops.network.modeExitGateway') }}
+                </Button>
+              </Popconfirm>
+            </template>
+            <!-- Multi-Address 模式下提供切换入口 -->
+            <template v-else>
               <Button
+                v-if="activeBackupSupported"
                 v-access:code="['ops:network:mode']"
                 type="primary"
                 ghost
-                disabled
+                :disabled="!canEnterActiveBackup || !!overview?.pendingTransaction"
+                @click="openModeDrawer(NETWORK_MODES.ActiveBackup)"
               >
-                <IconifyIcon
-                  icon="lucide:layers"
-                  class="size-3.5 inline mr-1"
-                />
+                <IconifyIcon icon="lucide:layers" class="size-3.5 inline mr-1" />
                 {{ $t('ops.network.modeEnter') }}
               </Button>
-            </Tooltip>
-            <Button
-              v-else
-              v-if="overview?.mode !== NETWORK_MODES.ActiveBackup"
-              v-access:code="['ops:network:mode']"
-              type="primary"
-              ghost
-              :disabled="
-                !canEnterActiveBackup || !!overview?.pendingTransaction
-              "
-              @click="openModeDrawer"
-            >
-              <IconifyIcon icon="lucide:layers" class="size-3.5 inline mr-1" />
-              {{ $t('ops.network.modeEnter') }}
-            </Button>
-            <Popconfirm
-              v-if="overview?.mode === NETWORK_MODES.ActiveBackup"
-              :title="$t('ops.network.modeExitConfirm')"
-              @confirm="handleModeExit"
-            >
+
               <Button
+                v-if="gatewaySupported"
                 v-access:code="['ops:network:mode']"
-                danger
-                :disabled="!!overview?.pendingTransaction"
+                type="primary"
+                ghost
+                :disabled="!canEnterGateway || !!overview?.pendingTransaction"
+                @click="openModeDrawer(NETWORK_MODES.Gateway)"
               >
-                {{ $t('ops.network.modeExit') }}
+                <IconifyIcon icon="lucide:router" class="size-3.5 inline mr-1" />
+                {{ $t('ops.network.modeEnterGateway') }}
               </Button>
-            </Popconfirm>
+            </template>
           </div>
         </div>
       </div>
@@ -972,6 +1103,62 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+
+            <!-- DHCP 租约列表（网关模式生效时展示） -->
+            <div
+              v-if="overview?.mode === NETWORK_MODES.Gateway && overview?.gateway"
+              class="mt-6 bg-card text-card-foreground rounded-xl border p-5 shadow-xs"
+            >
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                  <div
+                    class="bg-blue-500/10 text-blue-500 dark:bg-blue-500/20 flex size-8 items-center justify-center rounded-lg"
+                  >
+                    <IconifyIcon icon="lucide:list" class="size-4.5" />
+                  </div>
+                  <div>
+                    <span class="text-foreground font-semibold text-sm block">
+                      {{ $t('ops.network.gatewayLeasesTitle') }}
+                    </span>
+                    <span class="text-muted-foreground text-xs">
+                      {{ overview.gateway.leases.length }} leases active
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="overview.gateway.leases.length === 0" class="py-6">
+                <Empty :description="$t('ops.network.none')" />
+              </div>
+              <div v-else class="overflow-x-auto">
+                <table class="w-full text-xs text-left border-collapse font-mono">
+                  <thead>
+                    <tr class="border-b border-border/60 text-muted-foreground">
+                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseIP') }}</th>
+                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseMAC') }}</th>
+                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseHostname') }}</th>
+                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseStartsAt') }}</th>
+                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseExpiresAt') }}</th>
+                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseRenewedAt') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-border/40">
+                    <tr
+                      v-for="l in overview.gateway.leases"
+                      :key="l.mac"
+                      class="hover:bg-muted/30 transition-colors"
+                    >
+                      <td class="py-2.5 px-3 font-bold text-foreground">{{ l.ip }}</td>
+                      <td class="py-2.5 px-3 text-muted-foreground">{{ l.mac }}</td>
+                      <td class="py-2.5 px-3 text-foreground">{{ l.hostname || '-' }}</td>
+                      <td class="py-2.5 px-3 text-muted-foreground">{{ formatDateTime(l.startsAt) }}</td>
+                      <td class="py-2.5 px-3 text-muted-foreground">{{ formatDateTime(l.expiresAt) }}</td>
+                      <td class="py-2.5 px-3 text-muted-foreground">{{ formatDateTime(l.lastRenewedAt) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </Spin>
         </div>
 
@@ -1306,173 +1493,291 @@ onUnmounted(() => {
     <!-- 网络工作模式切换抽屉 (Mode Switch Drawer) -->
     <Drawer
       v-model:open="modeDrawerVisible"
-      :title="$t('ops.network.modeEnter')"
+      :title="targetMode === NETWORK_MODES.ActiveBackup ? $t('ops.network.modeEnter') : $t('ops.network.modeEnterGateway')"
       width="460px"
       :destroy-on-close="true"
     >
       <div class="space-y-5">
         <Alert
+          v-if="targetMode === NETWORK_MODES.ActiveBackup"
           type="warning"
           show-icon
           :message="$t('ops.network.modeSwitchWarning')"
           class="!text-xs"
         />
+        <Alert
+          v-else
+          type="warning"
+          show-icon
+          :message="$t('ops.network.modeGatewayWarning')"
+          class="!text-xs"
+        />
 
-        <!-- slave 选择 -->
-        <div>
-          <label class="text-sm font-semibold text-foreground block mb-2.5">
-            {{ $t('ops.network.modeSlaveSelect') }}
-          </label>
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div
-              v-for="iface in eligibleSlaves"
-              :key="iface.id"
-              class="cursor-pointer rounded-xl border-2 p-3 transition-all duration-150"
-              :class="[
-                modeForm.slaveIds.includes(iface.id)
-                  ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                  : 'border-border hover:border-primary/50 hover:bg-muted/30',
-              ]"
-              @click="toggleSlave(iface.id)"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <IconifyIcon
-                    icon="lucide:ethernet-port"
-                    class="size-4 text-muted-foreground"
-                  />
-                  <span class="font-semibold text-xs">{{
-                    iface.displayName || iface.name
-                  }}</span>
-                </div>
-                <div
-                  class="size-3.5 rounded-full border flex items-center justify-center"
-                  :class="[
-                    modeForm.slaveIds.includes(iface.id)
-                      ? 'border-primary bg-primary'
-                      : 'border-muted-foreground/40',
-                  ]"
-                >
+        <!-- Active-Backup 表单 -->
+        <template v-if="targetMode === NETWORK_MODES.ActiveBackup">
+          <!-- slave 选择 -->
+          <div>
+            <label class="text-sm font-semibold text-foreground block mb-2.5">
+              {{ $t('ops.network.modeSlaveSelect') }}
+            </label>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div
+                v-for="iface in eligibleSlaves"
+                :key="iface.id"
+                class="cursor-pointer rounded-xl border-2 p-3 transition-all duration-150"
+                :class="[
+                  modeForm.slaveIds.includes(iface.id)
+                    ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/30',
+                ]"
+                @click="toggleSlave(iface.id)"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <IconifyIcon
+                      icon="lucide:ethernet-port"
+                      class="size-4 text-muted-foreground"
+                    />
+                    <span class="font-semibold text-xs">{{
+                      iface.displayName || iface.name
+                    }}</span>
+                  </div>
                   <div
-                    v-if="modeForm.slaveIds.includes(iface.id)"
-                    class="size-1 rounded-full bg-white"
-                  ></div>
+                    class="size-3.5 rounded-full border flex items-center justify-center"
+                    :class="[
+                      modeForm.slaveIds.includes(iface.id)
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/40',
+                    ]"
+                  >
+                    <div
+                      v-if="modeForm.slaveIds.includes(iface.id)"
+                      class="size-1 rounded-full bg-white"
+                    ></div>
+                  </div>
                 </div>
+                <p class="text-muted-foreground mt-1.5 text-[11px] font-mono">
+                  {{ iface.mac || '-' }}
+                </p>
               </div>
-              <p class="text-muted-foreground mt-1.5 text-[11px] font-mono">
-                {{ iface.mac || '-' }}
-              </p>
+            </div>
+            <p class="text-muted-foreground mt-2 text-[11px]">
+              {{ $t('ops.network.modeSlaveTip') }}
+            </p>
+          </div>
+
+          <!-- primary 选择 -->
+          <div>
+            <label class="text-sm font-semibold text-foreground block mb-2.5">
+              {{ $t('ops.network.modePrimarySelect') }}
+            </label>
+            <div class="flex flex-wrap gap-2">
+              <Tag
+                v-for="sid in modeForm.slaveIds"
+                :key="sid"
+                :color="modeForm.primarySlaveId === sid ? 'success' : 'default'"
+                class="cursor-pointer font-mono border-0"
+                @click="modeForm.primarySlaveId = sid"
+              >
+                {{ sid }}
+              </Tag>
             </div>
           </div>
-          <p class="text-muted-foreground mt-2 text-[11px]">
-            {{ $t('ops.network.modeSlaveTip') }}
-          </p>
-        </div>
 
-        <!-- primary 选择 -->
-        <div>
-          <label class="text-sm font-semibold text-foreground block mb-2.5">
-            {{ $t('ops.network.modePrimarySelect') }}
-          </label>
-          <div class="flex flex-wrap gap-2">
-            <Tag
-              v-for="sid in modeForm.slaveIds"
-              :key="sid"
-              :color="modeForm.primarySlaveId === sid ? 'success' : 'default'"
-              class="cursor-pointer font-mono border-0"
-              @click="modeForm.primarySlaveId = sid"
-            >
-              {{ sid }}
-            </Tag>
-          </div>
-        </div>
-
-        <!-- bond 的 IPv4 配置 -->
-        <div>
-          <label class="text-sm font-semibold text-foreground block mb-2.5">
-            {{ $t('ops.network.modeBondIPv4') }}
-          </label>
-          <div class="flex items-center gap-2 mb-3">
-            <Tag
-              :color="modeForm.ipv4.mode === 'dhcp' ? 'processing' : 'default'"
-              class="cursor-pointer border-0"
-              @click="modeForm.ipv4.mode = 'dhcp'"
-            >
-              {{ $t('ops.network.modeDHCP') }}
-            </Tag>
-            <Tag
-              :color="modeForm.ipv4.mode === 'static' ? 'processing' : 'default'"
-              class="cursor-pointer border-0"
-              @click="modeForm.ipv4.mode = 'static'"
-            >
-              {{ $t('ops.network.modeStatic') }}
-            </Tag>
-            <a-switch
-              v-model:checked="modeForm.ipv4.primary"
-              size="small"
-              class="ml-auto"
-            />
-            <span class="text-xs text-muted-foreground">{{
-              $t('ops.network.isPrimary')
-            }}</span>
-          </div>
-          <template v-if="modeForm.ipv4.mode === 'static'">
-            <Form layout="vertical" class="space-y-3">
-              <Form.Item :label="$t('ops.network.ipAddress')">
-                <Input
-                  v-model:value="modeForm.ipv4.address"
-                  placeholder="192.168.1.100"
-                  class="font-mono"
-                />
-              </Form.Item>
-              <Form.Item :label="$t('ops.network.prefix')">
-                <InputNumber
-                  v-model:value="modeForm.ipv4.prefix"
-                  :min="1"
-                  :max="32"
-                  class="w-full font-mono"
-                />
-              </Form.Item>
-              <template v-if="modeForm.ipv4.primary">
-                <Form.Item :label="$t('ops.network.gateway')">
+          <!-- bond 的 IPv4 配置 -->
+          <div>
+            <label class="text-sm font-semibold text-foreground block mb-2.5">
+              {{ $t('ops.network.modeBondIPv4') }}
+            </label>
+            <div class="flex items-center gap-2 mb-3">
+              <Tag
+                :color="modeForm.ipv4.mode === 'dhcp' ? 'processing' : 'default'"
+                class="cursor-pointer border-0"
+                @click="modeForm.ipv4.mode = 'dhcp'"
+              >
+                {{ $t('ops.network.modeDHCP') }}
+              </Tag>
+              <Tag
+                :color="modeForm.ipv4.mode === 'static' ? 'processing' : 'default'"
+                class="cursor-pointer border-0"
+                @click="modeForm.ipv4.mode = 'static'"
+              >
+                {{ $t('ops.network.modeStatic') }}
+              </Tag>
+              <Switch
+                v-model:checked="modeForm.ipv4.primary"
+                size="small"
+                class="ml-auto"
+              />
+              <span class="text-xs text-muted-foreground">{{
+                $t('ops.network.isPrimary')
+              }}</span>
+            </div>
+            <template v-if="modeForm.ipv4.mode === 'static'">
+              <Form layout="vertical" class="space-y-3">
+                <Form.Item :label="$t('ops.network.ipAddress')">
                   <Input
-                    v-model:value="modeForm.ipv4.gateway"
-                    placeholder="192.168.1.1"
+                    v-model:value="modeForm.ipv4.address"
+                    placeholder="192.168.1.100"
                     class="font-mono"
                   />
                 </Form.Item>
-                <Form.Item :label="$t('ops.network.dnsServers')">
-                  <Input
-                    :value="modeForm.ipv4.dnsServers?.[0] ?? ''"
-                    placeholder="8.8.8.8"
-                    class="font-mono"
-                    @update:value="(val: string) => {
-                      if (!modeForm.ipv4.dnsServers) {
-                        modeForm.ipv4.dnsServers = [];
-                      }
-                      modeForm.ipv4.dnsServers[0] = val;
-                    }"
+                <Form.Item :label="$t('ops.network.prefix')">
+                  <InputNumber
+                    v-model:value="modeForm.ipv4.prefix"
+                    :min="1"
+                    :max="32"
+                    class="w-full font-mono"
                   />
                 </Form.Item>
-              </template>
-            </Form>
-          </template>
-        </div>
+                <template v-if="modeForm.ipv4.primary">
+                  <Form.Item :label="$t('ops.network.gateway')">
+                    <Input
+                      v-model:value="modeForm.ipv4.gateway"
+                      placeholder="192.168.1.1"
+                      class="font-mono"
+                    />
+                  </Form.Item>
+                  <Form.Item :label="$t('ops.network.dnsServers')">
+                    <Input
+                      :value="modeForm.ipv4.dnsServers?.[0] ?? ''"
+                      placeholder="8.8.8.8"
+                      class="font-mono"
+                      @update:value="(val: string) => {
+                        if (!modeForm.ipv4.dnsServers) {
+                          modeForm.ipv4.dnsServers = [];
+                        }
+                        modeForm.ipv4.dnsServers[0] = val;
+                      }"
+                    />
+                  </Form.Item>
+                </template>
+              </Form>
+            </template>
+          </div>
+        </template>
+
+        <!-- Gateway 表单 -->
+        <template v-else-if="targetMode === NETWORK_MODES.Gateway">
+          <!-- 下行 LAN 接口选择 -->
+          <div>
+            <label class="text-sm font-semibold text-foreground block mb-2.5">
+              {{ $t('ops.network.modeGatewayDownstream') }}
+            </label>
+            <div class="grid grid-cols-1 gap-2">
+              <div
+                v-for="iface in eligibleGatewayIfaces"
+                :key="iface.id"
+                class="cursor-pointer rounded-xl border-2 p-3 transition-all duration-150"
+                :class="[
+                  modeForm.gateway.downstreamInterfaceId === iface.id
+                    ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/30',
+                ]"
+                @click="() => {
+                  modeForm.gateway.downstreamInterfaceId = iface.id;
+                  onGatewayIfaceChange(iface.id);
+                }"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <IconifyIcon
+                      icon="lucide:router"
+                      class="size-4 text-primary"
+                    />
+                    <span class="font-semibold text-xs">{{
+                      iface.displayName || iface.name
+                    }}</span>
+                    <span class="font-mono text-xs text-muted-foreground">
+                      ({{ iface.ipv4.address }}/{{ iface.ipv4.prefix }})
+                    </span>
+                  </div>
+                  <div
+                    class="size-3.5 rounded-full border flex items-center justify-center"
+                    :class="[
+                      modeForm.gateway.downstreamInterfaceId === iface.id
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/40',
+                    ]"
+                  >
+                    <div
+                      v-if="modeForm.gateway.downstreamInterfaceId === iface.id"
+                      class="size-1 rounded-full bg-white"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="text-muted-foreground mt-2 text-[11px]">
+              {{ $t('ops.network.modeGatewayDownstreamTip') }}
+            </p>
+          </div>
+
+          <!-- 地址池与租约配置 -->
+          <Form layout="vertical" class="space-y-3">
+            <Form.Item :label="$t('ops.network.modeGatewayPoolStart')" required>
+              <Input
+                v-model:value="modeForm.gateway.poolStart"
+                placeholder="192.168.2.100"
+                class="font-mono"
+              />
+            </Form.Item>
+            <Form.Item :label="$t('ops.network.modeGatewayPoolEnd')" required>
+              <Input
+                v-model:value="modeForm.gateway.poolEnd"
+                placeholder="192.168.2.200"
+                class="font-mono"
+              />
+            </Form.Item>
+            <Form.Item :label="$t('ops.network.modeGatewayPrefix')" required>
+              <InputNumber
+                v-model:value="modeForm.gateway.prefix"
+                :min="1"
+                :max="30"
+                class="w-full font-mono"
+              />
+            </Form.Item>
+            <Form.Item :label="$t('ops.network.modeGatewayLeaseDuration')">
+              <InputNumber
+                v-model:value="modeForm.gateway.leaseDurationSeconds"
+                :min="60"
+                :max="604800"
+                class="w-full font-mono"
+              />
+            </Form.Item>
+
+            <!-- ip_forward 三层转发开关及说明 -->
+            <div class="rounded-xl border bg-muted/30 p-3.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-foreground">
+                  {{ $t('ops.network.modeGatewayIPForward') }}
+                </span>
+                <Switch
+                  v-model:checked="modeForm.gateway.ipForward"
+                  size="small"
+                />
+              </div>
+              <p class="text-[11px] text-muted-foreground leading-relaxed">
+                {{ $t('ops.network.modeGatewayIPForwardDesc') }}
+              </p>
+            </div>
+          </Form>
+        </template>
 
         <div class="flex justify-end gap-2.5">
           <Button @click="modeDrawerVisible = false">{{
             $t('ops.network.cancel')
           }}</Button>
           <Popconfirm
-            :title="$t('ops.network.modeEnterConfirm')"
-            :disabled="modeForm.slaveIds.length !== 2"
+            :title="targetMode === NETWORK_MODES.ActiveBackup ? $t('ops.network.modeEnterConfirm') : $t('ops.network.modeSwitchWarning')"
+            :disabled="targetMode === NETWORK_MODES.ActiveBackup ? modeForm.slaveIds.length !== 2 : !modeForm.gateway.downstreamInterfaceId"
             @confirm="handleModeSwitch"
           >
             <Button
               v-access:code="['ops:network:mode']"
               type="primary"
               :loading="modeSubmitting"
-              :disabled="modeForm.slaveIds.length !== 2"
+              :disabled="targetMode === NETWORK_MODES.ActiveBackup ? modeForm.slaveIds.length !== 2 : !modeForm.gateway.downstreamInterfaceId"
             >
               {{ $t('ops.network.confirm') }}
             </Button>

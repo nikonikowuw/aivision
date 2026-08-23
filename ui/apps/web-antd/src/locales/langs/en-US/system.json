@@ -138,6 +138,7 @@
     "actionUpdateProfile": "Update Profile",
     "actionChangePassword": "Change Password",
     "actionNetworkModeSwitch": "Switch network working mode",
+    "actionNetworkGatewaySwitch": "Switch gateway mode",
     "actionNetworkApply": "Apply Network Configuration",
     "actionNetworkCancel": "Cancel Network Change",
     "actionNetworkConfirm": "Confirm Network Change",

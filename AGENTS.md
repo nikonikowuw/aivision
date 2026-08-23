@@ -4,14 +4,30 @@
 
 ### 概览
 
-`niko-vue-admin` 是一个 RBAC 管理后台，由两部分组成：`app/`（Go 后端）和 `ui/`（vben-admin 5.7 Vue3 前端）。
+`aivision` 是一个边缘 AI 视频分析与 RBAC 管理系统，由三部分组成：
+
+- `app/`：Go 后端管理服务；
+- `ui/`：vben-admin 5.7 Vue3 前端；
+- `engine/`、`sdk/`、`algo-packages/`：C++20 媒体推理引擎、共享 C ABI 契约 SDK 与独立算法插件包。
 
 ### 技术栈
 
 - 后端 `app/`：Go 1.26、Gin、GORM（postgres/sqlite 驱动）、golang-migrate（数据库迁移）、google/wire（DI）、viper（配置）、zap（日志）、bcrypt（密码）。
 - 前端 `ui/`：Vue 3 + Vite + TypeScript、ant-design-vue、Pinia、pnpm 11 + turbo monorepo、vben-admin 5.7.0。
+- 引擎 `engine/` / `sdk/` / `algo-packages/`：C++20、CMake ≥ 3.24、gRPC/Protobuf、ZLMediaKit、VideoToolbox/Core ML (macOS)、纯 C ABI、nlohmann-json、GoogleTest。
 
 ### 常用命令
+
+C++ 引擎与算法包（在 `engine/` 或 `algo-packages/` 下）：
+
+- 引擎配置与构建：`make -C engine configure` / `make -C engine build`
+- 引擎单测与契约测试：`make -C engine test`
+- 引擎 ASan 内存安全测试：`make -C engine asan`
+- 引擎代码风格与符号纯洁性检查：`make -C engine lint`
+- 算法包单机编译与调试：`make -C algo-packages/macos/arm64/yolov8n build` / `make -C algo-packages/macos/arm64/yolov8n run`
+- 算法包基准压测与分段耗时分析：`make -C algo-packages/macos/arm64/yolov8n benchmark`
+- 算法包打包：`make -C algo-packages/macos/arm64/yolov8n package`
+- 契约与 SDK 一致性检查：`bash algo-packages/scripts/sync-sdk.sh` / `bash algo-packages/scripts/check-consistency.sh`
 
 后端（在 `app/` 下）：
 
@@ -50,9 +66,10 @@
 
 ### 规范索引（编码前必读）
 
-- `.trellis/spec/backend/index.md`：后端编码规范入口
-- `.trellis/spec/frontend/index.md`：前端编码规范入口
-- `.trellis/spec/guides/index.md`：跨层思考指南
+- `.trellis/spec/engine/index.md`：C++ 媒体推理引擎与算法包规范入口
+- `.trellis/spec/backend/index.md`：Go 后端编码规范入口
+- `.trellis/spec/frontend/index.md`：Vue3 前端编码规范入口
+- `.trellis/spec/guides/index.md`：跨层思考与代码复用指南
 
 > 前端的 oxlint/oxfmt/eslint/stylelint/typecheck/commitlint 已由 lefthook 在 pre-commit 强制，无需在规范中重复细则。
 
@@ -71,6 +88,7 @@ This project is managed by Trellis. The working knowledge you need lives under `
 If a Trellis command is available on your platform (e.g. `/trellis:finish-work`, `/trellis:continue`), prefer it over manual steps. Not every platform exposes every command.
 
 If you're using Codex or another agent-capable tool, additional project-scoped helpers may live in:
+
 - `.agents/skills/` — reusable Trellis skills
 - `.codex/agents/` — optional custom subagents
 

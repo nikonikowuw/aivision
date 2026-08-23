@@ -58,6 +58,11 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	}
 	fileService := service.NewFileService(fileStorage, cfg)
 	fileHandler := api.NewFileHandler(fileService, cfg)
+	networkService, err := service.NewNetworkService(cfg, operationLogService, zapLogger)
+	if err != nil {
+		return nil, err
+	}
+	networkHandler := api.NewNetworkHandler(networkService)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
 		AuthMiddleware:      authMiddleware,
@@ -70,12 +75,14 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		UserHandler:         userHandler,
 		AuthHandler:         authHandler,
 		FileHandler:         fileHandler,
+		NetworkHandler:      networkHandler,
 	}
 	engine := router.New(cfg, deps)
 	app := &App{
-		DB:     gormDB,
-		Logger: zapLogger,
-		Engine: engine,
+		DB:      gormDB,
+		Logger:  zapLogger,
+		Engine:  engine,
+		Network: networkService,
 	}
 	return app, nil
 }

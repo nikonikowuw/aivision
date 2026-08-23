@@ -26,13 +26,15 @@ import (
 
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/migration"
+	"niko-vue-admin/app/internal/service"
 )
 
 // App 是 wire 装配产物：main 启动所需的全部依赖。
 type App struct {
-	DB     *gorm.DB
-	Logger *zap.Logger
-	Engine *gin.Engine
+	DB      *gorm.DB
+	Logger  *zap.Logger
+	Engine  *gin.Engine
+	Network service.NetworkService
 }
 
 const (
@@ -46,6 +48,11 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := requireRoot(os.Geteuid(), cfg.Network.FakePlatform); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: root check failed: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -72,6 +79,13 @@ func main() {
 	}
 	log.Info("database schema ready", zap.Uint("version", migRunner.LatestVersion()))
 
+	// 启动网络配置服务（首次接管基线、未决事务启动恢复）
+	if app.Network != nil {
+		if err := app.Network.Start(context.Background()); err != nil {
+			log.Fatal("network service start failed", zap.Error(err))
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:           app.Engine,
@@ -95,6 +109,11 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error("graceful shutdown failed", zap.Error(err))
+	}
+	if app.Network != nil {
+		if err := app.Network.Close(ctx); err != nil {
+			log.Error("network service close failed", zap.Error(err))
+		}
 	}
 	log.Info("server exited")
 }

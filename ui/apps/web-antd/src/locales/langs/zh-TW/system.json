@@ -137,6 +137,7 @@
     "actionUpdateProfile": "更新個人資料",
     "actionChangePassword": "修改密碼",
     "actionNetworkModeSwitch": "切換網路工作模式",
+    "actionNetworkGatewaySwitch": "切換閘道模式",
     "actionNetworkApply": "套用網路設定",
     "actionNetworkCancel": "取消網路變更",
     "actionNetworkConfirm": "確認網路變更",

@@ -133,14 +133,14 @@ func (f *FakePlatform) Type() PlatformType {
 	return f.platformType
 }
 
-// Capabilities 声明支持的模式。FakePlatform 同时支持 multi-address、active-backup 与 lacp-aggregation。
+// Capabilities 声明支持的模式。FakePlatform 同时支持 multi-address、active-backup、lacp-aggregation 与 gateway（D6）。
 func (f *FakePlatform) Capabilities(ctx context.Context) Capabilities {
 	return Capabilities{
 		DHCP:            true,
 		StaticIPv4:      true,
 		FactoryReset:    true,
 		WifiAssociation: false,
-		SupportedModes:  []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup, NetworkModeLACP},
+		SupportedModes:  []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup, NetworkModeLACP, NetworkModeGateway},
 	}
 }
 

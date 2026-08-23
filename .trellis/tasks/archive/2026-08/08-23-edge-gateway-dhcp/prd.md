@@ -123,15 +123,15 @@ Parent：`.trellis/tasks/08-23-advanced-network-modes`
 
 `[CI]` fake platform 自动验证；`[目标机]` 需 Linux host-root 环境；`[台架]` 需真实摄像头或 DHCP 客户端设备。
 
-- [ ] AC1 `[CI]` fake Linux capability 含 `gateway`，macOS capability 不含且请求时返回
+- [x] AC1 `[CI]` fake Linux capability 含 `gateway`，macOS capability 不含且请求时返回
       `CodeNetworkUnsupported`；真实 Linux 只有在平台层真实化完成并通过能力探测后才开放该模式。
-- [ ] AC2 `[CI]` 非法地址池组合（起 > 止、跨子网、含接口地址、含网络/广播地址、租约时长
+- [x] AC2 `[CI]` 非法地址池组合（起 > 止、跨子网、含接口地址、含网络/广播地址、租约时长
       越界）均返回 `CodeNetworkGatewayPoolInvalid`，且证明宿主机配置未被部分修改。
-- [ ] AC3 `[CI]` 目标接口为 DHCP client 模式、或探测到该链路已有 DHCP 服务时，返回
+- [x] AC3 `[CI]` 目标接口为 DHCP client 模式、或探测到该链路已有 DHCP 服务时，返回
       `CodeNetworkDhcpServerConflict`。
-- [ ] AC4 `[CI]` 租约表原子持久化并可在重启后恢复；退出模式时被清理。
-- [ ] AC5 `[CI]` `ip_forward` 开关的开启、关闭与退出模式时恢复原值三条路径有测试覆盖。
-- [ ] AC6 `[CI]` 权限缺失时返回 403；模式切换与 `ip_forward` 变更产生可查询审计，
+- [x] AC4 `[CI]` 租约表原子持久化并可在重启后恢复；退出模式时被清理。
+- [x] AC5 `[CI]` `ip_forward` 开关的开启、关闭与退出模式时恢复原值三条路径有测试覆盖。
+- [x] AC6 `[CI]` 权限缺失时返回 403；模式切换与 `ip_forward` 变更产生可查询审计，
       租约分配不写操作日志。
 - [ ] AC7 `[目标机]` 未确认时 120 秒后自动回滚：DHCP 服务停止、socket 释放、
       `ip_forward` 恢复原值、接口配置还原。
@@ -140,7 +140,7 @@ Parent：`.trellis/tasks/08-23-advanced-network-modes`
 - [ ] AC9 `[台架]` 开启 `ip_forward` 后，上行网段中已配置回程路由的主机可访问下行摄像头；
       **同时确认**下行摄像头无法主动访问上行网段之外的目标属于预期行为（不做 NAT），
       不判为失败。
-- [ ] AC10 `[CI]` `app/` 的 `make vet`、`make test` 与 `ui/` 的 `pnpm check`、相关单元测试通过。
+- [x] AC10 `[CI]` `app/` 的 `make vet`、`make test` 与 `ui/` 的 `pnpm check`、相关单元测试通过。
 
 ## Out of Scope
 

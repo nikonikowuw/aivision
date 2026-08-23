@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestValidatorIPv4(t *testing.T) {
@@ -240,7 +241,7 @@ func TestOldFormatCompatibility(t *testing.T) {
 // LinuxPlatform / DarwinPlatform 的声明在各自 build-tagged 测试文件中覆盖（manager_linux_test.go 等）。
 func TestCapabilitiesFake(t *testing.T) {
 	caps := NewFakePlatform(PlatformFake).Capabilities(context.Background())
-	wantModes := []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup, NetworkModeLACP}
+	wantModes := []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup, NetworkModeLACP, NetworkModeGateway}
 	if !slices.Equal(caps.SupportedModes, wantModes) {
 		t.Errorf("SupportedModes = %v, want %v", caps.SupportedModes, wantModes)
 	}
@@ -470,6 +471,108 @@ func TestFakeBondRestore(t *testing.T) {
 	}
 }
 
+// TestGatewayRuntime 验证网关运行时的生命周期、冲突探测与租约存储（M2）。
+func TestGatewayRuntime(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := filepath.Join(t.TempDir(), "gw-runtime-state")
+	store := NewFileStateStore(tmpDir, PlatformFake)
+	_ = store.Init(PlatformFake)
+
+	backend := NewFakeGatewayBackend()
+	runtime := NewDefaultGatewayRuntime(backend, store)
+	defer runtime.Close(ctx)
+
+	ifaceIP := "192.168.2.1"
+	ifacePrefix := 24
+	iface := &InterfaceInfo{
+		ID:       "eth1",
+		Name:     "eth1",
+		Writable: true,
+		IPv4: IPv4State{
+			Mode:    IPModeStatic,
+			Address: &ifaceIP,
+			Prefix:  &ifacePrefix,
+		},
+	}
+	plan := GatewayPlan{
+		DownstreamInterfaceID: "eth1",
+		PoolStart:             "192.168.2.100",
+		PoolEnd:               "192.168.2.200",
+		Prefix:                24,
+		LeaseDurationSeconds:  3600,
+		IPForward:             true,
+	}
+
+	// 1. 冲突探测：注入有响应
+	backend.SetProbeResponse(true, nil)
+	responded, err := runtime.Probe(ctx, plan, iface)
+	if err != nil || !responded {
+		t.Fatalf("Probe should report conflict: responded=%v, err=%v", responded, err)
+	}
+
+	// 2. 冲突探测：无响应
+	backend.SetProbeResponse(false, nil)
+	responded, err = runtime.Probe(ctx, plan, iface)
+	if err != nil || responded {
+		t.Fatalf("Probe should pass without conflict: responded=%v, err=%v", responded, err)
+	}
+
+	// 3. Apply 启动网关服务
+	beforeState := GatewayState{
+		Running:   false,
+		IPForward: false,
+	}
+	appliedState, err := runtime.Apply(ctx, plan, beforeState, iface)
+	if err != nil {
+		t.Fatalf("Apply gateway runtime failed: %v", err)
+	}
+	if !appliedState.Running || !appliedState.IPForward || appliedState.PreviousIPForward == nil || *appliedState.PreviousIPForward != false {
+		t.Errorf("unexpected applied state: %+v", appliedState)
+	}
+
+	// 验证 backend 中的 ip_forward 已变为 true
+	fwd, _ := backend.ReadIPForward(ctx)
+	if !fwd {
+		t.Errorf("backend ip_forward should be true")
+	}
+
+	// 4. 模拟客户端分配租约
+	if backend.runningServer == nil {
+		t.Fatalf("running server should not be nil")
+	}
+	lease := backend.runningServer.AllocateLease("00:11:22:33:44:55", "192.168.2.105", "cam-01")
+	if lease.IP != "192.168.2.105" {
+		t.Errorf("unexpected lease: %+v", lease)
+	}
+
+	leases, err := runtime.Leases(ctx)
+	if err != nil || len(leases) != 1 {
+		t.Fatalf("Leases() returned %d leases, err=%v", len(leases), err)
+	}
+	if leases[0].MAC != "00:11:22:33:44:55" {
+		t.Errorf("unexpected lease MAC: %s", leases[0].MAC)
+	}
+
+	// 5. Restore 恢复原状
+	restoredState, err := runtime.Restore(ctx, beforeState, iface)
+	if err != nil {
+		t.Fatalf("Restore gateway runtime failed: %v", err)
+	}
+	if restoredState.Running || restoredState.IPForward {
+		t.Errorf("restored state should not be running/forwarding: %+v", restoredState)
+	}
+
+	fwd, _ = backend.ReadIPForward(ctx)
+	if fwd {
+		t.Errorf("backend ip_forward should be restored to false")
+	}
+
+	leasesAfterRestore, _ := runtime.Leases(ctx)
+	if len(leasesAfterRestore) != 0 {
+		t.Errorf("leases should be cleared after Restore, got %d", len(leasesAfterRestore))
+	}
+}
+
 func intPtr(i int) *int {
 	return &i
 }
@@ -516,3 +619,178 @@ func TestLACPModelAndEnums(t *testing.T) {
 	}
 }
 
+=======
+// TestValidateGatewayPlan 验证网关模式参数校验规则（M1）。
+func TestValidateGatewayPlan(t *testing.T) {
+	primaryID := "eth0"
+	validIface := &InterfaceInfo{
+		ID:       "eth1",
+		Writable: true,
+		IPv4: IPv4State{
+			Mode:    IPModeStatic,
+			Address: strPtr("192.168.2.1"),
+			Prefix:  intPtr(24),
+		},
+	}
+
+	// 正常用例
+	validPlan := &GatewayPlan{
+		DownstreamInterfaceID: "eth1",
+		PoolStart:             "192.168.2.100",
+		PoolEnd:               "192.168.2.200",
+		Prefix:                24,
+		LeaseDurationSeconds:  3600,
+		IPForward:             true,
+	}
+	norm, err := ValidateGatewayPlan(validPlan, validIface, &primaryID)
+	if err != nil {
+		t.Fatalf("valid gateway plan should pass: %v", err)
+	}
+	if norm.PoolStart != "192.168.2.100" || norm.PoolEnd != "192.168.2.200" || norm.LeaseDurationSeconds != 3600 || !norm.IPForward {
+		t.Errorf("unexpected normalized plan: %+v", norm)
+	}
+
+	// 默认租约时长 (0 -> 3600)
+	planDefaultLease := &GatewayPlan{
+		DownstreamInterfaceID: "eth1",
+		PoolStart:             "192.168.2.100",
+		PoolEnd:               "192.168.2.200",
+		Prefix:                24,
+		LeaseDurationSeconds:  0,
+	}
+	normDefault, err := ValidateGatewayPlan(planDefaultLease, validIface, &primaryID)
+	if err != nil || normDefault.LeaseDurationSeconds != 3600 {
+		t.Errorf("default lease duration should be 3600, got %d, err=%v", normDefault.LeaseDurationSeconds, err)
+	}
+
+	// 租约时长边界：60, 604800 合法；59, 604801 非法
+	for _, sec := range []int64{60, 604800} {
+		p := *validPlan
+		p.LeaseDurationSeconds = sec
+		if _, err := ValidateGatewayPlan(&p, validIface, &primaryID); err != nil {
+			t.Errorf("lease duration %d should be valid, got err: %v", sec, err)
+		}
+	}
+	for _, sec := range []int64{59, 604801} {
+		p := *validPlan
+		p.LeaseDurationSeconds = sec
+		if _, err := ValidateGatewayPlan(&p, validIface, &primaryID); !errors.Is(err, ErrGatewayPoolInvalid) {
+			t.Errorf("lease duration %d should fail with ErrGatewayPoolInvalid, got err: %v", sec, err)
+		}
+	}
+
+	// 目标接口为 PrimaryInterface
+	if _, err := ValidateGatewayPlan(validPlan, validIface, strPtr("eth1")); !errors.Is(err, ErrGatewayPoolInvalid) {
+		t.Errorf("gateway interface as primary should fail with ErrGatewayPoolInvalid, got %v", err)
+	}
+
+	// 目标接口为 DHCP client
+	dhcpIface := &InterfaceInfo{
+		ID:       "eth1",
+		Writable: true,
+		IPv4: IPv4State{
+			Mode: IPModeDHCP,
+		},
+	}
+	if _, err := ValidateGatewayPlan(validPlan, dhcpIface, &primaryID); !errors.Is(err, ErrDhcpServerConflict) {
+		t.Errorf("dhcp client interface should fail with ErrDhcpServerConflict, got %v", err)
+	}
+
+	// 起始地址 > 结束地址
+	pStartGtEnd := *validPlan
+	pStartGtEnd.PoolStart = "192.168.2.201"
+	pStartGtEnd.PoolEnd = "192.168.2.200"
+	if _, err := ValidateGatewayPlan(&pStartGtEnd, validIface, &primaryID); !errors.Is(err, ErrGatewayPoolInvalid) {
+		t.Errorf("poolStart > poolEnd should fail with ErrGatewayPoolInvalid, got %v", err)
+	}
+
+	// 地址池包含接口自身地址 (192.168.2.1)
+	pContainsIface := *validPlan
+	pContainsIface.PoolStart = "192.168.2.1"
+	pContainsIface.PoolEnd = "192.168.2.100"
+	if _, err := ValidateGatewayPlan(&pContainsIface, validIface, &primaryID); !errors.Is(err, ErrGatewayPoolInvalid) {
+		t.Errorf("pool containing interface IP should fail with ErrGatewayPoolInvalid, got %v", err)
+	}
+
+	// 地址池包含网络地址 (192.168.2.0)
+	pContainsNet := *validPlan
+	pContainsNet.PoolStart = "192.168.2.0"
+	pContainsNet.PoolEnd = "192.168.2.50"
+	if _, err := ValidateGatewayPlan(&pContainsNet, validIface, &primaryID); !errors.Is(err, ErrGatewayPoolInvalid) {
+		t.Errorf("pool containing network address should fail with ErrGatewayPoolInvalid, got %v", err)
+	}
+
+	// 地址池包含广播地址 (192.168.2.255)
+	pContainsBcast := *validPlan
+	pContainsBcast.PoolStart = "192.168.2.200"
+	pContainsBcast.PoolEnd = "192.168.2.255"
+	if _, err := ValidateGatewayPlan(&pContainsBcast, validIface, &primaryID); !errors.Is(err, ErrGatewayPoolInvalid) {
+		t.Errorf("pool containing broadcast address should fail with ErrGatewayPoolInvalid, got %v", err)
+	}
+
+	// 地址跨子网
+	pCrossSubnet := *validPlan
+	pCrossSubnet.PoolStart = "192.168.3.10"
+	pCrossSubnet.PoolEnd = "192.168.3.20"
+	if _, err := ValidateGatewayPlan(&pCrossSubnet, validIface, &primaryID); !errors.Is(err, ErrGatewayPoolInvalid) {
+		t.Errorf("out-of-subnet pool should fail with ErrGatewayPoolInvalid, got %v", err)
+	}
+
+	// Prefix 不匹配
+	pMismatchPrefix := *validPlan
+	pMismatchPrefix.Prefix = 16
+	if _, err := ValidateGatewayPlan(&pMismatchPrefix, validIface, &primaryID); !errors.Is(err, ErrGatewayPoolInvalid) {
+		t.Errorf("prefix mismatch should fail with ErrGatewayPoolInvalid, got %v", err)
+	}
+}
+
+// TestGatewayLeaseStore 验证租约文件的读写、清除与损坏检测（M1）。
+func TestGatewayLeaseStore(t *testing.T) {
+	tmpDir := filepath.Join(t.TempDir(), "network-state")
+	store := NewFileStateStore(tmpDir, PlatformFake)
+	if err := store.Init(PlatformFake); err != nil {
+		t.Fatalf("Init store failed: %v", err)
+	}
+
+	// 空文件时读取返回空列表
+	leases, err := store.GetGatewayLeases()
+	if err != nil {
+		t.Fatalf("GetGatewayLeases empty file failed: %v", err)
+	}
+	if len(leases) != 0 {
+		t.Errorf("initial leases should be empty, got %d", len(leases))
+	}
+
+	// 写入租约并读取
+	now := time.Now().UTC().Truncate(time.Second)
+	testLeases := []GatewayLease{
+		{
+			MAC:           "00:11:22:33:44:55",
+			IP:            "192.168.2.101",
+			StartsAt:      now,
+			ExpiresAt:     now.Add(time.Hour),
+			LastRenewedAt: now,
+			Hostname:      "camera-01",
+		},
+	}
+	if err := store.SetGatewayLeases(testLeases); err != nil {
+		t.Fatalf("SetGatewayLeases failed: %v", err)
+	}
+
+	readLeases, err := store.GetGatewayLeases()
+	if err != nil {
+		t.Fatalf("GetGatewayLeases after set failed: %v", err)
+	}
+	if len(readLeases) != 1 || readLeases[0].MAC != "00:11:22:33:44:55" || readLeases[0].Hostname != "camera-01" {
+		t.Errorf("unexpected read leases: %+v", readLeases)
+	}
+
+	// 清除租约
+	if err := store.ClearGatewayLeases(); err != nil {
+		t.Fatalf("ClearGatewayLeases failed: %v", err)
+	}
+	clearedLeases, err := store.GetGatewayLeases()
+	if err != nil || len(clearedLeases) != 0 {
+		t.Errorf("GetGatewayLeases after clear failed: leases=%v, err=%v", clearedLeases, err)
+	}
+}

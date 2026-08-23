@@ -5,6 +5,7 @@ export const NETWORK_MODES = {
   MultiAddress: 'multi-address',
   ActiveBackup: 'active-backup',
   LACPAggregation: 'lacp-aggregation',
+  Gateway: 'gateway',
 } as const;
 
 export namespace NetworkApi {
@@ -151,6 +152,27 @@ export namespace NetworkApi {
     supportedModes: NetworkMode[];
   }
 
+  export interface GatewayLease {
+    mac: string;
+    ip: string;
+    startsAt: string;
+    expiresAt: string;
+    lastRenewedAt: string;
+    hostname?: string;
+  }
+
+  export interface GatewayOverview {
+    downstreamInterfaceId: string;
+    poolStart: string;
+    poolEnd: string;
+    prefix: number;
+    leaseDurationSeconds: number;
+    ipForward: boolean;
+    running: boolean;
+    conflictDetected: boolean;
+    leases: GatewayLease[];
+  }
+
   export interface NetworkOverview {
     platform: PlatformType;
     state: StateStatus;
@@ -162,6 +184,7 @@ export namespace NetworkApi {
     capabilities: Capabilities;
     mode: NetworkMode;
     bond: BondTopology | null;
+    gateway: GatewayOverview | null;
   }
 
   export interface TransactionResult {
@@ -190,9 +213,19 @@ export namespace NetworkApi {
     ipv4: ApplyInterfaceParams;
   }
 
+  export interface GatewayParams {
+    downstreamInterfaceId: string;
+    poolStart: string;
+    poolEnd: string;
+    prefix: number;
+    leaseDurationSeconds: number;
+    ipForward: boolean;
+  }
+
   export interface SwitchModeParams {
     mode: NetworkMode;
     bond?: BondParams;
+    gateway?: GatewayParams;
   }
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -41,6 +42,16 @@ type ApplyInterfaceInput struct {
 	ClientIP      string           `json:"-"`
 }
 
+// GatewayInput 网关模式输入。
+type GatewayInput struct {
+	DownstreamInterfaceID string `json:"downstreamInterfaceId"`
+	PoolStart             string `json:"poolStart"`
+	PoolEnd               string `json:"poolEnd"`
+	Prefix                int    `json:"prefix"`
+	LeaseDurationSeconds  int64  `json:"leaseDurationSeconds"`
+	IPForward             bool   `json:"ipForward"`
+}
+
 // SwitchModeInput 模式切换输入。
 type SwitchModeInput struct {
 	Mode           netconfig.NetworkMode         `json:"mode"`
@@ -48,20 +59,22 @@ type SwitchModeInput struct {
 	PrimarySlaveID string                        `json:"primarySlaveId"`
 	XmitHashPolicy *netconfig.BondXmitHashPolicy `json:"xmitHashPolicy"`
 	BondIPv4       ApplyInterfaceInput           `json:"ipv4"`
+	Gateway        *GatewayInput                 `json:"gateway,omitempty"`
 	ActorID        uint64                        `json:"-"`
 	ActorUsername  string                        `json:"-"`
 	ClientIP       string                        `json:"-"`
 }
 
 type networkService struct {
-	cfg          *config.Config
-	platform     netconfig.Platform
-	store        netconfig.StateStore
-	oplogService OperationLogService
-	log          *zap.Logger
-	mu           sync.Mutex
-	timer        *time.Timer
-	ready        bool
+	cfg            *config.Config
+	platform       netconfig.Platform
+	store          netconfig.StateStore
+	gatewayRuntime netconfig.GatewayRuntime
+	oplogService   OperationLogService
+	log            *zap.Logger
+	mu             sync.Mutex
+	timer          *time.Timer
+	ready          bool
 }
 
 // NewNetworkService 创建网络服务实例（纯依赖装配，不执行启动副作用）。
@@ -80,13 +93,16 @@ func NewNetworkService(
 	}
 
 	store := netconfig.NewFileStateStore(cfg.Network.StateDir, platform.Type())
+	gwBackend := netconfig.NewGatewayBackend(platform.Type(), cfg.Network.FakePlatform, log)
+	gwRuntime := netconfig.NewDefaultGatewayRuntime(gwBackend, store)
 
 	return &networkService{
-		cfg:          cfg,
-		platform:     platform,
-		store:        store,
-		oplogService: oplogService,
-		log:          log,
+		cfg:            cfg,
+		platform:       platform,
+		store:          store,
+		gatewayRuntime: gwRuntime,
+		oplogService:   oplogService,
+		log:            log,
 	}, nil
 }
 
@@ -135,6 +151,7 @@ func (s *networkService) Start(ctx context.Context) error {
 	// 5. 检查是否存在未完成的候选事务，若存在则优先自动回滚
 	if pending, err := s.store.GetPending(); err == nil && pending != nil {
 		s.log.Info("found pending network transaction on startup, rolling back", zap.String("txnId", pending.Transaction.ID))
+		s.restoreGatewayState(ctx, pending.Before.Gateway, currentSnapshot.Interfaces)
 		if _, err := s.platform.Restore(ctx, pending.Before); err != nil {
 			s.log.Error("startup rollback failed", zap.Error(err))
 		}
@@ -142,6 +159,19 @@ func (s *networkService) Start(ctx context.Context) error {
 		// 自动事件：操作者与来源 IP 取自 pending 中保存的原操作者；无关联操作者时回退到 system（spec 5.2）。
 		s.recordSystemLog(ctx, "system.log.actionNetworkStartupRecovery", "Startup recovery rolled back dangling transaction",
 			pending.Transaction.ActorID, pending.Transaction.ActorUsername, pending.Transaction.ClientIP, 0)
+	} else {
+		// 无 pending 时，若 last-valid 为 gateway 模式，恢复 gateway 运行时
+		if lv, err := s.store.GetLastValid(); err == nil && lv != nil && lv.Plan.Mode == netconfig.NetworkModeGateway && lv.Plan.Gateway != nil {
+			if iface, ok := currentSnapshot.Interfaces[lv.Plan.Gateway.DownstreamInterfaceID]; ok {
+				st := netconfig.GatewayState{
+					Plan:      lv.Plan.Gateway,
+					IPForward: lv.Plan.Gateway.IPForward,
+				}
+				if _, err := s.gatewayRuntime.Apply(ctx, *lv.Plan.Gateway, st, &iface); err != nil {
+					s.log.Error("failed to restore confirmed gateway runtime on startup", zap.Error(err))
+				}
+			}
+		}
 	}
 
 	s.ready = true
@@ -158,6 +188,7 @@ func (s *networkService) Close(ctx context.Context) error {
 		s.timer = nil
 	}
 	s.ready = false
+	_ = s.gatewayRuntime.Close(ctx)
 	return s.platform.Close(ctx)
 }
 
@@ -203,6 +234,25 @@ func (s *networkService) GetOverview(ctx context.Context) (*netconfig.NetworkOve
 		pendingTxn = &txnCopy
 	}
 
+	var gwOverview *netconfig.GatewayOverview
+	if snapshot.Mode.Normalize() == netconfig.NetworkModeGateway {
+		gwState, _ := s.gatewayRuntime.Snapshot(ctx)
+		leases, _ := s.gatewayRuntime.Leases(ctx)
+		if gwState.Plan != nil {
+			gwOverview = &netconfig.GatewayOverview{
+				DownstreamInterfaceID: gwState.Plan.DownstreamInterfaceID,
+				PoolStart:             gwState.Plan.PoolStart,
+				PoolEnd:               gwState.Plan.PoolEnd,
+				Prefix:                gwState.Plan.Prefix,
+				LeaseDurationSeconds:  gwState.Plan.LeaseDurationSeconds,
+				IPForward:             gwState.IPForward,
+				Running:               gwState.Running,
+				ConflictDetected:      gwState.ConflictDetected,
+				Leases:                leases,
+			}
+		}
+	}
+
 	overview := &netconfig.NetworkOverview{
 		Platform:                s.platform.Type(),
 		State:                   netconfig.StateReady,
@@ -214,6 +264,7 @@ func (s *networkService) GetOverview(ctx context.Context) (*netconfig.NetworkOve
 		Capabilities:            s.platform.Capabilities(ctx),
 		Mode:                    snapshot.Mode.Normalize(),
 		Bond:                    snapshot.Bond,
+		Gateway:                 gwOverview,
 	}
 
 	return overview, nil
@@ -461,11 +512,49 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		}
 	}
 
-	// 6. bond 参数校验（切到 active-backup 或 lacp-aggregation 时）
+	// 6. 边缘网关 (gateway)、主备容错 (active-backup) 与链路聚合 (lacp) 参数专属校验
 	var bondPlan *netconfig.BondPlan
+	var gwPlan *netconfig.GatewayPlan
+	var targetIface *netconfig.InterfaceInfo
 	var warnings []netconfig.NetworkWarning
 
-	if input.Mode == netconfig.NetworkModeActiveBackup {
+	if input.Mode == netconfig.NetworkModeGateway {
+		if input.Gateway == nil {
+			return nil, errno.New(errno.CodeNetworkInvalidConfig)
+		}
+		ifcInfo, exists := currentSnapshot.Interfaces[input.Gateway.DownstreamInterfaceID]
+		if !exists {
+			return nil, errno.New(errno.CodeNetworkGatewayPoolInvalid)
+		}
+		targetIface = &ifcInfo
+
+		unvalidatedPlan := &netconfig.GatewayPlan{
+			DownstreamInterfaceID: input.Gateway.DownstreamInterfaceID,
+			PoolStart:             input.Gateway.PoolStart,
+			PoolEnd:               input.Gateway.PoolEnd,
+			Prefix:                input.Gateway.Prefix,
+			LeaseDurationSeconds:  input.Gateway.LeaseDurationSeconds,
+			IPForward:             input.Gateway.IPForward,
+		}
+		validPlan, err := netconfig.ValidateGatewayPlan(unvalidatedPlan, targetIface, currentSnapshot.PrimaryInterfaceID)
+		if err != nil {
+			if errors.Is(err, netconfig.ErrDhcpServerConflict) {
+				return nil, errno.New(errno.CodeNetworkDhcpServerConflict)
+			}
+			return nil, errno.New(errno.CodeNetworkGatewayPoolInvalid)
+		}
+		gwPlan = validPlan
+
+		// 启用前探测同链路是否存在既有 DHCP Server
+		hasConflict, err := s.gatewayRuntime.Probe(ctx, *gwPlan, targetIface)
+		if err != nil {
+			s.log.Error("gateway dhcp probe failed", zap.Error(err))
+			return nil, errno.New(errno.CodeNetworkApplyFailed)
+		}
+		if hasConflict {
+			return nil, errno.New(errno.CodeNetworkDhcpServerConflict)
+		}
+	} else if input.Mode == netconfig.NetworkModeActiveBackup {
 		if len(input.SlaveIDs) != 2 {
 			return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
 		}
@@ -554,11 +643,15 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	}
 
 	// 8. 构建完整 HostPlan：以 before 接口配置为基线
+	beforeGWState, _ := s.gatewayRuntime.Snapshot(ctx)
+	currentSnapshot.Gateway = &beforeGWState
+
 	plan := netconfig.HostPlan{
 		Interfaces:         make(map[string]netconfig.InterfacePlan),
 		PrimaryInterfaceID: currentSnapshot.PrimaryInterfaceID,
 		Mode:               input.Mode,
 		Bond:               bondPlan,
+		Gateway:            gwPlan,
 	}
 	for id, info := range currentSnapshot.Interfaces {
 		plan.Interfaces[id] = netconfig.InterfacePlan{
@@ -571,7 +664,9 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		}
 	}
 
-	if input.Mode.IsBond() {
+	if input.Mode == netconfig.NetworkModeGateway {
+		// 网关模式下下行接口保持静态配置
+	} else if input.Mode.IsBond() {
 		// 进入 bonding：slave 条目保留完整原值（含 primary/gateway/dns），随 last-valid 持久化，
 		// 供退出模式时恢复（R3.4 / design 5.2 步骤 8）。
 		// 追加 bond0 计划
@@ -622,6 +717,8 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	targetIfaceID := ""
 	if input.Mode.IsBond() {
 		targetIfaceID = "bond0"
+	} else if input.Mode == netconfig.NetworkModeGateway {
+		targetIfaceID = gwPlan.DownstreamInterfaceID
 	}
 
 	reconnectAddrs := make([]netconfig.ReconnectAddress, 0)
@@ -631,10 +728,21 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 			Address:     *normAddr,
 			Prefix:      *normPrefix,
 		})
+	} else if input.Mode == netconfig.NetworkModeGateway && targetIface != nil && targetIface.IPv4.Address != nil && targetIface.IPv4.Prefix != nil {
+		reconnectAddrs = append(reconnectAddrs, netconfig.ReconnectAddress{
+			InterfaceID: targetIface.ID,
+			Address:     *targetIface.IPv4.Address,
+			Prefix:      *targetIface.IPv4.Prefix,
+		})
 	}
 
 	summary := fmt.Sprintf("mode switch: %s -> %s slaves=%v primary=%s",
 		currentSnapshot.Mode.Normalize(), input.Mode, input.SlaveIDs, input.PrimarySlaveID)
+	if input.Mode == netconfig.NetworkModeGateway {
+		summary = fmt.Sprintf("mode switch: %s -> gateway iface=%s pool=[%s, %s] forward=%v",
+			currentSnapshot.Mode.Normalize(), gwPlan.DownstreamInterfaceID, gwPlan.PoolStart, gwPlan.PoolEnd, gwPlan.IPForward)
+	}
+
 	pending := &netconfig.PendingData{
 		Transaction: netconfig.PendingTransaction{
 			ID:                          txnID,
@@ -668,10 +776,12 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		Candidate: plan,
 	}
 
-	// 10. 持久化 pending 后平台应用，失败补偿
+	// 10. 持久化 pending 后平台应用与 runtime 应用，失败补偿
 	if err := s.store.SetPending(pending); err != nil {
 		return nil, errno.New(errno.CodeNetworkStateCorrupt)
 	}
+
+	// 平台层应用
 	candidateSnapshot, err := s.platform.Apply(ctx, plan)
 	if err != nil {
 		s.log.Error("platform apply failed on mode switch, restoring before snapshot", zap.Error(err))
@@ -683,6 +793,20 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		return nil, errno.New(errno.CodeNetworkApplyFailed)
 	}
 
+	// Gateway Runtime 应用
+	if input.Mode == netconfig.NetworkModeGateway {
+		if _, err := s.gatewayRuntime.Apply(ctx, *gwPlan, beforeGWState, targetIface); err != nil {
+			s.log.Error("gateway runtime apply failed, restoring platform and runtime", zap.Error(err))
+			_, _ = s.gatewayRuntime.Restore(ctx, beforeGWState, targetIface)
+			_, _ = s.platform.Restore(ctx, currentSnapshot)
+			_ = s.store.ClearPending()
+			return nil, errno.New(errno.CodeNetworkApplyFailed)
+		}
+	} else if currentSnapshot.Mode.Normalize() == netconfig.NetworkModeGateway {
+		// 退出网关模式
+		s.restoreGatewayState(ctx, currentSnapshot.Gateway, currentSnapshot.Interfaces)
+	}
+
 	// 11. 启动超时自动回滚定时器 + 审计
 	if s.timer != nil {
 		s.timer.Stop()
@@ -692,7 +816,11 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	})
 
 	// 补写模式切换业务摘要审计：操作者/来源 IP/耗时取自本次 HTTP 请求者（R5.3）。
-	s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", summary,
+	actionKey := "system.log.actionNetworkModeSwitch"
+	if input.Mode == netconfig.NetworkModeGateway {
+		actionKey = "system.log.actionNetworkGatewaySwitch"
+	}
+	s.recordSystemLog(ctx, actionKey, summary,
 		input.ActorID, input.ActorUsername, input.ClientIP, time.Since(start).Milliseconds())
 
 	overview := &netconfig.NetworkOverview{
@@ -750,7 +878,11 @@ func (s *networkService) ConfirmTransaction(ctx context.Context, txnID string, a
 
 	// 模式切换事务补写审计（R5.3），不改既有控制流
 	if pending.Transaction.Action == netconfig.TxnActionModeSwitch {
-		s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", s.modeSwitchSummary("confirmed", pending),
+		actionKey := "system.log.actionNetworkModeSwitch"
+		if pending.Transaction.TargetMode == netconfig.NetworkModeGateway {
+			actionKey = "system.log.actionNetworkGatewaySwitch"
+		}
+		s.recordSystemLog(ctx, actionKey, s.modeSwitchSummary("confirmed", pending),
 			actorID, actorUsername, clientIP, time.Since(start).Milliseconds())
 	}
 
@@ -780,6 +912,8 @@ func (s *networkService) CancelTransaction(ctx context.Context, txnID string, ac
 	}
 
 	// 恢复 before
+	s.restoreGatewayState(ctx, pending.Before.Gateway, pending.Before.Interfaces)
+
 	if _, err := s.platform.Restore(ctx, pending.Before); err != nil {
 		s.log.Error("platform restore failed on cancel", zap.Error(err))
 		return nil, errno.New(errno.CodeNetworkRecoveryFailed)
@@ -790,7 +924,11 @@ func (s *networkService) CancelTransaction(ctx context.Context, txnID string, ac
 		actorID, actorUsername, clientIP, time.Since(start).Milliseconds())
 	// 模式切换事务补写模式细节审计（R5.3），不改既有控制流
 	if pending.Transaction.Action == netconfig.TxnActionModeSwitch {
-		s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", s.modeSwitchSummary("cancelled", pending),
+		actionKey := "system.log.actionNetworkModeSwitch"
+		if pending.Transaction.TargetMode == netconfig.NetworkModeGateway {
+			actionKey = "system.log.actionNetworkGatewaySwitch"
+		}
+		s.recordSystemLog(ctx, actionKey, s.modeSwitchSummary("cancelled", pending),
 			actorID, actorUsername, clientIP, time.Since(start).Milliseconds())
 	}
 
@@ -823,6 +961,9 @@ func (s *networkService) FactoryReset(ctx context.Context, ifaceID string, actor
 		return nil, errno.New(errno.CodeNetworkUnsupported)
 	}
 
+	beforeGW, _ := s.gatewayRuntime.Snapshot(ctx)
+	currentSnapshot.Gateway = &beforeGW
+
 	now := time.Now().UTC()
 	timeout := s.cfg.Network.ConfirmTimeout
 	if timeout <= 0 {
@@ -852,7 +993,16 @@ func (s *networkService) FactoryReset(ctx context.Context, ifaceID string, actor
 	}
 
 	_ = s.store.SetPending(pending)
+
+	// 若当前在 gateway模式，先清理 gateway runtime
+	if currentSnapshot.Mode.Normalize() == netconfig.NetworkModeGateway {
+		s.restoreGatewayState(ctx, &beforeGW, currentSnapshot.Interfaces)
+	}
+
 	if _, err := s.platform.Apply(ctx, factory.Plan); err != nil {
+		if currentSnapshot.Gateway != nil {
+			s.restoreGatewayState(ctx, currentSnapshot.Gateway, currentSnapshot.Interfaces)
+		}
 		_, _ = s.platform.Restore(ctx, currentSnapshot)
 		_ = s.store.ClearPending()
 		return nil, errno.New(errno.CodeNetworkApplyFailed)
@@ -882,6 +1032,7 @@ func (s *networkService) handleTimeout(ctx context.Context, txnID string) {
 	}
 
 	s.log.Info("network transaction expired, auto rolling back", zap.String("txnId", txnID))
+	s.restoreGatewayState(ctx, pending.Before.Gateway, pending.Before.Interfaces)
 	_, _ = s.platform.Restore(ctx, pending.Before)
 	_ = s.store.ClearPending()
 	// 自动事件：操作者与来源 IP 取自 pending 中保存的原操作者；无关联操作者时回退到 system（spec 5.2）。
@@ -889,18 +1040,27 @@ func (s *networkService) handleTimeout(ctx context.Context, txnID string) {
 		pending.Transaction.ActorID, pending.Transaction.ActorUsername, pending.Transaction.ClientIP, 0)
 	// 模式切换事务补写模式细节审计（R5.3），不改既有控制流
 	if pending.Transaction.Action == netconfig.TxnActionModeSwitch {
-		s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", s.modeSwitchSummary("rolled back on timeout", pending),
+		actionKey := "system.log.actionNetworkModeSwitch"
+		if pending.Transaction.TargetMode == netconfig.NetworkModeGateway {
+			actionKey = "system.log.actionNetworkGatewaySwitch"
+		}
+		s.recordSystemLog(ctx, actionKey, s.modeSwitchSummary("rolled back on timeout", pending),
 			pending.Transaction.ActorID, pending.Transaction.ActorUsername, pending.Transaction.ClientIP, 0)
 	}
 }
 
-// modeSwitchSummary 构造模式切换审计摘要。切回 multi-address 时 Candidate.Bond 为 nil，需空指针保护。
+// modeSwitchSummary 构造模式切换审计摘要。切回 multi-address 时 Candidate.Bond/Gateway 为 nil，需空指针保护。
 func (s *networkService) modeSwitchSummary(event string, pending *netconfig.PendingData) string {
 	slaves := "-"
 	primary := "-"
 	if pending.Candidate.Bond != nil {
 		slaves = fmt.Sprintf("%v", pending.Candidate.Bond.SlaveIDs)
 		primary = pending.Candidate.Bond.PrimarySlaveID
+	}
+	if pending.Transaction.TargetMode == netconfig.NetworkModeGateway && pending.Candidate.Gateway != nil {
+		gw := pending.Candidate.Gateway
+		return fmt.Sprintf("mode switch %s: %s -> gateway iface=%s pool=[%s, %s] forward=%v",
+			event, pending.Transaction.PreviousMode, gw.DownstreamInterfaceID, gw.PoolStart, gw.PoolEnd, gw.IPForward)
 	}
 	return fmt.Sprintf("mode switch %s: %s -> %s slaves=%s primary=%s",
 		event, pending.Transaction.PreviousMode, pending.Transaction.TargetMode, slaves, primary)
@@ -965,4 +1125,19 @@ func (s *networkService) recordSystemLog(ctx context.Context, action, summary st
 		IP:         clientIP,
 		UserAgent:  "system-daemon",
 	})
+}
+
+// restoreGatewayState 辅助函数：根据 GatewayState 与网卡列表恢复 gateway runtime。
+func (s *networkService) restoreGatewayState(ctx context.Context, gwState *netconfig.GatewayState, ifaces map[string]netconfig.InterfaceInfo) {
+	if gwState != nil {
+		var iface *netconfig.InterfaceInfo
+		if gwState.Plan != nil && ifaces != nil {
+			if ifcInfo, ok := ifaces[gwState.Plan.DownstreamInterfaceID]; ok {
+				iface = &ifcInfo
+			}
+		}
+		_, _ = s.gatewayRuntime.Restore(ctx, *gwState, iface)
+	} else {
+		_, _ = s.gatewayRuntime.Restore(ctx, netconfig.GatewayState{}, nil)
+	}
 }

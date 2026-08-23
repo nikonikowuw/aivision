@@ -63,6 +63,7 @@ const (
 	CodeNetworkNotReady            = 1111 // 启动恢复/能力检查未完成
 	CodeNetworkBondSlaveInvalid    = 1112 // bond slave 数量/存在/可写/重复/占用/primary 不合法
 	CodeNetworkBondModeConflict    = 1113 // 目标模式与当前拓扑冲突（已处于该模式等）
+	CodeNetworkLacpNegotiationFailed = 1114 // LACP 聚合建立失败（内核/驱动拒绝）
 
 	// NTP 对时错误码 1201-1207
 	CodeNTPManualNotAllowedInNTPMode  = 1201 // NTP 模式下不支持手动设时
@@ -118,6 +119,7 @@ var messages = map[string]map[int]string{
 		CodeNetworkNotReady:               "网络配置服务未就绪，正在启动或恢复中",
 		CodeNetworkBondSlaveInvalid:       "bond 绑定网卡不合法：需从可写物理网卡中选择恰好 2 块且 primary 在集合内",
 		CodeNetworkBondModeConflict:       "目标网络模式与当前拓扑冲突，请先退回多址模式",
+		CodeNetworkLacpNegotiationFailed: "LACP 链路聚合创建失败，底层驱动或内核拒绝参数",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自动对时模式下不支持手动设置时间",
 		CodeNTPSyncNotAllowedInManualMode: "手动对时模式下不支持触发 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下服务器列表不能为空",
@@ -163,6 +165,7 @@ var messages = map[string]map[int]string{
 		CodeNetworkNotReady:               "Network service is not ready, starting up or recovering",
 		CodeNetworkBondSlaveInvalid:       "Invalid bond slaves: exactly 2 writable physical interfaces required with primary in the set",
 		CodeNetworkBondModeConflict:       "Target network mode conflicts with current topology, switch back to multi-address first",
+		CodeNetworkLacpNegotiationFailed: "LACP aggregation setup failed, rejected by underlying driver or kernel",
 		CodeNTPManualNotAllowedInNTPMode:  "Manual time setting is not allowed in NTP mode",
 		CodeNTPSyncNotAllowedInManualMode: "NTP sync is not allowed in manual mode",
 		CodeNTPServersEmpty:               "NTP server list cannot be empty in NTP mode",
@@ -208,6 +211,7 @@ var messages = map[string]map[int]string{
 		CodeNetworkNotReady:               "網路設定服務未就緒，正在啟動或復原中",
 		CodeNetworkBondSlaveInvalid:       "bond 綁定網卡不合法：需從可寫實體網卡中選擇恰好 2 塊且 primary 在集合內",
 		CodeNetworkBondModeConflict:       "目標網路模式與目前拓撲衝突，請先退回多址模式",
+		CodeNetworkLacpNegotiationFailed: "LACP 鏈路聚合建立失敗，底層驅動或核心拒絕參數",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自動對時模式下不支援手動設定時間",
 		CodeNTPSyncNotAllowedInManualMode: "手動對時模式下不支援觸發 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下伺服器清單不能為空",

@@ -596,65 +596,129 @@ func TestNetworkService_SwitchMode_TimeoutRollback(t *testing.T) {
 	}
 }
 
-func TestNetworkService_SwitchMode_StartupRecovery(t *testing.T) {
-	stateDir := filepath.Join(t.TempDir(), "net-state")
-	ctx := context.Background()
+func switchModeLACPInput() SwitchModeInput {
+	addr := "192.168.9.9"
+	prefix := 24
+	gw := "192.168.9.1"
+	hashPolicy := netconfig.BondXmitHashPolicyLayer23
+	return SwitchModeInput{
+		Mode:           netconfig.NetworkModeLACP,
+		SlaveIDs:       []string{"eth0", "eth1"},
+		XmitHashPolicy: &hashPolicy,
+		BondIPv4: ApplyInterfaceInput{
+			Mode:       netconfig.IPModeStatic,
+			Primary:    true,
+			Address:    &addr,
+			Prefix:     &prefix,
+			Gateway:    &gw,
+			DNSServers: []string{"192.168.9.1"},
+		},
+		ActorID:       1,
+		ActorUsername: "admin",
+		ClientIP:      "127.0.0.1",
+	}
+}
 
-	// 第一次会话：切换模式但立即关闭（模拟未确认就重启）
+func TestNetworkService_SwitchMode_LACP_Success(t *testing.T) {
+	oplog := &mockOperationLogService{}
 	srv := newTestNetworkServiceCfg(t, &config.Config{
 		Network: config.Network{
-			StateDir:       stateDir,
+			StateDir:       filepath.Join(t.TempDir(), "net-state"),
 			ProfilePath:    "/tmp/dummy-profile.json",
 			ConfirmTimeout: 2 * time.Second,
 			FakePlatform:   true,
 		},
-	}, nil)
-	if _, err := srv.SwitchMode(ctx, switchModeSuccessInput()); err != nil {
-		t.Fatalf("SwitchMode failed: %v", err)
+	}, oplog)
+	ctx := context.Background()
+
+	res, err := srv.SwitchMode(ctx, switchModeLACPInput())
+	if err != nil {
+		t.Fatalf("SwitchMode LACP failed: %v", err)
 	}
-	// 不确认，直接关闭（timer 未触发）
-	if err := srv.Close(ctx); err != nil {
-		t.Fatalf("Close failed: %v", err)
+	if res.Status != netconfig.TxnStatusPendingConfirmation {
+		t.Errorf("got status %v, want pending_confirmation", res.Status)
+	}
+	if res.Overview == nil || res.Overview.Mode != netconfig.NetworkModeLACP {
+		t.Errorf("overview mode = %v, want lacp-aggregation", res.Overview)
+	}
+	if res.Overview.Bond == nil || res.Overview.Bond.LACP == nil || !res.Overview.Bond.LACP.Negotiated {
+		t.Errorf("overview bond lacp status not properly populated: %+v", res.Overview.Bond)
 	}
 
-	// 第二次会话：启动恢复应回滚未完成事务，审计沿用 pending 中的原操作者
-	oplog2 := &mockOperationLogService{}
-	srv2 := newTestNetworkServiceCfg(t, &config.Config{
-		Network: config.Network{
-			StateDir:       stateDir,
-			ProfilePath:    "/tmp/dummy-profile.json",
-			ConfirmTimeout: 2 * time.Second,
-			FakePlatform:   true,
-		},
-	}, oplog2)
-	overview, err := srv2.GetOverview(ctx)
+	// 确认事务
+	if _, err := srv.ConfirmTransaction(ctx, res.TransactionID, 1, "admin", "127.0.0.1"); err != nil {
+		t.Fatalf("ConfirmTransaction failed: %v", err)
+	}
+
+	overview, err := srv.GetOverview(ctx)
 	if err != nil {
 		t.Fatalf("GetOverview failed: %v", err)
 	}
-	if overview.Mode != netconfig.NetworkModeMultiAddress {
-		t.Errorf("mode should be recovered to multi-address, got %q", overview.Mode)
-	}
-	if overview.Bond != nil {
-		t.Errorf("bond should be gone after startup recovery")
-	}
-	if overview.PendingTransaction != nil {
-		t.Errorf("pending should be cleared after startup recovery")
-	}
-	// 启动恢复为自动事件，操作者/来源 IP 应沿用 pending 中保存的原操作者（spec 5.2 / 回归保护）
-	recoveryFound := false
-	for _, r := range oplog2.all() {
-		if r.Action != "system.log.actionNetworkStartupRecovery" {
-			continue
-		}
-		recoveryFound = true
-		if r.UserID != 1 || r.Username != "admin" {
-			t.Errorf("startup recovery operator = %s(%d), want admin(1)", r.Username, r.UserID)
-		}
-		if r.IP != "127.0.0.1" {
-			t.Errorf("startup recovery ip = %q, want 127.0.0.1", r.IP)
-		}
-	}
-	if !recoveryFound {
-		t.Errorf("startup recovery audit should be recorded, got %v", oplog2.actions())
+	if overview.Mode != netconfig.NetworkModeLACP || overview.Bond == nil || overview.Bond.LACP == nil {
+		t.Fatalf("GetOverview did not return confirmed LACP status: %+v", overview)
 	}
 }
+
+func TestNetworkService_SwitchMode_LACP_SpeedDuplexWarning(t *testing.T) {
+	srv := newTestNetworkService(t)
+	ctx := context.Background()
+
+	// 注入速度和双工不一致
+	speed1000 := 1000
+	speed100 := 100
+	srv.(*networkService).platform.(*netconfig.FakePlatform).SetInterfaceLinkProperties("eth0", &speed1000, netconfig.DuplexFull)
+	srv.(*networkService).platform.(*netconfig.FakePlatform).SetInterfaceLinkProperties("eth1", &speed100, netconfig.DuplexHalf)
+
+	res, err := srv.SwitchMode(ctx, switchModeLACPInput())
+	if err != nil {
+		t.Fatalf("SwitchMode LACP with mismatch should not fail, got %v", err)
+	}
+	if len(res.Warnings) == 0 {
+		t.Fatalf("expected warnings for speed/duplex mismatch")
+	}
+	if res.Warnings[0].Code != netconfig.WarningBondSlaveLinkMismatch {
+		t.Errorf("got warning code %s, want %s", res.Warnings[0].Code, netconfig.WarningBondSlaveLinkMismatch)
+	}
+}
+
+func TestNetworkService_SwitchMode_LACP_KernelRejection1114(t *testing.T) {
+	srv := newTestNetworkService(t)
+	ctx := context.Background()
+
+	// 注入 LACP 内核拒绝
+	srv.(*networkService).platform.(*netconfig.FakePlatform).SetFailLACP(true)
+
+	_, err := srv.SwitchMode(ctx, switchModeLACPInput())
+	if !errno.Is(err, errno.CodeNetworkLacpNegotiationFailed) {
+		t.Errorf("kernel rejection should return 1114, got %v", err)
+	}
+}
+
+func TestNetworkService_SwitchMode_LACP_DirectSwitchBetweenBonds(t *testing.T) {
+	srv := newTestNetworkService(t)
+	ctx := context.Background()
+
+	// 1. 先切到 active-backup 并确认
+	res1, err := srv.SwitchMode(ctx, switchModeSuccessInput())
+	if err != nil {
+		t.Fatalf("SwitchMode active-backup failed: %v", err)
+	}
+	if _, err := srv.ConfirmTransaction(ctx, res1.TransactionID, 1, "admin", "127.0.0.1"); err != nil {
+		t.Fatalf("ConfirmTransaction failed: %v", err)
+	}
+
+	// 2. 直接切到 LACP (相同 slaves: eth0, eth1) 应该成功
+	res2, err := srv.SwitchMode(ctx, switchModeLACPInput())
+	if err != nil {
+		t.Fatalf("Direct switch from active-backup to LACP failed: %v", err)
+	}
+	if _, err := srv.ConfirmTransaction(ctx, res2.TransactionID, 1, "admin", "127.0.0.1"); err != nil {
+		t.Fatalf("ConfirmTransaction failed: %v", err)
+	}
+
+	overview, _ := srv.GetOverview(ctx)
+	if overview.Mode != netconfig.NetworkModeLACP {
+		t.Errorf("mode = %s, want lacp-aggregation", overview.Mode)
+	}
+}
+

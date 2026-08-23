@@ -164,11 +164,12 @@ func (h *NetworkHandler) FactoryReset(c *gin.Context) {
 	response.Success(c, res)
 }
 
-// BondRequest 切到 active-backup 时的 bond 参数体。
+// BondRequest 切到 active-backup 或 lacp-aggregation 时的 bond 参数体。
 type BondRequest struct {
-	SlaveIDs       []string              `json:"slaveIds"`
-	PrimarySlaveID string                `json:"primarySlaveId"`
-	IPv4           ApplyInterfaceRequest `json:"ipv4"`
+	SlaveIDs       []string                      `json:"slaveIds"`
+	PrimarySlaveID string                        `json:"primarySlaveId,omitempty"`
+	XmitHashPolicy *netconfig.BondXmitHashPolicy `json:"xmitHashPolicy,omitempty"`
+	IPv4           ApplyInterfaceRequest         `json:"ipv4"`
 }
 
 // SwitchModeRequest 模式切换请求参数体。
@@ -205,6 +206,21 @@ func (h *NetworkHandler) SwitchMode(c *gin.Context) {
 		}
 		input.SlaveIDs = req.Bond.SlaveIDs
 		input.PrimarySlaveID = req.Bond.PrimarySlaveID
+		input.BondIPv4 = service.ApplyInterfaceInput{
+			Mode:       req.Bond.IPv4.Mode,
+			Primary:    req.Bond.IPv4.Primary,
+			Address:    req.Bond.IPv4.Address,
+			Prefix:     req.Bond.IPv4.Prefix,
+			Gateway:    req.Bond.IPv4.Gateway,
+			DNSServers: req.Bond.IPv4.DNSServers,
+		}
+	} else if req.Mode == netconfig.NetworkModeLACP {
+		if req.Bond == nil {
+			_ = c.Error(errno.New(errno.CodeInvalidParam))
+			return
+		}
+		input.SlaveIDs = req.Bond.SlaveIDs
+		input.XmitHashPolicy = req.Bond.XmitHashPolicy
 		input.BondIPv4 = service.ApplyInterfaceInput{
 			Mode:       req.Bond.IPv4.Mode,
 			Primary:    req.Bond.IPv4.Primary,

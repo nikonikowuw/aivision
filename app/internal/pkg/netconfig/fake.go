@@ -6,6 +6,15 @@ import (
 	"sync"
 )
 
+// FakeLACPScenario fake 平台模拟的 LACP 协商场景。
+type FakeLACPScenario string
+
+const (
+	FakeLACPScenarioNegotiated FakeLACPScenario = "negotiated"
+	FakeLACPScenarioNone       FakeLACPScenario = "none"
+	FakeLACPScenarioPartial    FakeLACPScenario = "partial"
+)
+
 // FakePlatform 纯内存测试替身实现。
 type FakePlatform struct {
 	mu           sync.Mutex
@@ -15,8 +24,10 @@ type FakePlatform struct {
 	systemDNS    []string
 	mode         NetworkMode
 	bond         *BondTopology
+	lacpScenario FakeLACPScenario
 	failApply    bool
 	failRestore  bool
+	failLACP     bool
 }
 
 // fakeBondInterfaceID fake 平台固定使用的 bond 逻辑口 ID（D1：系统生成，不接受用户命名）。
@@ -122,14 +133,39 @@ func (f *FakePlatform) Type() PlatformType {
 	return f.platformType
 }
 
-// Capabilities 声明支持的模式。FakePlatform 同时支持 multi-address 与 active-backup（D6）。
+// Capabilities 声明支持的模式。FakePlatform 同时支持 multi-address、active-backup 与 lacp-aggregation。
 func (f *FakePlatform) Capabilities(ctx context.Context) Capabilities {
 	return Capabilities{
 		DHCP:            true,
 		StaticIPv4:      true,
 		FactoryReset:    true,
 		WifiAssociation: false,
-		SupportedModes:  []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup},
+		SupportedModes:  []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup, NetworkModeLACP},
+	}
+}
+
+func (f *FakePlatform) SetLACPScenario(scenario FakeLACPScenario) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lacpScenario = scenario
+	if f.mode == NetworkModeLACP && f.bond != nil {
+		f.bond.LACP = f.buildLACPStatus(f.bond.SlaveIDs)
+	}
+}
+
+func (f *FakePlatform) SetFailLACP(fail bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failLACP = fail
+}
+
+func (f *FakePlatform) SetInterfaceLinkProperties(ifaceID string, speedMbps *int, duplex InterfaceDuplex) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if info, ok := f.interfaces[ifaceID]; ok {
+		info.SpeedMbps = speedMbps
+		info.Duplex = duplex
+		f.interfaces[ifaceID] = info
 	}
 }
 
@@ -198,6 +234,9 @@ func (f *FakePlatform) Apply(ctx context.Context, plan HostPlan) (HostSnapshot, 
 
 	if f.failApply {
 		return HostSnapshot{}, fmt.Errorf("%w: fake platform injected apply failure", ErrApplyFailed)
+	}
+	if f.failLACP && plan.Mode == NetworkModeLACP {
+		return HostSnapshot{}, fmt.Errorf("%w: fake platform injected lacp kernel rejection", ErrApplyFailed)
 	}
 
 	f.primaryID = plan.PrimaryInterfaceID
@@ -296,11 +335,12 @@ func (f *FakePlatform) Restore(ctx context.Context, snapshot HostSnapshot) (Host
 
 // applyMode 处理工作模式切换：
 // - 进入 active-backup：创建 bond0、标记 slave 归属并清空其 IPv4，填充 BondTopology；
+// - 进入 lacp-aggregation：创建 bond0、标记 slave 归属并清空其 IPv4，填充 BondTopology 与 LACPStatus；
 // - 退回 multi-address（含空值归一化）：拆除 bond0、归还 slave（IPv4 由主循环按 plan.Interfaces 恢复）。
 func (f *FakePlatform) applyMode(plan HostPlan) {
-	if plan.Mode == NetworkModeActiveBackup && plan.Bond != nil {
+	if (plan.Mode == NetworkModeActiveBackup || plan.Mode == NetworkModeLACP) && plan.Bond != nil {
 		bondID := fakeBondInterfaceID
-		// 汇总 slave 链路状态：任一 up 即 up；MAC 取 primary slave 的 MAC
+		// 汇总 slave 链路状态：任一 up 即 up；MAC 取首个或 primary slave 的 MAC
 		anyUp := false
 		var primaryMAC *string
 		for _, sid := range plan.Bond.SlaveIDs {
@@ -311,7 +351,9 @@ func (f *FakePlatform) applyMode(plan HostPlan) {
 			if slave.LinkStatus == LinkUp {
 				anyUp = true
 			}
-			if sid == plan.Bond.PrimarySlaveID {
+			if plan.Mode == NetworkModeActiveBackup && sid == plan.Bond.PrimarySlaveID {
+				primaryMAC = slave.MAC
+			} else if primaryMAC == nil {
 				primaryMAC = slave.MAC
 			}
 		}
@@ -351,14 +393,28 @@ func (f *FakePlatform) applyMode(plan HostPlan) {
 			f.interfaces[sid] = slave
 		}
 
-		activeID := plan.Bond.PrimarySlaveID
-		f.mode = NetworkModeActiveBackup
-		f.bond = &BondTopology{
-			BondInterfaceID: bondID,
-			SlaveIDs:        plan.Bond.SlaveIDs,
-			PrimarySlaveID:  plan.Bond.PrimarySlaveID,
-			ActiveSlaveID:   &activeID,
-			Miimon:          plan.Bond.Miimon,
+		if plan.Mode == NetworkModeActiveBackup {
+			activeID := plan.Bond.PrimarySlaveID
+			f.mode = NetworkModeActiveBackup
+			f.bond = &BondTopology{
+				BondInterfaceID: bondID,
+				SlaveIDs:        plan.Bond.SlaveIDs,
+				PrimarySlaveID:  plan.Bond.PrimarySlaveID,
+				ActiveSlaveID:   &activeID,
+				Miimon:          plan.Bond.Miimon,
+			}
+		} else {
+			f.mode = NetworkModeLACP
+			hashPolicy := BondXmitHashPolicyLayer23
+			if plan.Bond.XmitHashPolicy != nil {
+				hashPolicy = *plan.Bond.XmitHashPolicy
+			}
+			f.bond = &BondTopology{
+				BondInterfaceID: bondID,
+				SlaveIDs:        plan.Bond.SlaveIDs,
+				XmitHashPolicy:  &hashPolicy,
+				LACP:            f.buildLACPStatus(plan.Bond.SlaveIDs),
+			}
 		}
 		return
 	}
@@ -372,6 +428,127 @@ func (f *FakePlatform) applyMode(plan HostPlan) {
 			iface.MasterID = nil
 			iface.Writable = true
 			f.interfaces[id] = iface
+		}
+	}
+}
+
+func (f *FakePlatform) buildLACPStatus(slaveIDs []string) *LACPStatus {
+	scenario := f.lacpScenario
+	if scenario == "" {
+		scenario = FakeLACPScenarioNegotiated
+	}
+
+	var aggID uint16 = 1
+	switch scenario {
+	case FakeLACPScenarioNone:
+		slaves := make([]LACPPortStatus, 0, len(slaveIDs))
+		for _, sid := range slaveIDs {
+			slaves = append(slaves, LACPPortStatus{
+				InterfaceID:  sid,
+				AggregatorID: nil,
+				InAggregator: false,
+				ActorState: LACPPortState{
+					Active:       true,
+					ShortTimeout: false,
+					Aggregation:  true,
+					Synchronized: false,
+					Collecting:   false,
+					Distributing: false,
+					Defaulted:    true,
+					Expired:      false,
+				},
+				PartnerState: LACPPortState{
+					Active:       false,
+					ShortTimeout: false,
+					Aggregation:  false,
+					Synchronized: false,
+					Collecting:   false,
+					Distributing: false,
+					Defaulted:    true,
+					Expired:      false,
+				},
+			})
+		}
+		return &LACPStatus{
+			AggregatorID:   nil,
+			Negotiated:     false,
+			Slaves:         slaves,
+			DiagnosticCode: "partner_not_configured",
+		}
+
+	case FakeLACPScenarioPartial:
+		slaves := make([]LACPPortStatus, 0, len(slaveIDs))
+		for i, sid := range slaveIDs {
+			inAgg := (i == 0)
+			var sidAggID *uint16
+			if inAgg {
+				sidAggID = &aggID
+			}
+			slaves = append(slaves, LACPPortStatus{
+				InterfaceID:  sid,
+				AggregatorID: sidAggID,
+				InAggregator: inAgg,
+				ActorState: LACPPortState{
+					Active:       true,
+					ShortTimeout: false,
+					Aggregation:  true,
+					Synchronized: inAgg,
+					Collecting:   inAgg,
+					Distributing: inAgg,
+					Defaulted:    !inAgg,
+					Expired:      false,
+				},
+				PartnerState: LACPPortState{
+					Active:       inAgg,
+					ShortTimeout: false,
+					Aggregation:  inAgg,
+					Synchronized: inAgg,
+					Collecting:   inAgg,
+					Distributing: inAgg,
+					Defaulted:    !inAgg,
+					Expired:      false,
+				},
+			})
+		}
+		return &LACPStatus{
+			AggregatorID: &aggID,
+			Negotiated:   false,
+			Slaves:       slaves,
+		}
+
+	default: // FakeLACPScenarioNegotiated
+		slaves := make([]LACPPortStatus, 0, len(slaveIDs))
+		for _, sid := range slaveIDs {
+			slaves = append(slaves, LACPPortStatus{
+				InterfaceID:  sid,
+				AggregatorID: &aggID,
+				InAggregator: true,
+				ActorState: LACPPortState{
+					Active:       true,
+					ShortTimeout: false,
+					Aggregation:  true,
+					Synchronized: true,
+					Collecting:   true,
+					Distributing: true,
+					Defaulted:    false,
+					Expired:      false,
+				},
+				PartnerState: LACPPortState{
+					Active:       true,
+					ShortTimeout: false,
+					Aggregation:  true,
+					Synchronized: true,
+					Collecting:   true,
+					Distributing: true,
+					Defaulted:    false,
+					Expired:      false,
+				},
+			})
+		}
+		return &LACPStatus{
+			AggregatorID: &aggID,
+			Negotiated:   true,
+			Slaves:       slaves,
 		}
 	}
 }

@@ -4,6 +4,7 @@ import { requestClient } from '#/api/request';
 export const NETWORK_MODES = {
   MultiAddress: 'multi-address',
   ActiveBackup: 'active-backup',
+  LACPAggregation: 'lacp-aggregation',
 } as const;
 
 export namespace NetworkApi {
@@ -38,12 +39,43 @@ export namespace NetworkApi {
   export type TransactionAction = 'apply' | 'factory_reset' | 'mode_switch';
   export type NetworkMode = (typeof NETWORK_MODES)[keyof typeof NETWORK_MODES];
 
+  export type BondXmitHashPolicy = 'layer2' | 'layer2+3' | 'layer3+4';
+  export type InterfaceDuplex = 'unknown' | 'half' | 'full';
+
+  export interface LACPPortState {
+    active: boolean;
+    shortTimeout: boolean;
+    aggregation: boolean;
+    synchronized: boolean;
+    collecting: boolean;
+    distributing: boolean;
+    defaulted: boolean;
+    expired: boolean;
+  }
+
+  export interface LACPPortStatus {
+    interfaceId: string;
+    aggregatorId?: number;
+    inAggregator: boolean;
+    actorState: LACPPortState;
+    partnerState: LACPPortState;
+  }
+
+  export interface LACPStatus {
+    aggregatorId?: number;
+    negotiated: boolean;
+    slaves: LACPPortStatus[];
+    diagnosticCode?: string;
+  }
+
   export interface BondTopology {
     bondInterfaceId: string;
     slaveIds: string[];
-    primarySlaveId: string;
-    activeSlaveId: string | null;
-    miimon: number;
+    primarySlaveId?: string;
+    activeSlaveId?: string | null;
+    miimon?: number;
+    xmitHashPolicy?: BondXmitHashPolicy;
+    lacp?: LACPStatus;
   }
 
   export interface IPv4State {
@@ -68,7 +100,14 @@ export namespace NetworkApi {
     isPrimary: boolean;
     isBond: boolean;
     masterId: string | null;
+    speedMbps?: number;
+    duplex?: InterfaceDuplex;
     ipv4: IPv4State;
+  }
+
+  export interface NetworkWarning {
+    code: 'bond_slave_link_mismatch';
+    interfaceIds: string[];
   }
 
   export interface ReconnectAddress {
@@ -101,6 +140,7 @@ export namespace NetworkApi {
     candidate: CandidateSummary;
     targetMode?: NetworkMode;
     previousMode?: NetworkMode;
+    warnings?: NetworkWarning[];
   }
 
   export interface Capabilities {
@@ -130,6 +170,7 @@ export namespace NetworkApi {
     expiresAt?: string;
     overview?: NetworkOverview;
     reconnectAddresses?: ReconnectAddress[];
+    warnings?: NetworkWarning[];
     reason?: string | null;
   }
 
@@ -144,7 +185,8 @@ export namespace NetworkApi {
 
   export interface BondParams {
     slaveIds: string[];
-    primarySlaveId: string;
+    primarySlaveId?: string;
+    xmitHashPolicy?: BondXmitHashPolicy;
     ipv4: ApplyInterfaceParams;
   }
 

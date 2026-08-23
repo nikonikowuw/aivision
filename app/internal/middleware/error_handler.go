@@ -38,7 +38,7 @@ func ErrorHandler() gin.HandlerFunc {
 				status = http.StatusNotFound
 			case errno.CodeNetworkTransactionPending, errno.CodeNetworkTransactionExpired, errno.CodeNetworkInterfaceNotManaged, errno.CodeNetworkOwnershipConflict, errno.CodeNetworkExternalDrift, errno.CodeNetworkBondSlaveInvalid, errno.CodeNetworkBondModeConflict:
 				status = http.StatusConflict
-			case errno.CodeNetworkUnsupported, errno.CodeNetworkApplyFailed, errno.CodeNetworkRecoveryFailed, errno.CodeNetworkStateCorrupt, errno.CodeNetworkNotReady:
+			case errno.CodeNetworkUnsupported, errno.CodeNetworkApplyFailed, errno.CodeNetworkRecoveryFailed, errno.CodeNetworkStateCorrupt, errno.CodeNetworkNotReady, errno.CodeNetworkLacpNegotiationFailed:
 				status = http.StatusServiceUnavailable
 			}
 			response.WriteFail(c, status, e.Code)

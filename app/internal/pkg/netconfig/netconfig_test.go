@@ -240,7 +240,7 @@ func TestOldFormatCompatibility(t *testing.T) {
 // LinuxPlatform / DarwinPlatform 的声明在各自 build-tagged 测试文件中覆盖（manager_linux_test.go 等）。
 func TestCapabilitiesFake(t *testing.T) {
 	caps := NewFakePlatform(PlatformFake).Capabilities(context.Background())
-	wantModes := []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup}
+	wantModes := []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup, NetworkModeLACP}
 	if !slices.Equal(caps.SupportedModes, wantModes) {
 		t.Errorf("SupportedModes = %v, want %v", caps.SupportedModes, wantModes)
 	}
@@ -369,7 +369,63 @@ func TestFakeBondEnterAndExit(t *testing.T) {
 	}
 }
 
-// TestFakeBondRestore 验证 Restore(before) 完整回滚 bond 拓扑与模式（M3 / R4.1 / AC6）。
+// TestFakeLACPScenarios 验证 FakePlatform 支持三种 LACP 协商场景以及 speed/duplex 注入
+func TestFakeLACPScenarios(t *testing.T) {
+	fake := NewFakePlatform(PlatformFake)
+	hashPolicy := BondXmitHashPolicyLayer23
+	lacpPlan := HostPlan{
+		Interfaces: map[string]InterfacePlan{
+			"bond0": {
+				Mode: IPModeDHCP, Primary: true,
+			},
+		},
+		PrimaryInterfaceID: strPtr("bond0"),
+		Mode:               NetworkModeLACP,
+		Bond: &BondPlan{
+			SlaveIDs:       []string{"eth0", "eth1"},
+			XmitHashPolicy: &hashPolicy,
+		},
+	}
+
+	// 1. 默认场景：已协商
+	if _, err := fake.Apply(context.Background(), lacpPlan); err != nil {
+		t.Fatalf("Apply LACP failed: %v", err)
+	}
+	snap, _ := fake.Read(context.Background())
+	if snap.Mode != NetworkModeLACP || snap.Bond == nil || snap.Bond.LACP == nil {
+		t.Fatalf("LACP status not initialized: %+v", snap.Bond)
+	}
+	if !snap.Bond.LACP.Negotiated || len(snap.Bond.LACP.Slaves) != 2 {
+		t.Errorf("expected negotiated LACP, got %+v", snap.Bond.LACP)
+	}
+
+	// 2. 场景：none（未协商 / partner_not_configured）
+	fake.SetLACPScenario(FakeLACPScenarioNone)
+	snap, _ = fake.Read(context.Background())
+	if snap.Bond.LACP.Negotiated || snap.Bond.LACP.DiagnosticCode != "partner_not_configured" {
+		t.Errorf("expected none scenario, got %+v", snap.Bond.LACP)
+	}
+
+	// 3. 场景：partial（部分进组）
+	fake.SetLACPScenario(FakeLACPScenarioPartial)
+	snap, _ = fake.Read(context.Background())
+	if snap.Bond.LACP.Negotiated || snap.Bond.LACP.Slaves[0].InAggregator != true || snap.Bond.LACP.Slaves[1].InAggregator != false {
+		t.Errorf("expected partial scenario, got %+v", snap.Bond.LACP)
+	}
+
+	// 4. 速度与双工注入
+	speed1000 := 1000
+	speed100 := 100
+	fake.SetInterfaceLinkProperties("eth0", &speed1000, DuplexFull)
+	fake.SetInterfaceLinkProperties("eth1", &speed100, DuplexHalf)
+	snap, _ = fake.Read(context.Background())
+	if snap.Interfaces["eth0"].SpeedMbps == nil || *snap.Interfaces["eth0"].SpeedMbps != 1000 || snap.Interfaces["eth0"].Duplex != DuplexFull {
+		t.Errorf("eth0 link properties mismatch: %+v", snap.Interfaces["eth0"])
+	}
+	if snap.Interfaces["eth1"].SpeedMbps == nil || *snap.Interfaces["eth1"].SpeedMbps != 100 || snap.Interfaces["eth1"].Duplex != DuplexHalf {
+		t.Errorf("eth1 link properties mismatch: %+v", snap.Interfaces["eth1"])
+	}
+}
 func TestFakeBondRestore(t *testing.T) {
 	fake := NewFakePlatform(PlatformFake)
 	before, err := fake.Read(context.Background())
@@ -417,3 +473,46 @@ func TestFakeBondRestore(t *testing.T) {
 func intPtr(i int) *int {
 	return &i
 }
+
+// TestLACPModelAndEnums 验证 LACP 相关枚举、校验和结构体字段
+func TestLACPModelAndEnums(t *testing.T) {
+	if !NetworkModeLACP.Valid() {
+		t.Errorf("NetworkModeLACP should be valid")
+	}
+	if !slices.Contains(AllNetworkModes(), NetworkModeLACP) {
+		t.Errorf("AllNetworkModes should contain NetworkModeLACP")
+	}
+
+	for _, p := range []BondXmitHashPolicy{BondXmitHashPolicyLayer2, BondXmitHashPolicyLayer23, BondXmitHashPolicyLayer34} {
+		if !p.Valid() {
+			t.Errorf("BondXmitHashPolicy %s should be valid", p)
+		}
+	}
+	if BondXmitHashPolicy("layer4").Valid() {
+		t.Errorf("arbitrary hash policy string should be invalid")
+	}
+
+	hashPolicy := BondXmitHashPolicyLayer23
+	lacpRate := BondLACPRateSlow
+	plan := BondPlan{
+		SlaveIDs:       []string{"eth0", "eth1"},
+		XmitHashPolicy: &hashPolicy,
+		LACPRate:       &lacpRate,
+	}
+
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("marshal BondPlan failed: %v", err)
+	}
+	var unmarshaled BondPlan
+	if err := json.Unmarshal(raw, &unmarshaled); err != nil {
+		t.Fatalf("unmarshal BondPlan failed: %v", err)
+	}
+	if unmarshaled.XmitHashPolicy == nil || *unmarshaled.XmitHashPolicy != BondXmitHashPolicyLayer23 {
+		t.Errorf("xmitHashPolicy mismatch: %+v", unmarshaled.XmitHashPolicy)
+	}
+	if unmarshaled.LACPRate == nil || *unmarshaled.LACPRate != BondLACPRateSlow {
+		t.Errorf("lacpRate mismatch: %+v", unmarshaled.LACPRate)
+	}
+}
+

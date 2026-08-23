@@ -43,13 +43,14 @@ type ApplyInterfaceInput struct {
 
 // SwitchModeInput 模式切换输入。
 type SwitchModeInput struct {
-	Mode           netconfig.NetworkMode `json:"mode"`
-	SlaveIDs       []string              `json:"slaveIds"`
-	PrimarySlaveID string                `json:"primarySlaveId"`
-	BondIPv4       ApplyInterfaceInput   `json:"ipv4"`
-	ActorID        uint64                `json:"-"`
-	ActorUsername  string                `json:"-"`
-	ClientIP       string                `json:"-"`
+	Mode           netconfig.NetworkMode         `json:"mode"`
+	SlaveIDs       []string                      `json:"slaveIds"`
+	PrimarySlaveID string                        `json:"primarySlaveId"`
+	XmitHashPolicy *netconfig.BondXmitHashPolicy `json:"xmitHashPolicy"`
+	BondIPv4       ApplyInterfaceInput           `json:"ipv4"`
+	ActorID        uint64                        `json:"-"`
+	ActorUsername  string                        `json:"-"`
+	ClientIP       string                        `json:"-"`
 }
 
 type networkService struct {
@@ -443,8 +444,27 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		return nil, errno.New(errno.CodeNetworkBondModeConflict)
 	}
 
-	// 6. bond 参数校验（仅切到 active-backup 时，R3.3 / AC3）
+	// 5.1 direct switch between active-backup and lacp-aggregation validation (design 2.2)
+	isCurrentBond := currentSnapshot.Mode.Normalize() == netconfig.NetworkModeActiveBackup || currentSnapshot.Mode.Normalize() == netconfig.NetworkModeLACP
+	isTargetBond := input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP
+	if isCurrentBond && isTargetBond {
+		if currentSnapshot.Bond == nil {
+			return nil, errno.New(errno.CodeNetworkBondModeConflict)
+		}
+		// active-backup <-> lacp 之间直接切换：必须复用当前 bond 的完全相同 slave 集合
+		currSlaves := slices.Clone(currentSnapshot.Bond.SlaveIDs)
+		slices.Sort(currSlaves)
+		reqSlaves := slices.Clone(input.SlaveIDs)
+		slices.Sort(reqSlaves)
+		if !slices.Equal(currSlaves, reqSlaves) {
+			return nil, errno.New(errno.CodeNetworkBondModeConflict)
+		}
+	}
+
+	// 6. bond 参数校验（切到 active-backup 或 lacp-aggregation 时）
 	var bondPlan *netconfig.BondPlan
+	var warnings []netconfig.NetworkWarning
+
 	if input.Mode == netconfig.NetworkModeActiveBackup {
 		if len(input.SlaveIDs) != 2 {
 			return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
@@ -457,14 +477,86 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		}
 		for _, sid := range input.SlaveIDs {
 			slave, exists := currentSnapshot.Interfaces[sid]
-			if !exists || !slave.Writable || slave.MasterID != nil || slave.IsBond {
+			if !exists {
 				return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+			}
+			// 如果当前处于 bond，允许复用当前属于该 bond 的 slave；否则要求 Writable、未加入其他 master 且不是 bond
+			if isCurrentBond && currentSnapshot.Bond != nil && slices.Contains(currentSnapshot.Bond.SlaveIDs, sid) {
+				// 允许复用
+			} else {
+				if !slave.Writable || slave.MasterID != nil || slave.IsBond {
+					return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+				}
 			}
 		}
 		bondPlan = &netconfig.BondPlan{
 			SlaveIDs:       input.SlaveIDs,
 			PrimarySlaveID: input.PrimarySlaveID,
 			Miimon:         netconfig.DefaultBondMiimon, // D2：固定 100ms，不接受客户端输入
+		}
+	} else if input.Mode == netconfig.NetworkModeLACP {
+		if len(input.SlaveIDs) < 2 {
+			return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+		}
+		// 校验 slave 唯一性
+		seen := make(map[string]struct{}, len(input.SlaveIDs))
+		for _, sid := range input.SlaveIDs {
+			if _, exists := seen[sid]; exists {
+				return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+			}
+			seen[sid] = struct{}{}
+		}
+
+		// 检查速率和双工一致性以产生 non-blocking warning
+		var firstSpeed *int
+		var firstDuplex netconfig.InterfaceDuplex = ""
+		hasMismatch := false
+
+		for _, sid := range input.SlaveIDs {
+			slave, exists := currentSnapshot.Interfaces[sid]
+			if !exists {
+				return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+			}
+			if isCurrentBond && currentSnapshot.Bond != nil && slices.Contains(currentSnapshot.Bond.SlaveIDs, sid) {
+				// 允许复用当前 bond 的 slave
+			} else {
+				if !slave.Writable || slave.MasterID != nil || slave.IsBond {
+					return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+				}
+			}
+
+			// 检查速度/双工
+			if firstDuplex == "" {
+				firstSpeed = slave.SpeedMbps
+				firstDuplex = slave.Duplex
+			} else {
+				if (firstSpeed != nil && slave.SpeedMbps != nil && *firstSpeed != *slave.SpeedMbps) ||
+					(firstDuplex != "" && slave.Duplex != "" && firstDuplex != slave.Duplex) {
+					hasMismatch = true
+				}
+			}
+		}
+
+		if hasMismatch {
+			warnings = append(warnings, netconfig.NetworkWarning{
+				Code:         netconfig.WarningBondSlaveLinkMismatch,
+				InterfaceIDs: input.SlaveIDs,
+			})
+		}
+
+		hashPolicy := netconfig.DefaultBondXmitHashPolicy
+		if input.XmitHashPolicy != nil {
+			if !input.XmitHashPolicy.Valid() {
+				return nil, errno.New(errno.CodeNetworkInvalidConfig)
+			}
+			hashPolicy = *input.XmitHashPolicy
+		}
+
+		lacpRate := netconfig.BondLACPRateSlow
+		bondPlan = &netconfig.BondPlan{
+			SlaveIDs:       input.SlaveIDs,
+			XmitHashPolicy: &hashPolicy,
+			LACPRate:       &lacpRate,
 		}
 	}
 
@@ -474,7 +566,7 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	var normPrefix *int
 	var normGW *string
 	var normDNS []string
-	if input.Mode == netconfig.NetworkModeActiveBackup {
+	if input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP {
 		norm, err := netconfig.ValidateAndNormalizeIPv4(
 			input.BondIPv4.Mode,
 			input.BondIPv4.Primary,
@@ -511,11 +603,9 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		}
 	}
 
-	if input.Mode == netconfig.NetworkModeActiveBackup {
+	if input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP {
 		// 进入 bonding：slave 条目保留完整原值（含 primary/gateway/dns），随 last-valid 持久化，
 		// 供退出模式时恢复（R3.4 / design 5.2 步骤 8）。
-		// fake 平台 applyMode 会实际清空 slave 状态并解除 primary，Apply 主循环按 MasterID 跳过，
-		// 因此 plan 保留原值不影响进入后的运行状态。
 		// 追加 bond0 计划
 		bondID := "bond0"
 		plan.Interfaces[bondID] = netconfig.InterfacePlan{
@@ -562,12 +652,12 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	txnID := fmt.Sprintf("txn-%d", now.UnixNano())
 
 	targetIfaceID := ""
-	if input.Mode == netconfig.NetworkModeActiveBackup {
+	if input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP {
 		targetIfaceID = "bond0"
 	}
 
 	reconnectAddrs := make([]netconfig.ReconnectAddress, 0)
-	if input.Mode == netconfig.NetworkModeActiveBackup && normAddr != nil && normPrefix != nil {
+	if (input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP) && normAddr != nil && normPrefix != nil {
 		reconnectAddrs = append(reconnectAddrs, netconfig.ReconnectAddress{
 			InterfaceID: "bond0",
 			Address:     *normAddr,
@@ -592,6 +682,7 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 			RequiresReconnect:           true,
 			TargetMode:                  input.Mode,
 			PreviousMode:                currentSnapshot.Mode.Normalize(),
+			Warnings:                    warnings,
 			Candidate: netconfig.CandidateSummary{
 				Mode:       input.BondIPv4.Mode,
 				Address:    normAddr,
@@ -618,6 +709,9 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		s.log.Error("platform apply failed on mode switch, restoring before snapshot", zap.Error(err))
 		_, _ = s.platform.Restore(ctx, currentSnapshot)
 		_ = s.store.ClearPending()
+		if input.Mode == netconfig.NetworkModeLACP {
+			return nil, errno.New(errno.CodeNetworkLacpNegotiationFailed)
+		}
 		return nil, errno.New(errno.CodeNetworkApplyFailed)
 	}
 
@@ -640,6 +734,8 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		DefaultRouteInterfaceID: candidateSnapshot.DefaultRouteInterfaceID,
 		SystemDNSServers:        candidateSnapshot.SystemDNSServers,
 		PendingTransaction:      &pending.Transaction,
+		Mode:                    candidateSnapshot.Mode.Normalize(),
+		Bond:                    candidateSnapshot.Bond,
 	}
 
 	return &netconfig.TransactionResult{
@@ -648,6 +744,7 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		ExpiresAt:          &expiresAt,
 		Overview:           overview,
 		ReconnectAddresses: reconnectAddrs,
+		Warnings:           warnings,
 	}, nil
 }
 

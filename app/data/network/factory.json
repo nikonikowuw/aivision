@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "generation": 1787456033675020000,
+  "platform": "darwin",
+  "createdAt": "2026-08-23T03:33:53.67502Z",
+  "checksum": "15e5f56cadbbd606f0085473cc18014b1319dd1584ce986033db9ee614f3c6a0",
+  "data": {
+    "plan": {
+      "interfaces": {
+        "eth0": {
+          "address": "192.168.10.20",
+          "dnsServers": [
+            "192.168.10.1",
+            "1.1.1.1"
+          ],
+          "gateway": "192.168.10.1",
+          "mode": "static",
+          "prefix": 24,
+          "primary": true
+        },
+        "eth1": {
+          "address": "192.168.20.20",
+          "mode": "static",
+          "prefix": 24,
+          "primary": false
+        }
+      },
+      "primaryInterfaceId": "eth0"
+    },
+    "snapshot": {
+      "defaultRouteInterfaceId": "eth0",
+      "fingerprint": "fake-host-fingerprint",
+      "interfaces": {
+        "eth0": {
+          "displayName": "Ethernet Port 1",
+          "id": "eth0",
+          "ipv4": {
+            "address": "192.168.10.20",
+            "dnsServers": [
+              "192.168.10.1",
+              "1.1.1.1"
+            ],
+            "gateway": "192.168.10.1",
+            "mode": "static",
+            "prefix": 24,
+            "status": "effective",
+            "subnetMask": "255.255.255.0"
+          },
+          "isPrimary": true,
+          "linkStatus": "up",
+          "mac": "02:42:ac:11:00:02",
+          "name": "eth0",
+          "ownership": "managed",
+          "type": "ethernet",
+          "writable": true
+        },
+        "eth1": {
+          "displayName": "Ethernet Port 2",
+          "id": "eth1",
+          "ipv4": {
+            "address": "192.168.20.20",
+            "dnsServers": null,
+            "gateway": null,
+            "mode": "static",
+            "prefix": 24,
+            "status": "effective",
+            "subnetMask": "255.255.255.0"
+          },
+          "isPrimary": false,
+          "linkStatus": "up",
+          "mac": "02:42:ac:11:00:03",
+          "name": "eth1",
+          "ownership": "managed",
+          "type": "ethernet",
+          "writable": true
+        }
+      },
+      "native": {
+        "data": "eyJmYWtlIjogdHJ1ZX0=",
+        "version": 1
+      },
+      "primaryInterfaceId": "eth0",
+      "systemDnsServers": [
+        "192.168.10.1",
+        "1.1.1.1"
+      ]
+    }
+  }
+}

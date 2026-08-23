@@ -45,7 +45,7 @@ Sanitizer：
 - 固定 1080p 本地 RTSP 回放源及断流/静默控制脚本；
 - 已知色块 JPEG/YUV 和 CPU/vImage 期望像素；
 - Mock 正常包、额外导出符号包、校验和错误包、自测无回调/多回调/超时包；
-- 固定模型转换输入身份和 Core ML tree digest 生成脚本。
+- 固定模型转换输入身份和 `.mlpackage` 入口文件校验工具脚本；
 
 测试不得依赖公共互联网摄像头、开发者手工输入或真实 sleep。ZLMediaKit commit、构建选项和 test `config.ini` 必须固定。
 
@@ -87,7 +87,7 @@ macOS `fork` child 在 exec 前只能执行 async-signal-safe 操作。Linux 也
 1. 流式读取 zip central directory，验证总压缩大小、解压大小、文件数和重复路径上限；
 2. 拒绝绝对路径、`..`、反斜杠、NUL、symlink、hardlink、device、FIFO 和非普通文件；
 3. 解压到新建 staging 目录，使用 `openat`/等价安全 API，确保目标始终位于 staging root；
-4. 解析 manifest，验证文件集合、逐文件 SHA-256、平台、OS/运行时和 adapter 兼容性；
+4. 解析 manifest，验证关键入口文件存在性与 SHA-256、平台、OS/运行时和 adapter 兼容性；zip 整体 SHA-256 由 Engine 校验；
 5. `dlopen(RTLD_NOW|RTLD_LOCAL)`，验证唯一导出、ABI、Library query 与 manifest 一致；
 6. 创建 self-test instance，用真实平台帧执行一次 process，验证恰好一条 self-test 结果且不超时；
 7. validator 完整销毁 instance/library 并退出成功后，Engine 原子安装 staging 目录。
@@ -103,7 +103,7 @@ macOS `fork` child 在 exec 前只能执行 async-signal-safe 操作。Linux 也
 | 算法包在仓库外不能构建 | 可搬运性失败 |
 | 动态库有额外导出符号 | 拒绝打包/安装 |
 | zip 路径或类型不安全 | validator 拒绝，未 dlopen |
-| SHA/文件集合不一致 | validator 拒绝 |
+| 入口文件缺失或 SHA-256 不匹配 | validator 拒绝 |
 | self-test 零检测但 self-test JSON 合法 | 成功 |
 | self-test 无回调、多回调、崩溃或超时 | 拒绝并清理 staging |
 | validator 被 signal 终止 | 结构化 `VALIDATOR_CRASHED` |

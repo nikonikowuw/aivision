@@ -9,7 +9,7 @@
 | [目录结构与构建边界](./directory-structure.md) | CMake target、`media_api/media_zlm`、SDK ABI/toolkit 分离、可搬运性 | 生效 |
 | [C ABI 与帧生命周期](./abi-guidelines.md) | 152B 帧描述符、`frame_token`、枚举、色彩、版本演进 | 生效，ABI v1 冻结前仍需代码评审 |
 | [算法包 C ABI 接口](./algo-package-spec.md) | 单导出、Library/Instance、self-test、结果回调、线程与所有权 | 生效，ABI v1 冻结前仍需代码评审 |
-| [清单、配置与结果 Schema](./manifest-schema.md) | manifest、逐文件 SHA、离散 FPS 档位、配置和结果 JSON | 生效 |
+| [清单、配置与结果 Schema](./manifest-schema.md) | manifest、入口文件 SHA、离散 FPS 档位、配置和结果 JSON | 生效 |
 | [平台适配、媒体与调度](./platform-guidelines.md) | 平台接口、ZLM 生命周期、图像原语、队列、watchdog、资源和指标 | 生效 |
 | [运行时与跨进程契约](./runtime-guidelines.md) | 图片 catalog、双 UDS、DesiredState revision、升级回滚 | 生效 |
 | [错误、日志与可观测性](./error-observability-guidelines.md) | EngineError、稳定错误码、日志字段、指标与脱敏 | 生效 |

@@ -907,16 +907,21 @@ describe('useVbenForm integration', () => {
     expect(wrapper.text()).not.toContain('Name is required');
 
     await input.trigger('blur');
-    await flushPromises();
-    expect(wrapper.text()).toContain('Name is required');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Name is required');
+    });
 
     await input.setValue('Ada');
     await flushPromises();
-    expect(wrapper.text()).not.toContain('Name is required');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).not.toContain('Name is required');
+    });
 
     await input.trigger('blur');
     await flushPromises();
-    expect(wrapper.text()).not.toContain('Name is required');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).not.toContain('Name is required');
+    });
   });
 
   it('ignores stale asynchronous validation results', async () => {
@@ -1013,9 +1018,9 @@ describe('useVbenForm integration', () => {
 
     await formApi.setFieldValue('name', ' raw ');
     await wrapper.get('form').trigger('submit');
-    await flushPromises();
-
-    expect(onSubmit).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce();
+    });
     expect(onSubmit).toHaveBeenCalledWith(undefined);
   });
 

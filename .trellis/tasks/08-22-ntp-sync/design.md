@@ -21,7 +21,7 @@ NTP Service (internal/service/ntp.go)
 | 场景 | 数据库 (system_configs 表) | 底层执行器 (Executor) |
 | ------ | --------------------------- | --------------------- |
 | **查询配置** (`GET /config`) | 从 DB 读取 key 为 `system:time` 的持久化配置 | 不调用 |
-| **修改配置** (`PUT /config`) | 校验后更新 DB 中的 `system:time`（支持审计、出厂重置） | 写入系统 drop-in 配置并重载 NTP 服务 |
+| **修改配置** (`PUT /config`) | 校验后更新 DB 中的 `system:time`（支持审计、出厂重置；保存期望配置） | 写入系统 drop-in 配置并重载 NTP 服务；失败时返回错误，启动重放可重试 |
 | **查询状态** (`GET /status`) | 不调用 | 实时读取系统时钟同步状态（源、偏移量、是否同步） |
 | **立即同步** (`POST /sync`) | 不调用 | 触发 NTP 守护进程立即对时（`makestep` 等） |
 | **手动设时** (`POST /set-time`) | 更新 DB 中 `system:time` 的 mode 为 manual | 停用 NTP 守护进程，执行系统设时命令 |
@@ -132,13 +132,32 @@ type Executor interface {
 ### 3. Service (`internal/service/ntp.go`)
 
 ```go
+type NTPConfigDTO struct {
+    ID        uint64    `json:"id"`
+    Mode      string    `json:"mode"`
+    Servers   []string  `json:"servers"`
+    CreatedAt time.Time `json:"createdAt"`
+    UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type UpdateNTPConfigInput struct {
+    Mode    string   `json:"mode"`
+    Servers []string `json:"servers"`
+}
+
+type SetTimeInput struct {
+    Time time.Time `json:"time"`
+}
+```
+
+```go
 type NTPService interface {
-    GetConfig(ctx context.Context) (*TimeConfigValue, error)
+    GetConfig(ctx context.Context) (*NTPConfigDTO, error)
     UpdateConfig(ctx context.Context, input *UpdateNTPConfigInput) error
     GetStatus(ctx context.Context) (*ntp.SyncStatus, error)
     SyncNow(ctx context.Context) error
     SetTime(ctx context.Context, input *SetTimeInput) error
-    IsTimeSynced(ctx context.Context) (bool, error)
+    IsSynced(ctx context.Context) (bool, error)
     ReplayOnBoot(ctx context.Context) error // 开机从 system_configs 重放配置
 }
 ```
@@ -153,8 +172,8 @@ type NTPService interface {
 
 ### macOS
 
-- **NTP 模式**: `systemsetup -setnetworktimeserver <server>`，`systemsetup -setusingnetworktime on`。
-- **状态读取**: `sntp -d <server>` 探测时钟偏移。
+- **NTP 模式**: `systemsetup -setnetworktimeserver <server>`，`systemsetup -setusingnetworktime on`。macOS 系统工具只接受一个服务器，适配器使用列表首项作为当前服务器，完整列表仍保存在配置中供跨平台迁移。
+- **状态读取**: `sntp -d <server>` 探测时钟偏移；该探测不等同于实际同步，因此没有可确认的同步时间时 `lastSyncTime` 返回 `null`。
 - **手动设时**: `systemsetup -setusingnetworktime off`，`date` 设置系统时间。
 
 ### Mock Adapter
@@ -178,7 +197,7 @@ type NTPService interface {
 
 | Code | 常量名 | 含义 |
 | ------ | -------- | ------ |
-| 1201 | `CodeNTPManualNotAllowedInNTPMode` | NTP 模式下不支持手动设时 |
+| 1201 | `CodeNTPManualNotAllowedInNTPMode` | 历史错误码，保留编号但当前手动设时入口不再使用 |
 | 1202 | `CodeNTPSyncNotAllowedInManualMode` | 手动模式下不支持触发 NTP 同步 |
 | 1203 | `CodeNTPServersEmpty` | NTP 模式下服务器列表不能为空 |
 | 1204 | `CodeNTPInvalidMode` | 无效的对时模式（只允许 ntp / manual） |
@@ -208,7 +227,7 @@ Ops (routes.ops.ops, /ops, ant-design:tool-outlined)
        └── ops:time:edit           (修改/同步权限按钮)
 ```
 
-播种方式：遵循 000005 幂等 SQL 迁移模式（`DO $$` 块 + `role_menus` 绑定 super 角色），新库与升级库一致；`internal/model/seed.go` 生产已不再调用，不作为播种载体。前端组件位于 `views/ops/time/index.vue`。
+播种方式：遵循 000005 幂等 SQL 迁移模式（`DO $$` 块 + `role_menus` 绑定 super 角色），新库与升级库一致；`internal/model/seed.go` 生产已不再调用，不作为播种载体。前端组件位于 `ui/apps/web-antd/src/views/ops/time/index.vue`。
 
 ## Operation Log
 

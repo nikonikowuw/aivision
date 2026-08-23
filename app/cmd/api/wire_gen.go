@@ -12,6 +12,7 @@ import (
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/db"
 	"niko-vue-admin/app/internal/pkg/logger"
+	"niko-vue-admin/app/internal/pkg/ntp"
 	"niko-vue-admin/app/internal/pkg/storage"
 	"niko-vue-admin/app/internal/repository"
 	"niko-vue-admin/app/internal/router"
@@ -58,6 +59,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	}
 	fileService := service.NewFileService(fileStorage, cfg)
 	fileHandler := api.NewFileHandler(fileService, cfg)
+	systemConfigRepository := repository.NewSystemConfigRepository(gormDB)
+	executor := ntp.NewExecutor()
+	ntpService := service.NewNTPService(systemConfigRepository, executor, zapLogger)
+	ntpHandler := api.NewNTPHandler(ntpService)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
 		AuthMiddleware:      authMiddleware,
@@ -70,12 +75,14 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		UserHandler:         userHandler,
 		AuthHandler:         authHandler,
 		FileHandler:         fileHandler,
+		NTPHandler:          ntpHandler,
 	}
 	engine := router.New(cfg, deps)
 	app := &App{
-		DB:     gormDB,
-		Logger: zapLogger,
-		Engine: engine,
+		DB:         gormDB,
+		Logger:     zapLogger,
+		Engine:     engine,
+		NTPService: ntpService,
 	}
 	return app, nil
 }

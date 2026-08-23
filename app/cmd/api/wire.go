@@ -11,6 +11,7 @@ import (
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/db"
 	"niko-vue-admin/app/internal/pkg/logger"
+	"niko-vue-admin/app/internal/pkg/ntp"
 	"niko-vue-admin/app/internal/pkg/storage"
 	"niko-vue-admin/app/internal/repository"
 	"niko-vue-admin/app/internal/router"
@@ -47,6 +48,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		api.NewAuthHandler,
 		service.NewFileService,
 		api.NewFileHandler,
+		ntp.NewExecutor,
+		repository.NewSystemConfigRepository,
+		service.NewNTPService,
+		api.NewNTPHandler,
 		router.New,
 		wire.Struct(new(router.Deps), "*"),
 		wire.Struct(new(App), "*"),

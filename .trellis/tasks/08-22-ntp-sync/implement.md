@@ -64,11 +64,11 @@
 
 ### 4.1 API 层
 
-- [ ] 创建 `apps/web-antd/src/api/ntp.ts` — 封装 6 个 API 端点调用及 TypeScript 类型定义
+- [ ] 创建 `ui/apps/web-antd/src/api/core/ntp.ts` — 封装 6 个 API 端点调用及 TypeScript 类型定义
 
 ### 4.2 页面开发
 
-- [ ] 创建 `apps/web-antd/src/views/ops/time/index.vue`
+- [ ] 创建 `ui/apps/web-antd/src/views/ops/time/index.vue`
 - [ ] 顶部：对时模式切换（NTP 自动对时 / 手动设置）
 - [ ] NTP 模式区域：
   - 实时同步状态卡片（同步源、偏移量、最后同步时间、同步指示灯）

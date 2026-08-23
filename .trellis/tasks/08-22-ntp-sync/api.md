@@ -6,7 +6,7 @@
 ## 1. Scope & Boundaries
 
 - **Backend**: `app/internal/api/ntp.go`, `app/internal/service/ntp.go`, `app/internal/repository/system_config.go`
-- **Frontend**: `ui/apps/web-antd/src/api/ntp.ts`, `ui/apps/web-antd/src/views/ops/time/`
+- **Frontend**: `ui/apps/web-antd/src/api/core/ntp.ts`, `ui/apps/web-antd/src/views/ops/time/`
 - **Shared Conventions**: 统一包装 `{code: 0, data: ..., message: "ok"}`，非 0 为业务异常
 
 ## 2. Common Models
@@ -105,6 +105,7 @@
   - `1009`: 参数校验失败（mode 取值非法）
   - `1203`: NTP 模式下服务器列表不能为空
   - `1204`: 无效的对时模式
+  - `1206` / `1207`: 底层执行器应用失败或不可用；已校验的配置仍作为期望状态保留在 `system_configs`，后续启动时由 `ReplayOnBoot` 重试
 
 ### 3.3 实时获取同步状态
 
@@ -147,6 +148,8 @@
 
 ### 3.5 手动设置系统时间
 
+> 调用本接口会直接设置系统时钟，并**自动将配置模式切换并持久化为 `manual`**（底层停用 NTP 服务防被覆盖）——这是从 NTP 自动对时切换到手动配置的官方途径；无需先调用 3.2 切换模式。设置成功后，`GET /api/ntp/config` 返回的 `mode` 为 `manual`。
+
 - **Method**: `POST`
 - **Path**: `/api/ntp/set-time`
 - **Permission**: `ops:time:edit`
@@ -170,7 +173,6 @@
 
 - **Errors**:
   - `1009`: 时间格式不合法（必须是 RFC3339 字符串）
-  - `1201`: 当前处于 NTP 模式，不支持手动设置时间
   - `1205`: 系统时间设置失败
 
 ### 3.6 内部同步状态查询 (C++ / Webhook 用)
@@ -189,3 +191,13 @@
     "message": "ok"
   }
   ```
+
+---
+
+## Changelog
+
+### 2026-08-23: set-time 自动切换 manual 模式（契约修订 v2）
+
+- `POST /api/ntp/set-time` 语义修订：设时成功后**自动将配置模式切换并持久化为 `manual`**，作为从 NTP 自动对时切换到手动配置的官方途径（与 design.md 数据流表一致）。
+- **删除**错误码 `1201`（当前处于 NTP 模式，不支持手动设置时间）——手动设时不再受当前模式限制。`errno.CodeNTPManualNotAllowedInNTPMode` 常量保留但不再使用（避免破坏既有错误码编号）。
+- 错误码 `1205`（系统时间设置失败）与 `1009`（时间格式不合法）保持不变。

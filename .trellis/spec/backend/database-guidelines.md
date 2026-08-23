@@ -46,6 +46,87 @@
 - **破坏性变更**：必须评审批准并经过全量数据升级验证。
 - **禁止项**：禁止在 API 启动中写库补表或补数据；禁止把数据回填写进 `seed.go`。
 
+## 对时配置与增量权限迁移契约
+
+### 1. Scope / Trigger
+
+- **Trigger**：新增 `system_configs` JSONB 配置、NTP 系统执行器和 Ops 时间菜单时适用。
+- **Scope**：数据库事实来源由 `system_configs` 保存；系统命令由 `ntp.Executor` 执行；API 不在启动时建表或 seed。
+- **Why**：避免数据库状态、系统时钟状态和前端 API 契约各自漂移。
+
+### 2. Signatures
+
+- 数据库：`system_configs(key VARCHAR(64) UNIQUE, value JSONB NOT NULL, remark VARCHAR(255))`；`key = 'system:time'`。
+- 仓储：`GetByKey(ctx, key) (*model.SystemConfig, error)`、`SetByKey(ctx, key, value, remark) error`；写入使用 `ON CONFLICT (key)` 更新配置值、备注和 `updated_at`。
+- API：`GET /api/ntp/config`、`PUT /api/ntp/config`、`GET /api/ntp/status`、`POST /api/ntp/sync`、`POST /api/ntp/set-time`、`GET /api/ntp/synced`。
+- 执行器：`ApplyNTP`、`DisableNTP`、`SyncNow`、`SetSystemTime`、`GetStatus`；生产平台不可用时使用返回错误的 unavailable executor，不得伪造 Mock 成功。
+
+### 3. Contracts
+
+- `system:time` 的 JSON 结构为 `{ "mode": "ntp"|"manual", "servers": string[] }`；NTP 模式必须有至少一个非空服务器。
+- `000007_add_system_configs` 创建表和默认配置；`000008_seed_ops_time` 幂等创建 `Ops`、`Time`、`ops:time:read`、`ops:time:edit`，并绑定 `super` 角色。
+- `POST /api/ntp/set-time` 成功后必须停用 NTP，并将配置模式持久化为 `manual`；调用者无需先切换模式。
+- migration 必须通过 `go run ./cmd/migrate up` 执行，重复执行无变化；`down` 必须按版本逆序移除本次对象。
+- `UpdateConfig` 保存的是期望配置：执行器应用失败时接口返回错误，但保留已校验的数据库配置，后续 `ReplayOnBoot` 负责重试；状态接口仍以执行器的实时状态为准。
+- macOS 的 `systemsetup` 只支持一个网络时间服务器；适配器使用列表首项作为当前服务器，同时保留完整列表以便跨平台迁移，不得把首项以外的服务器当作已在 macOS 生效。
+- 所有 API 错误仍由统一 `{code, data, message}` 中间件输出，handler 不拼接响应体。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| mode 不是 `ntp` 或 `manual` | `CodeNTPInvalidMode`（1204） |
+| NTP 模式服务器列表为空 | `CodeNTPServersEmpty`（1203） |
+| 服务器含控制字符或内部空白 | `CodeInvalidParam`（1009） |
+| 手动模式触发 NTP 同步 | `CodeNTPSyncNotAllowedInManualMode`（1202） |
+| NTP 应用或立即同步失败 | `CodeNTPSyncFailed`（1206） |
+| 执行器查询/停用不可用 | `CodeNTPExecutorUnavailable`（1207） |
+| 系统设时失败 | `CodeNTPSetTimeFailed`（1205） |
+| 设时成功但 manual 配置持久化失败 | `CodeInternal`（1500），不得返回成功 |
+
+### 5. Good / Base / Bad Cases
+
+- **Good**：先在 service 层规范化并校验服务器，再通过 repository 写入 JSONB；成功设时后写入 `manual`；启动时由 `ReplayOnBoot` 重放数据库配置。
+- **Base**：数据库中没有 `system:time` 时返回代码默认 NTP 配置；`servers: null` 读取为空列表，不能绕过 NTP 模式非空校验。
+- **Bad**：将用户输入直接拼入配置文件、在无系统工具时退回成功的内存 Mock、或只更新数据库而把执行器失败返回为成功。
+
+### 6. Tests Required
+
+- SQLite repository/service 测试：断言 JSONB 字符串往返、upsert 更新、非法 mode、空服务器、控制字符/内部空白和设时持久化失败。
+- Executor 测试：断言 chrony/timesyncd 状态解析、RFC3339 设时参数和 unsupported 平台返回错误；测试替身不得执行真实系统时钟修改。
+- API 测试：断言六个 endpoint 的 method/path、统一响应 envelope、1202/1203/1204/1205/1206/1207 错误映射及认证/权限注册。
+- PostgreSQL 验证：临时库执行 migration up、重复 up、down；断言 `system_configs` 默认行、Ops/Time 菜单、两个按钮权限和 `super` 绑定。
+
+### 7. Wrong vs Correct
+
+错误：
+
+```go
+if _, err := exec.LookPath("chronyc"); err != nil {
+    return NewMockExecutor() // 生产环境伪造系统已成功对时
+}
+```
+
+正确：
+
+```go
+return newUnavailableExecutor("no supported Linux NTP tool found")
+```
+
+错误：
+
+```go
+// API 启动时直接 AutoMigrate/Seed
+model.AutoMigrate(db)
+model.Seed(db)
+```
+
+正确：
+
+```bash
+go run ./cmd/migrate up
+```
+
 ---
 
 ## 命名约定

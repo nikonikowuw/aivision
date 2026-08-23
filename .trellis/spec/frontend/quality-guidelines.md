@@ -51,6 +51,13 @@ Lint/格式化/类型检查**已由 lefthook 在 pre-commit 自动强制执行**
   快速（`--dom` happy-dom）。
 - 完成前端工作前 `pnpm check` 流水线必须通过。
 
+### 并行测试隔离
+
+- 测试写入外部化单例或共享状态（例如 `globalShareState`）后，必须在同一同步区间内恢复默认值；不能依赖测试文件串行执行。
+- 使用 Vue Test Utils 挂载组件的测试必须在 `afterEach` 卸载 wrapper；卸载后仍有异步 watcher、校验或 debounce 时，需等待其完成，避免任务泄漏到下一个测试。
+- 异步校验、提交回调或 DOM 更新不能只依赖一次 `flushPromises` 的时序假设；最终断言使用 `vi.waitFor` 等待可观察结果。
+- 不得通过全局关闭文件并行（如 `fileParallelism: false`）掩盖共享状态或异步清理问题；应在产生污染的测试边界恢复状态。
+
 ---
 
 ## 代码评审检查清单

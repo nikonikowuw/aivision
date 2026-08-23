@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { getLogDetailApi, getLogPageApi } from '#/api';
+import { translateI18nKey } from '#/utils/i18n';
 
 function getTodayRange(): [string, string] {
   const startOfDay = dayjs().startOf('day').format('YYYY-MM-DDTHH:mm:ssZ');
@@ -24,17 +25,7 @@ const currentDetail = ref<LogApi.LogItem | null>(null);
 
 function formatAction(action?: string) {
   if (!action) return '-';
-  if (
-    action.startsWith('system.') ||
-    action.startsWith('routes.') ||
-    action.startsWith('auth.')
-  ) {
-    const translated = $t(action);
-    if (translated && translated !== action) {
-      return translated;
-    }
-  }
-  return action;
+  return translateI18nKey(action);
 }
 
 const [DetailModal, detailModalApi] = useVbenModal({

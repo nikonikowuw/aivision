@@ -44,6 +44,11 @@ const (
 	resetPasswordPath    = "/reset-password"
 	batchRoutePath       = "/batch"
 	batchStatusRoutePath = "/batch-status"
+	ntpRoutePath         = "/ntp"
+	configRoutePath      = "/config"
+	syncRoutePath        = "/sync"
+	setTimeRoutePath     = "/set-time"
+	syncedRoutePath      = "/synced"
 )
 
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
@@ -60,6 +65,7 @@ type Deps struct {
 	UserHandler         *api.UserHandler
 	AuthHandler         *api.AuthHandler
 	FileHandler         *api.FileHandler
+	NTPHandler          *api.NTPHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -192,6 +198,22 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+pageRoutePath, "system:log")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+oplogRoutePath+idRoutePath, "system:log")
+
+		ntpGroup := apiGroup.Group(ntpRoutePath)
+		{
+			ntpGroup.GET(configRoutePath, deps.NTPHandler.GetConfig)
+			ntpGroup.PUT(configRoutePath, deps.NTPHandler.UpdateConfig)
+			ntpGroup.GET(statusRoutePath, deps.NTPHandler.GetStatus)
+			ntpGroup.POST(syncRoutePath, deps.NTPHandler.SyncNow)
+			ntpGroup.POST(setTimeRoutePath, deps.NTPHandler.SetTime)
+			ntpGroup.GET(syncedRoutePath, deps.NTPHandler.IsSynced)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+ntpRoutePath+configRoutePath, "ops:time:read")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+ntpRoutePath+configRoutePath, "ops:time:edit")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+ntpRoutePath+statusRoutePath, "ops:time:read")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+ntpRoutePath+syncRoutePath, "ops:time:edit")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+ntpRoutePath+setTimeRoutePath, "ops:time:edit")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+ntpRoutePath+syncedRoutePath, middleware.PermCodeAuthenticated)
 	}
 
 	return engine

@@ -1,4 +1,4 @@
-import { $t } from '@vben/locales';
+import { translateI18nKey } from './i18n';
 
 /**
  * translateMenuLabel 解析后端存入的 i18n key（如 system.user.addUser / routes.system.user），
@@ -6,11 +6,7 @@ import { $t } from '@vben/locales';
  */
 function translateMenuLabel(value?: string) {
   if (!value) return '';
-  if (value.startsWith('system.') || value.startsWith('routes.')) {
-    const translated = $t(value);
-    if (translated && translated !== value) return translated;
-  }
-  return value;
+  return translateI18nKey(value);
 }
 
 export { translateMenuLabel };

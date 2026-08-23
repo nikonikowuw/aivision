@@ -11,5 +11,9 @@
     "analytics": "分析页",
     "workspace": "工作台",
     "title": "概览"
+  },
+  "ops": {
+    "ops": "运维管理",
+    "time": "时间管理"
   }
 }

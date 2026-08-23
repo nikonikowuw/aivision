@@ -2,8 +2,9 @@
 
 状态：`draft`
 对应 PRD：`prd.md`
-基准代码：`dev` 分支 `e2ab18f` + bonding child M1 已落盘的类型扩展
-（`types.go` 的 `NetworkMode`/`BondPlan`/`SupportedModes` 为未提交工作区状态）
+基准代码：`dev` 分支 `353be48`。`NetworkMode`、`BondPlan`、`BondTopology`、
+`Capabilities.SupportedModes` 与 LACP DTO 已提交；仍在进行的 LACP child 只拥有
+业务层/前端与台架接线工作，本任务是其真实 Linux 平台实现的唯一所有者。
 
 ## 1. 设计目标与边界
 
@@ -38,12 +39,26 @@ netconfig/
 ├── linux_bond.go           # //go:build linux   bond/LACP 原语 + Probe 检测
 ├── manager_darwin.go       # //go:build darwin && cgo   重写
 ├── bridge_darwin.{c,h}     # 扩展（函数清单见 §12.1）
-└── integration_test/       # //go:build linux   netns 特权集成测试
+└── integration_test/       # //go:build linux && netconfig_integration；netns 特权集成测试
 ```
 
 依赖新增：`github.com/vishvananda/netlink`、`github.com/vishvananda/netns`（仅测试）、
 `github.com/insomniacslk/dhcp`。全部为纯 Go，Linux 主产物保持 `CGO_ENABLED=0`
 可构建；darwin 变体需 `CGO_ENABLED=1`。
+
+**M0 依赖闭合**：当前 `gateway_linux.go` 已实际导入 DHCP，但其传递的
+`github.com/u-root/uio` 与 `github.com/mdlayher/packet` 尚无 `go.sum` 记录，现状的
+`CGO_ENABLED=0 GOOS=linux` 构建会失败。真实化代码开始前，以最小的 module 修复提交
+执行 `go mod tidy`（使 DHCP 成为直接依赖并写全校验和），随后使用 Dockerfile 同款三个
+`cmd` build 验证。`netconfig_test.go:622` 的已提交 `=======` 冲突标记也在同一 M0
+修复提交删除；这两项是恢复既有质量基线，不属于平台功能设计。
+
+**构造参数收口**：永久 MAC 锚点必须位于既有 root-only `state_dir`，因此把当前的
+`NewPlatform(profilePath, fakePlatform)` 改为
+`NewPlatform(profilePath, stateDir, fakePlatform)`，并同步 Linux 构造函数与非 Linux
+fallback 的签名。`networkService` 已持有 `cfg.Network.StateDir`，直接注入；不新增配置键、
+全局变量或第二个状态存储。`anchors.json` 与 `factory.json`/`last-valid.json` 同目录，
+但保持独立、原子写入的文件格式。
 
 删除项：`NewLinuxPlatform` 内部构造的 fake 兜底实例（`manager_linux.go:23-26`）——
 真实路径失败就返回错误，不再回落内存态；`Discover` 里 `len(list)==0` 回落 fake 的
@@ -77,10 +92,11 @@ netconfig/
 
 ### 3.2 MAC 锚点（`<state_dir>/anchors.json`）
 
-首配按名称定位接口后，立即持久化 `{name → permanent MAC}`。后续每次 Probe/Read：
-MAC 不匹配 → 该接口 `Ownership=conflict` 并拒绝写入（防插槽混淆）。虚拟接口
-（veth/bridge/tun）通过 `/sys/class/net/<n>/device` 缺失 + `ARPHRD` 类型排除在
-候选之外。
+首配按名称定位接口后，立即持久化 `{name → permanent MAC}`。永久 MAC 只能取
+netlink `LinkAttrs.PermHWAddr`；该属性为空时不以可变的 `HardwareAddr` 冒充永久身份，
+而是将接口标记为不可证明、拒绝接管。后续每次 Probe/Read：MAC 不匹配 → 该接口
+`Ownership=conflict` 并拒绝写入（防插槽混淆）。虚拟接口（veth/bridge/tun）通过
+`/sys/class/net/<n>/device` 缺失 + `ARPHRD` 类型排除在候选之外。
 
 ### 3.3 已知管理器检查（best-effort）
 
@@ -127,6 +143,9 @@ MAC 不匹配 → 该接口 `Ownership=conflict` 并拒绝写入（防插槽混�
   同步路径的优化。
 - DHCP 接口：步骤 2/4 由租约管理器代执行（§7），`Apply` 只负责切换模式并等待
   首个租约（有界 10s，超时判 apply 失败触发整体回滚——诚实优于半生效）。
+- 平台错误保持哨兵原因链：`ErrOwnershipConflict`、`ErrExternalDrift`、
+  `ErrUnsupported`、`ErrApplyFailed`/LACP 内核拒绝。service 层增加一个私有映射点，
+  分别复用既有 1105、1110、1106、1107/1114；不得将所有真实平台失败压成 1107。
 
 ## 6. Linux Restore 幂等回滚
 
@@ -174,6 +193,9 @@ Idle ──carrier up──▶ InitReboot ──ACK──▶ Bound ──T1─�
 - 变更与本进程 `Native.Data` 登记的期望元组比对：外来变更 → 置原子 drift 标志 →
   后续 `Apply`/`Restore` 直接拒绝（错误映射到既有 1110 语义）→ overview 呈现
   `StateOwnershipConflict`。
+- `Read` 将受影响接口标记为 `OwnershipConflict`；service 的 overview 从快照接口
+  所有权推导 `StateOwnershipConflict`，所以仍能读取诊断状态，但所有写路径在平台层
+  被拒绝。该推导不增加 `Platform` 的并行状态查询接口。
 - 解除路径（本轮，不新增端点）：① 外部变更消失（观测回归期望态）自动清除；
   ② 服务重启触发全量重放 reconcile，成功即清除。HTTP 显式接管端点列入 Deferred
   （需新权限码，超出「不新增端点」边界）。
@@ -181,12 +203,12 @@ Idle ──carrier up──▶ InitReboot ──ACK──▶ Bound ──T1─�
 
 ## 10. 启动序列与确认配置重放
 
-既有 `Start`（`network.go:80-135`）五步之间插入一步，其余不动：
+既有 `Start` 的启动行为收敛为以下顺序：
 
 ```
-1 Init → 2 Probe → 3 Read → 4 工厂基线初始化
-→ 4.5【新增】确认配置重放 reconcile
-→ 5 pending 回滚（既有） → ready
+1 Init → 2 Probe（失败即启动失败） → 3 Read（失败即启动失败）
+→ 4 工厂基线初始化 → 5 pending 回滚
+→ 6【新增】确认配置重放 reconcile → 7 漂移订阅就绪 → ready
 ```
 
 reconcile（`service/network.go` 新增私有方法，~40 行）：
@@ -196,39 +218,47 @@ reconcile（`service/network.go` 新增私有方法，~40 行）：
   gateway/dns 任一不符即视为漂移）→ 不符则 `platform.Apply(lastValid.Plan)` 整体
   收敛；符合则跳过。
 - Apply 失败 → 尝试 `Restore(factory.Snapshot)`（08-22 R6.5 两级恢复），仍失败 →
-  接口标记 `StateRecoveryFailed` 并拒绝写入。
-- 顺序理由：放在 pending 回滚**之前**会让刚恢复的 before 又被 last-valid 覆盖产生
-  竞争；放在之后则语义为「回滚完成后向确认基线收敛」，且刚回滚的内容通常等于
-  last-valid，reconcile 空转，代价一次 Read。
+  保留 pending/last-valid 证据，接口标记 `StateRecoveryFailed` 并拒绝写入；若仍可
+  读取快照则以只读降级状态启动，不能伪造 ready。
+- pending 回滚失败同样不得清除 pending 文件。启动继续与否遵循同一原则：可读时暴露
+  `StateRecoveryFailed` 并 fail closed 写入；不可读时返回启动错误。顺序放在 reconcile
+  之前，避免刚恢复的 `Before` 被 `last-valid` 覆盖产生竞争；多数成功回滚后 reconcile
+  会空转。
 
 ## 11. Bond 原语与能力检测（`linux_bond.go`）
 
-### 11.1 原语（输入直接对齐 `types.go` 的 `BondPlan`）
+### 11.1 内部原语与单一模式事实来源
 
-```go
-type BondPrimitives interface {
-    BondCreate(plan BondPlan, bondName string) error      // IFLA_INFO_KIND=bond + MODE/MIIMON/PRIMARY
-    BondDestroy(bondName string) error                    // LinkDel
-    SlaveAttach(bondName, slaveName string) error         // slave IFLA_MASTER=bondIfindex
-    SlaveDetach(slaveName string) error                   // IFLA_MASTER=0
-    BondRead(bondName string) (*BondTopology, error)      // 含 ActiveSlaveID（IFLA_BOND_ACTIVE_SLAVE）
-}
-```
+bond 不是额外的 `Platform` 公开接口。`LinuxPlatform` 在其既有 `Apply(ctx, HostPlan)` /
+`Restore(ctx, HostSnapshot)` 内部调用私有的 bond reconcile helper，输入始终是完整
+`HostPlan`：
 
-- 全部经 `netlink.LinkModify`/`netlink.Bond` 结构化属性，零 shell/sysfs 字符串。
-- mode 4（802.3ad）属性族同批交付（AD_SYS_PRIORITY 等）， lacp child 只消费。
-- bond 名固定 `bond0`（与 bonding child D1 一致），创建前校验名未被占用。
+- `HostPlan.Mode` 是 active-backup、LACP 或退出 bond 的**唯一**模式事实来源；
+  `HostPlan.Bond` 只携带 slave、primary、miimon、hash 与 LACP rate 参数。mode 与 bond
+  参数组合不合法时在平台边界拒绝，不能从 `BondPlan` 的字段反推模式。
+- active-backup 使用 `PrimarySlaveID` 与 `Miimon`；LACP 使用封闭的
+  `XmitHashPolicy` 与 `LACPRate`。现有 LACP child 未填 `Miimon` 时，平台将零值规范化为
+  `DefaultBondMiimon`，以维持固定 100ms 的现有产品约束，而不修改 HTTP 契约或制造
+  第二套服务层默认值。
+- 不在 `BondPlan` 中的属性（包括 `AD_SYS_PRIORITY`）保持内核默认值，本任务不暗中扩大
+  公共配置模型。只下发当前封闭 DTO 明确要求的属性；后续要开放更多 bond 参数必须先回到
+  规划阶段扩展 `BondPlan` 与 API 契约。
+- 创建、删除、slave attach/detach 和回读均经 `netlink.Bond` / Link master 属性完成，
+  只操作 ifindex 和本系统创建的固定 `bond0`；零 shell、sysfs 写入或 `/proc/net/bonding`
+  文本解析。回读转换为既有 `BondTopology`/LACP DTO。
 
 ### 11.2 Probe 能力检测
 
-1. `unix.Prctl(CAP_GET...)` 或等效 capset 自查 `CAP_NET_ADMIN`+`CAP_NET_RAW`；
-2. bonding 模块可用性：`/sys/module/bonding` 存在，缺失时尝试 ` AF_ALG` 式内核
-   自动加载不可行——记录 `supportedModes` 摘除原因，fail closed；
-3. 内核版本 ≥ 4.x 下 `IFLA_BOND_*` 属性全集按版本表裁剪（design 附录维护最小版本
-   矩阵：active-backup ≥ 3.x、802.3ad sys priority ≥ 4.x）。
-
-检测结果供 `Capabilities()`（bonding child M2 引入的方法）动态声明
-`supportedModes`；接线归属按合并顺序（PRD D7）。
+1. 基础 Probe 成功前，`Capabilities()` 只声明 `multi-address`。基础 Probe 校验 root 与
+   `CAP_NET_ADMIN`/`CAP_NET_RAW`、Profile、resolver 所有权和最小 netlink 读能力；成功后
+   声明 `gateway`，满足已归档 gateway child 对真实接口 ID、可写性和权限探测的前置契约。
+   DHCP server 的 socket/冲突探测仍由 `GatewayRuntime` 在模式提交时执行，失败按既有
+   事务错误处理，不能在 capability 阶段伪造通过。
+2. bonding 模块和 active-backup 所需属性可验证时才追加 `active-backup`；LACP 的 mode 4、
+   hash/rate 写入及 aggregator/actor/partner 状态读取也可验证时才追加
+   `lacp-aggregation`。三种能力互相独立，任一不确定即不声明。
+3. 不自动加载 bonding 模块、不通过 sysfs 探测或写入属性。检测结果存入平台实例，供
+   `Capabilities()` 只读返回；`DarwinPlatform` 始终只声明 `multi-address`。
 
 ## 12. macOS SystemConfiguration 实现
 
@@ -283,14 +313,21 @@ set → commit+apply → Dynamic Store 验证。幂等：字典级 set 天然幂
 
 ### 13.1 Linux netns 集成套件（`integration_test/`）
 
-- 环境 guard：`//go:build linux` + 运行时检查（root 且 `NETCONFIG_NETNS_TEST=1`，
-  否则 `t.Skip` 并输出显式原因行供 CI 断言）。
+- build tag 固定为 `netconfig_integration`，配套 `app/Makefile` 目标
+  `test-netconfig-integration`；目标只运行
+  `NETCONFIG_NETNS_TEST=1 sudo -E go test -tags=netconfig_integration ./internal/pkg/netconfig/...`。
+  普通 `make test` 不带该 tag，继续不需要特权。
+- 环境 guard：`//go:build linux && netconfig_integration` + 运行时检查（root 且
+  `NETCONFIG_NETNS_TEST=1`，否则 `t.Skip` 并输出显式原因行供 CI/外部 pipeline 断言）。
 - 骨架：程序化 `netns.New()` + veth 对 + 把测试进程之一线程迁入 ns
   （`vishvananda/netns`），DHCP server 用 `insomniacslk/dhcp server4` 绑 ns 内接口。
 - 用例 ↔ AC 映射：AC1 静态往返 / AC2 租约全周期（NAK、双 Offer、T1 快进——时钟注入）
   / AC3 外部注入地址（测试内裸 netlink 写）→ drift / AC5 杀进程模拟崩溃 → 重启重放
   / AC6 bond 原语 / AC7 逐故障注入（netlink 调用包装层注入点）。
 - 时钟：租约计时器经接口注入 `clock`，测试快进 T1/T2 不真等。
+- 仓库当前没有项目自有 CI workflow：有标记 self-hosted privileged Linux runner 时，
+  同任务新增 job 执行该 Makefile target；没有 runner 时 target 与外部 pipeline 接入说明
+  仍交付，但 AC1–AC7 不得标为 CI 已通过。
 
 ### 13.2 单测与手动
 
@@ -302,22 +339,28 @@ set → commit+apply → Dynamic Store 验证。幂等：字典级 set 天然幂
 
 | 产物 | 构建 | 说明 |
 | --- | --- | --- |
-| Linux api 二进制 | `CGO_ENABLED=0 GOOS=linux` | 现状不变 |
-| macOS daemon | `CGO_ENABLED=1` launchd plist | 新增；文档给 LaunchDaemon 样例（root、KeepAlive） |
+| Linux api 二进制 | `CGO_ENABLED=0 GOOS=linux` 的 Dockerfile 同款 `api`、`migrate`、`bootstrap` 三个 command build | 现状容器构建矩阵；不使用 `CGO_ENABLED=0 go test ./...` 代替常规测试 |
+| 宿主机常规测试 | `make vet` + `make test`（本机 cgo 可用） | 测试使用 sqlite3，保留 cgo；这是业务/fake 回归门禁 |
+| Linux 特权集成 | `make test-netconfig-integration` | root + `NETCONFIG_NETNS_TEST=1` + `netconfig_integration` tag；有自托管 runner 时纳入项目 CI |
+| macOS daemon | 原生 macOS 上 `CGO_ENABLED=1`，带 SDK/C compiler | cgo bridge 不能作为非 macOS 的交叉 test 门禁；新增 launchd plist（root、KeepAlive） |
 | systemd unit | `AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW` + `User=root` | 替代裸 root 运行的加固选项 |
 | Profile 样例 | `deploy/network-profile.example.json` | 随部署文档 |
 
-容器形态不动（08-22 R5.9）；CI 增加 privileged job 跑 netns 套件。
+`bridge_darwin.c/.h` 已在 Linux `CGO_ENABLED=0` 选择中被 Go 忽略；保留与
+`manager_darwin.go` 相同的 package 归属即可，不为了表面一致性额外添加无收益的 C tag。
+容器形态不动（08-22 R5.9）；若有合格 runner，CI 增加 privileged job 跑 netns 套件。
 
 ## 15. 风险与开放问题
 
 | 风险 | 缓解 |
 | --- | --- |
-| `Start` 插入 reconcile 是对「业务层零改动」承诺的唯一破例 | §10 已论证必要性；改动为纯新增私有方法，既有五步控制流不动 |
+| `Start` 需要把真实平台错误变为启动失败，并把 pending 回滚置于 reconcile 前 | §10 定义的顺序保留 pending/last-valid 证据，避免恢复竞争；新增聚焦 service 测试覆盖失败与只读降级 |
 | netlink 订阅在 ns 销毁时的句柄泄漏 | 订阅 goroutine 绑 context，Close 级联退出（集成用例覆盖） |
 | macOS `SCPreferencesLock` 死锁/忙 | 有界重试 ×3 后放弃本次事务，不阻塞其他接口 |
 | bond 属性版本矩阵不准 | Probe 版本表保守起步，目标机验收（AC9/AC10）实测修订附录 |
 | 接口 ID 从 `linux:name` 改为 `name` 造成旧状态失配 | 一次性走首次接管重建基线；部署说明标注 |
 
-Open Questions：无（四项定位/范围/排期/收尾决策已于 2026-08-23 由用户确认，
-记录于 prd.md「已确认决策记录」）。
+Open Questions：特权 netns suite 是否在本任务新增项目 CI workflow，取决于用户确认是否有
+具备 root、`CAP_NET_ADMIN`、`CAP_NET_RAW` 的 self-hosted Linux runner；详细选项与验收
+口径见 `prd.md` 的「Planning Gate」。除此之外，定位、范围、排期和收尾决策均已于
+2026-08-23 由用户确认。

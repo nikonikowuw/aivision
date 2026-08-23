@@ -1,1 +1,8 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/index.md","reason":"Go 后端目录、错误、日志、质量和配置约定的入口。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"真实平台改动的 gofmt、vet、测试、命名常量与 DI 质量门禁。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"复用 1105/1110/1106/1107/1114 时的原因链与 API 错误语义。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"DHCP、漂移、启动恢复等后台事件的结构化 zap 日志边界。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"平台快照、状态文件、service 和 overview 间的数据流与失败边界。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/research/linux-network-stack.md","reason":"Linux rtnetlink、DHCP、DNS、所有权与 netns 测试的已确认研究。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/research/macos-systemconfiguration.md","reason":"SystemConfiguration、Dynamic Store、cgo 边界与 macOS 手动验收依据。"}
+{"file":".trellis/tasks/08-23-linux-platform-realization/research/baseline-and-contracts.md","reason":"当前代码基线、上游 API 复核和规划修正。"}

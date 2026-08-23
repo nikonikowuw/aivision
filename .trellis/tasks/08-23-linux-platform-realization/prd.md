@@ -38,6 +38,17 @@ API 契约与前端**零改动**（各 child 的 D6/D8 已按此未来设计）�
 - `08-22-network-configuration` 完成并归档。其 PRD 中依赖真实平台的条目
   （R5.4–R5.9、R6.1–R6.5 及 AC9/AC11/AC12/AC14）**移交本任务继承**；08-22 归档时
   需补记移交说明，保证每条需求只有一个认领方。
+- **基线完整性门禁（2026-08-23 复核）**：`dev` 的
+  `app/internal/pkg/netconfig/netconfig_test.go:622` 含已提交的 `=======` 冲突标记，
+  `go test ./internal/pkg/netconfig` 无法解析；Linux 选择 `gateway_linux.go` 时还因
+  `github.com/insomniacslk/dhcp` 的 `uio`/`packet` 传递依赖缺少 `go.sum` 记录而无法
+  `CGO_ENABLED=0 GOOS=linux` 构建。这两项是本任务 M0 的必要修复，不属于产品行为
+  扩展，必须在任何平台真实化代码之前通过独立基线修复提交收敛。
+- **CI 门禁待确认**：仓库当前没有项目自有 CI workflow，`app/Makefile` 也没有特权测试
+  target。本任务必定交付 `make test-netconfig-integration`（root +
+  `NETCONFIG_NETNS_TEST=1` + `netconfig_integration` tag）；是否同时新增面向自托管
+  privileged Linux runner 的项目 CI workflow，取决于当前基础设施可用性，见本轮
+  Planning Gate。
 - **排期：与本任务之外的三个模式 child 并行**（已确认）。三个 child 的业务层在
   fake 上自足；本任务的 bond 原语（R7）只影响其真实验收解锁时点。
 - `08-23-active-backup-bonding` 若已合并，其 `BondPlan`/`BondTopology` 类型与
@@ -52,7 +63,7 @@ API 契约与前端**零改动**（各 child 的 D6/D8 已按此未来设计）�
   `Fingerprint`/`IPv4.Mode` 为硬编码（`manager_linux.go:55-99`）；`Probe` 恒
   `nil`；`NewLinuxPlatform` 在 `fake_platform: false` 时也内部构造 fake 兜底。
 - 技术路线已由 08-22 research 定案
-  （`.trellis/tasks/08-22-network-configuration/research/linux-network-stack.md`）：
+  （`.trellis/tasks/archive/2026-08/08-22-network-configuration/research/linux-network-stack.md`）：
   - rtnetlink 首选 `github.com/vishvananda/netlink`（Apache-2.0），只操作受管
     ifindex 与精确地址/路由元组，禁止 flush 全局状态；
   - DHCPv4 首选 `github.com/insomniacslk/dhcp` 的 `dhcpv4/nclient4`（BSD-3-Clause），
@@ -71,7 +82,7 @@ API 契约与前端**零改动**（各 child 的 D6/D8 已按此未来设计）�
 ### macOS
 
 - 技术路线已由 08-22 research 定案
-  （`.trellis/tasks/08-22-network-configuration/research/macos-systemconfiguration.md`）：
+  （`.trellis/tasks/archive/2026-08/08-22-network-configuration/research/macos-systemconfiguration.md`）：
   - 配置面 `SCPreferences`/`SCNetworkConfiguration`，生效面 `SCDynamicStore`，
     二者不可混用；实际状态只能以 Dynamic Store 回读为准；
   - 持久标识用 `SCNetworkServiceGetServiceID`；service 删除重建后 ID 可能变化，
@@ -122,13 +133,18 @@ errno、权限码、菜单 migration 与 HTTP 端点。
   INIT-REBOOT → 重新 DORA，boot ID 变化视为重启边界；macOS 确认配置已在
   SCPreferences 持久层，重启由系统加载，本系统启动时校验 last-valid 与实际状态
   一致性即可。未完成 pending 事务先回滚（复用既有 `Start` 启动恢复编排）。
-- **D7 capability 接线点**：`LinuxPlatform.Capabilities()`（bonding child 引入）
-  基于 `Probe` 的内核能力检测结果动态声明——bond 属性探测失败则不声明
-  `active-backup`，fail closed（bonding child R2.3 钩子在本任务落地）。合并顺序
-  决定接线方：本任务后合并则由本任务接线，反之由 bonding child 接线。
+- **D7 capability 接线点**：`LinuxPlatform.Capabilities()` 以已成功的 `Probe` 结果为
+  唯一依据。Probe 前或基础条件（Profile、权限、resolver 所有权、netlink 可读）失败时
+  仅声明 `multi-address`；基础 Probe 成功后声明 `gateway`，因为归档的 gateway child
+  已完成其独立 runtime，且它只缺真实接口 ID、可写性和 root 权限这一平台前置条件。
+  `gateway` 的 DHCP socket/冲突探测仍由 `GatewayRuntime` 在模式提交时执行，不能把它的
+  运行时失败伪装成 capability 成功。`active-backup` 与 `lacp-aggregation` 分别只在
+  所需 bond 创建、属性写入和状态读取均可验证后加入；任一不确定即摘除对应模式。
   `DarwinPlatform` 对高级模式恒返回仅 `multi-address`（modes parent D2）。
 - **D8 测试分层**：业务层测试继续跑 FakePlatform（零回归锚点）；Linux 平台层新增
-  特权集成测试（netns + veth + 内嵌 DHCP server，build tag 隔离）进 CI 门禁；
+  特权集成测试（netns + veth + 内嵌 DHCP server，`netconfig_integration` build tag
+  隔离）与 `make test-netconfig-integration`。有合格 self-hosted privileged runner 时
+  它进入项目 CI 门禁；没有时交付 target 和外部 pipeline 接入说明，相关 AC 保持未验收。
   macOS 真实 commit/apply 不能进自动化 CI，拆出无副作用的字典转换/错误映射单测，
   端到端在专用 macOS 机器上手动执行（AC 标注 `[macOS]`）。
 - **D9 容器形态不变**：默认容器部署继续不支持网络写入且必须 fail closed
@@ -136,8 +152,21 @@ errno、权限码、菜单 migration 与 HTTP 端点。
   样例 + macOS launchd daemon 说明；macOS 二进制构建矩阵需 `CGO_ENABLED=1`
   变体（不影响现有 `CGO_ENABLED=0` Linux 容器产物）。
 - **D10 cgo 边界（macOS）**：bridge 只暴露窄的结构化 C 函数，不向 Go 返回未托管
-  CF 对象、不接受命令/文件路径/脚本文本；CF/Go 指针不跨调用边界长期存活；
-  每次 `SCError()` 显式处理；`SCPreferencesLock` 忙碌重试有界。
+  CF 对象、不接受命令/文件路径/脚本文本；CF/Go 指针不跨调用边界长期存活；每次
+  `SCError()` 显式处理；`SCPreferencesLock` 忙碌重试有界。
+- **D11 构建与测试矩阵（2026-08-23 复核）**：Linux 部署产物保持纯 Go；门禁使用
+  `app/Dockerfile` 同款的 `CGO_ENABLED=0 GOOS=linux` 三个 command build。常规
+  `make test` 保持宿主机 cgo 环境，因为测试依赖 `gorm.io/driver/sqlite`/
+  `mattn/go-sqlite3`，不能以 `CGO_ENABLED=0 go test ./...` 代替。macOS bridge 只在
+  原生 `darwin && cgo`（SDK + C compiler 可用）下编译/测试，不能把 cgo 交叉测试
+  伪装成通用 CI。现有 `bridge_darwin.c/.h` 在 Linux 选择中已被 Go 忽略，不额外引入
+  无收益的 build tag 改动。
+- **D12 特权集成门禁（待用户确认）**：无论 CI 承载方式如何，本任务新增稳定的
+  `make test-netconfig-integration`，只在 Linux root 且
+  `NETCONFIG_NETNS_TEST=1` 时运行 `-tags=netconfig_integration`。若有标记的
+  self-hosted privileged Linux runner，则同任务新增项目 CI workflow 并将 AC1–AC7
+  作为自动门禁；若没有，则 target 与外部 pipeline 接入说明照常交付，但这些 AC 保持
+  未勾选，不能称为 CI 已覆盖。
 
 ## Requirements
 
@@ -179,9 +208,12 @@ errno、权限码、菜单 migration 与 HTTP 端点。
 - R5.1 启动校验：Profile 缺失/非法 → 相关接口 fail closed；非特权进程 → 监听前失败。
 - R5.2 首配持久化永久 MAC；后续 MAC 不匹配 → 拒绝写入并告警。
 - R5.3 已知管理器托管检查（NetworkManager 等 best-effort）；冲突 → 拒绝写入并
-  返回明确业务错误（复用既有 1110 漂移语义）。
+  返回既有 1105 所有权冲突语义；确认由本系统基线之外的地址/路由变更后再使用 1110
+  外部漂移语义，二者均不新增错误码。
 - R5.4 rtnetlink 订阅：受管接口出现非本系统写入的变更 → 漂移标记、拒绝后续写入、
-  告警；提供显式重新接管路径。
+  告警。重新接管不新增 HTTP 端点或权限：外部状态已回归预期时自动清除；若需主动覆盖，
+  root 运维者明确重启服务，启动 reconcile 以 last-valid 收敛，只有成功才清除漂移标记。
+  重启失败保持只读冲突状态与诊断证据。
 
 ### R6 启动恢复与重放
 
@@ -237,7 +269,7 @@ errno、权限码、菜单 migration 与 HTTP 端点。
 - [ ] AC2 `[CI]` netns：内嵌 DHCP server 下 DORA、T1 续约、NAK 后重新 Discover、
       到期清理全通过；非法租约被拒绝安装。
 - [ ] AC3 `[CI]` netns：外部进程追加地址 → 漂移标记置位 → 写入被拒且错误明确；
-      显式重新接管后恢复可写。
+      外部状态回归预期后自动恢复可写，或按 R5.4 的 root 服务重启重新接管路径恢复可写。
 - [ ] AC4 `[CI]` Linux fail-closed 四场景：Profile 缺失 / MAC 不匹配 / symlink
       resolv.conf / 非 root，均阻止写入且可诊断不泄露内部路径。
 - [ ] AC5 `[CI]` 启动重放：预置已确认静态配置与未完成 pending 事务后启动，静态
@@ -257,8 +289,10 @@ errno、权限码、菜单 migration 与 HTTP 端点。
       重启后确认配置保持；service 被外部删除重建时停止写入并报冲突。
 - [ ] AC13 `[macOS]` 主出口迁移：提升新主出口后 Dynamic Store `PrimaryService` 与
       系统 DNS 跟随变化；回滚后旧主出口恢复；scoped route/resolver 不作为对外承诺。
-- [ ] AC14 `make vet`、`make test` 全绿（Linux 部分；macOS cgo 文件交叉编译通过）；
-      无新增 shell 调用、`os/exec` 或 sysfs 字符串写入（安全门禁）。
+- [ ] AC14 `[构建]` M0 后 `make vet`、`make test` 全绿；Dockerfile 同款的
+      `api`、`migrate`、`bootstrap` 三个 `CGO_ENABLED=0 GOOS=linux` build 全绿；
+      原生 macOS 的 `darwin && cgo` bridge/manager 编译与无副作用单测通过；无新增
+      shell 调用、`os/exec` 或 sysfs 字符串写入（安全门禁）。
 
 ## Out of Scope
 
@@ -276,12 +310,13 @@ errno、权限码、菜单 migration 与 HTTP 端点。
 
 | Risk | Impact | Planning Response |
 | --- | --- | --- |
-| netns 集成测试需要特权 Linux runner | 普通 CI runner 无 NET_ADMIN；macOS 开发机无法本地执行 | 自托管 runner 或 privileged 容器 job 承载；build tag 隔离，非特权环境跳过并显式报告 |
+| netns 集成测试需要特权 Linux runner | 普通 CI runner 无 NET_ADMIN；macOS 开发机无法本地执行 | 必交付 `make test-netconfig-integration`；有标记 self-hosted runner 时本任务新增 CI workflow 并勾选 AC1–AC7，否则保留为外部 pipeline 待验收项 |
+| 已合并 netconfig 基线无法构建/测试 | 冲突标记与缺失 DHCP checksum 会让任何质量门禁失败 | M0 先独立修复 `netconfig_test.go:622` 与模块依赖闭合，验证常规 test 与 Dockerfile 同款 Linux build 后才开始真实化 |
 | 内核/发行版对 bond netlink 属性支持差异 | 目标机 Probe 失败或行为不一致 | R7.2 Probe fail closed；目标机矩阵明确最低内核版本；rtnetlink 是共同 ABI（research 已论证） |
 | DHCP 状态机隐蔽缺陷导致现场断网 | T1/T2/NAK/重放边界场景 | R9.2 全场景 + 故障注入；失败阈值降级可见；120 秒事务兜底 |
 | 补偿顺序错误留下半配置 | 回滚后状态残留 | R9.3 逐步注入；补偿序在 design.md 成文并逐条对应测试 |
 | 与 bonding child 的 `BondPlan` 契约漂移 | R7 原语与业务层类型不匹配 | D7 明确接线分支；契约以其 design.md 为准并在合并时对齐 |
-| macOS cgo 引入构建矩阵复杂度 | 交叉编译、CI 覆盖缺口 | D9 双产物策略（Linux CGO_ENABLED=0 不变 + darwin CGO_ENABLED=1 变体）；cgo 文件只在 darwin 构建标签内 |
+| macOS cgo 引入构建矩阵复杂度 | 原生 SDK/编译器与手动设备覆盖缺口 | D9 双产物策略（Linux CGO_ENABLED=0 不变 + 原生 macOS `CGO_ENABLED=1` 变体）；cgo 文件只在 darwin 构建标签内，不能用非 macOS 交叉测试代替真实验证 |
 | macOS ServiceID/签名被外部变更 | 配置失配或误覆盖他人配置 | R8.1/R8.3 失配即停、signature 冲突拒绝覆盖；AC12 覆盖 |
 | 专用 mac 手动验收不可重复 | 回归靠人肉 | R9.4 拆无副作用单测最大化自动化；手动项固化成 checklist 并留记录 |
 | 08-22 遗留条目移交不清 | 双头认领或漏认领 | 归档时补记移交说明；本 PRD 已逐条列出继承范围 |
@@ -293,13 +328,29 @@ errno、权限码、菜单 migration 与 HTTP 端点。
 3. 排期与三个模式 child 并行；bond 原语（R7）优先级高于 macOS 里程碑。
 4. 08-22 以「业务层 + fake 交付」收口归档，平台层遗留条目移交本任务（归档时补记）。
 
+## Planning Gate
+
+唯一剩余的用户决策是特权 netns suite 的 CI 承载方式：
+
+- 推荐：本任务新增项目 CI workflow，目标为已存在的自托管 Linux runner 标签
+  `self-hosted`, `linux`, `netconfig-privileged`；该 runner 必须提供 root、
+  `CAP_NET_ADMIN`、`CAP_NET_RAW` 和可创建 network namespace 的内核。这样 AC1–AC7
+  可成为真实自动门禁。
+- 若当前没有这类 runner：本任务只交付 Makefile target 与外部 pipeline 接入说明；
+  实现与普通测试仍完成，但 AC1–AC7 保持未勾选，直到基础设施到位。
+
+其余产品、范围、兼容性、风险和验收决策均已收敛。
+
 ## Artifacts
 
 - `prd.md`：本文件。
-- `design.md`：待编写——rtnetlink 应用/补偿序、DHCP 状态机、Profile schema、
+- `design.md`：已完成——rtnetlink 应用/补偿序、DHCP 状态机、Profile schema、
   漂移订阅、macOS cgo bridge 函数清单与 commit/apply 流程、netns 测试骨架、
   与 `BondPlan` 的对齐契约。
-- `implement.md`：待编写——里程碑（建议顺序：Linux 基础 → bond 原语 → macOS →
-  加固与部署物）与验证命令（含 runner 要求）。
+- `implement.md`：已完成——按 Linux 基础、bond 原语、DHCP/恢复、macOS、加固与部署
+  分阶段实施，并定义各阶段验证与回滚点。
+- `research/baseline-and-contracts.md`：已完成——归档 08-22 研究、当前代码与上游
+  netlink API 的可复现证据，以及规划修正记录。
 - 无 `api.md`：HTTP 契约零变更；`supportedModes` 值变化是运行时数据而非 schema
-  变更，前端已按 bonding child R2.4 泛化渲染。
+  变更，前端已按 bonding child R2.4 泛化渲染。因此这是纯后端/平台实现任务，
+  不适用前后端 API 确认门禁。

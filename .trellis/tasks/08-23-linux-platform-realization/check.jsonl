@@ -1,1 +1,8 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/index.md","reason":"后端完成检查入口。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"gofmt、vet、测试、构造函数和命名常量的检查标准。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"验证既有网络 errno 映射没有被真实平台错误破坏。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"验证后台 DHCP、漂移和恢复日志不泄漏内部细节。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查平台到 service/overview 的状态投影与失败边界。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/research/linux-network-stack.md","reason":"核对 Linux 安全、DNS、DHCP、补偿和集成测试契约。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/research/macos-systemconfiguration.md","reason":"核对 macOS 配置/运行态分离和 cgo 生命周期。"}
+{"file":".trellis/tasks/08-23-linux-platform-realization/research/baseline-and-contracts.md","reason":"核对当前基线修正和不可在普通 CI 宣称完成的验证。"}

@@ -1,0 +1,7 @@
+{"file": "docs/prd/ai-video-analytics-edge-platform-v1.0.md", "reason": "权威需求源。C++ Engine 相关条款：§6.2 进程与通信、§6.3 多平台适配与能力档案、§7.2.3 统一媒体源、§7.4 任务与帧调度/生命周期、§7.5 算法包规范与 C ABI、§7.6 参数配置、§7.7 计算资源、§7.10 目标检测告警、§7.11 图片生命周期、§7.15 设备监控。"}
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/prd.md", "reason": "本任务需求、Key Decisions（D1-D6）、R1-R10 需求项与 AC1-AC18 验收标准。"}
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/design.md", "reason": "分层边界铁律、engine/ 目录布局、帧描述符与算法包 C ABI 草案、适配接口清单、数据流、gRPC 契约、构建依赖策略。"}
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/algo-package-spec.md", "reason": "算法包契约权威草案：dlopen 序列与 RTLD_LOCAL 要求、Library/Instance 两级生命周期、初始化参数结构、能力协商、process 与结果回调、线程模型（单实例串行）、超时语义、错误码表、内存所有权、版本演进规则。M2 实现 SDK 与算法包运行时时必读。"}
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/implement.md", "reason": "M0-M6 里程碑顺序、每步验证点与 AC 映射、验证命令、风险闸门与冻结点。"}
+{"file": ".trellis/spec/guides/index.md", "reason": "跨层与代码复用通用思考指南；本任务尚无 C++ 专用规范（由本任务 M6 产出）。"}
+{"file": "AGENTS.md", "reason": "项目事实与仓库结构约定；新增顶层 engine/ 目录需与既有 app/ ui/ 布局和 Makefile 风格保持一致。"}

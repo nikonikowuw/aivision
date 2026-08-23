@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/prd.md", "reason": "逐条核对 AC1-AC18 与 Out of Scope；重点确认未越界实现人脸子系统（D4）、未修改 app/ 下 Go 产品代码（D5）。"}
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/design.md", "reason": "校验分层边界铁律：engine_core 不链接 platform_*，platform_api 与 algo_sdk 公共头不含平台私有类型（对应 AC2）。"}
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/algo-package-spec.md", "reason": "算法包契约权威草案：dlopen 序列与 RTLD_LOCAL 要求、Library/Instance 两级生命周期、初始化参数结构、能力协商、process 与结果回调、线程模型（单实例串行）、超时语义、错误码表、内存所有权、版本演进规则。M2 实现 SDK 与算法包运行时时必读。"}
+{"file": "docs/prd/ai-video-analytics-edge-platform-v1.0.md", "reason": "校验实现未把 RKNN/MPP/RGA/ZLM 私有字段泄漏进通用协议（§6.3、§12 交付物边界）。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查核心层与两个适配层之间是否存在应下沉到核心层的重复实现。"}

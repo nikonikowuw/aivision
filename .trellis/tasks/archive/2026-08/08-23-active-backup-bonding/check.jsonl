@@ -1,0 +1,12 @@
+{"file":".trellis/spec/backend/index.md","reason":"质量检查需要后端规范入口与预提交门禁。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"检查 1112/1113 的 errno 定义、HTTP 映射与不泄露平台原始错误。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"检查模式切换与自动回滚的审计完整性、摘要脱敏与 native snapshot 不外泄。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查事务并发、bond 资源释放、build tag 分离与测试不触碰真实网络。"}
+{"file":".trellis/spec/frontend/index.md","reason":"质量检查需要前端规范入口与整体门禁。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"检查模式名称、拓扑、错误与 action key 的三语完整性。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"检查 Vitest、pnpm check 与既有网络页面无回归。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查 NetworkMode 枚举与 capability DTO 的类型约束和 nullable 处理。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查 capability、模式、拓扑在平台层、API 与页面的端到端一致。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"检查是否复用既有事务与确认交互，而非重复实现一套模式专用流程。"}
+{"file":".trellis/tasks/08-22-network-configuration/design.md","reason":"核对状态文件 schemaVersion 向后兼容、slave 退出可写集合的模型扩展正确。"}
+{"file":".trellis/tasks/08-22-network-configuration/research/linux-network-stack.md","reason":"核对 bond 创建、slave 绑定与拆除全程走 rtnetlink，未引入 shell 或 sysfs 写入。"}

@@ -1,0 +1,17 @@
+{"file":".trellis/spec/backend/index.md","reason":"后端实现前的规范入口与预开发清单。"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"约束模式框架、bonding 平台实现在 netconfig / service / api / router 的目录边界。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"新增 1112/1113 errno 的定义、HTTP 映射与内部错误脱敏规则。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"模式切换、确认、取消与自动回滚的审计与 zap 日志规则。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"候选事务状态机的并发、资源释放、平台构建标签与测试隔离要求。"}
+{"file":".trellis/spec/frontend/index.md","reason":"前端实现前的规范入口与质量门禁。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"约束工作模式面板、拓扑展示与切换确认交互组件。"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"约束模式相关 API、view 与 locale 文件位置。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"模式名称、拓扑文案、错误与审计 action 的三语 key 同步。"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"模式切换的 pending 状态与倒计时复用既有页面状态，不新建 store。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"NetworkMode 枚举、capability 与拓扑 DTO 的类型必须与 api.md 一致。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"模式切换必须复用 08-22 的候选事务、确认交互与权限模式，禁止另起一套。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"capability、模式枚举与拓扑在后端平台层、API、前端三处必须同源一致。"}
+{"file":".trellis/tasks/08-22-network-configuration/design.md","reason":"Platform 接口、HostPlan 模型与候选事务状态机的原始定义，bonding 在其上扩展。"}
+{"file":".trellis/tasks/08-22-network-configuration/api.md","reason":"响应 envelope、事务端点、权限码与 errno 基线，模式 API 在其上顺延。"}
+{"file":".trellis/tasks/08-22-network-configuration/research/linux-network-stack.md","reason":"Linux rtnetlink 结构化调用与禁止 shell 的实现依据，bond 创建沿用同一路径。"}
+{"file":".trellis/tasks/08-22-network-configuration/research/repository-integration.md","reason":"Wire、生命周期、RBAC 注册、审计与前端动态菜单的既有集成模式。"}

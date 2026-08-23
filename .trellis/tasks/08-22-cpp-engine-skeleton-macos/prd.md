@@ -19,7 +19,7 @@
 - §7.5.4：安装校验七步（结构、清单与兼容性、路径安全、加载、`testimage.jpg` 全流程推理、结果 Schema 校验、不崩溃不超时）。
 - §7.6：受限 JSON Schema 驱动参数，整份配置原子热更新。
 - §7.7：加速计算总容量归一化为 1000 资源单位；超配拒绝；内存有独立安全阈值；不同 `platform_id` 的资源数值不可横向比较。
-- §7.10：目标检测算法每次回调 = 一条完整独立告警，携带唯一 `event_id`，平台不二次判定。
+- §7.10：目标检测算法每次回调 = 一条完整独立告警，携带唯一 `event_id` 与**事件类型**，平台不二次判定；§7.12.3 要求告警查询支持按事件类型筛选。
 - §7.11：图片由 C++ 统一管理，临时文件 + 原子重命名；Go 只持有图片 ID 与受限相对路径。
 - §7.15：六项通用监控指标，不支持的指标显示「当前平台不支持」，不得伪造为 0。
 
@@ -49,7 +49,7 @@
   2. 轻量单机调试器（`standalone_runner`，编译产出 `run_local`）与 `.env.example`，支持读取本地 `.env` 配置文件（模型路径、测试图、置信度/IOU 阈值、目标类别、输出图路径 `OUTPUT_IMAGE=result.jpg` 等）；
   3. **标准前后处理、性能分析与平台工具库（SDK Toolkit）**：SDK 在 `sdk/include/aivision/` 提供标准命名空间划分的高复用算法工具集（随 SDK 一起 vendored 到算法包）：
      - **跨平台 CV 常用算法工具（`aivision/cv/`）**：`resize.hpp`（常规直接拉伸缩放与坐标映射）、`letterbox.hpp`（等比缩放、黑边填充与反向映射）、`nms.hpp`（多类别高效 IoU 与 NMS 过滤）；
-     - **通用开发、测试与性能分析工具（`aivision/utils/`）**：`env.hpp`（极简轻量 `.env` 解析）、`json.hpp`（零依赖紧凑结果 JSON 序列化）、`profiler.hpp`（RAII 作用域分段耗时打点工具，用于统计 Preprocess/Inference/Postprocess 阶段耗时与 P99 指标）；
+     - **通用开发、测试与性能分析工具（`aivision/utils/`）**：`env.hpp`（极简轻量 `.env` 解析）、`json.hpp`（零依赖紧凑结果 JSON 序列化）、`event_id.hpp`（标准事件 ID 生成器与格式校验器）、`profiler.hpp`（RAII 作用域分段耗时打点工具，用于统计 Preprocess/Inference/Postprocess 阶段耗时与 P99 指标）；
      - **平台原生加速图像工具（`aivision/platform/<平台>/`）**：例如 macOS 提供 `preprocess.hpp`（基于 `vImage` 实现零拷贝/高并发 NV12/BGRA 的 Resize / Letterbox 缩放到模型输入格式）、`frame.hpp`（测试图加载为原生 `CVPixelBuffer` NV12 平台描述符）、`visualizer.hpp`（基于 CoreGraphics 绘制 BBox/Label/Score 并落盘 `result.jpg`）。算法开发者无需重复手写图像预处理与后处理，开发新算法只需聚焦在模型推理本身；
   4. **严格模拟生产帧格式与全流程**：`make run` 加载测试图后，**严禁直接传简单 RGB 内存块**，必须通过平台辅助库将其包装为**对应运行平台的真实原生帧描述符格式**（在 macOS 平台上必须构造包含 `CVPixelBufferRef`、`opaque_kind=AV_OPAQUE_CVPIXELBUFFER`、`pixel_format=AV_PIX_NV12`、plane stride/offset 及 SPS 色彩四元组的完整 `av_frame_desc`），以 100% 真实还原引擎在运行期的送帧行为；
   5. `make run` 驱动算法执行真实推理，在控制台打印检测结果 JSON，**同时调用 `visualizer.hpp` 将检测到的目标框（BBox）、类别标签与置信度绘制在图像上并输出为 `result.jpg`**，供开发者直观肉眼研判算法检测正确性；
@@ -87,8 +87,8 @@
 - R4.2 媒体回调只做编码帧引用入有界队列，不执行解码、磁盘、网络等阻塞工作。
 - R4.3 一个摄像头任务可挂载多个算法实例，共享一次解码结果。
 - R4.4 每个算法实例按自身 FPS 独立采样，持有容量受限帧队列，过载丢弃较旧帧保留最新帧；单实例积压不阻塞解码与其他实例。
-- R4.6 每个算法实例拥有一个独占工作线程，串行执行该实例的 `process`——串行由线程独占**结构性保证**，不依赖调度逻辑的正确性。代码结构上「帧分发」与「执行」解耦（`process` 不得硬编码在解码回调中），使将来换成共享线程池时只需替换执行器，不需重写数据流。
 - R4.5 支持断流退避重连与「重连中 / 离线」状态，恢复后自动继续分析；重连不销毁算法上下文与配置。
+- R4.6 每个算法实例拥有一个独占工作线程，串行执行该实例的 `process`——串行由线程独占**结构性保证**，不依赖调度逻辑的正确性。代码结构上「帧分发」与「执行」解耦（`process` 不得硬编码在解码回调中），使将来换成共享线程池时只需替换执行器，不需重写数据流。
 - R4.7 **多重无死锁与静默挂起防御机制（Watchdog & Self-Healing）**：
   1. **双层主动心跳看门狗**：网络拉流看门狗（连续 5s 无 NAL 包主动断开重连）+ 硬件解码看门狗（队列有包但连续 3s 未出帧判定驱动死锁，主动销毁并重建硬件解码会话）；
   2. **IDR 关键帧硬性准入闸门**：启动与重连时严格丢弃所有前导 P/B 帧，只有抓到完整 SPS/PPS + IDR 帧后才送入硬件解码器，从源头掐灭 VPU/解码驱动因残损帧导致的死锁；
@@ -98,21 +98,21 @@
 ### R5 算法包 SDK 与运行时
 
 - R5.1 `sdk/` 交付版本化算法包 C ABI 头文件（`size` + `api_version` 结构体、不透明句柄、错误码、明确所有权，放置于 `include/aivision/algo.h`、`types.h`、`result.h`），纯 C，跨 ABI 不出现 STL / C++ 对象 / 异常。
-- R5.2 定义算法清单 Schema：`algorithm_id`、语义化版本、`platform_id`、算法类型、最低适配层版本、`min_os_version` 等运行时约束、支持的帧能力、资源档位、模型与依赖文件、参数 JSON Schema + UI 元数据、`testimage.jpg`。
-- R5.3 `sdk/` 交付 cmake helper（`AivisionAlgoSDKConfig.cmake` + `AivisionAlgoPackage.cmake`）与**标准前后处理、性能分析及平台工具库**（`include/aivision/cv/` 下 `resize.hpp`、`letterbox.hpp`、`nms.hpp`；`include/aivision/utils/` 下 `env.hpp`、`json.hpp`、`profiler.hpp`；`include/aivision/platform/<平台>/` 下加速前处理与可视化落盘），使算法包工程在**只拥有自身目录**的前提下即可极速开发、性能剖析、构建并产出规范分发包（配合 D7 的 vendored 副本）。
+- R5.2 定义算法清单 Schema：`algorithm_id`、语义化版本、`platform_id`、算法类型、**告警类型声明 `alarm_types`（至少 1 项，`id` 包内唯一）**、最低适配层版本、`min_os_version` 等运行时约束、支持的帧能力、资源档位、模型与依赖文件、参数 JSON Schema + UI 元数据、`testimage.jpg`。
+- R5.3 `sdk/` 交付 cmake helper（`AivisionAlgoSDKConfig.cmake` + `AivisionAlgoPackage.cmake`）与**标准前后处理、性能分析及平台工具库**（`include/aivision/cv/` 下 `resize.hpp`、`letterbox.hpp`、`nms.hpp`；`include/aivision/utils/` 下 `env.hpp`、`json.hpp`、`event_id.hpp`、`profiler.hpp`；`include/aivision/platform/<平台>/` 下加速前处理与可视化落盘），使算法包工程在**只拥有自身目录**的前提下即可极速开发、性能剖析、构建并产出规范分发包（配合 D7 的 vendored 副本）。
 - R5.4 `scripts/sync-sdk.sh` 单向同步 + CI SHA-256 一致性校验（D10）。
 - R5.5 实现安装校验七步流程（PRD §7.5.4），失败返回结构化原因，记录包 SHA-256；通过后解压到 `var/packages/<algorithm_id>/<version>/`，运行时仅从该目录 dlopen。
 - R5.6 实现算法实例生命周期与创建时能力协商（帧格式 / 内存类型 / 平台扩展），不兼容时拒绝并返回明确原因。实例创建时下发 `frame_ops`（引用计数）与 `image_ops`（平台加速图像原语）函数表。
-- R5.10 适配层提供 `av_image_ops` 的平台实现（convert / pad / alloc / free）：macOS 用 vImage / Core Image，能力不可用时退回 CPU 并在能力档案中标注「降级」。前处理逻辑本身归算法所有，引擎只提供机制不定义策略——不实现「声明式前处理」。
 - R5.7 实现参数原子热更新：平台做 Schema 基础校验，实例做最终校验，全部接受才生效并持久化，否则保持旧配置。
 - R5.8 实现算法包升级 / 回滚：只停止引用该包的实例，排空在途帧后切换，失败自动回滚并恢复实例；有任务引用时禁止卸载。
 - R5.9 本任务只实现 `object_detection` 类型的结果通路；`face_recognition` 在清单枚举中保留，运行时返回未实现。
+- R5.10 适配层提供 `av_image_ops` 的平台实现（convert / pad / alloc / free）：macOS 用 vImage / Core Image，能力不可用时退回 CPU 并在能力档案中标注「降级」。前处理逻辑本身归算法所有，引擎只提供机制不定义策略——不实现「声明式前处理」。
 
 ### R6 结果与图片
 
 - R6.1 **职责绝对切分与统一结果 Schema**：
-  - **算法包纯粹职责**：算法包 C ABI 输出仅包含纯检测目标实体数组（`alarm_type_id`、`label`、`class_id`、`confidence`、`bbox` 归一化坐标及可选扩展属性），无目标时返回空；不承担系统级状态编排。
-  - **Engine 统一编排职责**：全局唯一的 `event_id` 生成、视频帧收帧纳秒绝对时钟绑定（`wall_time_ns`）、单次推理与端到端性能耗时打点（P99 统计）、抓拍裁剪与原子落盘全部由 Engine 宿主统一承担。重复 `event_id` 幂等忽略。
+  - **算法包纯粹职责**：算法包 C ABI 输出包含纯检测目标实体数组（`label`、`confidence`、`bbox` 归一化坐标及可选跟踪/扩展属性）、算法实例内唯一的 `event_id` 与**事件类型 `alarm_type_id`**（PRD §7.10），无目标时返回空；不承担系统级状态编排。`alarm_type_id` 必须取自本包清单 `alarm_types` 声明集合，作用域为包内唯一，事件级而非目标级——需要区分类型时发多次回调。
+  - **Engine 统一编排职责**：基于算法 `event_id` 与激活期全局唯一的 `instance_id` 进行全局唯一化组合（`<instance_id>/<algo_event_id>`）、视频帧收帧纳秒绝对时钟绑定（`wall_time_ns`）、单次推理与端到端性能耗时打点（P99 统计）、抓拍裁剪与原子落盘全部由 Engine 宿主统一承担。重复 `event_id` 幂等忽略。Engine **不得推断或改写** `alarm_type_id`，只原样透传并与 `algorithm_id` 组合为 `<algorithm_id>:<alarm_type_id>` 供对端落库与筛选。
 - R6.2 目标框与规则区域使用 `[0,1]` 归一化坐标，原点为有效画面左上角；多边形 ≥3 顶点、不越界不自交。
 - R6.3 图片模块统一管理裁剪、缩放、颜色转换、JPEG 编码；临时文件 + 原子重命名写入；对外只暴露图片 ID 与受限相对路径。
 - R6.4 提供按图片 ID 的**幂等**批量删除接口，逐项返回删除结果。
@@ -152,9 +152,7 @@
 - [ ] AC3 `mock` 契约测试适配器可在无摄像头、无模型、无 GPU 的环境完成：适配层加载、能力档案查询、帧生命周期（含引用计数归零校验）、资源配额校验、算法结果回调全流程。
 - [ ] AC4 输入一路真实 RTSP（或本地回放的 RTSP 模拟源）H.264 1080p，引擎持续解码并向示例包分发帧，日志可观测到实际采样 FPS 与丢帧数。
 - [ ] AC5 同一摄像头任务挂载 2 个算法实例（不同 FPS），二者共享同一次上游连接与同一次解码；人为让其中一个实例阻塞时，另一个实例的 FPS 不下降。
-- [ ] AC23 **串行契约**：并发压力测试下，同一实例的 `process` 从未被重入（算法侧断言 + 引擎侧计数器双向验证）；16 个算法实例同时运行时，单个实例阻塞不影响其他实例的处理速率。
-- [ ] AC24 **图像原语**：算法通过 `av_image_ops` 完成裁剪 / 缩放 / 色彩转换 / padding，在 macOS 上走 vImage 路径；强制退回 CPU 实现时结果像素一致（同一输入两条路径输出可比对）。
-- [ ] AC6 示例包检测到配置类别时生成告警：图片按图片 ID 落盘（可见临时文件已原子重命名），gRPC 上报被 Go stub server 收到，字段含 `event_id`、算法 ID/版本、归一化目标框、置信度、时间与时间同步状态。
+- [ ] AC6 示例包检测到配置类别时生成告警：图片按图片 ID 落盘（可见临时文件已原子重命名），gRPC 上报被 Go stub server 收到，字段含 `event_id`、`alarm_type_id`（事件类型，且值在清单 `alarm_types` 声明集合内）、算法 ID/版本、归一化目标框、置信度、时间与时间同步状态。
 - [ ] AC7 重复 `event_id` 的上报在 C++ 侧被幂等忽略，不重复落盘图片。
 - [ ] AC8 参数热更新：合法配置整份生效（类别列表 / 阈值 / FPS 立刻变化）；非法配置整份拒绝，实例继续使用旧配置且不中断。
 - [ ] AC9 资源配额：把示例包 FPS 提高到超过 1000 单位可分配上限时被拒绝，返回结构化受限原因，且现有实例不受影响。
@@ -170,10 +168,12 @@
 - [ ] AC17 示例算法包附带完整转换证据文件，`.mlpackage` SHA-256 与记录一致。
 - [ ] AC18 `.trellis/spec/engine/` 规范、平台适配文档与算法包开发文档已提交。
 - [ ] AC19 **可搬运性（D7 核心判据）**：把 `algo-packages/macos/arm64/yolov8n/` 单独复制到 `/tmp` 下的空目录（本仓库其余部分不可见），在那里独立完成构建并产出合规分发包；`otool -L` 确认产物不依赖任何 engine 库；引擎从 `var/packages/` 安装加载该包运行；`nm` 确认 engine 构建产物中不含该算法符号。
-- [ ] AC20 **契约一致性**：CI 检查通过 —— 每个算法包 `vendor/aivision-sdk/` 与上游 `sdk/` 的 SHA-256 一致（D10）；每个算法包由目录路径推导出的 `platform_id` 与其清单声明值一致（D8）。
+- [ ] AC20 **契约一致性**：CI / 本地脚本检查通过 —— 每个算法包 `vendor/aivision-sdk/` 与上游 `sdk/` 的 SHA-256 一致（D10）；每个算法包由目录路径推导出的 `platform_id` 与其清单声明值一致（D8）。
 - [ ] AC21 **ABI 布局稳定**：`sdk/` 头中的 `_Static_assert` 锁定 `sizeof`/`offsetof`，在 AppleClang 与 GCC（交叉编译到 aarch64）两种编译器下均编译通过；单测验证「用旧 `size` 值构造的描述符能被新版解析代码安全读取」的前向兼容路径。
 - [ ] AC22 **色彩正确性**：对一段已知为 BT.709 limited 的测试码流，解析出的色彩四元组与码流 VUI 一致；对一段 VUI 缺失的码流，兜底为 BT.709 limited 并产生一条日志；NV12→RGB 转换使用描述符声明的矩阵与范围（可通过已知色块图的像素值断言）。
-- [ ] AC23 **本地调试与工程化规范**：算法包工程提供标准 `Makefile`；一键 `make build` 编译出动态库与 `run_local`；`make run` 严格模拟真实帧封装（加载 JPEG 构造为包含 `CVPixelBufferRef` 的 NV12 平台帧描述符送入 `process`，非裸 RGB 内存）；修改 `.env` 中的置信度阈值与目标类别后，直接执行 `make run` 即可生效且无需重新编译，**并在当前目录成功生成画有目标检测框、类别标签与置信度的 `result.jpg`**；执行 `make benchmark` 可正确执行多循环压测并打印分段耗时与持续 FPS 报告；支持通过命令行前缀环境变量（如 `CONF_THRESH=0.8 make run`）实现即时覆盖；一键 `make package` 输出合规分发 zip 包。
+- [ ] AC23 **串行契约**：并发压力测试下，同一实例的 `process` 从未被重入（算法侧断言 + 引擎侧计数器双向验证）；16 个算法实例同时运行时，单个实例阻塞不影响其他实例的处理速率。
+- [ ] AC24 **图像原语**：算法通过 `av_image_ops` 完成裁剪 / 缩放 / 色彩转换 / padding，在 macOS 上走 vImage 路径；强制退回 CPU 实现时结果像素一致（同一输入两条路径输出可比对）。
+- [ ] AC25 **本地调试与工程化规范**：算法包工程提供标准 `Makefile`；一键 `make build` 编译出动态库与 `run_local`；`make run` 严格模拟真实帧封装（加载 JPEG 构造为包含 `CVPixelBufferRef` 的 NV12 平台帧描述符送入 `process`，非裸 RGB 内存）；修改 `.env` 中的置信度阈值与目标类别后，直接执行 `make run` 即可生效且无需重新编译，**并在当前目录成功生成画有目标检测框、类别标签与置信度的 `result.jpg`**；执行 `make benchmark` 可正确执行多循环压测并打印分段耗时与持续 FPS 报告；支持通过命令行前缀环境变量（如 `CONF_THRESH=0.8 make run`）实现即时覆盖；一键 `make package` 输出合规分发 zip 包。
 
 ## Out of Scope
 
@@ -206,6 +206,6 @@
 
 - `prd.md`（本文件）
 - `design.md`：架构、目录布局、接口边界、数据流、构建与依赖策略
-- `algo-package-spec.md`：算法包规范草案 —— 加载序列、两级生命周期、初始化参数、能力协商、调用与回调、线程模型、超时、错误码、内存所有权、版本演进。M2 落地为 `sdk/docs/abi.md` + `sdk/include/aivision_algo.h` 并在 M2 末冻结
-- `implement.md`：有序实施清单与验证命令
+- `algo-package-spec.md`：算法包规范草案 —— 加载序列、两级生命周期、初始化参数、能力协商、调用与回调、线程模型、超时、错误码、内存所有权、版本演进。Phase 2 落地为 `sdk/docs/abi.md` + `sdk/include/aivision/algo.h` 并在 Phase 2 末冻结
+- `implement.md`：有序实施清单与验证命令（Phase 1-5）
 - `api.md`：不适用 —— 本任务无前端参与，跨进程契约以 `.proto` 形式落在 `design.md` 与代码中

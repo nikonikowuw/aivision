@@ -1,6 +1,6 @@
 # 算法包规范（草案 v1）
 
-> 规划期草案。M2 落地时转为 `sdk/docs/abi.md` + `sdk/include/aivision_algo.h`，并在 M2 末冻结。
+> 规划期草案。Phase 2 落地时转为 `sdk/docs/abi.md` + `sdk/include/aivision/algo.h`，并在 Phase 2 末冻结。
 > 本文只定义**引擎与算法包之间的契约**：如何加载、如何初始化、如何调用、如何销毁、出错怎么办。
 
 ## 1. 两级生命周期
@@ -194,7 +194,12 @@ typedef void (*av_algo_result_cb)(void* user, const av_algo_result* result);
 
 **算法不碰文件系统、不做图像编码**。它只在 `images` 里说明「请用这个框裁一张图」，裁剪、缩放、JPEG 编码、原子落盘、图片 ID 分配全部由引擎的 image 模块完成（PRD §7.11「所有图片文件由 C++ 图片模块统一管理」）。这也让算法包不必链接任何图像库。
 
-`event_id` 由算法在 `json` 里生成并保证唯一（PRD §7.10）；引擎按它做幂等去重。
+- **事件身份与告警 ID 幂等（Event ID）**：
+  - 目标检测告警每次触发代表一条独立的告警记录；
+  - `event_id`（告警事件 ID）由算法在结果 `json` 中生成，并保证**在当前实例生命周期内唯一**（格式约束为 `[A-Za-z0-9._/-]`，长度 ≤128 字节）；
+  - **SDK 标准工具支持**：SDK 在 `aivision/utils/event_id.hpp` 提供了开箱即用的 `EventIdGenerator`（支持单调序号 `ev_1`、跟踪目标 `trk_<track_id>_<seq>` 与格式校验 `is_valid`）；
+  - **Engine 全局唯一化与去重**：引擎将算法 `event_id` 与激活期全局唯一的 `instance_id` 组合为 `<instance_id>/<algo_event_id>` 对外提供全局唯一告警事件标识，并按此键执行幂等去重（AC7）。重复的 `event_id` 回调直接被引擎忽略，不重复裁图与上报；
+  - **跨进程与 Webhook 幂等**：引擎将全局 `event_id` 上报给 Go 后端（作为告警记录主键之一），Go 服务与下游 Webhook 平台按 `event_id` 幂等落库和消费。
 
 ### 6.3 配置热更新
 
@@ -301,12 +306,30 @@ typedef enum {
 - 破坏性变更必须提升 `api_version`；旧算法包在 `av_algo_get_abi` 里返回 `NULL`，引擎给出「需要升级算法包」的结构化提示，而不是崩溃。
 - 结构体布局由 `_Static_assert` 锁定 `sizeof` 与关键 `offsetof`（AC21）。
 
-## 12. 仍待 M2 落地的部分
+## 12. 落地进展与仍待闭合的部分
 
-本文定义了加载、初始化、调用、销毁的完整契约。以下留到 M2 实现时确定，它们不影响上述接口形状：
+本文定义了加载、初始化、调用、销毁的完整契约。草案写作时留白的几项，当前状态如下。
 
-- `manifest.json` 的完整 JSON Schema（字段列表见 prd R5.2）
-- 统一结果 Schema 的确切字段与嵌套形状
-- 参数配置受限 Schema 子集的表达方式（JSON Schema 真子集 + `x-ui` 扩展）
-- `pixel_format` / `memory_type` / `opaque_kind` 的具体枚举值分配
-- `process` 超时默认值（需实测后冻结）
+### 12.1 已落地到 `.trellis/spec/engine/`（以 spec 为准，本文不再重复定义）
+
+| 项目 | 落地位置 |
+| --- | --- |
+| `manifest.json` 的完整 JSON Schema | [`manifest-schema.md`](../../spec/engine/manifest-schema.md) §1 —— 字段类型约束表、`runtime_constraints`、`resource_tier` 与完整示例 |
+| 统一结果 Schema 的确切字段与嵌套形状 | [`manifest-schema.md`](../../spec/engine/manifest-schema.md) §3 —— `event_id` / `algorithm_id` / `objects[]` / `extra` |
+| 参数配置受限 Schema 子集的表达方式 | [`manifest-schema.md`](../../spec/engine/manifest-schema.md) §2 —— JSON Schema 真子集白名单 + `x-ui` 扩展元数据 |
+| `on_result` 调用栈约束与 `event_id` 职责切分 | [`algo-package-spec.md`](../../spec/engine/algo-package-spec.md) §4.1 |
+| `process` 超时与单帧失败的处理语义 | [`algo-package-spec.md`](../../spec/engine/algo-package-spec.md) §4.2 |
+| ABI 版本演进与双编译器验证规则 | [`abi-guidelines.md`](../../spec/engine/abi-guidelines.md) §5 |
+
+### 12.2 仍待 Phase 2 冻结前闭合（阻塞 ABI 冻结）
+
+- **`frame_token` 的取得方式** —— `av_frame_desc` 中没有承载引用计数令牌的字段，而 `opaque` 是平台原生句柄（`CVPixelBufferRef` / `dma_buf_fd`），算法被禁止对其做生命周期操作，不能复用为令牌。二选一并写回 SDK 头与 spec：
+  - **(a)** 以 `frame_id` 作令牌，`ref`/`unref` 签名改为接收 `uint64_t`，引擎侧哈希反查缓冲池 slot；
+  - **(b)** 在描述符末尾追加 `void* frame_token`（`_reserved[3]` 容纳不下指针），同步把 `sizeof` 断言从 144 调整为 152。
+
+  闭合前算法侧不得实现任何异步持帧逻辑。详见 [`abi-guidelines.md`](../../spec/engine/abi-guidelines.md) §4。
+- `pixel_format` / `memory_type` / `opaque_kind` 的具体枚举值分配。
+
+### 12.3 仍待实测后冻结（不阻塞 ABI）
+
+- `instance_process` 的墙钟超时默认值。

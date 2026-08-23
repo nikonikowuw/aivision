@@ -38,7 +38,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
 > **核心目标**：锁定最底层的核心契约，交付完整的 SDK 工具库，用纯内存 Mock 跑通契约测试。
 
 1. **`sdk/include/aivision/` 核心头文件落地** — 纯 C ABI（`algo.h` 虚表、`types.h` 144 字节通用帧描述符、`av_frame_ops`、`result.h` 极简结果 Schema）。
-2. **跨平台 CV 工具与通用脚手架** — `cv/resize.hpp`、`cv/letterbox.hpp`、`cv/nms.hpp`；`utils/env.hpp`、`utils/json.hpp`、`utils/profiler.hpp`（RAII 分段打点）。
+2. **跨平台 CV 工具与通用脚手架** — `cv/resize.hpp`、`cv/letterbox.hpp`、`cv/nms.hpp`；`utils/env.hpp`、`utils/json.hpp`、`utils/event_id.hpp`（事件 ID 生成与校验）、`utils/profiler.hpp`（RAII 分段打点）。
 3. **`platform_api` 接口与能力档案** — 落 `design.md` §3.4 全部接口、`PlatformProfile`、`Availability`、注册表、`av_image_ops` 接口定义。
 4. **SPS VUI 色彩信息解析** — 从 H.264/H.265 SPS VUI 提取色彩四元组，缺失时兜底 BT.709 limited 并记一条日志。
 5. **`platform_mock` 纯内存适配器** — 全部接口的可注入假实现（假帧、假推理、纯 CPU 图像处理）。
@@ -57,7 +57,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
 3. **单机调试套件（`run_local`）** — 支持读取本地 `.env` 配置文件与环境变量即时覆盖；`make run` 模拟平台帧封装并输出画框打标的 `result.jpg`；`make benchmark` 输出分段性能与 FPS 报告。
 4. **引擎算法包运行时与 7 步安装沙箱** — 基于 `fork()` 临时子进程安全加载校验（解压到 `var/packages/`、路径安全、`testimage.jpg` 全流程自测、坏包回滚、参数原子热更新、升级卸载保护）。
 5. **测试 fixture 算法包** — 一个 Mock 算法包 + 两个坏包 fixture（自测失败 / 加载失败），打成标准 zip 走真实安装流程。
-   - 验证：**AC8、AC10、AC11、AC20、AC23** 在 Mock 平台上先行通过；验证算法包单目录 `/tmp` 独立可搬运构建（AC19）。
+   - 验证：**AC8、AC10、AC11、AC20、AC25** 在 Mock 平台上先行通过；验证算法包单目录 `/tmp` 独立可搬运构建（AC19）。
 
 ---
 
@@ -79,7 +79,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
    - 双层心跳看门狗（Ingest 5s 超时断开 + Decoder 3s 超时强制销毁重建）；
    - IDR 关键帧硬性准入闸门（丢弃残缺前导 P 帧，防芯片寄存器死锁）；
    - RTSP PLI/FIR 关键帧补发请求。
-   - 验证：**AC2**（符号检查）、**AC4、AC5、AC9、AC12（含静默挂起自愈测试）、AC15、AC24**。
+   - 验证：**AC2**（符号检查）、**AC4、AC5、AC9、AC12（含静默挂起自愈测试）、AC15、AC23、AC24**。
 
 ---
 
@@ -91,8 +91,8 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
 2. **跨进程契约与 gRPC 实现** — 定义 `proto/aivision/v1/*.proto`（含 person 预留），实现 UDS gRPC Client/Server；断线自动重连。
 3. **测试用 Go Stub Server** — 独立 `go.mod`（严守 D5），接收告警上报、模拟重启并驱动 `ApplyDesiredState` 声明式全量对账。
 4. **YOLOv8n 真实算法包交付** — 转换 Core ML 模型并归档证据链（`conversion/`）；编写模块化算法源码，闭环测试 `make run`、`make benchmark` 与 `make package`。
-5. **文档定稿与全量验收** — 编写 `.trellis/spec/engine/` 规范、平台适配文档；逐项复核 AC1 ~ AC24。
-   - 验证：**AC1、AC6、AC7、AC13、AC14、AC17、AC18、AC19** 全量通过。
+5. **文档定稿与全量验收** — 编写 `.trellis/spec/engine/` 规范、平台适配文档；逐项复核 AC1 ~ AC25。
+   - 验证：**AC1、AC6、AC7、AC13、AC14、AC17、AC18、AC19、AC25** 全量通过。
 
 ---
 
@@ -111,7 +111,7 @@ make -C engine e2e            # 拉起 stub server + engine，跑端到端脚本
 bash algo-packages/scripts/sync-sdk.sh            # 上游 sdk/ → 各包 vendor/
 bash algo-packages/scripts/check-consistency.sh   # AC20：SHA-256 + platform_id 一致性
 
-# 算法包单机工程化与调试命令（D11/AC23）
+# 算法包单机工程化与调试命令（D11/AC25）
 make -C algo-packages/macos/arm64/yolov8n build     # 编译 dylib 与 run_local
 make -C algo-packages/macos/arm64/yolov8n run       # 读取 .env 单图推理自测，输出 result.jpg
 make -C algo-packages/macos/arm64/yolov8n benchmark # 100 次循环分段性能压测 (Avg/P50/P99/FPS)
@@ -130,11 +130,6 @@ make -C algo-packages/macos/arm64/yolov8n package   # 打出标准分发 zip 包
 ## `task.py start` 前的检查
 
 - [x] `implement.jsonl` / `check.jsonl` 已填入真实 spec/research 条目
+- [x] `event_id` 生成与幂等职责已统一（算法生成实例内 ID + 引擎组合全局唯一与去重）
+- [x] AC 编号冲突已修正（AC1~AC25 连续不重）
 - [ ] `.trellis/spec/engine/` 规范由本任务 Phase 5 产出，实现期先遵循 `.trellis/spec/guides/`
-- `engine/proto/`：M5 冻结，T2 直接复用；改动会波及 Go 侧。
-- 全任务不触碰 `app/`、`ui/`，回滚即删除 `sdk/`、`engine/`、`algo-packages/` 三个顶层目录。
-
-## `task.py start` 前的检查
-
-- [x] `implement.jsonl` / `check.jsonl` 已填入真实 spec/research 条目
-- [ ] `.trellis/spec/engine/` 规范由本任务 M6 产出，实现期先遵循 `.trellis/spec/guides/`

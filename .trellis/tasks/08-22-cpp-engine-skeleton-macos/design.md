@@ -60,7 +60,9 @@ sdk/                                  ★ 共享契约，上游权威副本
 │     │
 │     ├─ utils/                       # ★ 通用开发与测试工具
 │     │  ├─ env.hpp                   #   极简轻量 .env 键值解析
-│     │  └─ json.hpp                  #   无第三方依赖的紧凑结果 JSON 序列化
+│     │  ├─ json.hpp                  #   无第三方依赖的紧凑结果 JSON 序列化
+│     │  ├─ event_id.hpp              #   标准事件 ID 实例内序号/跟踪生成器与校验器
+│     │  └─ profiler.hpp              #   RAII 作用域分段耗时打点工具
 │     │
 │     └─ platform/                    # ★ 平台专用图像加速与调试工具
 │        ├─ macos/                    #   macOS 专用图像处理加速辅助：
@@ -103,7 +105,7 @@ algo-packages/                        ★ 插件工程，与 engine 无边
    ├─ Makefile                        #   ★ 标准构建入口（build/run/package/clean，D11）
    ├─ CMakeLists.txt                  #   主 CMake：协调各子模块构建 dylib 与 run_local
    ├─ README.md                       #   单机编译与本地调试说明
-   ├─ .env.example                    #   ★ 本地开发调试配置模板（D11/AC23）
+   ├─ .env.example                    #   ★ 本地开发调试配置模板（D11/AC25）
    ├─ vendor/aivision-sdk/            #   vendored 副本，自上游 sdk/ 同步
    │  ├─ include/  cmake/  VERSION
    ├─ src/                            #   ★ 模块化源码目录（各模块独立 CMakeLists.txt）
@@ -141,7 +143,7 @@ algo-packages/                        ★ 插件工程，与 engine 无边
 
 ## 3. 关键接口草案
 
-### 3.1 通用帧描述符（`sdk/include/aivision_algo.h`）
+### 3.1 通用帧描述符（`sdk/include/aivision/types.h`）
 
 字段布局按对齐分块排列，不依赖编译器的 padding 行为——算法包由第三方用他自己的编译器编译，布局必须完全确定。
 
@@ -207,7 +209,7 @@ typedef struct av_frame_ops {
 
 算法在 `process` 期间持有帧；若需异步持有，必须显式 `ref`，回调完成后 `unref`。缓冲池在引用归零后才回收 slot；调试构建下回收前用 poison 填充 + 断言检测提前访问（服务 AC16）。
 
-### 3.3 算法包 C ABI（`sdk/include/aivision_algo.h`）
+### 3.3 算法包 C ABI（`sdk/include/aivision/algo.h`）
 
 完整契约见同目录 **`algo-package-spec.md`**（加载序列、两级生命周期、初始化参数、能力协商、调用与回调、线程模型、超时、错误码、内存所有权、版本演进）。此处只记要点：
 
@@ -246,8 +248,8 @@ typedef struct av_algo_abi {
 
 **职责清晰切分**：
 
-- **算法包**：只负责模型推理与视觉目标输出，不生成 `event_id`，不回填 `timestamp_ns`，不统计耗时性能；
-- **Engine 宿主**：在接收回调后，统一绑定帧原生纳秒时间戳（`wall_time_ns`）、自动生成全局规范的 `event_id`、测量 P99 推理性能耗时、执行图像裁剪落盘并封装 gRPC 消息上报。
+- **算法包**：负责模型推理、目标检测与实例内唯一 `event_id` 生成（PRD §7.10），不回填 `wall_time_ns`，不统计端到端耗时性能；
+- **Engine 宿主**：在接收回调后，基于 `<instance_id>/<algo_event_id>` 形成全局唯一事件标识并执行幂等去重，绑定帧原生纳秒时间戳（`wall_time_ns`）、测量 P99 推理性能耗时、执行图像裁剪落盘并封装 gRPC 消息上报。
 
 ### 3.4 适配接口（`platform_api`）
 
@@ -334,7 +336,7 @@ ZLM MediaSource ──(H264/H265 NAL 引用)──> 有界编码帧队列(每摄
 
 - SDK 只需 CMake ≥3.16 + 平台编译器 + 平台运行时（macOS 包只用系统框架 CoreML/CoreVideo；RKNN 包只需板上 rknn runtime）。
 - 算法包工程内建标准 `Makefile`（提供 `configure`、`build`、`run`、`benchmark`、`asan`、`package`、`clean`）与 `standalone_runner`（编译产出 `run_local` 可执行文件），支持加载同目录下的 `.env` 文件或接收环境变量覆盖（如 `CONF_THRESH=0.8 make run`，`LOOPS=500 make benchmark`）。
-- **开箱即用开发体验**：算法开发直接包含 SDK 提供的标准工具头（如 `<aivision/cv/resize.hpp>`、`<aivision/cv/letterbox.hpp>`、`<aivision/cv/nms.hpp>`、`<aivision/utils/env.hpp>`、`<aivision/utils/profiler.hpp>` 以及平台加速的 `<aivision/platform/macos/preprocess.hpp>` 和 `<aivision/platform/macos/visualizer.hpp>`），几行代码即可完成标准输入预处理、分段性能 Profiling 打点与结果后处理，极大降低新算法开发门槛，彻底避免重复编写样板代码。
+- **开箱即用开发体验**：算法开发直接包含 SDK 提供的标准工具头（如 `<aivision/cv/resize.hpp>`、`<aivision/cv/letterbox.hpp>`、`<aivision/cv/nms.hpp>`、`<aivision/utils/env.hpp>`、`<aivision/utils/event_id.hpp>`、`<aivision/utils/profiler.hpp>` 以及平台加速的 `<aivision/platform/macos/preprocess.hpp>` 和 `<aivision/platform/macos/visualizer.hpp>`），几行代码即可完成标准输入预处理、分段性能 Profiling 打点与结果后处理，极大降低新算法开发门槛，彻底避免重复编写样板代码。
 - 不依赖 gRPC / protobuf / nlohmann-json / gtest —— 结果 JSON 用手写序列化或包内 vendored 单头库，避免把引擎的依赖链传染给第三方算法商。
 - `vendor/aivision-sdk/cmake/AivisionAlgoPackage.cmake` 提供 `aivision_add_algo_package()`，负责拷贝产物进 `package/`、校验 manifest、打 zip。
 
@@ -362,7 +364,7 @@ ZLM MediaSource ──(H264/H265 NAL 引用)──> 有界编码帧队列(每摄
 
 ## 8. 回滚与风险控制
 
-- ZLM spike 是第一个风险闸门（`implement.md` M0 步骤 2）。若 macOS 构建受阻，退路是自研最小 RTSP/RTP 客户端仅供开发期使用，`media` 层接口不变，不影响其余步骤。
+- ZLM spike 是第一个风险闸门（`implement.md` Phase 1 步骤 2）。若 macOS 构建受阻，退路是自研最小 RTSP/RTP 客户端仅供开发期使用，`media` 层接口不变，不影响其余步骤。
 - 每个里程碑独立可验证。`sdk/`、`engine/`、`algo-packages/` 均为全新顶层目录，任何时刻回滚都不影响 `app/` 与 `ui/`。
 - 坏包场景（AC10）通过 `engine/tests/fixtures/packages/` 里专门构造的 fixture 实现，同样走「构建 zip → 正常安装流程」，不污染示例包、也不走特权加载路径。
-- `sdk/` 的 ABI 在 M2 末冻结并评审；冻结前 `algo-packages/` 内的包靠 sync 脚本被动跟随，不承担兼容责任。
+- `sdk/` 的 ABI 在 Phase 2 末冻结并评审；冻结前 `algo-packages/` 内的包靠 sync 脚本被动跟随，不承担兼容责任。

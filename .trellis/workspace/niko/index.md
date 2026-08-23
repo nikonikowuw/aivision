@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-08-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~470 | Active |
+| `journal-1.md` | ~491 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-08-23 | 实现网络主备容错模式与候选事务 | `12cfa8f` | `dev` |
 | 16 | 2026-08-23 | 完成对时服务与前端时间管理集成 | `f8b9244`, `be5f718`, `b5e33d1`, `961f2fe`, `f7041de` | `dev` |
 | 15 | 2026-08-21 | Quality-check and commit personal profile avatar feature | `6bd8502` | `main` |
 | 14 | 2026-08-21 | Adopt golang-migrate for PostgreSQL migrations | - | `main` |

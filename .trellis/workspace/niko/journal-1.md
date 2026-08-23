@@ -468,3 +468,24 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 17: 实现网络主备容错模式与候选事务
+
+**Date**: 2026-08-23
+**Task**: 实现网络主备容错模式与候选事务
+**Branch**: `dev`
+
+### Summary
+
+支持整机网络工作模式枚举与绑定拓扑状态管理，实现进入与退出 active-backup 候选事务及 120s 自动回滚，前端提供工作模式卡片、抽屉与三语支持。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `12cfa8f` | (see git log) |
+
+### Status
+
+[OK] **Completed**

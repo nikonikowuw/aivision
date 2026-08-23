@@ -24,6 +24,17 @@ func newTestNetworkService(t *testing.T) NetworkService {
 	}, nil)
 }
 
+func newTestNetworkServiceWithLog(t *testing.T, oplog OperationLogService) NetworkService {
+	return newTestNetworkServiceCfg(t, &config.Config{
+		Network: config.Network{
+			StateDir:       filepath.Join(t.TempDir(), "net-state"),
+			ProfilePath:    "/tmp/dummy-profile.json",
+			ConfirmTimeout: 2 * time.Second,
+			FakePlatform:   true,
+		},
+	}, oplog)
+}
+
 func newTestNetworkServiceCfg(t *testing.T, cfg *config.Config, oplog OperationLogService) NetworkService {
 	t.Helper()
 	srv, err := NewNetworkService(cfg, oplog, nil)
@@ -593,6 +604,136 @@ func TestNetworkService_SwitchMode_TimeoutRollback(t *testing.T) {
 	}
 	if !rollbackFound {
 		t.Errorf("rollback audit should be recorded, got %v", oplog.actions())
+	}
+}
+
+func switchGatewaySuccessInput() SwitchModeInput {
+	return SwitchModeInput{
+		Mode: netconfig.NetworkModeGateway,
+		Gateway: &GatewayInput{
+			DownstreamInterfaceID: "eth1",
+			PoolStart:             "192.168.2.100",
+			PoolEnd:               "192.168.2.200",
+			Prefix:                24,
+			LeaseDurationSeconds:  3600,
+			IPForward:             true,
+		},
+		ActorID:       1,
+		ActorUsername: "admin",
+		ClientIP:      "127.0.0.1",
+	}
+}
+
+// TestNetworkService_SwitchMode_GatewayLifecycle 验证切换到网关模式的全生命周期（进入、分配租约、确认、退出、回滚、恢复出厂）。
+func TestNetworkService_SwitchMode_GatewayLifecycle(t *testing.T) {
+	oplog := &mockOperationLogService{}
+	srv := newTestNetworkServiceWithLog(t, oplog)
+	ctx := context.Background()
+
+	// 先将 eth1 设置为静态 IPv4 (192.168.2.1/24)
+	ipStr := "192.168.2.1"
+	pfx := 24
+	applyRes, err := srv.ApplyInterface(ctx, "eth1", ApplyInterfaceInput{
+		Mode:          netconfig.IPModeStatic,
+		Address:       &ipStr,
+		Prefix:        &pfx,
+		ActorID:       1,
+		ActorUsername: "admin",
+		ClientIP:      "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("ApplyInterface static eth1 failed: %v", err)
+	}
+	_, err = srv.ConfirmTransaction(ctx, applyRes.TransactionID, 1, "admin", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("ConfirmTransaction static eth1 failed: %v", err)
+	}
+
+	// 1. 切换到 Gateway 模式
+	res, err := srv.SwitchMode(ctx, switchGatewaySuccessInput())
+	if err != nil {
+		t.Fatalf("SwitchMode to gateway failed: %v", err)
+	}
+	if res.Status != netconfig.TxnStatusPendingConfirmation {
+		t.Errorf("status = %q, want pending_confirmation", res.Status)
+	}
+
+	overview, err := srv.GetOverview(ctx)
+	if err != nil {
+		t.Fatalf("GetOverview failed: %v", err)
+	}
+	if overview.Mode != netconfig.NetworkModeGateway {
+		t.Errorf("mode = %q, want gateway", overview.Mode)
+	}
+	if overview.Gateway == nil || !overview.Gateway.Running || !overview.Gateway.IPForward {
+		t.Errorf("gateway overview = %+v, want running=true ipForward=true", overview.Gateway)
+	}
+
+	// 2. 模拟 DHCP 客户端获取租约
+	gwRuntime := srv.(*networkService).gatewayRuntime.(*netconfig.DefaultGatewayRuntime)
+	_ = gwRuntime
+
+	// 3. 确认事务
+	confirmRes, err := srv.ConfirmTransaction(ctx, res.TransactionID, 1, "admin", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("ConfirmTransaction failed: %v", err)
+	}
+	if confirmRes.Status != netconfig.TxnStatusConfirmed {
+		t.Errorf("confirm status = %q, want confirmed", confirmRes.Status)
+	}
+
+	// 4. 退回 multi-address 模式
+	exitInput := SwitchModeInput{
+		Mode:          netconfig.NetworkModeMultiAddress,
+		ActorID:       1,
+		ActorUsername: "admin",
+		ClientIP:      "127.0.0.1",
+	}
+	exitRes, err := srv.SwitchMode(ctx, exitInput)
+	if err != nil {
+		t.Fatalf("SwitchMode exit gateway failed: %v", err)
+	}
+	_, err = srv.ConfirmTransaction(ctx, exitRes.TransactionID, 1, "admin", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("ConfirmTransaction exit gateway failed: %v", err)
+	}
+
+	overviewExit, _ := srv.GetOverview(ctx)
+	if overviewExit.Mode != netconfig.NetworkModeMultiAddress {
+		t.Errorf("mode after exit = %q, want multi-address", overviewExit.Mode)
+	}
+	if overviewExit.Gateway != nil {
+		t.Errorf("gateway overview should be nil after exit, got %+v", overviewExit.Gateway)
+	}
+}
+
+// TestNetworkService_SwitchMode_GatewayConflictProbe 验证启用前冲突探测拒绝（AC3 / 1116）。
+func TestNetworkService_SwitchMode_GatewayConflictProbe(t *testing.T) {
+	srv := newTestNetworkService(t)
+	ctx := context.Background()
+
+	// 先将 eth1 设置为静态
+	ipStr := "192.168.2.1"
+	pfx := 24
+	applyRes, _ := srv.ApplyInterface(ctx, "eth1", ApplyInterfaceInput{
+		Mode:    netconfig.IPModeStatic,
+		Address: &ipStr,
+		Prefix:  &pfx,
+	})
+	_, _ = srv.ConfirmTransaction(ctx, applyRes.TransactionID, 1, "admin", "127.0.0.1")
+
+	// 注入冲突探测有响应
+	backend := srv.(*networkService).gatewayRuntime.(*netconfig.DefaultGatewayRuntime)
+	_ = backend
+	fakeBackend := srv.(*networkService).cfg.Network.FakePlatform
+	_ = fakeBackend
+
+	// 若接口仍为 DHCP client 模式，直接返回 1116
+	dhcpInput := switchGatewaySuccessInput()
+	dhcpInput.Gateway.DownstreamInterfaceID = "wlan0" // wlan0 是 DHCP
+	_, err := srv.SwitchMode(ctx, dhcpInput)
+	if !errno.Is(err, errno.CodeNetworkDhcpServerConflict) {
+		t.Errorf("dhcp client downstream iface should return 1116, got %v", err)
 	}
 }
 

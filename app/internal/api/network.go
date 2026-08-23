@@ -171,10 +171,21 @@ type BondRequest struct {
 	IPv4           ApplyInterfaceRequest `json:"ipv4"`
 }
 
+// GatewayRequest 切到 gateway 时的网关参数体。
+type GatewayRequest struct {
+	DownstreamInterfaceID string `json:"downstreamInterfaceId"`
+	PoolStart             string `json:"poolStart"`
+	PoolEnd               string `json:"poolEnd"`
+	Prefix                int    `json:"prefix"`
+	LeaseDurationSeconds  int64  `json:"leaseDurationSeconds"`
+	IPForward             bool   `json:"ipForward"`
+}
+
 // SwitchModeRequest 模式切换请求参数体。
 type SwitchModeRequest struct {
-	Mode netconfig.NetworkMode `json:"mode" binding:"required"`
-	Bond *BondRequest          `json:"bond"`
+	Mode    netconfig.NetworkMode `json:"mode" binding:"required"`
+	Bond    *BondRequest          `json:"bond"`
+	Gateway *GatewayRequest       `json:"gateway"`
 }
 
 // SwitchMode 切换整机网络工作模式（候选事务）。
@@ -199,7 +210,7 @@ func (h *NetworkHandler) SwitchMode(c *gin.Context) {
 		ClientIP:      c.ClientIP(),
 	}
 	if req.Mode == netconfig.NetworkModeActiveBackup {
-		if req.Bond == nil {
+		if req.Bond == nil || req.Gateway != nil {
 			_ = c.Error(errno.New(errno.CodeInvalidParam))
 			return
 		}
@@ -213,8 +224,21 @@ func (h *NetworkHandler) SwitchMode(c *gin.Context) {
 			Gateway:    req.Bond.IPv4.Gateway,
 			DNSServers: req.Bond.IPv4.DNSServers,
 		}
+	} else if req.Mode == netconfig.NetworkModeGateway {
+		if req.Gateway == nil || req.Bond != nil {
+			_ = c.Error(errno.New(errno.CodeInvalidParam))
+			return
+		}
+		input.Gateway = &service.GatewayInput{
+			DownstreamInterfaceID: req.Gateway.DownstreamInterfaceID,
+			PoolStart:             req.Gateway.PoolStart,
+			PoolEnd:               req.Gateway.PoolEnd,
+			Prefix:                req.Gateway.Prefix,
+			LeaseDurationSeconds:  req.Gateway.LeaseDurationSeconds,
+			IPForward:             req.Gateway.IPForward,
+		}
 	} else {
-		if req.Bond != nil {
+		if req.Bond != nil || req.Gateway != nil {
 			_ = c.Error(errno.New(errno.CodeInvalidParam))
 			return
 		}

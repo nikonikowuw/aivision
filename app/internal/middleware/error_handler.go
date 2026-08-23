@@ -32,11 +32,11 @@ func ErrorHandler() gin.HandlerFunc {
 				status = http.StatusUnauthorized
 			case errno.CodeForbidden:
 				status = http.StatusForbidden
-			case errno.CodeInvalidParam, errno.CodeFileTooLarge, errno.CodeFileTypeNotAllowed, errno.CodeNetworkInvalidConfig:
+			case errno.CodeInvalidParam, errno.CodeFileTooLarge, errno.CodeFileTypeNotAllowed, errno.CodeNetworkInvalidConfig, errno.CodeNetworkGatewayPoolInvalid:
 				status = http.StatusBadRequest
 			case errno.CodeNotFound, errno.CodeNetworkTransactionNotFound:
 				status = http.StatusNotFound
-			case errno.CodeNetworkTransactionPending, errno.CodeNetworkTransactionExpired, errno.CodeNetworkInterfaceNotManaged, errno.CodeNetworkOwnershipConflict, errno.CodeNetworkExternalDrift, errno.CodeNetworkBondSlaveInvalid, errno.CodeNetworkBondModeConflict:
+			case errno.CodeNetworkTransactionPending, errno.CodeNetworkTransactionExpired, errno.CodeNetworkInterfaceNotManaged, errno.CodeNetworkOwnershipConflict, errno.CodeNetworkExternalDrift, errno.CodeNetworkBondSlaveInvalid, errno.CodeNetworkBondModeConflict, errno.CodeNetworkDhcpServerConflict:
 				status = http.StatusConflict
 			case errno.CodeNetworkUnsupported, errno.CodeNetworkApplyFailed, errno.CodeNetworkRecoveryFailed, errno.CodeNetworkStateCorrupt, errno.CodeNetworkNotReady:
 				status = http.StatusServiceUnavailable

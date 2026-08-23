@@ -61,6 +61,9 @@ type StateStore interface {
 	GetPending() (*PendingData, error)
 	SetPending(data *PendingData) error
 	ClearPending() error
+	GetGatewayLeases() ([]GatewayLease, error)
+	SetGatewayLeases(leases []GatewayLease) error
+	ClearGatewayLeases() error
 	Lock() (func(), error)
 }
 
@@ -278,6 +281,33 @@ func (s *FileStateStore) SetPending(data *PendingData) error {
 
 func (s *FileStateStore) ClearPending() error {
 	targetPath := filepath.Join(s.dir, PendingFilename)
+	if err := os.Remove(targetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func (s *FileStateStore) GetGatewayLeases() ([]GatewayLease, error) {
+	var leases []GatewayLease
+	err := s.readEnvelope(GatewayLeasesFilename, &leases)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []GatewayLease{}, nil
+		}
+		return nil, err
+	}
+	return leases, nil
+}
+
+func (s *FileStateStore) SetGatewayLeases(leases []GatewayLease) error {
+	if leases == nil {
+		leases = []GatewayLease{}
+	}
+	return s.writeEnvelope(GatewayLeasesFilename, leases)
+}
+
+func (s *FileStateStore) ClearGatewayLeases() error {
+	targetPath := filepath.Join(s.dir, GatewayLeasesFilename)
 	if err := os.Remove(targetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

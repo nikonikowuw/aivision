@@ -63,6 +63,8 @@ const (
 	CodeNetworkNotReady            = 1111 // 启动恢复/能力检查未完成
 	CodeNetworkBondSlaveInvalid    = 1112 // bond slave 数量/存在/可写/重复/占用/primary 不合法
 	CodeNetworkBondModeConflict    = 1113 // 目标模式与当前拓扑冲突（已处于该模式等）
+	CodeNetworkGatewayPoolInvalid  = 1115 // 地址池、掩码或租约时长非法
+	CodeNetworkDhcpServerConflict  = 1116 // 目标链路已存在 DHCP 服务，或接口为 DHCP client 模式
 
 	// NTP 对时错误码 1201-1207
 	CodeNTPManualNotAllowedInNTPMode  = 1201 // NTP 模式下不支持手动设时
@@ -118,6 +120,8 @@ var messages = map[string]map[int]string{
 		CodeNetworkNotReady:               "网络配置服务未就绪，正在启动或恢复中",
 		CodeNetworkBondSlaveInvalid:       "bond 绑定网卡不合法：需从可写物理网卡中选择恰好 2 块且 primary 在集合内",
 		CodeNetworkBondModeConflict:       "目标网络模式与当前拓扑冲突，请先退回多址模式",
+		CodeNetworkGatewayPoolInvalid:     "网关地址池参数非法：起止地址、掩码、租约时长或与接口子网不匹配",
+		CodeNetworkDhcpServerConflict:     "目标链路已存在其他 DHCP 服务，或该接口处于 DHCP 客户端模式",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自动对时模式下不支持手动设置时间",
 		CodeNTPSyncNotAllowedInManualMode: "手动对时模式下不支持触发 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下服务器列表不能为空",
@@ -163,6 +167,8 @@ var messages = map[string]map[int]string{
 		CodeNetworkNotReady:               "Network service is not ready, starting up or recovering",
 		CodeNetworkBondSlaveInvalid:       "Invalid bond slaves: exactly 2 writable physical interfaces required with primary in the set",
 		CodeNetworkBondModeConflict:       "Target network mode conflicts with current topology, switch back to multi-address first",
+		CodeNetworkGatewayPoolInvalid:     "Invalid gateway address pool: pool range, prefix, lease duration, or interface subnet mismatch",
+		CodeNetworkDhcpServerConflict:     "DHCP server conflict detected on target link or interface is in DHCP client mode",
 		CodeNTPManualNotAllowedInNTPMode:  "Manual time setting is not allowed in NTP mode",
 		CodeNTPSyncNotAllowedInManualMode: "NTP sync is not allowed in manual mode",
 		CodeNTPServersEmpty:               "NTP server list cannot be empty in NTP mode",
@@ -208,6 +214,8 @@ var messages = map[string]map[int]string{
 		CodeNetworkNotReady:               "網路設定服務未就緒，正在啟動或復原中",
 		CodeNetworkBondSlaveInvalid:       "bond 綁定網卡不合法：需從可寫實體網卡中選擇恰好 2 塊且 primary 在集合內",
 		CodeNetworkBondModeConflict:       "目標網路模式與目前拓撲衝突，請先退回多址模式",
+		CodeNetworkGatewayPoolInvalid:     "閘道位址池參數非法：起止位址、遮罩、租約時長或與介面子網不相符",
+		CodeNetworkDhcpServerConflict:     "目標鏈路已存在其他 DHCP 服務，或該介面處於 DHCP 用戶端模式",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自動對時模式下不支援手動設定時間",
 		CodeNTPSyncNotAllowedInManualMode: "手動對時模式下不支援觸發 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下伺服器清單不能為空",

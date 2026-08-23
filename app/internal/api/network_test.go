@@ -196,3 +196,102 @@ func TestNetworkAPI_SwitchMode_MultiAddressWithBondRejected(t *testing.T) {
 	}
 }
 
+func TestNetworkAPI_SwitchMode_GatewaySuccess(t *testing.T) {
+	router, _ := setupTestNetworkRouter(t)
+
+	// 先将 eth1 设为静态
+	applyBody := []byte(`{
+		"mode":"static",
+		"address":"192.168.2.1",
+		"prefix":24
+	}`)
+	wApply := httptest.NewRecorder()
+	reqApply, _ := http.NewRequest(http.MethodPut, "/api/network/interfaces/eth1", bytes.NewReader(applyBody))
+	reqApply.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(wApply, reqApply)
+
+	var applyResp struct {
+		Data struct {
+			TransactionID string `json:"transactionId"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(wApply.Body.Bytes(), &applyResp)
+	wConfirm := httptest.NewRecorder()
+	reqConfirm, _ := http.NewRequest(http.MethodPost, "/api/network/transactions/"+applyResp.Data.TransactionID+"/confirm", nil)
+	router.ServeHTTP(wConfirm, reqConfirm)
+
+	// 切换到 gateway 模式
+	body := []byte(`{
+		"mode":"gateway",
+		"gateway":{
+			"downstreamInterfaceId":"eth1",
+			"poolStart":"192.168.2.100",
+			"poolEnd":"192.168.2.200",
+			"prefix":24,
+			"leaseDurationSeconds":3600,
+			"ipForward":true
+		}
+	}`)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/network/mode", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+func TestNetworkAPI_SwitchMode_GatewayInvalidPool(t *testing.T) {
+	router, _ := setupTestNetworkRouter(t)
+
+	// 先将 eth1 设为静态
+	applyBody := []byte(`{
+		"mode":"static",
+		"address":"192.168.2.1",
+		"prefix":24
+	}`)
+	wApply := httptest.NewRecorder()
+	reqApply, _ := http.NewRequest(http.MethodPut, "/api/network/interfaces/eth1", bytes.NewReader(applyBody))
+	reqApply.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(wApply, reqApply)
+
+	var applyResp struct {
+		Data struct {
+			TransactionID string `json:"transactionId"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(wApply.Body.Bytes(), &applyResp)
+	wConfirm := httptest.NewRecorder()
+	reqConfirm, _ := http.NewRequest(http.MethodPost, "/api/network/transactions/"+applyResp.Data.TransactionID+"/confirm", nil)
+	router.ServeHTTP(wConfirm, reqConfirm)
+
+	// 非法 pool（start > end）
+	body := []byte(`{
+		"mode":"gateway",
+		"gateway":{
+			"downstreamInterfaceId":"eth1",
+			"poolStart":"192.168.2.201",
+			"poolEnd":"192.168.2.200",
+			"prefix":24,
+			"leaseDurationSeconds":3600
+		}
+	}`)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/network/mode", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d (400) for invalid pool", w.Code, http.StatusBadRequest)
+	}
+	var resp struct {
+		Code int `json:"code"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Code != errno.CodeNetworkGatewayPoolInvalid {
+		t.Errorf("code = %d, want %d", resp.Code, errno.CodeNetworkGatewayPoolInvalid)
+	}
+}
+
+

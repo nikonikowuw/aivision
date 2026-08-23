@@ -20,12 +20,13 @@ type NetworkMode string
 const (
 	NetworkModeMultiAddress NetworkMode = "multi-address"
 	NetworkModeActiveBackup NetworkMode = "active-backup"
+	NetworkModeGateway      NetworkMode = "gateway"
 )
 
 // AllNetworkModes 枚举的单一事实来源，供校验/迭代/默认值复用。
 // 新增模式只需改这里 + 常量定义 + 行为分支，避免校验点散落。
 func AllNetworkModes() []NetworkMode {
-	return []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup}
+	return []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup, NetworkModeGateway}
 }
 
 // Valid 边界校验用，替代各调用点手写的 switch / slices.Contains。
@@ -46,6 +47,56 @@ const DefaultBondMiimon = 100
 
 // DefaultConfirmTimeout 默认候选事务确认超时时间。
 const DefaultConfirmTimeout = 120 * time.Second
+
+// 边缘网关与 DHCP 默认参数
+const (
+	DefaultGatewayLeaseDurationSeconds int64 = 3600
+	MinGatewayLeaseDurationSeconds     int64 = 60
+	MaxGatewayLeaseDurationSeconds     int64 = 604800
+	GatewayLeasesFilename                    = "gateway-leases.json"
+)
+
+// GatewayPlan 边缘网关模式的目标配置。
+type GatewayPlan struct {
+	DownstreamInterfaceID string `json:"downstreamInterfaceId"`
+	PoolStart             string `json:"poolStart"`
+	PoolEnd               string `json:"poolEnd"`
+	Prefix                int    `json:"prefix"`
+	LeaseDurationSeconds  int64  `json:"leaseDurationSeconds"`
+	IPForward             bool   `json:"ipForward"`
+}
+
+// GatewayState 运行时 Gateway 内部状态。
+type GatewayState struct {
+	Plan              *GatewayPlan `json:"plan,omitempty"`
+	Running           bool         `json:"running"`
+	IPForward         bool         `json:"ipForward"`
+	PreviousIPForward *bool        `json:"previousIpForward,omitempty"`
+	ConflictDetected  bool         `json:"conflictDetected"`
+}
+
+// GatewayLease DHCP 租约记录。
+type GatewayLease struct {
+	MAC           string    `json:"mac"`
+	IP            string    `json:"ip"`
+	StartsAt      time.Time `json:"startsAt"`
+	ExpiresAt     time.Time `json:"expiresAt"`
+	LastRenewedAt time.Time `json:"lastRenewedAt"`
+	Hostname      string    `json:"hostname,omitempty"`
+}
+
+// GatewayOverview 网络概览中对外暴露的 Gateway 视图。
+type GatewayOverview struct {
+	DownstreamInterfaceID string         `json:"downstreamInterfaceId"`
+	PoolStart             string         `json:"poolStart"`
+	PoolEnd               string         `json:"poolEnd"`
+	Prefix                int            `json:"prefix"`
+	LeaseDurationSeconds  int64          `json:"leaseDurationSeconds"`
+	IPForward             bool           `json:"ipForward"`
+	Running               bool           `json:"running"`
+	ConflictDetected      bool           `json:"conflictDetected"`
+	Leases                []GatewayLease `json:"leases"`
+}
 
 // BondPlan 绑定拓扑的目标配置。
 type BondPlan struct {
@@ -234,6 +285,7 @@ type NetworkOverview struct {
 	Capabilities            Capabilities        `json:"capabilities"`
 	Mode                    NetworkMode         `json:"mode"` // 始终有值，空则归一化为 multi-address
 	Bond                    *BondTopology       `json:"bond"`
+	Gateway                 *GatewayOverview    `json:"gateway"`
 }
 
 // TransactionResult 事务操作执行结果。
@@ -262,6 +314,7 @@ type HostPlan struct {
 	PrimaryInterfaceID *string                  `json:"primaryInterfaceId"`
 	Mode               NetworkMode              `json:"mode,omitempty"`
 	Bond               *BondPlan                `json:"bond,omitempty"`
+	Gateway            *GatewayPlan             `json:"gateway,omitempty"`
 }
 
 // NativeSnapshot 平台专有快照用于恢复。
@@ -280,4 +333,5 @@ type HostSnapshot struct {
 	Native                  NativeSnapshot           `json:"native"`
 	Mode                    NetworkMode              `json:"mode,omitempty"`
 	Bond                    *BondTopology            `json:"bond,omitempty"`
+	Gateway                 *GatewayState            `json:"gateway,omitempty"`
 }

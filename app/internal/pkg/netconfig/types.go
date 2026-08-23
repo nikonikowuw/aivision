@@ -54,6 +54,58 @@ const DefaultBondMiimon = 100
 // DefaultConfirmTimeout 默认候选事务确认超时时间。
 const DefaultConfirmTimeout = 120 * time.Second
 
+// BondXmitHashPolicy LACP 出向传输哈希策略封闭枚举。
+type BondXmitHashPolicy string
+
+const (
+	BondXmitHashPolicyLayer2  BondXmitHashPolicy = "layer2"
+	BondXmitHashPolicyLayer23 BondXmitHashPolicy = "layer2+3"
+	BondXmitHashPolicyLayer34 BondXmitHashPolicy = "layer3+4"
+	DefaultBondXmitHashPolicy                    = BondXmitHashPolicyLayer23
+)
+
+// AllBondXmitHashPolicies 支持的传输哈希策略列表。
+func AllBondXmitHashPolicies() []BondXmitHashPolicy {
+	return []BondXmitHashPolicy{
+		BondXmitHashPolicyLayer2,
+		BondXmitHashPolicyLayer23,
+		BondXmitHashPolicyLayer34,
+	}
+}
+
+// Valid 校验传输哈希策略是否属于封闭枚举。
+func (p BondXmitHashPolicy) Valid() bool {
+	return slices.Contains(AllBondXmitHashPolicies(), p)
+}
+
+// BondLACPRate LACP 协商报文发送速率内部枚举。
+type BondLACPRate string
+
+const (
+	BondLACPRateSlow BondLACPRate = "slow"
+)
+
+// LACPPortState 单个 LACP 端口的 actor/partner 状态标志。
+type LACPPortState struct {
+	Active       bool `json:"active"`
+	ShortTimeout bool `json:"shortTimeout"`
+	Aggregation  bool `json:"aggregation"`
+	Synchronized bool `json:"synchronized"`
+	Collecting   bool `json:"collecting"`
+	Distributing bool `json:"distributing"`
+	Defaulted    bool `json:"defaulted"`
+	Expired      bool `json:"expired"`
+}
+
+// LACPPortStatus 单个 slave 接口的 LACP 协商与聚合状态。
+type LACPPortStatus struct {
+	InterfaceID  string        `json:"interfaceId"`
+	AggregatorID *uint16       `json:"aggregatorId,omitempty"`
+	InAggregator bool          `json:"inAggregator"`
+	ActorState   LACPPortState `json:"actorState"`
+	PartnerState LACPPortState `json:"partnerState"`
+}
+
 // LACPStatus 整机 bond0 接口的 LACP 协商与拓扑可观测状态。
 type LACPStatus struct {
 	AggregatorID   *uint16          `json:"aggregatorId,omitempty"`

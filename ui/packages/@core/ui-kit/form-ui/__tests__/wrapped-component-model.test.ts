@@ -29,13 +29,21 @@ const TreeSelectStub = defineComponent({
 
 describe('wrapped form components', () => {
   it('forwards ApiTreeSelect selections to the form model', async () => {
-    globalShareState.setComponents({ ApiTreeSelect: TreeSelectStub });
-    setupVbenForm<ApiFormComponent>({
-      config: {
-        baseModelPropName: 'value',
-        modelPropNameMap: { ApiTreeSelect: 'modelValue' },
-      },
+    const previousComponents = globalShareState.getComponents();
+    globalShareState.setComponents({
+      ...previousComponents,
+      ApiTreeSelect: TreeSelectStub,
     });
+    try {
+      setupVbenForm<ApiFormComponent>({
+        config: {
+          baseModelPropName: 'value',
+          modelPropNameMap: { ApiTreeSelect: 'modelValue' },
+        },
+      });
+    } finally {
+      globalShareState.setComponents(previousComponents);
+    }
 
     const [Form, formApi] = useVbenForm<{ deptId?: number }, ApiFormComponent>({
       schema: [

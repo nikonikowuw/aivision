@@ -1,6 +1,6 @@
 # 链路聚合网络模式技术设计（LACP 802.3ad）
 
-状态：`draft`
+状态：`confirmed`
 对应 PRD：`prd.md`
 基准代码：当前 `dev` 分支；前置 active-backup 已在 `12cfa8f` 实现并归档
 

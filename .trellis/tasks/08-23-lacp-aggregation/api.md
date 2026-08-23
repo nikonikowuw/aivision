@@ -1,6 +1,6 @@
 # 链路聚合网络模式 API 增量契约
 
-状态：`draft`（待用户确认）
+状态：`confirmed`
 版本：`v2`（在 active-backup `api.md` v1 之上增量）
 对应任务：`08-23-lacp-aggregation`
 

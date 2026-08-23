@@ -114,10 +114,10 @@ const (
 	defaultStorageLocalURLPrefix       = "/uploads"
 	defaultStorageMinIOUseSSL          = false
 
-	defaultNetworkStateDir        = "/var/lib/aivision/network"
-	defaultNetworkProfilePath     = "/etc/aivision/network-profile.json"
-	defaultNetworkConfirmTimeout  = 120 * time.Second
-	defaultNetworkFakePlatform    = false
+	defaultNetworkStateDir       = "/var/lib/aivision/network"
+	defaultNetworkProfilePath    = "/etc/aivision/network-profile.json"
+	defaultNetworkConfirmTimeout = 120 * time.Second
+	defaultNetworkFakePlatform   = false
 )
 
 // Load 读取配置：默认路径 configs/config.yaml，可用环境变量 APP_CONFIG_PATH 覆盖，

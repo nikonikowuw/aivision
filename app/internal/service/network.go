@@ -22,6 +22,7 @@ type NetworkService interface {
 	GetOverview(ctx context.Context) (*netconfig.NetworkOverview, error)
 	GetTransaction(ctx context.Context, txnID string) (*netconfig.PendingTransaction, error)
 	ApplyInterface(ctx context.Context, ifaceID string, input ApplyInterfaceInput) (*netconfig.TransactionResult, error)
+	SwitchMode(ctx context.Context, input SwitchModeInput) (*netconfig.TransactionResult, error)
 	ConfirmTransaction(ctx context.Context, txnID string, actorID uint64, actorUsername string, clientIP string) (*netconfig.TransactionResult, error)
 	CancelTransaction(ctx context.Context, txnID string, actorID uint64, actorUsername string, clientIP string) (*netconfig.TransactionResult, error)
 	FactoryReset(ctx context.Context, ifaceID string, actorID uint64, actorUsername string, clientIP string) (*netconfig.TransactionResult, error)
@@ -38,6 +39,17 @@ type ApplyInterfaceInput struct {
 	ActorID       uint64           `json:"-"`
 	ActorUsername string           `json:"-"`
 	ClientIP      string           `json:"-"`
+}
+
+// SwitchModeInput 模式切换输入。
+type SwitchModeInput struct {
+	Mode           netconfig.NetworkMode `json:"mode"`
+	SlaveIDs       []string              `json:"slaveIds"`
+	PrimarySlaveID string                `json:"primarySlaveId"`
+	BondIPv4       ApplyInterfaceInput   `json:"ipv4"`
+	ActorID        uint64                `json:"-"`
+	ActorUsername  string                `json:"-"`
+	ClientIP       string                `json:"-"`
 }
 
 type networkService struct {
@@ -126,7 +138,9 @@ func (s *networkService) Start(ctx context.Context) error {
 			s.log.Error("startup rollback failed", zap.Error(err))
 		}
 		_ = s.store.ClearPending()
-		s.recordSystemLog(ctx, "system.log.actionNetworkStartupRecovery", "Startup recovery rolled back dangling transaction")
+		// 自动事件：操作者与来源 IP 取自 pending 中保存的原操作者；无关联操作者时回退到 system（spec 5.2）。
+		s.recordSystemLog(ctx, "system.log.actionNetworkStartupRecovery", "Startup recovery rolled back dangling transaction",
+			pending.Transaction.ActorID, pending.Transaction.ActorUsername, pending.Transaction.ClientIP, 0)
 	}
 
 	s.ready = true
@@ -196,12 +210,9 @@ func (s *networkService) GetOverview(ctx context.Context) (*netconfig.NetworkOve
 		SystemDNSServers:        snapshot.SystemDNSServers,
 		Interfaces:              interfacesList,
 		PendingTransaction:      pendingTxn,
-		Capabilities: netconfig.Capabilities{
-			DHCP:            true,
-			StaticIPv4:      true,
-			FactoryReset:    true,
-			WifiAssociation: false,
-		},
+		Capabilities:            s.platform.Capabilities(ctx),
+		Mode:                    snapshot.Mode.Normalize(),
+		Bond:                    snapshot.Bond,
 	}
 
 	return overview, nil
@@ -254,51 +265,15 @@ func (s *networkService) ApplyInterface(ctx context.Context, ifaceID string, inp
 	}
 
 	// 3. 校验并规范化参数
-	var normAddr *string
-	var normMask *string
-	var normPrefix *int
-	var normGW *string
-	var normDNS []string
-
-	if input.Mode == netconfig.IPModeStatic {
-		if input.Address == nil || input.Prefix == nil {
-			return nil, errno.New(errno.CodeNetworkInvalidConfig)
-		}
-		addr, mask, err := netconfig.NormalizeAndValidateIPv4(*input.Address, *input.Prefix)
-		if err != nil {
-			return nil, errno.New(errno.CodeNetworkInvalidConfig)
-		}
-		normAddr = &addr
-		normMask = &mask
-		normPrefix = input.Prefix
-
-		if input.Primary {
-			if input.Gateway == nil || len(input.DNSServers) == 0 {
-				return nil, errno.New(errno.CodeNetworkInvalidConfig)
-			}
-			gw, err := netconfig.ValidateGatewayInSubnet(addr, *input.Prefix, *input.Gateway)
-			if err != nil {
-				return nil, errno.New(errno.CodeNetworkInvalidConfig)
-			}
-			normGW = &gw
-
-			dns, err := netconfig.ValidateDNSServers(input.DNSServers)
-			if err != nil {
-				return nil, errno.New(errno.CodeNetworkInvalidConfig)
-			}
-			normDNS = dns
-		} else {
-			if input.Gateway != nil || len(input.DNSServers) > 0 {
-				return nil, errno.New(errno.CodeNetworkInvalidConfig)
-			}
-		}
-	} else if input.Mode == netconfig.IPModeDHCP {
-		if input.Address != nil || input.Prefix != nil || input.Gateway != nil || len(input.DNSServers) > 0 {
-			return nil, errno.New(errno.CodeNetworkInvalidConfig)
-		}
-	} else {
+	norm, err := netconfig.ValidateAndNormalizeIPv4(input.Mode, input.Primary, input.Address, input.Prefix, input.Gateway, input.DNSServers)
+	if err != nil {
 		return nil, errno.New(errno.CodeNetworkInvalidConfig)
 	}
+	normAddr := norm.Address
+	normMask := norm.SubnetMask
+	normPrefix := norm.Prefix
+	normGW := norm.Gateway
+	normDNS := norm.DNSServers
 
 	// 4. 构建完整的 HostPlan
 	plan := netconfig.HostPlan{
@@ -348,7 +323,7 @@ func (s *networkService) ApplyInterface(ctx context.Context, ifaceID string, inp
 	now := time.Now().UTC()
 	timeout := s.cfg.Network.ConfirmTimeout
 	if timeout <= 0 {
-		timeout = 120 * time.Second
+		timeout = netconfig.DefaultConfirmTimeout
 	}
 	expiresAt := now.Add(timeout)
 	txnID := fmt.Sprintf("txn-%d", now.UnixNano())
@@ -431,10 +406,256 @@ func (s *networkService) ApplyInterface(ctx context.Context, ifaceID string, inp
 	}, nil
 }
 
+// SwitchMode 切换整机网络工作模式。复用既有候选事务协议（120s 确认窗口、超时回滚、启动恢复）。
+// 校验全部前置完成，不触碰平台则状态零修改（AC3）。
+func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) (*netconfig.TransactionResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	start := time.Now()
+	if !s.ready {
+		return nil, errno.New(errno.CodeNetworkNotReady)
+	}
+
+	// 1. 校验目标模式是合法枚举值
+	if !input.Mode.Valid() {
+		return nil, errno.New(errno.CodeNetworkInvalidConfig)
+	}
+
+	// 2. 复用整机候选事务槽位：已有待确认事务则拒绝（R1.5）
+	if existing, err := s.store.GetPending(); err == nil && existing != nil {
+		return nil, errno.New(errno.CodeNetworkTransactionPending)
+	}
+
+	// 3. capability 协商：平台不支持则拒绝，不得静默降级（R2.2）
+	if !slices.Contains(s.platform.Capabilities(ctx).SupportedModes, input.Mode) {
+		return nil, errno.New(errno.CodeNetworkUnsupported)
+	}
+
+	// 4. 读取当前快照作为 before 与拓扑基线
+	currentSnapshot, err := s.platform.Read(ctx)
+	if err != nil {
+		return nil, errno.New(errno.CodeNetworkUnsupported)
+	}
+
+	// 5. 模式冲突校验（R5.2 1113）
+	if currentSnapshot.Mode.Normalize() == input.Mode {
+		return nil, errno.New(errno.CodeNetworkBondModeConflict)
+	}
+
+	// 6. bond 参数校验（仅切到 active-backup 时，R3.3 / AC3）
+	var bondPlan *netconfig.BondPlan
+	if input.Mode == netconfig.NetworkModeActiveBackup {
+		if len(input.SlaveIDs) != 2 {
+			return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+		}
+		if input.SlaveIDs[0] == input.SlaveIDs[1] {
+			return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+		}
+		if !slices.Contains(input.SlaveIDs, input.PrimarySlaveID) {
+			return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+		}
+		for _, sid := range input.SlaveIDs {
+			slave, exists := currentSnapshot.Interfaces[sid]
+			if !exists || !slave.Writable || slave.MasterID != nil || slave.IsBond {
+				return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
+			}
+		}
+		bondPlan = &netconfig.BondPlan{
+			SlaveIDs:       input.SlaveIDs,
+			PrimarySlaveID: input.PrimarySlaveID,
+			Miimon:         netconfig.DefaultBondMiimon, // D2：固定 100ms，不接受客户端输入
+		}
+	}
+
+	// 7. bond 的 IPv4 参数校验（复用统一 IPv4 校验规则）
+	var normAddr *string
+	var normMask *string
+	var normPrefix *int
+	var normGW *string
+	var normDNS []string
+	if input.Mode == netconfig.NetworkModeActiveBackup {
+		norm, err := netconfig.ValidateAndNormalizeIPv4(
+			input.BondIPv4.Mode,
+			input.BondIPv4.Primary,
+			input.BondIPv4.Address,
+			input.BondIPv4.Prefix,
+			input.BondIPv4.Gateway,
+			input.BondIPv4.DNSServers,
+		)
+		if err != nil {
+			return nil, errno.New(errno.CodeNetworkInvalidConfig)
+		}
+		normAddr = norm.Address
+		normMask = norm.SubnetMask
+		normPrefix = norm.Prefix
+		normGW = norm.Gateway
+		normDNS = norm.DNSServers
+	}
+
+	// 8. 构建完整 HostPlan：以 before 接口配置为基线
+	plan := netconfig.HostPlan{
+		Interfaces:         make(map[string]netconfig.InterfacePlan),
+		PrimaryInterfaceID: currentSnapshot.PrimaryInterfaceID,
+		Mode:               input.Mode,
+		Bond:               bondPlan,
+	}
+	for id, info := range currentSnapshot.Interfaces {
+		plan.Interfaces[id] = netconfig.InterfacePlan{
+			Mode:       info.IPv4.Mode,
+			Primary:    info.IsPrimary,
+			Address:    info.IPv4.Address,
+			Prefix:     info.IPv4.Prefix,
+			Gateway:    info.IPv4.Gateway,
+			DNSServers: info.IPv4.DNSServers,
+		}
+	}
+
+	if input.Mode == netconfig.NetworkModeActiveBackup {
+		// 进入 bonding：slave 条目保留完整原值（含 primary/gateway/dns），随 last-valid 持久化，
+		// 供退出模式时恢复（R3.4 / design 5.2 步骤 8）。
+		// fake 平台 applyMode 会实际清空 slave 状态并解除 primary，Apply 主循环按 MasterID 跳过，
+		// 因此 plan 保留原值不影响进入后的运行状态。
+		// 追加 bond0 计划
+		bondID := "bond0"
+		plan.Interfaces[bondID] = netconfig.InterfacePlan{
+			Mode:       input.BondIPv4.Mode,
+			Primary:    input.BondIPv4.Primary,
+			Address:    normAddr,
+			Prefix:     normPrefix,
+			Gateway:    normGW,
+			DNSServers: normDNS,
+		}
+		if input.BondIPv4.Primary {
+			newPrimary := bondID
+			plan.PrimaryInterfaceID = &newPrimary
+		}
+	} else if currentSnapshot.Bond != nil {
+		// 退出 bonding：移除 bond0 条目，从 last-valid 恢复 slave 原 IPv4 配置与 primary 指向（R3.4 / design 5.2 步骤 8）。
+		delete(plan.Interfaces, "bond0")
+		// 进入 bonding 时 slave 完整原值已随候选 plan 持久化到 last-valid；
+		// 若 last-valid 缺失/损坏则保持清空（降级，可接受）。
+		if lv, err := s.store.GetLastValid(); err == nil && lv != nil && lv.Plan.Interfaces != nil {
+			for _, sid := range currentSnapshot.Bond.SlaveIDs {
+				if orig, ok := lv.Plan.Interfaces[sid]; ok {
+					plan.Interfaces[sid] = orig
+				}
+			}
+			// 恢复 primary：last-valid 中 primary=true 的非 bond 接口
+			for id, ip := range lv.Plan.Interfaces {
+				if id != "bond0" && ip.Primary {
+					pid := id
+					plan.PrimaryInterfaceID = &pid
+					break
+				}
+			}
+		}
+	}
+
+	// 9. 生成事务
+	now := time.Now().UTC()
+	timeout := s.cfg.Network.ConfirmTimeout
+	if timeout <= 0 {
+		timeout = netconfig.DefaultConfirmTimeout
+	}
+	expiresAt := now.Add(timeout)
+	txnID := fmt.Sprintf("txn-%d", now.UnixNano())
+
+	targetIfaceID := ""
+	if input.Mode == netconfig.NetworkModeActiveBackup {
+		targetIfaceID = "bond0"
+	}
+
+	reconnectAddrs := make([]netconfig.ReconnectAddress, 0)
+	if input.Mode == netconfig.NetworkModeActiveBackup && normAddr != nil && normPrefix != nil {
+		reconnectAddrs = append(reconnectAddrs, netconfig.ReconnectAddress{
+			InterfaceID: "bond0",
+			Address:     *normAddr,
+			Prefix:      *normPrefix,
+		})
+	}
+
+	summary := fmt.Sprintf("mode switch: %s -> %s slaves=%v primary=%s",
+		currentSnapshot.Mode.Normalize(), input.Mode, input.SlaveIDs, input.PrimarySlaveID)
+	pending := &netconfig.PendingData{
+		Transaction: netconfig.PendingTransaction{
+			ID:                          txnID,
+			Status:                      netconfig.TxnStatusPendingConfirmation,
+			Action:                      netconfig.TxnActionModeSwitch,
+			CreatedAt:                   now,
+			ExpiresAt:                   expiresAt,
+			RemainingSeconds:            int(timeout.Seconds()),
+			TargetInterfaceID:           targetIfaceID,
+			PreviousPrimaryInterfaceID:  currentSnapshot.PrimaryInterfaceID,
+			CandidatePrimaryInterfaceID: plan.PrimaryInterfaceID,
+			ReconnectAddresses:          reconnectAddrs,
+			RequiresReconnect:           true,
+			TargetMode:                  input.Mode,
+			PreviousMode:                currentSnapshot.Mode.Normalize(),
+			Candidate: netconfig.CandidateSummary{
+				Mode:       input.BondIPv4.Mode,
+				Address:    normAddr,
+				Prefix:     normPrefix,
+				SubnetMask: normMask,
+				Gateway:    normGW,
+				DNSServers: normDNS,
+			},
+			ActorID:       input.ActorID,
+			ActorUsername: input.ActorUsername,
+			ClientIP:      input.ClientIP,
+			ActionSummary: summary,
+		},
+		Before:    currentSnapshot,
+		Candidate: plan,
+	}
+
+	// 10. 持久化 pending 后平台应用，失败补偿
+	if err := s.store.SetPending(pending); err != nil {
+		return nil, errno.New(errno.CodeNetworkStateCorrupt)
+	}
+	candidateSnapshot, err := s.platform.Apply(ctx, plan)
+	if err != nil {
+		s.log.Error("platform apply failed on mode switch, restoring before snapshot", zap.Error(err))
+		_, _ = s.platform.Restore(ctx, currentSnapshot)
+		_ = s.store.ClearPending()
+		return nil, errno.New(errno.CodeNetworkApplyFailed)
+	}
+
+	// 11. 启动超时自动回滚定时器 + 审计
+	if s.timer != nil {
+		s.timer.Stop()
+	}
+	s.timer = time.AfterFunc(timeout, func() {
+		s.handleTimeout(context.Background(), txnID)
+	})
+
+	// 补写模式切换业务摘要审计：操作者/来源 IP/耗时取自本次 HTTP 请求者（R5.3）。
+	s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", summary,
+		input.ActorID, input.ActorUsername, input.ClientIP, time.Since(start).Milliseconds())
+
+	overview := &netconfig.NetworkOverview{
+		Platform:                s.platform.Type(),
+		State:                   netconfig.StateReady,
+		PrimaryInterfaceID:      candidateSnapshot.PrimaryInterfaceID,
+		DefaultRouteInterfaceID: candidateSnapshot.DefaultRouteInterfaceID,
+		SystemDNSServers:        candidateSnapshot.SystemDNSServers,
+		PendingTransaction:      &pending.Transaction,
+	}
+
+	return &netconfig.TransactionResult{
+		TransactionID:      txnID,
+		Status:             netconfig.TxnStatusPendingConfirmation,
+		ExpiresAt:          &expiresAt,
+		Overview:           overview,
+		ReconnectAddresses: reconnectAddrs,
+	}, nil
+}
+
 func (s *networkService) ConfirmTransaction(ctx context.Context, txnID string, actorID uint64, actorUsername string, clientIP string) (*netconfig.TransactionResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	start := time.Now()
 	if !s.ready {
 		return nil, errno.New(errno.CodeNetworkNotReady)
 	}
@@ -462,6 +683,12 @@ func (s *networkService) ConfirmTransaction(ctx context.Context, txnID string, a
 	_ = s.store.SetLastValid(lastValid)
 	_ = s.store.ClearPending()
 
+	// 模式切换事务补写审计（R5.3），不改既有控制流
+	if pending.Transaction.Action == netconfig.TxnActionModeSwitch {
+		s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", s.modeSwitchSummary("confirmed", pending),
+			actorID, actorUsername, clientIP, time.Since(start).Milliseconds())
+	}
+
 	return &netconfig.TransactionResult{
 		TransactionID: txnID,
 		Status:        netconfig.TxnStatusConfirmed,
@@ -472,6 +699,7 @@ func (s *networkService) CancelTransaction(ctx context.Context, txnID string, ac
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	start := time.Now()
 	if !s.ready {
 		return nil, errno.New(errno.CodeNetworkNotReady)
 	}
@@ -493,7 +721,13 @@ func (s *networkService) CancelTransaction(ctx context.Context, txnID string, ac
 	}
 
 	_ = s.store.ClearPending()
-	s.recordSystemLog(ctx, "system.log.actionNetworkRollback", fmt.Sprintf("Transaction %s cancelled by user", txnID))
+	s.recordSystemLog(ctx, "system.log.actionNetworkRollback", fmt.Sprintf("Transaction %s cancelled by user", txnID),
+		actorID, actorUsername, clientIP, time.Since(start).Milliseconds())
+	// 模式切换事务补写模式细节审计（R5.3），不改既有控制流
+	if pending.Transaction.Action == netconfig.TxnActionModeSwitch {
+		s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", s.modeSwitchSummary("cancelled", pending),
+			actorID, actorUsername, clientIP, time.Since(start).Milliseconds())
+	}
 
 	return &netconfig.TransactionResult{
 		TransactionID: txnID,
@@ -527,7 +761,7 @@ func (s *networkService) FactoryReset(ctx context.Context, ifaceID string, actor
 	now := time.Now().UTC()
 	timeout := s.cfg.Network.ConfirmTimeout
 	if timeout <= 0 {
-		timeout = 120 * time.Second
+		timeout = netconfig.DefaultConfirmTimeout
 	}
 	expiresAt := now.Add(timeout)
 	txnID := fmt.Sprintf("txn-%d", now.UnixNano())
@@ -585,24 +819,52 @@ func (s *networkService) handleTimeout(ctx context.Context, txnID string) {
 	s.log.Info("network transaction expired, auto rolling back", zap.String("txnId", txnID))
 	_, _ = s.platform.Restore(ctx, pending.Before)
 	_ = s.store.ClearPending()
-	s.recordSystemLog(ctx, "system.log.actionNetworkRollback", fmt.Sprintf("Transaction %s expired (120s timeout) and was rolled back automatically", txnID))
+	// 自动事件：操作者与来源 IP 取自 pending 中保存的原操作者；无关联操作者时回退到 system（spec 5.2）。
+	s.recordSystemLog(ctx, "system.log.actionNetworkRollback", fmt.Sprintf("Transaction %s expired (120s timeout) and was rolled back automatically", txnID),
+		pending.Transaction.ActorID, pending.Transaction.ActorUsername, pending.Transaction.ClientIP, 0)
+	// 模式切换事务补写模式细节审计（R5.3），不改既有控制流
+	if pending.Transaction.Action == netconfig.TxnActionModeSwitch {
+		s.recordSystemLog(ctx, "system.log.actionNetworkModeSwitch", s.modeSwitchSummary("rolled back on timeout", pending),
+			pending.Transaction.ActorID, pending.Transaction.ActorUsername, pending.Transaction.ClientIP, 0)
+	}
 }
 
-func (s *networkService) recordSystemLog(ctx context.Context, action string, summary string) {
+// modeSwitchSummary 构造模式切换审计摘要。切回 multi-address 时 Candidate.Bond 为 nil，需空指针保护。
+func (s *networkService) modeSwitchSummary(event string, pending *netconfig.PendingData) string {
+	slaves := "-"
+	primary := "-"
+	if pending.Candidate.Bond != nil {
+		slaves = fmt.Sprintf("%v", pending.Candidate.Bond.SlaveIDs)
+		primary = pending.Candidate.Bond.PrimarySlaveID
+	}
+	return fmt.Sprintf("mode switch %s: %s -> %s slaves=%s primary=%s",
+		event, pending.Transaction.PreviousMode, pending.Transaction.TargetMode, slaves, primary)
+}
+
+// recordSystemLog 写一条 ops 模块操作日志（R5.3 / spec 5.2）。
+// actorID/actorUsername/clientIP 为空时回退到系统守护进程身份（自动事件无关联操作者时使用固定 system actor）。
+func (s *networkService) recordSystemLog(ctx context.Context, action, summary string, actorID uint64, actorUsername, clientIP string, durationMs int64) {
 	if s.oplogService == nil {
 		return
 	}
+	if actorUsername == "" {
+		actorUsername = "system"
+	}
+	if clientIP == "" {
+		clientIP = "127.0.0.1"
+	}
 	_ = s.oplogService.Record(ctx, &model.OperationLog{
 		CreatedAt:  time.Now(),
-		UserID:     0,
-		Username:   "system",
+		UserID:     actorID,
+		Username:   actorUsername,
 		Module:     "ops",
 		Action:     action,
 		Method:     "INTERNAL",
 		Path:       "/api/network",
 		Body:       summary,
 		StatusCode: 200,
-		IP:         "127.0.0.1",
+		DurationMs: durationMs,
+		IP:         clientIP,
 		UserAgent:  "system-daemon",
 	})
 }

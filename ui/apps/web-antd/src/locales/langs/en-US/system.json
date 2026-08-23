@@ -136,6 +136,13 @@
     "actionRefreshToken": "Refresh Token",
     "actionUpload": "Upload File",
     "actionUpdateProfile": "Update Profile",
-    "actionChangePassword": "Change Password"
+    "actionChangePassword": "Change Password",
+    "actionNetworkModeSwitch": "Switch network working mode",
+    "actionNetworkApply": "Apply Network Configuration",
+    "actionNetworkCancel": "Cancel Network Change",
+    "actionNetworkConfirm": "Confirm Network Change",
+    "actionNetworkReset": "Factory Reset",
+    "actionNetworkRollback": "Rollback Network Configuration",
+    "actionNetworkStartupRecovery": "Startup Network Recovery"
   }
 }

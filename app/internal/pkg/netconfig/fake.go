@@ -13,9 +13,14 @@ type FakePlatform struct {
 	interfaces   map[string]InterfaceInfo
 	primaryID    *string
 	systemDNS    []string
+	mode         NetworkMode
+	bond         *BondTopology
 	failApply    bool
 	failRestore  bool
 }
+
+// fakeBondInterfaceID fake 平台固定使用的 bond 逻辑口 ID（D1：系统生成，不接受用户命名）。
+const fakeBondInterfaceID = "bond0"
 
 // NewFakePlatform 创建 Fake 测试替身。
 func NewFakePlatform(platformType PlatformType) *FakePlatform {
@@ -117,6 +122,17 @@ func (f *FakePlatform) Type() PlatformType {
 	return f.platformType
 }
 
+// Capabilities 声明支持的模式。FakePlatform 同时支持 multi-address 与 active-backup（D6）。
+func (f *FakePlatform) Capabilities(ctx context.Context) Capabilities {
+	return Capabilities{
+		DHCP:            true,
+		StaticIPv4:      true,
+		FactoryReset:    true,
+		WifiAssociation: false,
+		SupportedModes:  []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup},
+	}
+}
+
 func (f *FakePlatform) SetFailApply(fail bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -171,6 +187,8 @@ func (f *FakePlatform) Read(ctx context.Context) (HostSnapshot, error) {
 			Version: 1,
 			Data:    []byte(`{"fake": true}`),
 		},
+		Mode: f.mode,
+		Bond: f.bond,
 	}, nil
 }
 
@@ -183,9 +201,17 @@ func (f *FakePlatform) Apply(ctx context.Context, plan HostPlan) (HostSnapshot, 
 	}
 
 	f.primaryID = plan.PrimaryInterfaceID
+
+	// 模式切换：进入 active-backup 创建 bond0 并标记 slave；退回 multi-address 拆除并归还
+	f.applyMode(plan)
+
 	for ifaceID, ifacePlan := range plan.Interfaces {
 		current, ok := f.interfaces[ifaceID]
 		if !ok {
+			continue
+		}
+		// slave 绑定期间由 applyMode 统一管理，不单独应用 IPv4（D3）
+		if current.MasterID != nil {
 			continue
 		}
 		current.IsPrimary = (plan.PrimaryInterfaceID != nil && *plan.PrimaryInterfaceID == ifaceID)
@@ -242,6 +268,8 @@ func (f *FakePlatform) Apply(ctx context.Context, plan HostPlan) (HostSnapshot, 
 			Version: 1,
 			Data:    []byte(`{"fake": true}`),
 		},
+		Mode: f.mode,
+		Bond: f.bond,
 	}, nil
 }
 
@@ -259,8 +287,93 @@ func (f *FakePlatform) Restore(ctx context.Context, snapshot HostSnapshot) (Host
 	}
 	f.primaryID = snapshot.PrimaryInterfaceID
 	f.systemDNS = snapshot.SystemDNSServers
+	// 同步模式与拓扑，使回滚完整恢复 mode/bond（R4.1）
+	f.mode = snapshot.Mode
+	f.bond = snapshot.Bond
 
 	return snapshot, nil
+}
+
+// applyMode 处理工作模式切换：
+// - 进入 active-backup：创建 bond0、标记 slave 归属并清空其 IPv4，填充 BondTopology；
+// - 退回 multi-address（含空值归一化）：拆除 bond0、归还 slave（IPv4 由主循环按 plan.Interfaces 恢复）。
+func (f *FakePlatform) applyMode(plan HostPlan) {
+	if plan.Mode == NetworkModeActiveBackup && plan.Bond != nil {
+		bondID := fakeBondInterfaceID
+		// 汇总 slave 链路状态：任一 up 即 up；MAC 取 primary slave 的 MAC
+		anyUp := false
+		var primaryMAC *string
+		for _, sid := range plan.Bond.SlaveIDs {
+			slave, ok := f.interfaces[sid]
+			if !ok {
+				continue
+			}
+			if slave.LinkStatus == LinkUp {
+				anyUp = true
+			}
+			if sid == plan.Bond.PrimarySlaveID {
+				primaryMAC = slave.MAC
+			}
+		}
+		linkStatus := LinkDown
+		if anyUp {
+			linkStatus = LinkUp
+		}
+
+		f.interfaces[bondID] = InterfaceInfo{
+			ID:          bondID,
+			Name:        bondID,
+			DisplayName: "Bond",
+			Type:        InterfaceEthernet,
+			MAC:         primaryMAC,
+			LinkStatus:  linkStatus,
+			Ownership:   OwnershipManaged,
+			Writable:    true,
+			IsPrimary:   plan.PrimaryInterfaceID != nil && *plan.PrimaryInterfaceID == bondID,
+			IsBond:      true,
+			IPv4: IPv4State{
+				Mode:   IPModeUnknown,
+				Status: IPStatusUnavailable,
+			},
+			Fingerprint: "fp-" + bondID,
+		}
+
+		// 标记 slave：归属 bond、不可写、清空 IPv4（D3）
+		for _, sid := range plan.Bond.SlaveIDs {
+			slave, ok := f.interfaces[sid]
+			if !ok {
+				continue
+			}
+			slave.MasterID = &bondID
+			slave.Writable = false
+			slave.IsPrimary = false
+			slave.IPv4 = IPv4State{Mode: IPModeUnknown, Status: IPStatusUnavailable}
+			f.interfaces[sid] = slave
+		}
+
+		activeID := plan.Bond.PrimarySlaveID
+		f.mode = NetworkModeActiveBackup
+		f.bond = &BondTopology{
+			BondInterfaceID: bondID,
+			SlaveIDs:        plan.Bond.SlaveIDs,
+			PrimarySlaveID:  plan.Bond.PrimarySlaveID,
+			ActiveSlaveID:   &activeID,
+			Miimon:          plan.Bond.Miimon,
+		}
+		return
+	}
+
+	// 退回 multi-address（空值等价 multi-address）
+	f.mode = plan.Mode.Normalize()
+	f.bond = nil
+	delete(f.interfaces, fakeBondInterfaceID)
+	for id, iface := range f.interfaces {
+		if iface.MasterID != nil {
+			iface.MasterID = nil
+			iface.Writable = true
+			f.interfaces[id] = iface
+		}
+	}
 }
 
 func (f *FakePlatform) Close(ctx context.Context) error {

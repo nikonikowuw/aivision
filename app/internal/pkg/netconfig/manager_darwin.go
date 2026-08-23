@@ -36,6 +36,17 @@ func (p *DarwinPlatform) Type() PlatformType {
 	return PlatformDarwin
 }
 
+// Capabilities 声明支持的模式。parent D2 显式不支持 active-backup。
+func (p *DarwinPlatform) Capabilities(ctx context.Context) Capabilities {
+	return Capabilities{
+		DHCP:            true,
+		StaticIPv4:      true,
+		FactoryReset:    true,
+		WifiAssociation: false,
+		SupportedModes:  []NetworkMode{NetworkModeMultiAddress},
+	}
+}
+
 func (p *DarwinPlatform) Probe(ctx context.Context) error {
 	return nil
 }

@@ -48,19 +48,21 @@ const (
 	CodeFileTooLarge       = 1016 // 文件超过大小限制
 	CodeFileTypeNotAllowed = 1017 // 文件类型不允许
 
-	// 网络配置业务错误码 1100 ~ 1111
-	CodeNetworkInvalidConfig        = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
-	CodeNetworkTransactionPending   = 1101 // 已存在整机候选事务
-	CodeNetworkTransactionNotFound  = 1102 // transaction ID 不存在/已完成
-	CodeNetworkTransactionExpired   = 1103 // deadline 已过
-	CodeNetworkInterfaceNotManaged  = 1104 // ID 不在当前可写集合或指纹变化
-	CodeNetworkOwnershipConflict    = 1105 // Linux 外部管理器/漂移/Resolver 非本系统所有
-	CodeNetworkUnsupported          = 1106 // 平台或能力不支持
-	CodeNetworkApplyFailed          = 1107 // 平台应用失败且补偿完成或进入故障
-	CodeNetworkRecoveryFailed       = 1108 // before/last-valid/factory 恢复失败
-	CodeNetworkStateCorrupt         = 1109 // root-only envelope 损坏/版本未知/校验和不符
-	CodeNetworkExternalDrift        = 1110 // 当前状态被外部修改，拒绝覆盖
-	CodeNetworkNotReady             = 1111 // 启动恢复/能力检查未完成
+	// 网络配置业务错误码 1100 ~ 1113
+	CodeNetworkInvalidConfig       = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
+	CodeNetworkTransactionPending  = 1101 // 已存在整机候选事务
+	CodeNetworkTransactionNotFound = 1102 // transaction ID 不存在/已完成
+	CodeNetworkTransactionExpired  = 1103 // deadline 已过
+	CodeNetworkInterfaceNotManaged = 1104 // ID 不在当前可写集合或指纹变化
+	CodeNetworkOwnershipConflict   = 1105 // Linux 外部管理器/漂移/Resolver 非本系统所有
+	CodeNetworkUnsupported         = 1106 // 平台或能力不支持
+	CodeNetworkApplyFailed         = 1107 // 平台应用失败且补偿完成或进入故障
+	CodeNetworkRecoveryFailed      = 1108 // before/last-valid/factory 恢复失败
+	CodeNetworkStateCorrupt        = 1109 // root-only envelope 损坏/版本未知/校验和不符
+	CodeNetworkExternalDrift       = 1110 // 当前状态被外部修改，拒绝覆盖
+	CodeNetworkNotReady            = 1111 // 启动恢复/能力检查未完成
+	CodeNetworkBondSlaveInvalid    = 1112 // bond slave 数量/存在/可写/重复/占用/primary 不合法
+	CodeNetworkBondModeConflict    = 1113 // 目标模式与当前拓扑冲突（已处于该模式等）
 
 	// NTP 对时错误码 1201-1207
 	CodeNTPManualNotAllowedInNTPMode  = 1201 // NTP 模式下不支持手动设时
@@ -114,6 +116,8 @@ var messages = map[string]map[int]string{
 		CodeNetworkStateCorrupt:           "网络配置文件校验失败或损坏",
 		CodeNetworkExternalDrift:          "检测到外部网络配置漂移，已拒绝修改",
 		CodeNetworkNotReady:               "网络配置服务未就绪，正在启动或恢复中",
+		CodeNetworkBondSlaveInvalid:       "bond 绑定网卡不合法：需从可写物理网卡中选择恰好 2 块且 primary 在集合内",
+		CodeNetworkBondModeConflict:       "目标网络模式与当前拓扑冲突，请先退回多址模式",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自动对时模式下不支持手动设置时间",
 		CodeNTPSyncNotAllowedInManualMode: "手动对时模式下不支持触发 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下服务器列表不能为空",
@@ -157,6 +161,8 @@ var messages = map[string]map[int]string{
 		CodeNetworkStateCorrupt:           "Network state file checksum mismatch or corrupted",
 		CodeNetworkExternalDrift:          "External network drift detected, write operation rejected",
 		CodeNetworkNotReady:               "Network service is not ready, starting up or recovering",
+		CodeNetworkBondSlaveInvalid:       "Invalid bond slaves: exactly 2 writable physical interfaces required with primary in the set",
+		CodeNetworkBondModeConflict:       "Target network mode conflicts with current topology, switch back to multi-address first",
 		CodeNTPManualNotAllowedInNTPMode:  "Manual time setting is not allowed in NTP mode",
 		CodeNTPSyncNotAllowedInManualMode: "NTP sync is not allowed in manual mode",
 		CodeNTPServersEmpty:               "NTP server list cannot be empty in NTP mode",
@@ -194,12 +200,14 @@ var messages = map[string]map[int]string{
 		CodeNetworkTransactionExpired:     "網路事務已超時回滾",
 		CodeNetworkInterfaceNotManaged:    "網卡不受支援或硬體指紋發生變化",
 		CodeNetworkOwnershipConflict:      "網卡存在外部網路管理器衝突或已被接管",
-		CodeNetworkUnsupported:          "當前平台或運行環境不支援網路設定",
+		CodeNetworkUnsupported:            "當前平台或運行環境不支援網路設定",
 		CodeNetworkApplyFailed:            "網路設定套用失敗已自動復原",
 		CodeNetworkRecoveryFailed:         "網路設定復原失敗，請檢查設備連接",
 		CodeNetworkStateCorrupt:           "網路設定檔案校驗失敗或損壞",
 		CodeNetworkExternalDrift:          "偵測到外部網路設定漂移，已拒絕修改",
 		CodeNetworkNotReady:               "網路設定服務未就緒，正在啟動或復原中",
+		CodeNetworkBondSlaveInvalid:       "bond 綁定網卡不合法：需從可寫實體網卡中選擇恰好 2 塊且 primary 在集合內",
+		CodeNetworkBondModeConflict:       "目標網路模式與目前拓撲衝突，請先退回多址模式",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自動對時模式下不支援手動設定時間",
 		CodeNTPSyncNotAllowedInManualMode: "手動對時模式下不支援觸發 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下伺服器清單不能為空",

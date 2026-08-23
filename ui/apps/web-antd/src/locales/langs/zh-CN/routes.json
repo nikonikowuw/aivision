@@ -1,7 +1,8 @@
 {
   "ops": {
     "ops": "运维管理",
-    "network": "网络配置"
+    "network": "网络配置",
+    "time": "时间管理"
   },
   "system": {
     "dept": "部门管理",
@@ -15,9 +16,5 @@
     "analytics": "分析页",
     "workspace": "工作台",
     "title": "概览"
-  },
-  "ops": {
-    "ops": "运维管理",
-    "time": "时间管理"
   }
 }

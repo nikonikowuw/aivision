@@ -1,5 +1,11 @@
 import { requestClient } from '#/api/request';
 
+// 网络工作模式（与后端 netconfig.NetworkMode 常量逐字一致）
+export const NETWORK_MODES = {
+  MultiAddress: 'multi-address',
+  ActiveBackup: 'active-backup',
+} as const;
+
 export namespace NetworkApi {
   export type PlatformType = 'linux' | 'darwin' | 'fake';
   export type StateStatus =
@@ -29,7 +35,16 @@ export namespace NetworkApi {
     | 'confirmed'
     | 'rolled_back'
     | 'recovery_failed';
-  export type TransactionAction = 'apply' | 'factory_reset';
+  export type TransactionAction = 'apply' | 'factory_reset' | 'mode_switch';
+  export type NetworkMode = (typeof NETWORK_MODES)[keyof typeof NETWORK_MODES];
+
+  export interface BondTopology {
+    bondInterfaceId: string;
+    slaveIds: string[];
+    primarySlaveId: string;
+    activeSlaveId: string | null;
+    miimon: number;
+  }
 
   export interface IPv4State {
     mode: IPMode;
@@ -51,6 +66,8 @@ export namespace NetworkApi {
     ownership: OwnershipStatus;
     writable: boolean;
     isPrimary: boolean;
+    isBond: boolean;
+    masterId: string | null;
     ipv4: IPv4State;
   }
 
@@ -82,6 +99,8 @@ export namespace NetworkApi {
     reconnectAddresses: ReconnectAddress[];
     requiresReconnect: boolean;
     candidate: CandidateSummary;
+    targetMode?: NetworkMode;
+    previousMode?: NetworkMode;
   }
 
   export interface Capabilities {
@@ -89,6 +108,7 @@ export namespace NetworkApi {
     staticIpv4: boolean;
     factoryReset: boolean;
     wifiAssociation: boolean;
+    supportedModes: NetworkMode[];
   }
 
   export interface NetworkOverview {
@@ -100,6 +120,8 @@ export namespace NetworkApi {
     interfaces: InterfaceInfo[];
     pendingTransaction: PendingTransaction | null;
     capabilities: Capabilities;
+    mode: NetworkMode;
+    bond: BondTopology | null;
   }
 
   export interface TransactionResult {
@@ -118,6 +140,17 @@ export namespace NetworkApi {
     prefix?: number;
     gateway?: string;
     dnsServers?: string[];
+  }
+
+  export interface BondParams {
+    slaveIds: string[];
+    primarySlaveId: string;
+    ipv4: ApplyInterfaceParams;
+  }
+
+  export interface SwitchModeParams {
+    mode: NetworkMode;
+    bond?: BondParams;
   }
 }
 
@@ -175,4 +208,11 @@ export async function factoryResetInterfaceApi(interfaceId: string) {
   return requestClient.post<NetworkApi.TransactionResult>(
     `/network/interfaces/${interfaceId}/factory-reset`,
   );
+}
+
+/**
+ * 切换整机网络工作模式
+ */
+export async function switchNetworkModeApi(data: NetworkApi.SwitchModeParams) {
+  return requestClient.put<NetworkApi.TransactionResult>('/network/mode', data);
 }

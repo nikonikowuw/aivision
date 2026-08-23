@@ -1,7 +1,8 @@
 {
   "ops": {
     "ops": "Operations",
-    "network": "Network Configuration"
+    "network": "Network Configuration",
+    "time": "Time Management"
   },
   "system": {
     "dept": "Department Management",
@@ -15,9 +16,5 @@
     "analytics": "Analytics",
     "workspace": "Workspace",
     "title": "Dashboard"
-  },
-  "ops": {
-    "ops": "Operations",
-    "time": "Time Management"
   }
 }

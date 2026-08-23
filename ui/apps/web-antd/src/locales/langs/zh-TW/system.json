@@ -135,6 +135,13 @@
     "actionRefreshToken": "重新整理權杖",
     "actionUpload": "上傳檔案",
     "actionUpdateProfile": "更新個人資料",
-    "actionChangePassword": "修改密碼"
+    "actionChangePassword": "修改密碼",
+    "actionNetworkModeSwitch": "切換網路工作模式",
+    "actionNetworkApply": "套用網路設定",
+    "actionNetworkCancel": "取消網路變更",
+    "actionNetworkConfirm": "確認網路變更",
+    "actionNetworkReset": "恢復出廠設定",
+    "actionNetworkRollback": "回滾網路設定",
+    "actionNetworkStartupRecovery": "啟動網路還原"
   }
 }

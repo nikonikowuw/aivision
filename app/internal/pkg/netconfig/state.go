@@ -23,11 +23,11 @@ const (
 
 // StateEnvelope 包含校验和与元数据的通用包装容器。
 type StateEnvelope struct {
-	SchemaVersion int          `json:"schemaVersion"`
-	Generation    uint64       `json:"generation"`
-	Platform      PlatformType `json:"platform"`
-	CreatedAt     time.Time    `json:"createdAt"`
-	Checksum      string       `json:"checksum"` // SHA-256 of Data JSON
+	SchemaVersion int             `json:"schemaVersion"`
+	Generation    uint64          `json:"generation"`
+	Platform      PlatformType    `json:"platform"`
+	CreatedAt     time.Time       `json:"createdAt"`
+	Checksum      string          `json:"checksum"` // SHA-256 of Data JSON
 	Data          json.RawMessage `json:"data"`
 }
 

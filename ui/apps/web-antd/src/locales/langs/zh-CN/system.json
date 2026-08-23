@@ -136,6 +136,13 @@
     "actionRefreshToken": "刷新令牌",
     "actionUpload": "上传文件",
     "actionUpdateProfile": "更新个人资料",
-    "actionChangePassword": "修改密码"
+    "actionChangePassword": "修改密码",
+    "actionNetworkModeSwitch": "切换网络工作模式",
+    "actionNetworkApply": "应用网络配置",
+    "actionNetworkCancel": "取消网络变更",
+    "actionNetworkConfirm": "确认网络变更",
+    "actionNetworkReset": "恢复出厂设置",
+    "actionNetworkRollback": "回滚网络配置",
+    "actionNetworkStartupRecovery": "启动网络恢复"
   }
 }

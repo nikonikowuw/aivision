@@ -1,7 +1,8 @@
 {
   "ops": {
     "ops": "運維管理",
-    "network": "網路設定"
+    "network": "網路設定",
+    "time": "時間管理"
   },
   "system": {
     "dept": "部門管理",
@@ -15,9 +16,5 @@
     "analytics": "分析頁",
     "workspace": "工作台",
     "title": "概覽"
-  },
-  "ops": {
-    "ops": "運維管理",
-    "time": "時間管理"
   }
 }

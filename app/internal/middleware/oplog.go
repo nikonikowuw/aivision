@@ -215,6 +215,7 @@ var actionI18nMap = map[string]string{
 
 	// Network
 	"PUT /api/network/interfaces/:interfaceId":                "system.log.actionNetworkApply",
+	"PUT /api/network/mode":                                   "system.log.actionNetworkModeSwitch",
 	"POST /api/network/transactions/:transactionId/confirm":   "system.log.actionNetworkConfirm",
 	"POST /api/network/transactions/:transactionId/cancel":    "system.log.actionNetworkCancel",
 	"POST /api/network/interfaces/:interfaceId/factory-reset": "system.log.actionNetworkReset",

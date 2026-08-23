@@ -8,18 +8,18 @@ import (
 )
 
 var (
-	ErrInvalidConfig        = errors.New("invalid network configuration")
-	ErrTransactionPending   = errors.New("network transaction already pending")
-	ErrTransactionNotFound  = errors.New("network transaction not found")
-	ErrTransactionExpired   = errors.New("network transaction expired")
-	ErrInterfaceNotManaged  = errors.New("network interface not managed or writable")
-	ErrOwnershipConflict    = errors.New("network ownership conflict")
-	ErrUnsupported          = errors.New("network platform unsupported")
-	ErrApplyFailed          = errors.New("network apply failed")
-	ErrRecoveryFailed       = errors.New("network recovery failed")
-	ErrStateCorrupt         = errors.New("network state file corrupt")
-	ErrExternalDrift        = errors.New("network external drift detected")
-	ErrNotReady             = errors.New("network service not ready")
+	ErrInvalidConfig       = errors.New("invalid network configuration")
+	ErrTransactionPending  = errors.New("network transaction already pending")
+	ErrTransactionNotFound = errors.New("network transaction not found")
+	ErrTransactionExpired  = errors.New("network transaction expired")
+	ErrInterfaceNotManaged = errors.New("network interface not managed or writable")
+	ErrOwnershipConflict   = errors.New("network ownership conflict")
+	ErrUnsupported         = errors.New("network platform unsupported")
+	ErrApplyFailed         = errors.New("network apply failed")
+	ErrRecoveryFailed      = errors.New("network recovery failed")
+	ErrStateCorrupt        = errors.New("network state file corrupt")
+	ErrExternalDrift       = errors.New("network external drift detected")
+	ErrNotReady            = errors.New("network service not ready")
 )
 
 // NormalizeAndValidateIPv4 校验并规范化 IPv4 与 Prefix，计算子网掩码。
@@ -125,16 +125,59 @@ func PrefixToSubnetMask(prefix int) string {
 	return fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3])
 }
 
-// SubnetMaskToPrefix 将点分十进制子网掩码转换为 CIDR 前缀。
-func SubnetMaskToPrefix(maskStr string) (int, error) {
-	ip := net.ParseIP(strings.TrimSpace(maskStr))
-	if ip == nil || ip.To4() == nil {
-		return 0, fmt.Errorf("%w: invalid subnet mask %q", ErrInvalidConfig, maskStr)
-	}
-	mask := net.IPMask(ip.To4())
-	ones, bits := mask.Size()
-	if bits != 32 || ones == 0 && maskStr != "0.0.0.0" {
-		return 0, fmt.Errorf("%w: non-contiguous subnet mask %q", ErrInvalidConfig, maskStr)
-	}
-	return ones, nil
+// NormalizedIPv4Config 经过校验与规范化的 IPv4 参数。
+type NormalizedIPv4Config struct {
+	Address    *string
+	SubnetMask *string
+	Prefix     *int
+	Gateway    *string
+	DNSServers []string
 }
+
+// ValidateAndNormalizeIPv4 统一校验并规范化 IPv4 配置（适用于单接口与 bond 接口）。
+func ValidateAndNormalizeIPv4(mode IPMode, primary bool, address *string, prefix *int, gateway *string, dnsServers []string) (*NormalizedIPv4Config, error) {
+	if mode == IPModeStatic {
+		if address == nil || prefix == nil {
+			return nil, ErrInvalidConfig
+		}
+		addr, mask, err := NormalizeAndValidateIPv4(*address, *prefix)
+		if err != nil {
+			return nil, err
+		}
+		norm := &NormalizedIPv4Config{
+			Address:    &addr,
+			SubnetMask: &mask,
+			Prefix:     prefix,
+		}
+
+		if primary {
+			if gateway == nil || len(dnsServers) == 0 {
+				return nil, fmt.Errorf("%w: gateway and dns required for static primary interface", ErrInvalidConfig)
+			}
+			gw, err := ValidateGatewayInSubnet(addr, *prefix, *gateway)
+			if err != nil {
+				return nil, err
+			}
+			norm.Gateway = &gw
+
+			dns, err := ValidateDNSServers(dnsServers)
+			if err != nil {
+				return nil, err
+			}
+			norm.DNSServers = dns
+		} else {
+			if gateway != nil || len(dnsServers) > 0 {
+				return nil, fmt.Errorf("%w: gateway/dns not allowed on non-primary static interface", ErrInvalidConfig)
+			}
+		}
+		return norm, nil
+	} else if mode == IPModeDHCP {
+		if address != nil || prefix != nil || gateway != nil || len(dnsServers) > 0 {
+			return nil, fmt.Errorf("%w: address/prefix/gateway/dns not allowed in dhcp mode", ErrInvalidConfig)
+		}
+		return &NormalizedIPv4Config{}, nil
+	}
+
+	return nil, fmt.Errorf("%w: unsupported ip mode %q", ErrInvalidConfig, mode)
+}
+

@@ -163,3 +163,67 @@ func (h *NetworkHandler) FactoryReset(c *gin.Context) {
 	}
 	response.Success(c, res)
 }
+
+// BondRequest 切到 active-backup 时的 bond 参数体。
+type BondRequest struct {
+	SlaveIDs       []string              `json:"slaveIds"`
+	PrimarySlaveID string                `json:"primarySlaveId"`
+	IPv4           ApplyInterfaceRequest `json:"ipv4"`
+}
+
+// SwitchModeRequest 模式切换请求参数体。
+type SwitchModeRequest struct {
+	Mode netconfig.NetworkMode `json:"mode" binding:"required"`
+	Bond *BondRequest          `json:"bond"`
+}
+
+// SwitchMode 切换整机网络工作模式（候选事务）。
+func (h *NetworkHandler) SwitchMode(c *gin.Context) {
+	var req SwitchModeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(errno.New(errno.CodeInvalidParam))
+		return
+	}
+
+	var actorID uint64
+	var actorUsername string
+	if identity, ok := middleware.IdentityFromContext(c); ok {
+		actorID = identity.UserID
+		actorUsername = identity.Username
+	}
+
+	input := service.SwitchModeInput{
+		Mode:          req.Mode,
+		ActorID:       actorID,
+		ActorUsername: actorUsername,
+		ClientIP:      c.ClientIP(),
+	}
+	if req.Mode == netconfig.NetworkModeActiveBackup {
+		if req.Bond == nil {
+			_ = c.Error(errno.New(errno.CodeInvalidParam))
+			return
+		}
+		input.SlaveIDs = req.Bond.SlaveIDs
+		input.PrimarySlaveID = req.Bond.PrimarySlaveID
+		input.BondIPv4 = service.ApplyInterfaceInput{
+			Mode:       req.Bond.IPv4.Mode,
+			Primary:    req.Bond.IPv4.Primary,
+			Address:    req.Bond.IPv4.Address,
+			Prefix:     req.Bond.IPv4.Prefix,
+			Gateway:    req.Bond.IPv4.Gateway,
+			DNSServers: req.Bond.IPv4.DNSServers,
+		}
+	} else {
+		if req.Bond != nil {
+			_ = c.Error(errno.New(errno.CodeInvalidParam))
+			return
+		}
+	}
+
+	res, err := h.srv.SwitchMode(c.Request.Context(), input)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	response.Success(c, res)
+}

@@ -1,6 +1,7 @@
 package netconfig
 
 import (
+	"slices"
 	"time"
 )
 
@@ -12,6 +13,55 @@ const (
 	PlatformDarwin PlatformType = "darwin"
 	PlatformFake   PlatformType = "fake"
 )
+
+// NetworkMode 整机网络工作模式。空值等价于 NetworkModeMultiAddress。
+type NetworkMode string
+
+const (
+	NetworkModeMultiAddress NetworkMode = "multi-address"
+	NetworkModeActiveBackup NetworkMode = "active-backup"
+)
+
+// AllNetworkModes 枚举的单一事实来源，供校验/迭代/默认值复用。
+// 新增模式只需改这里 + 常量定义 + 行为分支，避免校验点散落。
+func AllNetworkModes() []NetworkMode {
+	return []NetworkMode{NetworkModeMultiAddress, NetworkModeActiveBackup}
+}
+
+// Valid 边界校验用，替代各调用点手写的 switch / slices.Contains。
+func (m NetworkMode) Valid() bool {
+	return slices.Contains(AllNetworkModes(), m)
+}
+
+// Normalize 空值归一化为 multi-address，只在读侧调用。
+func (m NetworkMode) Normalize() NetworkMode {
+	if m == "" {
+		return NetworkModeMultiAddress
+	}
+	return m
+}
+
+// DefaultBondMiimon 默认链路监测周期（毫秒）。
+const DefaultBondMiimon = 100
+
+// DefaultConfirmTimeout 默认候选事务确认超时时间。
+const DefaultConfirmTimeout = 120 * time.Second
+
+// BondPlan 绑定拓扑的目标配置。
+type BondPlan struct {
+	SlaveIDs       []string `json:"slaveIds"`       // 恰好 2 个
+	PrimarySlaveID string   `json:"primarySlaveId"` // 必须 ∈ SlaveIDs
+	Miimon         int      `json:"miimon"`         // 固定 100ms，由服务端填充
+}
+
+// BondTopology 平台回读的实际绑定拓扑。
+type BondTopology struct {
+	BondInterfaceID string   `json:"bondInterfaceId"`
+	SlaveIDs        []string `json:"slaveIds"`
+	PrimarySlaveID  string   `json:"primarySlaveId"`
+	ActiveSlaveID   *string  `json:"activeSlaveId"` // 当前实际承载流量的 slave
+	Miimon          int      `json:"miimon"`
+}
 
 // StateStatus 网络整体运行状态。
 type StateStatus string
@@ -48,7 +98,7 @@ type OwnershipStatus string
 const (
 	OwnershipManaged     OwnershipStatus = "managed"
 	OwnershipUnproven    OwnershipStatus = "unproven"
-	OwnershipConflict   OwnershipStatus = "conflict"
+	OwnershipConflict    OwnershipStatus = "conflict"
 	OwnershipUnsupported OwnershipStatus = "unsupported"
 )
 
@@ -91,14 +141,16 @@ type TransactionAction string
 const (
 	TxnActionApply        TransactionAction = "apply"
 	TxnActionFactoryReset TransactionAction = "factory_reset"
+	TxnActionModeSwitch   TransactionAction = "mode_switch"
 )
 
 // Capabilities 平台能力集。
 type Capabilities struct {
-	DHCP            bool `json:"dhcp"`
-	StaticIPv4      bool `json:"staticIpv4"`
-	FactoryReset    bool `json:"factoryReset"`
-	WifiAssociation bool `json:"wifiAssociation"`
+	DHCP            bool          `json:"dhcp"`
+	StaticIPv4      bool          `json:"staticIpv4"`
+	FactoryReset    bool          `json:"factoryReset"`
+	WifiAssociation bool          `json:"wifiAssociation"`
+	SupportedModes  []NetworkMode `json:"supportedModes"`
 }
 
 // IPv4State 单个接口的实际 IPv4 状态。
@@ -123,6 +175,8 @@ type InterfaceInfo struct {
 	Ownership   OwnershipStatus `json:"ownership"`
 	Writable    bool            `json:"writable"`
 	IsPrimary   bool            `json:"isPrimary"`
+	IsBond      bool            `json:"isBond"`   // 该接口是 bond 逻辑口
+	MasterID    *string         `json:"masterId"` // 该接口是某 bond 的 slave
 	IPv4        IPv4State       `json:"ipv4"`
 	Fingerprint string          `json:"-"`
 }
@@ -158,6 +212,8 @@ type PendingTransaction struct {
 	ReconnectAddresses          []ReconnectAddress `json:"reconnectAddresses"`
 	RequiresReconnect           bool               `json:"requiresReconnect"`
 	Candidate                   CandidateSummary   `json:"candidate"`
+	TargetMode                  NetworkMode        `json:"targetMode,omitempty"`   // 仅 mode_switch 事务
+	PreviousMode                NetworkMode        `json:"previousMode,omitempty"` // 仅 mode_switch 事务
 
 	// 审计所需元数据（不输出到公共简短 JSON，但在落盘与审计中必须持久化）
 	ActorID       uint64 `json:"actorId,omitempty"`
@@ -176,16 +232,18 @@ type NetworkOverview struct {
 	Interfaces              []InterfaceInfo     `json:"interfaces"`
 	PendingTransaction      *PendingTransaction `json:"pendingTransaction"`
 	Capabilities            Capabilities        `json:"capabilities"`
+	Mode                    NetworkMode         `json:"mode"` // 始终有值，空则归一化为 multi-address
+	Bond                    *BondTopology       `json:"bond"`
 }
 
 // TransactionResult 事务操作执行结果。
 type TransactionResult struct {
-	TransactionID      string              `json:"transactionId"`
-	Status             TransactionStatus   `json:"status"`
-	ExpiresAt          *time.Time          `json:"expiresAt,omitempty"`
-	Overview           *NetworkOverview    `json:"overview,omitempty"`
-	ReconnectAddresses []ReconnectAddress  `json:"reconnectAddresses"`
-	Reason             *string             `json:"reason"`
+	TransactionID      string             `json:"transactionId"`
+	Status             TransactionStatus  `json:"status"`
+	ExpiresAt          *time.Time         `json:"expiresAt,omitempty"`
+	Overview           *NetworkOverview   `json:"overview,omitempty"`
+	ReconnectAddresses []ReconnectAddress `json:"reconnectAddresses"`
+	Reason             *string            `json:"reason"`
 }
 
 // InterfacePlan 单个接口的目标配置。
@@ -202,6 +260,8 @@ type InterfacePlan struct {
 type HostPlan struct {
 	Interfaces         map[string]InterfacePlan `json:"interfaces"`
 	PrimaryInterfaceID *string                  `json:"primaryInterfaceId"`
+	Mode               NetworkMode              `json:"mode,omitempty"`
+	Bond               *BondPlan                `json:"bond,omitempty"`
 }
 
 // NativeSnapshot 平台专有快照用于恢复。
@@ -218,4 +278,6 @@ type HostSnapshot struct {
 	SystemDNSServers        []string                 `json:"systemDnsServers"`
 	Fingerprint             string                   `json:"fingerprint"`
 	Native                  NativeSnapshot           `json:"native"`
+	Mode                    NetworkMode              `json:"mode,omitempty"`
+	Bond                    *BondTopology            `json:"bond,omitempty"`
 }

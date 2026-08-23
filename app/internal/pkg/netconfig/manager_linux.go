@@ -33,6 +33,17 @@ func (p *LinuxPlatform) Type() PlatformType {
 	return PlatformLinux
 }
 
+// Capabilities 声明支持的模式。Apply/Restore 仍委托 fake，无真实 bond 能力（D6）。
+func (p *LinuxPlatform) Capabilities(ctx context.Context) Capabilities {
+	return Capabilities{
+		DHCP:            true,
+		StaticIPv4:      true,
+		FactoryReset:    true,
+		WifiAssociation: false,
+		SupportedModes:  []NetworkMode{NetworkModeMultiAddress},
+	}
+}
+
 func (p *LinuxPlatform) Probe(ctx context.Context) error {
 	// 验证 profile 存在或具有 CAP_NET_ADMIN 权限
 	if p.profilePath != "" {

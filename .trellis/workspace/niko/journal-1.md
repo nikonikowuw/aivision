@@ -489,3 +489,26 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 18: 完成边缘网关模式与内置DHCP服务开发
+
+**Date**: 2026-08-23
+**Task**: 完成边缘网关模式与内置DHCP服务开发
+**Branch**: `feat/08-23-edge-gateway-dhcp`
+
+### Summary
+
+实现边缘网关 (gateway) 模式：Go后端集成 insomniacslk/dhcp 内置 DHCP 服务与内核三层转发控制，增加地址池/前缀/租约校验与启用前冲突探测；前端增加网关配置抽屉、租约列表与冲突告警；完成端到端生命周期测试并归档任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2df5ae8` | (see git log) |
+| `c5d4d17` | (see git log) |
+| `dc0c125` | (see git log) |
+
+### Status
+
+[OK] **Completed**

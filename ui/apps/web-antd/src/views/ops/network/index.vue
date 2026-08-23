@@ -1,0 +1,980 @@
+<script lang="ts" setup>
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+
+import { Page } from '@vben/common-ui';
+import {
+  Check,
+  IconifyIcon,
+  Plus,
+  RotateCw,
+  X,
+} from '@vben/icons';
+import { $t } from '@vben/locales';
+
+import {
+  Alert,
+  Badge,
+  Button,
+  Divider,
+  Drawer,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  message,
+  Popconfirm,
+  Spin,
+  Switch,
+  Tag,
+  Tooltip,
+} from 'ant-design-vue';
+
+import {
+  applyInterfaceApi,
+  cancelNetworkTransactionApi,
+  confirmNetworkTransactionApi,
+  factoryResetInterfaceApi,
+  getNetworkOverviewApi,
+  type NetworkApi,
+} from '#/api/core/network';
+
+const loading = ref(false);
+const submitting = ref(false);
+const overview = ref<NetworkApi.NetworkOverview | null>(null);
+
+// 120s 事务倒计时
+const remainingSeconds = ref(0);
+let timer: ReturnType<typeof setInterval> | null = null;
+
+// 抽屉与表单
+const drawerVisible = ref(false);
+const currentIface = ref<NetworkApi.InterfaceInfo | null>(null);
+const formModel = ref<{
+  mode: NetworkApi.IPMode;
+  primary: boolean;
+  address?: string;
+  prefix?: number;
+  gateway?: string;
+  dnsServers: string[];
+}>({
+  mode: 'dhcp',
+  primary: false,
+  dnsServers: [],
+});
+
+const recommendedDNS = [
+  { ip: '223.5.5.5', name: 'Aliyun' },
+  { ip: '119.29.29.29', name: 'DNSPod' },
+  { ip: '8.8.8.8', name: 'Google' },
+  { ip: '1.1.1.1', name: 'Cloudflare' },
+];
+
+const isPrimary = computed(() => formModel.value.primary);
+const isStatic = computed(() => formModel.value.mode === 'static');
+
+// 根据 CIDR 前缀自动计算子网掩码
+const calculatedSubnetMask = computed(() => {
+  const prefix = formModel.value.prefix;
+  if (!prefix || prefix < 1 || prefix > 32) return '-';
+  const mask = (0xffffffff << (32 - prefix)) >>> 0;
+  return [
+    (mask >>> 24) & 255,
+    (mask >>> 16) & 255,
+    (mask >>> 8) & 255,
+    mask & 255,
+  ].join('.');
+});
+
+// 计算在线网口数量
+const upLinkCount = computed(() => {
+  if (!overview.value?.interfaces) return 0;
+  return overview.value.interfaces.filter((i) => i.linkStatus === 'up').length;
+});
+
+async function loadData() {
+  loading.value = true;
+  try {
+    const data = await getNetworkOverviewApi();
+    overview.value = data;
+
+    if (data.pendingTransaction) {
+      remainingSeconds.value = data.pendingTransaction.remainingSeconds;
+      startCountdown();
+    } else {
+      stopCountdown();
+    }
+  } catch (error) {
+    console.error('Failed to load network overview:', error);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function startCountdown() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    if (remainingSeconds.value > 0) {
+      remainingSeconds.value--;
+    } else {
+      stopCountdown();
+      loadData();
+    }
+  }, 1000);
+}
+
+function stopCountdown() {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  remainingSeconds.value = 0;
+}
+
+function openEdit(iface: NetworkApi.InterfaceInfo) {
+  currentIface.value = iface;
+  formModel.value = {
+    mode: iface.ipv4?.mode === 'static' ? 'static' : 'dhcp',
+    primary: iface.isPrimary ?? false,
+    address: iface.ipv4?.address ?? undefined,
+    prefix: iface.ipv4?.prefix ?? 24,
+    gateway: iface.ipv4?.gateway ?? undefined,
+    dnsServers: iface.ipv4?.dnsServers ? [...iface.ipv4.dnsServers] : [],
+  };
+  drawerVisible.value = true;
+}
+
+function selectIPMode(targetMode: 'dhcp' | 'static') {
+  formModel.value.mode = targetMode;
+  if (targetMode === 'static' && !formModel.value.prefix) {
+    formModel.value.prefix = 24;
+  }
+}
+
+function addDNSServer() {
+  if (formModel.value.dnsServers.length < 3) {
+    formModel.value.dnsServers.push('');
+  }
+}
+
+function removeDNSServer(index: number) {
+  formModel.value.dnsServers.splice(index, 1);
+}
+
+function quickFillDNS(ip: string) {
+  if (formModel.value.dnsServers.includes(ip)) return;
+  if (formModel.value.dnsServers.length < 3) {
+    formModel.value.dnsServers.push(ip);
+  } else {
+    message.warning($t('ops.network.dnsLimitTip'));
+  }
+}
+
+async function handleApply() {
+  if (!currentIface.value) return;
+  submitting.value = true;
+  try {
+    const params: NetworkApi.ApplyInterfaceParams = {
+      mode: formModel.value.mode,
+      primary: formModel.value.primary,
+    };
+    if (formModel.value.mode === 'static') {
+      params.address = formModel.value.address;
+      params.prefix = formModel.value.prefix;
+      if (formModel.value.primary) {
+        params.gateway = formModel.value.gateway;
+        params.dnsServers = formModel.value.dnsServers.filter((s) => s.trim() !== '');
+      }
+    }
+    await applyInterfaceApi(currentIface.value.id, params);
+    message.success($t('ops.network.applySuccess'));
+    drawerVisible.value = false;
+    await loadData();
+  } catch (error) {
+    console.error('Failed to apply interface config:', error);
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function handleConfirm() {
+  if (!overview.value?.pendingTransaction) return;
+  submitting.value = true;
+  try {
+    await confirmNetworkTransactionApi(overview.value.pendingTransaction.id);
+    message.success($t('ops.network.confirmSuccess'));
+    await loadData();
+  } catch (error) {
+    console.error('Failed to confirm transaction:', error);
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function handleCancel() {
+  if (!overview.value?.pendingTransaction) return;
+  submitting.value = true;
+  try {
+    await cancelNetworkTransactionApi(overview.value.pendingTransaction.id);
+    message.success($t('ops.network.cancelSuccess'));
+    await loadData();
+  } catch (error) {
+    console.error('Failed to cancel transaction:', error);
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function handleFactoryReset(iface: NetworkApi.InterfaceInfo) {
+  loading.value = true;
+  try {
+    await factoryResetInterfaceApi(iface.id);
+    message.success($t('ops.network.resetSuccess'));
+    await loadData();
+  } catch (error) {
+    console.error('Failed to reset interface:', error);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function copyToClipboard(text: string | null | undefined, type: 'ip' | 'mac' = 'ip') {
+  if (!text) return;
+  navigator.clipboard.writeText(text);
+  message.info(type === 'ip' ? $t('ops.network.ipCopied') : $t('ops.network.macCopied'));
+}
+
+onMounted(() => {
+  loadData();
+});
+
+onUnmounted(() => {
+  stopCountdown();
+});
+</script>
+
+<template>
+  <Page auto-content-height>
+    <div class="space-y-4 pb-6">
+      <!-- 120s 事务防失联确认卡片 (Active Pending Banner) -->
+      <div
+        v-if="overview?.pendingTransaction"
+        class="bg-amber-500/10 border-amber-500/50 dark:bg-amber-500/15 rounded-xl border p-5 shadow-xs transition-all duration-200"
+      >
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2">
+              <span class="relative flex size-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full size-3 bg-amber-500"></span>
+              </span>
+              <span class="text-base font-bold text-amber-600 dark:text-amber-400">
+                {{ $t('ops.network.pendingCardTitle') }}
+              </span>
+            </div>
+            <p class="text-xs text-muted-foreground leading-relaxed">
+              {{ $t('ops.network.pendingTip') }}
+            </p>
+            <div
+              v-if="overview.pendingTransaction.reconnectAddresses?.length"
+              class="flex flex-wrap items-center gap-2 pt-1 text-xs"
+            >
+              <span class="font-medium text-amber-700 dark:text-amber-300">
+                {{ $t('ops.network.reconnectAlert') }}
+              </span>
+              <div class="flex flex-wrap gap-1.5">
+                <Tag
+                  v-for="item in overview.pendingTransaction.reconnectAddresses"
+                  :key="item.interfaceId"
+                  color="warning"
+                  class="cursor-pointer font-mono font-medium hover:opacity-80"
+                  @click="copyToClipboard(item.address, 'ip')"
+                >
+                  <IconifyIcon icon="lucide:copy" class="size-3 inline mr-1 opacity-70" />
+                  {{ item.address }}/{{ item.prefix }} ({{ item.interfaceId }})
+                </Tag>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-4 shrink-0">
+            <div class="text-right">
+              <div class="text-xs text-muted-foreground font-medium">
+                {{ $t('ops.network.remainingSeconds') }}
+              </div>
+              <div class="font-mono text-2xl font-black text-amber-600 dark:text-amber-400">
+                {{ remainingSeconds }}s
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <Button
+                v-access:code="['ops:network:confirm']"
+                type="primary"
+                :loading="submitting"
+                class="bg-amber-600 hover:bg-amber-500 border-none shadow-xs"
+                @click="handleConfirm"
+              >
+                <template #icon>
+                  <Check class="size-4 inline mr-1" />
+                </template>
+                {{ $t('ops.network.confirmChange') }}
+              </Button>
+              <Button
+                v-access:code="['ops:network:cancel']"
+                danger
+                :loading="submitting"
+                @click="handleCancel"
+              >
+                <template #icon>
+                  <X class="size-4 inline mr-1" />
+                </template>
+                {{ $t('ops.network.cancelChange') }}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 顶部四大系统指标看板 (Dashboard Overview Cards) -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- 默认主出口 (WAN) -->
+        <div
+          class="bg-card text-card-foreground rounded-xl border p-5 shadow-xs transition-all duration-200"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-muted-foreground text-sm font-medium">
+              {{ $t('ops.network.primaryInterface') }}
+            </span>
+            <div
+              class="bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 flex size-8 items-center justify-center rounded-lg"
+            >
+              <IconifyIcon icon="lucide:globe" class="size-4.5" />
+            </div>
+          </div>
+          <div class="mt-3 flex items-baseline gap-2">
+            <div class="font-mono text-xl font-bold tracking-tight text-foreground">
+              {{ overview?.primaryInterfaceId || $t('ops.network.none') }}
+            </div>
+            <Tag
+              v-if="overview?.primaryInterfaceId"
+              color="success"
+              class="border-0 font-medium font-mono text-[11px]"
+            >
+              WAN
+            </Tag>
+          </div>
+          <p class="text-muted-foreground mt-1 text-xs">
+            {{ $t('ops.network.primaryInterfaceTip') }}
+          </p>
+        </div>
+
+        <!-- 物理链路状态 -->
+        <div
+          class="bg-card text-card-foreground rounded-xl border p-5 shadow-xs transition-all duration-200"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-muted-foreground text-sm font-medium">
+              {{ $t('ops.network.linkOverview') }}
+            </span>
+            <div
+              class="bg-primary/10 text-primary dark:bg-primary/20 flex size-8 items-center justify-center rounded-lg"
+            >
+              <IconifyIcon icon="lucide:cable" class="size-4.5" />
+            </div>
+          </div>
+          <div class="mt-3 flex items-baseline gap-2">
+            <div class="font-mono text-xl font-bold tracking-tight text-foreground">
+              {{ upLinkCount }} / {{ overview?.interfaces?.length ?? 0 }}
+            </div>
+            <span class="text-xs text-muted-foreground font-medium">
+              {{ $t('ops.network.activeLinks') }}
+            </span>
+          </div>
+          <p class="text-muted-foreground mt-1 text-xs">
+            {{ $t('ops.network.linkOverviewTip') }}
+          </p>
+        </div>
+
+        <!-- 系统 DNS -->
+        <div
+          class="bg-card text-card-foreground rounded-xl border p-5 shadow-xs transition-all duration-200"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-muted-foreground text-sm font-medium">
+              {{ $t('ops.network.systemDNS') }}
+            </span>
+            <div
+              class="bg-sky-500/10 text-sky-500 dark:bg-sky-500/20 flex size-8 items-center justify-center rounded-lg"
+            >
+              <IconifyIcon icon="lucide:server" class="size-4.5" />
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-1.5 flex-wrap">
+            <template v-if="overview?.systemDnsServers?.length">
+              <Tag
+                v-for="dns in overview.systemDnsServers"
+                :key="dns"
+                color="blue"
+                class="border-0 font-mono text-xs font-semibold"
+              >
+                {{ dns }}
+              </Tag>
+            </template>
+            <span v-else class="text-base font-bold text-muted-foreground">
+              {{ $t('ops.network.none') }}
+            </span>
+          </div>
+          <p class="text-muted-foreground mt-1 text-xs">
+            {{ $t('ops.network.systemDNSTip') }}
+          </p>
+        </div>
+
+        <!-- 运行平台与刷新 -->
+        <div
+          class="bg-card text-card-foreground rounded-xl border p-5 shadow-xs transition-all duration-200"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-muted-foreground text-sm font-medium">
+              {{ $t('ops.network.platform') }}
+            </span>
+            <div
+              class="bg-amber-500/10 text-amber-500 dark:bg-amber-500/20 flex size-8 items-center justify-center rounded-lg"
+            >
+              <IconifyIcon icon="lucide:cpu" class="size-4.5" />
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between">
+            <Tag
+              color="cyan"
+              class="font-mono text-xs font-bold uppercase tracking-wide border-0 py-0.5 px-2.5"
+            >
+              {{ overview?.platform || 'LINUX' }}
+            </Tag>
+            <Button
+              type="link"
+              size="small"
+              class="!p-0 !h-auto text-xs flex items-center gap-1"
+              :loading="loading"
+              @click="loadData"
+            >
+              <RotateCw class="size-3.5 inline mr-0.5" />
+              {{ $t('ops.network.refresh') }}
+            </Button>
+          </div>
+          <p class="text-muted-foreground mt-1 text-xs">
+            {{ overview?.state || 'ready' }}
+          </p>
+        </div>
+      </div>
+
+      <!-- 主工作区：左侧网卡列表卡片 + 右侧指南与规格 -->
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <!-- 左侧核心网卡网格 (占2列) -->
+        <div class="lg:col-span-2 space-y-4">
+          <!-- 拓扑与隔离提示条 -->
+          <div
+            class="bg-muted/40 text-muted-foreground rounded-xl border p-3.5 text-xs flex items-center gap-2 leading-relaxed"
+          >
+            <IconifyIcon icon="lucide:info" class="size-4.5 text-primary shrink-0" />
+            <span>{{ $t('ops.network.topologyTip') }}</span>
+          </div>
+
+          <!-- 网卡卡片列表 -->
+          <Spin :spinning="loading">
+            <div
+              v-if="!overview?.interfaces?.length"
+              class="bg-card rounded-xl border p-12 text-center"
+            >
+              <Empty :description="$t('ops.network.none')" />
+            </div>
+
+            <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div
+                v-for="iface in overview.interfaces"
+                :key="iface.id"
+                class="bg-card text-card-foreground rounded-xl border p-5 shadow-xs transition-all duration-200 hover:shadow-md flex flex-col justify-between"
+                :class="[
+                  iface.isPrimary
+                    ? 'border-primary/60 bg-primary/5 ring-1 ring-primary/20 dark:bg-primary/10'
+                    : 'border-border',
+                ]"
+              >
+                <div>
+                  <!-- 卡片头部：网口名称、类型与 WAN/LAN 标签 -->
+                  <div class="flex items-start justify-between gap-2 border-b pb-3.5">
+                    <div class="flex items-center gap-2.5">
+                      <div
+                        class="flex size-9 items-center justify-center rounded-lg shrink-0"
+                        :class="[
+                          iface.isPrimary
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground',
+                        ]"
+                      >
+                        <IconifyIcon
+                          :icon="iface.type === 'wifi' ? 'lucide:wifi' : 'lucide:network'"
+                          class="size-5"
+                        />
+                      </div>
+                      <div>
+                        <div class="font-bold text-sm text-foreground flex items-center gap-1.5">
+                          <span>{{ iface.displayName || iface.name }}</span>
+                          <span class="font-mono text-xs text-muted-foreground">({{ iface.name }})</span>
+                        </div>
+                        <div class="text-[11px] text-muted-foreground uppercase font-mono">
+                          {{ iface.type }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      <Tag
+                        v-if="iface.isPrimary"
+                        color="success"
+                        class="border-0 font-semibold text-xs"
+                      >
+                        {{ $t('ops.network.primaryTag') }}
+                      </Tag>
+                      <Tag
+                        v-else
+                        color="default"
+                        class="border-0 text-xs"
+                      >
+                        {{ $t('ops.network.lanBadge') }}
+                      </Tag>
+                    </div>
+                  </div>
+
+                  <!-- 链路与工作模式 -->
+                  <div class="flex items-center justify-between py-2.5 border-b border-border/50 text-xs">
+                    <div class="flex items-center gap-2">
+                      <Badge
+                        :status="iface.linkStatus === 'up' ? 'success' : 'default'"
+                        :text="iface.linkStatus === 'up' ? $t('ops.network.linkUp') : $t('ops.network.linkDown')"
+                      />
+                    </div>
+                    <Tag
+                      :color="iface.ipv4?.mode === 'static' ? 'processing' : 'default'"
+                      class="font-mono font-medium uppercase border-0 text-[11px]"
+                    >
+                      {{ iface.ipv4?.mode || 'DHCP' }}
+                    </Tag>
+                  </div>
+
+                  <!-- IP 地址核心大展示 -->
+                  <div class="py-3">
+                    <div class="text-[11px] text-muted-foreground mb-1">
+                      {{ $t('ops.network.ipAddress') }}
+                    </div>
+                    <div
+                      v-if="iface.ipv4?.address"
+                      class="group flex items-center justify-between cursor-pointer rounded-lg bg-muted/40 p-2 border hover:border-primary/50 transition-colors"
+                      @click="copyToClipboard(iface.ipv4.address, 'ip')"
+                    >
+                      <span class="font-mono font-bold text-base text-foreground group-hover:text-primary transition-colors">
+                        {{ iface.ipv4.address }}
+                        <span class="text-muted-foreground font-normal text-xs">/{{ iface.ipv4.prefix || 24 }}</span>
+                      </span>
+                      <Tooltip :title="$t('ops.network.ipCopied')">
+                        <IconifyIcon
+                          icon="lucide:copy"
+                          class="size-3.5 text-muted-foreground group-hover:text-primary transition-colors"
+                        />
+                      </Tooltip>
+                    </div>
+                    <div v-else class="text-sm font-mono text-muted-foreground py-1">
+                      -
+                    </div>
+                  </div>
+
+                  <!-- 关键参数指标行 -->
+                  <div class="space-y-2 text-xs">
+                    <div class="flex justify-between py-1 border-b border-border/50">
+                      <span class="text-muted-foreground">{{ $t('ops.network.subnetMask') }}</span>
+                      <span class="font-mono font-medium text-foreground">
+                        {{ iface.ipv4?.subnetMask || '-' }}
+                      </span>
+                    </div>
+
+                    <div class="flex justify-between py-1 border-b border-border/50">
+                      <span class="text-muted-foreground">{{ $t('ops.network.gateway') }}</span>
+                      <span class="font-mono font-medium text-foreground">
+                        {{ iface.isPrimary ? (iface.ipv4?.gateway || '-') : '-' }}
+                      </span>
+                    </div>
+
+                    <div class="flex justify-between py-1 border-b border-border/50">
+                      <span class="text-muted-foreground">{{ $t('ops.network.mac') }}</span>
+                      <span
+                        class="font-mono text-muted-foreground hover:text-primary cursor-pointer transition-colors"
+                        @click="copyToClipboard(iface.mac, 'mac')"
+                      >
+                        {{ iface.mac || '-' }}
+                      </span>
+                    </div>
+
+                    <div v-if="iface.isPrimary && iface.ipv4?.dnsServers?.length" class="py-1">
+                      <div class="text-muted-foreground mb-1">{{ $t('ops.network.dnsServers') }}</div>
+                      <div class="flex flex-wrap gap-1">
+                        <Tag
+                          v-for="dns in iface.ipv4.dnsServers"
+                          :key="dns"
+                          class="font-mono text-[11px] border-0 bg-muted text-muted-foreground"
+                        >
+                          {{ dns }}
+                        </Tag>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 底部操作区 -->
+                <div class="mt-4 pt-3 border-t flex items-center justify-between">
+                  <Button
+                    v-access:code="['ops:network:edit']"
+                    type="primary"
+                    size="small"
+                    ghost
+                    :disabled="!iface.writable"
+                    class="flex items-center gap-1"
+                    @click="openEdit(iface)"
+                  >
+                    <IconifyIcon icon="lucide:settings-2" class="size-3.5" />
+                    {{ $t('ops.network.configure') }}
+                  </Button>
+
+                  <Popconfirm
+                    :title="$t('ops.network.factoryResetConfirm')"
+                    @confirm="handleFactoryReset(iface)"
+                  >
+                    <Button
+                      v-access:code="['ops:network:reset']"
+                      type="text"
+                      danger
+                      size="small"
+                      :disabled="!iface.writable"
+                      class="flex items-center gap-1"
+                    >
+                      <IconifyIcon icon="lucide:rotate-ccw" class="size-3.5" />
+                      {{ $t('ops.network.factoryReset') }}
+                    </Button>
+                  </Popconfirm>
+                </div>
+              </div>
+            </div>
+          </Spin>
+        </div>
+
+        <!-- 右侧使用指南与技术规格 (占1列) -->
+        <div class="space-y-4">
+          <!-- 工控多网隔离与使用指南 -->
+          <div
+            class="bg-card text-card-foreground rounded-xl border p-5 shadow-xs"
+          >
+            <div
+              class="flex items-center gap-2 text-foreground font-semibold text-sm mb-4"
+            >
+              <IconifyIcon
+                icon="lucide:book-open-check"
+                class="size-4.5 text-primary"
+              />
+              <span>{{ $t('ops.network.guideTitle') }}</span>
+            </div>
+            <div
+              class="space-y-3.5 text-xs text-muted-foreground leading-relaxed"
+            >
+              <p class="bg-muted/50 p-3 rounded-lg border">
+                {{ $t('ops.network.guide1') }}
+              </p>
+              <p class="bg-muted/50 p-3 rounded-lg border">
+                {{ $t('ops.network.guide2') }}
+              </p>
+              <p class="bg-muted/50 p-3 rounded-lg border">
+                {{ $t('ops.network.guide3') }}
+              </p>
+            </div>
+          </div>
+
+          <!-- 网络技术规格与约束 -->
+          <div
+            class="bg-card text-card-foreground rounded-xl border p-5 shadow-xs"
+          >
+            <div
+              class="flex items-center gap-2 text-foreground font-semibold text-sm mb-3"
+            >
+              <IconifyIcon icon="lucide:shield-check" class="size-4.5 text-sky-500" />
+              <span>{{ $t('ops.network.specsTitle') }}</span>
+            </div>
+            <div class="space-y-2 text-xs text-muted-foreground">
+              <div class="flex justify-between py-1 border-b border-border/50">
+                <span>{{ $t('ops.network.specRouting') }}</span>
+                <span class="font-medium text-foreground">{{
+                  $t('ops.network.specRoutingValue')
+                }}</span>
+              </div>
+              <div class="flex justify-between py-1 border-b border-border/50">
+                <span>{{ $t('ops.network.specRollback') }}</span>
+                <span class="font-medium text-foreground">{{
+                  $t('ops.network.specRollbackValue')
+                }}</span>
+              </div>
+              <div class="flex justify-between py-1">
+                <span>{{ $t('ops.network.specIsolation') }}</span>
+                <span class="font-medium text-foreground">{{
+                  $t('ops.network.specIsolationValue')
+                }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 侧边抽屉配置面板 (Drawer Configuration Panel) -->
+    <Drawer
+      v-model:open="drawerVisible"
+      :title="`${$t('ops.network.configure')} - ${currentIface?.displayName || currentIface?.name}`"
+      width="460px"
+      :destroy-on-close="true"
+    >
+      <Form layout="vertical" class="space-y-5">
+        <Alert
+          type="warning"
+          show-icon
+          :message="$t('ops.network.disconnectWarning')"
+          class="!text-xs"
+        />
+
+        <!-- 模式选择卡片区 -->
+        <div>
+          <label class="text-sm font-semibold text-foreground block mb-2.5">
+            {{ $t('ops.network.ipMode') }}
+          </label>
+          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <!-- DHCP 模式卡片 -->
+            <div
+              class="cursor-pointer rounded-xl border-2 p-3.5 transition-all duration-150"
+              :class="[
+                formModel.mode === 'dhcp'
+                  ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-xs'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/30',
+              ]"
+              @click="selectIPMode('dhcp')"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <div
+                    class="flex size-6 items-center justify-center rounded-md"
+                    :class="[
+                      formModel.mode === 'dhcp'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground',
+                    ]"
+                  >
+                    <IconifyIcon icon="lucide:radio" class="size-3.5" />
+                  </div>
+                  <span class="font-semibold text-xs">{{ $t('ops.network.modeDHCP') }}</span>
+                </div>
+                <div
+                  class="size-3.5 rounded-full border flex items-center justify-center"
+                  :class="[
+                    formModel.mode === 'dhcp'
+                      ? 'border-primary bg-primary'
+                      : 'border-muted-foreground/40',
+                  ]"
+                >
+                  <div
+                    v-if="formModel.mode === 'dhcp'"
+                    class="size-1 rounded-full bg-white"
+                  ></div>
+                </div>
+              </div>
+              <p class="text-muted-foreground mt-2 text-[11px] leading-relaxed">
+                {{ $t('ops.network.modeDHCPDesc') }}
+              </p>
+            </div>
+
+            <!-- Static 模式卡片 -->
+            <div
+              class="cursor-pointer rounded-xl border-2 p-3.5 transition-all duration-150"
+              :class="[
+                formModel.mode === 'static'
+                  ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-xs'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/30',
+              ]"
+              @click="selectIPMode('static')"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <div
+                    class="flex size-6 items-center justify-center rounded-md"
+                    :class="[
+                      formModel.mode === 'static'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground',
+                    ]"
+                  >
+                    <IconifyIcon icon="lucide:sliders" class="size-3.5" />
+                  </div>
+                  <span class="font-semibold text-xs">{{ $t('ops.network.modeStatic') }}</span>
+                </div>
+                <div
+                  class="size-3.5 rounded-full border flex items-center justify-center"
+                  :class="[
+                    formModel.mode === 'static'
+                      ? 'border-primary bg-primary'
+                      : 'border-muted-foreground/40',
+                  ]"
+                >
+                  <div
+                    v-if="formModel.mode === 'static'"
+                    class="size-1 rounded-full bg-white"
+                  ></div>
+                </div>
+              </div>
+              <p class="text-muted-foreground mt-2 text-[11px] leading-relaxed">
+                {{ $t('ops.network.modeStaticDesc') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 主出口 (WAN) 开关卡片 -->
+        <div>
+          <label class="text-sm font-semibold text-foreground block mb-2">
+            {{ $t('ops.network.isPrimary') }}
+          </label>
+          <div class="flex items-center justify-between rounded-xl border p-3.5 bg-card">
+            <div class="space-y-0.5 pr-2">
+              <div class="text-xs font-semibold text-foreground">
+                {{ $t('ops.network.setAsPrimary') }}
+              </div>
+              <div class="text-[11px] text-muted-foreground leading-relaxed">
+                {{ $t('ops.network.primarySwitchTip') }}
+              </div>
+            </div>
+            <Switch v-model:checked="formModel.primary" />
+          </div>
+        </div>
+
+        <!-- 静态模式专属字段 (Static Form Fields) -->
+        <template v-if="isStatic">
+          <Divider class="!my-3" />
+
+          <!-- IP 地址 -->
+          <Form.Item :label="$t('ops.network.ipAddress')" required>
+            <Input
+              v-model:value="formModel.address"
+              placeholder="例如 192.168.1.100"
+              class="font-mono text-sm h-9"
+            />
+          </Form.Item>
+
+          <!-- CIDR 前缀与掩码实时换算 -->
+          <Form.Item :label="$t('ops.network.prefix')" required>
+            <div class="flex items-center gap-3">
+              <InputNumber
+                v-model:value="formModel.prefix"
+                :min="1"
+                :max="32"
+                class="w-32 font-mono h-9"
+                placeholder="24"
+              />
+              <div class="text-xs text-muted-foreground flex items-center gap-1">
+                <span>{{ $t('ops.network.calculatedMask') }}:</span>
+                <span class="font-mono font-semibold text-foreground">{{ calculatedSubnetMask }}</span>
+              </div>
+            </div>
+          </Form.Item>
+
+          <!-- 主出口专属网关与 DNS -->
+          <template v-if="isPrimary">
+            <Divider class="!my-3" />
+
+            <Form.Item :label="$t('ops.network.gateway')" required>
+              <Input
+                v-model:value="formModel.gateway"
+                placeholder="例如 192.168.1.1"
+                class="font-mono text-sm h-9"
+              />
+            </Form.Item>
+
+            <!-- DNS 服务器列表 -->
+            <Form.Item :label="$t('ops.network.dnsServers')">
+              <div class="space-y-2.5">
+                <div
+                  v-for="(_, index) in formModel.dnsServers"
+                  :key="index"
+                  class="flex items-center gap-2"
+                >
+                  <Input
+                    v-model:value="formModel.dnsServers[index]"
+                    placeholder="8.8.8.8"
+                    class="font-mono text-sm h-9"
+                  />
+                  <Tooltip :title="$t('ops.network.removeDNS')">
+                    <Button
+                      danger
+                      type="text"
+                      class="shrink-0 flex items-center justify-center size-9 !p-0"
+                      @click="removeDNSServer(index)"
+                    >
+                      <X class="size-4" />
+                    </Button>
+                  </Tooltip>
+                </div>
+
+                <Button
+                  v-if="formModel.dnsServers.length < 3"
+                  type="dashed"
+                  block
+                  size="small"
+                  @click="addDNSServer"
+                >
+                  <Plus class="size-3.5 inline mr-1" />
+                  {{ $t('ops.network.addDNS') }}
+                </Button>
+
+                <!-- 常用 DNS 推荐快捷填充 -->
+                <div class="bg-muted/40 rounded-xl p-3 border mt-2">
+                  <div
+                    class="text-[11px] font-semibold text-muted-foreground mb-2 flex items-center gap-1.5"
+                  >
+                    <IconifyIcon
+                      icon="lucide:sparkles"
+                      class="size-3.5 text-amber-500"
+                    />
+                    <span>{{ $t('ops.network.quickDNS') }}</span>
+                  </div>
+                  <div class="flex flex-wrap gap-1.5">
+                    <Tag
+                      v-for="dns in recommendedDNS"
+                      :key="dns.ip"
+                      class="cursor-pointer font-mono text-[11px] hover:border-primary transition-colors py-0.5 px-2"
+                      @click="quickFillDNS(dns.ip)"
+                    >
+                      + {{ dns.name }} ({{ dns.ip }})
+                    </Tag>
+                  </div>
+                </div>
+              </div>
+            </Form.Item>
+          </template>
+        </template>
+      </Form>
+
+      <template #footer>
+        <div class="flex justify-end gap-2.5">
+          <Button @click="drawerVisible = false">{{ $t('ops.network.cancel') }}</Button>
+          <Button
+            v-access:code="['ops:network:edit']"
+            type="primary"
+            :loading="submitting"
+            @click="handleApply"
+          >
+            {{ $t('ops.network.confirm') }}
+          </Button>
+        </div>
+      </template>
+    </Drawer>
+  </Page>
+</template>

@@ -443,3 +443,28 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: 完成对时服务与前端时间管理集成
+
+**Date**: 2026-08-23
+**Task**: 完成对时服务与前端时间管理集成
+**Branch**: `dev`
+
+### Summary
+
+实现跨平台对时服务 (NTP/手动/时区)、Gin API 路由与 web-antd 时间管理页面，修复单测并完成任务归档
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8b9244` | (see git log) |
+| `be5f718` | (see git log) |
+| `b5e33d1` | (see git log) |
+| `961f2fe` | (see git log) |
+| `f7041de` | (see git log) |
+
+### Status
+
+[OK] **Completed**

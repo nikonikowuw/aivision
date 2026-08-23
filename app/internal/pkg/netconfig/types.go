@@ -42,6 +42,11 @@ func (m NetworkMode) Normalize() NetworkMode {
 	return m
 }
 
+// IsBond 是否属于绑定（bonding）模式，即占用 bond0 与 slave 集合的拓扑。
+func (m NetworkMode) IsBond() bool {
+	return m == NetworkModeActiveBackup || m == NetworkModeLACP
+}
+
 // DefaultBondMiimon 默认链路监测周期（毫秒）。
 const DefaultBondMiimon = 100
 
@@ -52,10 +57,10 @@ const DefaultConfirmTimeout = 120 * time.Second
 type BondXmitHashPolicy string
 
 const (
-	BondXmitHashPolicyLayer2   BondXmitHashPolicy = "layer2"
-	BondXmitHashPolicyLayer23  BondXmitHashPolicy = "layer2+3"
-	BondXmitHashPolicyLayer34  BondXmitHashPolicy = "layer3+4"
-	DefaultBondXmitHashPolicy                     = BondXmitHashPolicyLayer23
+	BondXmitHashPolicyLayer2  BondXmitHashPolicy = "layer2"
+	BondXmitHashPolicyLayer23 BondXmitHashPolicy = "layer2+3"
+	BondXmitHashPolicyLayer34 BondXmitHashPolicy = "layer3+4"
+	DefaultBondXmitHashPolicy                    = BondXmitHashPolicyLayer23
 )
 
 // AllBondXmitHashPolicies 支持的传输哈希策略列表。

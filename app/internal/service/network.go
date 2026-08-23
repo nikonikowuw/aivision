@@ -445,8 +445,8 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	}
 
 	// 5.1 direct switch between active-backup and lacp-aggregation validation (design 2.2)
-	isCurrentBond := currentSnapshot.Mode.Normalize() == netconfig.NetworkModeActiveBackup || currentSnapshot.Mode.Normalize() == netconfig.NetworkModeLACP
-	isTargetBond := input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP
+	isCurrentBond := currentSnapshot.Mode.Normalize().IsBond()
+	isTargetBond := input.Mode.IsBond()
 	if isCurrentBond && isTargetBond {
 		if currentSnapshot.Bond == nil {
 			return nil, errno.New(errno.CodeNetworkBondModeConflict)
@@ -476,17 +476,8 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 			return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
 		}
 		for _, sid := range input.SlaveIDs {
-			slave, exists := currentSnapshot.Interfaces[sid]
-			if !exists {
+			if !slaveUsableForBond(currentSnapshot, sid, isCurrentBond) {
 				return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
-			}
-			// 如果当前处于 bond，允许复用当前属于该 bond 的 slave；否则要求 Writable、未加入其他 master 且不是 bond
-			if isCurrentBond && currentSnapshot.Bond != nil && slices.Contains(currentSnapshot.Bond.SlaveIDs, sid) {
-				// 允许复用
-			} else {
-				if !slave.Writable || slave.MasterID != nil || slave.IsBond {
-					return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
-				}
 			}
 		}
 		bondPlan = &netconfig.BondPlan{
@@ -507,37 +498,14 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 			seen[sid] = struct{}{}
 		}
 
-		// 检查速率和双工一致性以产生 non-blocking warning
-		var firstSpeed *int
-		var firstDuplex netconfig.InterfaceDuplex = ""
-		hasMismatch := false
-
 		for _, sid := range input.SlaveIDs {
-			slave, exists := currentSnapshot.Interfaces[sid]
-			if !exists {
+			if !slaveUsableForBond(currentSnapshot, sid, isCurrentBond) {
 				return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
-			}
-			if isCurrentBond && currentSnapshot.Bond != nil && slices.Contains(currentSnapshot.Bond.SlaveIDs, sid) {
-				// 允许复用当前 bond 的 slave
-			} else {
-				if !slave.Writable || slave.MasterID != nil || slave.IsBond {
-					return nil, errno.New(errno.CodeNetworkBondSlaveInvalid)
-				}
-			}
-
-			// 检查速度/双工
-			if firstDuplex == "" {
-				firstSpeed = slave.SpeedMbps
-				firstDuplex = slave.Duplex
-			} else {
-				if (firstSpeed != nil && slave.SpeedMbps != nil && *firstSpeed != *slave.SpeedMbps) ||
-					(firstDuplex != "" && slave.Duplex != "" && firstDuplex != slave.Duplex) {
-					hasMismatch = true
-				}
 			}
 		}
 
-		if hasMismatch {
+		// 检查速率和双工一致性以产生 non-blocking warning
+		if slaveLinkMismatch(currentSnapshot, input.SlaveIDs) {
 			warnings = append(warnings, netconfig.NetworkWarning{
 				Code:         netconfig.WarningBondSlaveLinkMismatch,
 				InterfaceIDs: input.SlaveIDs,
@@ -566,7 +534,7 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	var normPrefix *int
 	var normGW *string
 	var normDNS []string
-	if input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP {
+	if input.Mode.IsBond() {
 		norm, err := netconfig.ValidateAndNormalizeIPv4(
 			input.BondIPv4.Mode,
 			input.BondIPv4.Primary,
@@ -603,7 +571,7 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 		}
 	}
 
-	if input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP {
+	if input.Mode.IsBond() {
 		// 进入 bonding：slave 条目保留完整原值（含 primary/gateway/dns），随 last-valid 持久化，
 		// 供退出模式时恢复（R3.4 / design 5.2 步骤 8）。
 		// 追加 bond0 计划
@@ -652,12 +620,12 @@ func (s *networkService) SwitchMode(ctx context.Context, input SwitchModeInput) 
 	txnID := fmt.Sprintf("txn-%d", now.UnixNano())
 
 	targetIfaceID := ""
-	if input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP {
+	if input.Mode.IsBond() {
 		targetIfaceID = "bond0"
 	}
 
 	reconnectAddrs := make([]netconfig.ReconnectAddress, 0)
-	if (input.Mode == netconfig.NetworkModeActiveBackup || input.Mode == netconfig.NetworkModeLACP) && normAddr != nil && normPrefix != nil {
+	if input.Mode.IsBond() && normAddr != nil && normPrefix != nil {
 		reconnectAddrs = append(reconnectAddrs, netconfig.ReconnectAddress{
 			InterfaceID: "bond0",
 			Address:     *normAddr,
@@ -936,6 +904,39 @@ func (s *networkService) modeSwitchSummary(event string, pending *netconfig.Pend
 	}
 	return fmt.Sprintf("mode switch %s: %s -> %s slaves=%s primary=%s",
 		event, pending.Transaction.PreviousMode, pending.Transaction.TargetMode, slaves, primary)
+}
+
+// slaveUsableForBond 判断 sid 是否可加入 bond：当前已处于 bond 拓扑且 sid 是现有成员时允许复用；
+// 否则要求该接口存在、可写、未被其他 master 占用且本身不是 bond 逻辑口。
+func slaveUsableForBond(current netconfig.HostSnapshot, sid string, isCurrentBond bool) bool {
+	slave, exists := current.Interfaces[sid]
+	if !exists {
+		return false
+	}
+	if isCurrentBond && current.Bond != nil && slices.Contains(current.Bond.SlaveIDs, sid) {
+		return true
+	}
+	return slave.Writable && slave.MasterID == nil && !slave.IsBond
+}
+
+// slaveLinkMismatch 检查各 slave 的速率/双工是否一致（仅对已知值比较），不一致返回 true。
+// 首个未知双工的接口作为参照，与既有链路监测语义保持一致。
+func slaveLinkMismatch(current netconfig.HostSnapshot, slaveIDs []string) bool {
+	var firstSpeed *int
+	var firstDuplex netconfig.InterfaceDuplex
+	for _, sid := range slaveIDs {
+		slave := current.Interfaces[sid]
+		if firstDuplex == "" {
+			firstSpeed = slave.SpeedMbps
+			firstDuplex = slave.Duplex
+			continue
+		}
+		if (firstSpeed != nil && slave.SpeedMbps != nil && *firstSpeed != *slave.SpeedMbps) ||
+			(firstDuplex != "" && slave.Duplex != "" && firstDuplex != slave.Duplex) {
+			return true
+		}
+	}
+	return false
 }
 
 // recordSystemLog 写一条 ops 模块操作日志（R5.3 / spec 5.2）。

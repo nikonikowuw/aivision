@@ -21,16 +21,6 @@ import (
 
 type NetworkServiceMock interface {
 	GetOverview(ctx context.Context) (*netconfig.NetworkOverview, error)
-	SetFailLACP(fail bool)
-}
-
-type testNetworkServiceWrapper struct {
-	service.NetworkService
-	fake *netconfig.FakePlatform
-}
-
-func (w *testNetworkServiceWrapper) SetFailLACP(fail bool) {
-	w.fake.SetFailLACP(fail)
 }
 
 func setupTestNetworkRouter(t *testing.T) (*gin.Engine, NetworkServiceMock) {
@@ -38,8 +28,6 @@ func setupTestNetworkRouter(t *testing.T) (*gin.Engine, NetworkServiceMock) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(middleware.ErrorHandler())
-
-	fake := netconfig.NewFakePlatform(netconfig.PlatformLinux)
 
 	tmpDir := filepath.Join(t.TempDir(), "net-api-state")
 	cfg := &config.Config{
@@ -69,12 +57,7 @@ func setupTestNetworkRouter(t *testing.T) (*gin.Engine, NetworkServiceMock) {
 		group.POST("/interfaces/:interfaceId/factory-reset", handler.FactoryReset)
 	}
 
-	wrapper := &testNetworkServiceWrapper{
-		NetworkService: srv,
-		fake:           fake,
-	}
-
-	return r, wrapper
+	return r, srv
 }
 
 func TestNetworkAPI_GetOverview(t *testing.T) {
@@ -235,18 +218,6 @@ func TestNetworkAPI_SwitchMode_LACP(t *testing.T) {
 	}
 }
 
-// mockFailLACPPlatform 包装 FakePlatform，仅在 LACP apply 时返回失败
-type mockFailLACPPlatform struct {
-	*netconfig.FakePlatform
-}
-
-func (m *mockFailLACPPlatform) Apply(ctx context.Context, plan netconfig.HostPlan) (netconfig.HostSnapshot, error) {
-	if plan.Mode == netconfig.NetworkModeLACP {
-		return netconfig.HostSnapshot{}, netconfig.ErrApplyFailed
-	}
-	return m.FakePlatform.Apply(ctx, plan)
-}
-
 func TestNetworkAPI_SwitchMode_MultiAddressWithBondRejected(t *testing.T) {
 	router, _ := setupTestNetworkRouter(t)
 
@@ -296,9 +267,6 @@ func TestNetworkAPI_SwitchMode_LACPKernelRejection503(t *testing.T) {
 		t.Fatalf("NewNetworkService failed: %v", err)
 	}
 	_ = srv.Start(context.Background())
-	// 注入 failLACP
-	srvPlatformField := srv.(interface{ SwitchMode(context.Context, service.SwitchModeInput) (*netconfig.TransactionResult, error) })
-	_ = srvPlatformField
 
 	// 使用 mockFailLACPService 实现精准 1114 测试
 	handler := NewNetworkHandler(&mockFailLACPNetworkService{NetworkService: srv})
@@ -339,5 +307,3 @@ func (m *mockFailLACPNetworkService) SwitchMode(ctx context.Context, input servi
 	}
 	return m.NetworkService.SwitchMode(ctx, input)
 }
-
-

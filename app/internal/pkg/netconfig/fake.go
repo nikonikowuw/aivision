@@ -432,125 +432,64 @@ func (f *FakePlatform) applyMode(plan HostPlan) {
 	}
 }
 
+// lacpPortState 生成 LACP 端口状态位：inAgg=true 表示已加入聚合组并完成协商，
+// 否则处于 defaulted 待协商状态。
+func lacpPortState(inAgg bool) LACPPortState {
+	return LACPPortState{
+		Active:       true,
+		ShortTimeout: false,
+		Aggregation:  true,
+		Synchronized: inAgg,
+		Collecting:   inAgg,
+		Distributing: inAgg,
+		Defaulted:    !inAgg,
+		Expired:      false,
+	}
+}
+
+// lacpAggregatorID 返回聚合组 ID 指针：inAgg 时指向 1，否则为 nil。
+func lacpAggregatorID(inAgg bool) *uint16 {
+	if !inAgg {
+		return nil
+	}
+	v := uint16(1)
+	return &v
+}
+
 func (f *FakePlatform) buildLACPStatus(slaveIDs []string) *LACPStatus {
 	scenario := f.lacpScenario
 	if scenario == "" {
 		scenario = FakeLACPScenarioNegotiated
 	}
+	negotiated := scenario == FakeLACPScenarioNegotiated
 
-	var aggID uint16 = 1
-	switch scenario {
-	case FakeLACPScenarioNone:
-		slaves := make([]LACPPortStatus, 0, len(slaveIDs))
-		for _, sid := range slaveIDs {
-			slaves = append(slaves, LACPPortStatus{
-				InterfaceID:  sid,
-				AggregatorID: nil,
-				InAggregator: false,
-				ActorState: LACPPortState{
-					Active:       true,
-					ShortTimeout: false,
-					Aggregation:  true,
-					Synchronized: false,
-					Collecting:   false,
-					Distributing: false,
-					Defaulted:    true,
-					Expired:      false,
-				},
-				PartnerState: LACPPortState{
-					Active:       false,
-					ShortTimeout: false,
-					Aggregation:  false,
-					Synchronized: false,
-					Collecting:   false,
-					Distributing: false,
-					Defaulted:    true,
-					Expired:      false,
-				},
-			})
+	slaves := make([]LACPPortStatus, 0, len(slaveIDs))
+	for i, sid := range slaveIDs {
+		inAgg := negotiated || (scenario == FakeLACPScenarioPartial && i == 0)
+		partner := LACPPortState{Defaulted: true}
+		if inAgg {
+			partner = lacpPortState(true)
 		}
-		return &LACPStatus{
-			AggregatorID:   nil,
-			Negotiated:     false,
-			Slaves:         slaves,
-			DiagnosticCode: "partner_not_configured",
-		}
-
-	case FakeLACPScenarioPartial:
-		slaves := make([]LACPPortStatus, 0, len(slaveIDs))
-		for i, sid := range slaveIDs {
-			inAgg := (i == 0)
-			var sidAggID *uint16
-			if inAgg {
-				sidAggID = &aggID
-			}
-			slaves = append(slaves, LACPPortStatus{
-				InterfaceID:  sid,
-				AggregatorID: sidAggID,
-				InAggregator: inAgg,
-				ActorState: LACPPortState{
-					Active:       true,
-					ShortTimeout: false,
-					Aggregation:  true,
-					Synchronized: inAgg,
-					Collecting:   inAgg,
-					Distributing: inAgg,
-					Defaulted:    !inAgg,
-					Expired:      false,
-				},
-				PartnerState: LACPPortState{
-					Active:       inAgg,
-					ShortTimeout: false,
-					Aggregation:  inAgg,
-					Synchronized: inAgg,
-					Collecting:   inAgg,
-					Distributing: inAgg,
-					Defaulted:    !inAgg,
-					Expired:      false,
-				},
-			})
-		}
-		return &LACPStatus{
-			AggregatorID: &aggID,
-			Negotiated:   false,
-			Slaves:       slaves,
-		}
-
-	default: // FakeLACPScenarioNegotiated
-		slaves := make([]LACPPortStatus, 0, len(slaveIDs))
-		for _, sid := range slaveIDs {
-			slaves = append(slaves, LACPPortStatus{
-				InterfaceID:  sid,
-				AggregatorID: &aggID,
-				InAggregator: true,
-				ActorState: LACPPortState{
-					Active:       true,
-					ShortTimeout: false,
-					Aggregation:  true,
-					Synchronized: true,
-					Collecting:   true,
-					Distributing: true,
-					Defaulted:    false,
-					Expired:      false,
-				},
-				PartnerState: LACPPortState{
-					Active:       true,
-					ShortTimeout: false,
-					Aggregation:  true,
-					Synchronized: true,
-					Collecting:   true,
-					Distributing: true,
-					Defaulted:    false,
-					Expired:      false,
-				},
-			})
-		}
-		return &LACPStatus{
-			AggregatorID: &aggID,
-			Negotiated:   true,
-			Slaves:       slaves,
-		}
+		slaves = append(slaves, LACPPortStatus{
+			InterfaceID:  sid,
+			AggregatorID: lacpAggregatorID(inAgg),
+			InAggregator: inAgg,
+			ActorState:   lacpPortState(inAgg),
+			PartnerState: partner,
+		})
 	}
+
+	status := &LACPStatus{
+		Negotiated: negotiated,
+		Slaves:     slaves,
+	}
+	if negotiated || scenario == FakeLACPScenarioPartial {
+		status.AggregatorID = lacpAggregatorID(true)
+	}
+	if scenario == FakeLACPScenarioNone {
+		status.DiagnosticCode = "partner_not_configured"
+	}
+	return status
 }
 
 func (f *FakePlatform) Close(ctx context.Context) error {

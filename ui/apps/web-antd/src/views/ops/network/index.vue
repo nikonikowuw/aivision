@@ -115,10 +115,43 @@ const selectedSlavesMismatch = computed(() => {
   return false;
 });
 
+// 模式表单是否可提交：active-backup 恰好 2 块，LACP 至少 2 块
+const canSubmitModeForm = computed(() => {
+  if (modeForm.value.slaveIds.length < 2) return false;
+  return (
+    targetMode.value !== NETWORK_MODES.ActiveBackup ||
+    modeForm.value.slaveIds.length === 2
+  );
+});
+
+// 查询某 slave 的 LACP 端口状态（仅 LACP 模式存在）
+function lacpSlaveStatus(sid: string): NetworkApi.LACPPortStatus | undefined {
+  return overview.value?.bond?.lacp?.slaves.find((s) => s.interfaceId === sid);
+}
+
+// slave 是否承载流量（active-backup 的 activeSlaveId）或已进聚合组（LACP）
+function isSlaveActive(sid: string): boolean {
+  const bond = overview.value?.bond;
+  if (!bond) return false;
+  if (overview.value?.mode === NETWORK_MODES.ActiveBackup) {
+    return bond.activeSlaveId === sid;
+  }
+  return lacpSlaveStatus(sid)?.inAggregator ?? false;
+}
+
+// slave 标签配色：active-backup 按 activeSlaveId，LACP 按是否进聚合组
+function bondSlaveTagColor(sid: string): string {
+  const bond = overview.value?.bond;
+  if (!bond) return 'default';
+  if (overview.value?.mode === NETWORK_MODES.ActiveBackup) {
+    return bond.activeSlaveId === sid ? 'success' : 'default';
+  }
+  return lacpSlaveStatus(sid)?.inAggregator ? 'success' : 'warning';
+}
+
 function openModeDrawer(mode: NetworkApi.NetworkMode = NETWORK_MODES.ActiveBackup) {
   targetMode.value = mode;
-  const minCount = mode === NETWORK_MODES.ActiveBackup ? 2 : 2;
-  const candidates = eligibleSlaves.value.slice(0, minCount);
+  const candidates = eligibleSlaves.value.slice(0, 2);
   modeForm.value = {
     slaveIds: candidates.map((i) => i.id),
     primarySlaveId: candidates[0]?.id ?? '',
@@ -559,17 +592,9 @@ onUnmounted(() => {
               class="size-3.5 text-muted-foreground"
             />
             <template v-for="sid in overview.bond.slaveIds" :key="sid">
-              <Tag
-                :color="
-                  overview.mode === NETWORK_MODES.ActiveBackup
-                    ? overview.bond.activeSlaveId === sid ? 'success' : 'default'
-                    : overview.bond.lacp?.slaves.find((s) => s.interfaceId === sid)?.inAggregator ? 'success' : 'warning'
-                "
-                class="border-0 font-mono"
-              >
+              <Tag :color="bondSlaveTagColor(sid)" class="border-0 font-mono">
                 <span
-                  v-if="(overview.mode === NETWORK_MODES.ActiveBackup && overview.bond.activeSlaveId === sid) ||
-                        (overview.mode === NETWORK_MODES.LACPAggregation && overview.bond.lacp?.slaves.find((s) => s.interfaceId === sid)?.inAggregator)"
+                  v-if="isSlaveActive(sid)"
                   class="inline-block size-1.5 rounded-full bg-emerald-500 mr-1"
                 ></span>
                 {{ sid }}
@@ -580,7 +605,7 @@ onUnmounted(() => {
                   (primary)
                 </span>
                 <span
-                  v-if="overview.mode === NETWORK_MODES.LACPAggregation && !overview.bond.lacp?.slaves.find((s) => s.interfaceId === sid)?.inAggregator"
+                  v-if="overview.mode === NETWORK_MODES.LACPAggregation && !isSlaveActive(sid)"
                   class="text-[10px] opacity-80 text-amber-500"
                 >
                   ({{ $t('ops.network.modeLACPNotInAggregator') }})
@@ -1640,15 +1665,15 @@ onUnmounted(() => {
             $t('ops.network.cancel')
           }}</Button>
           <Popconfirm
-            :title="targetMode === NETWORK_MODES.ActiveBackup ? $t('ops.network.modeEnterConfirm') : $t('ops.network.modeEnterConfirm')"
-            :disabled="modeForm.slaveIds.length < 2 || (targetMode === NETWORK_MODES.ActiveBackup && modeForm.slaveIds.length !== 2)"
+            :title="$t('ops.network.modeEnterConfirm')"
+            :disabled="!canSubmitModeForm"
             @confirm="handleModeSwitch"
           >
             <Button
               v-access:code="['ops:network:mode']"
               type="primary"
               :loading="modeSubmitting"
-              :disabled="modeForm.slaveIds.length < 2 || (targetMode === NETWORK_MODES.ActiveBackup && modeForm.slaveIds.length !== 2)"
+              :disabled="!canSubmitModeForm"
             >
               {{ $t('ops.network.confirm') }}
             </Button>

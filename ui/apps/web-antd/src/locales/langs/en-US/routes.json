@@ -11,5 +11,9 @@
     "analytics": "Analytics",
     "workspace": "Workspace",
     "title": "Dashboard"
+  },
+  "ops": {
+    "ops": "Operations",
+    "time": "Time Management"
   }
 }

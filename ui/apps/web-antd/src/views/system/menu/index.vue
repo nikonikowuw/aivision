@@ -212,10 +212,7 @@ const gridOptions: VxeGridProps<MenuApi.MenuItem> = {
   columns: [
     {
       field: 'title',
-      formatter: ({ cellValue }) =>
-        typeof cellValue === 'string' && cellValue.startsWith('routes.')
-          ? $t(cellValue)
-          : cellValue,
+      formatter: ({ cellValue }) => translateMenuLabel(cellValue),
       title: $t('system.menu.menuTitle'),
       treeNode: true,
       width: 220,

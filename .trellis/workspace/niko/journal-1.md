@@ -489,3 +489,38 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 18: 简化 LACP 802.3ad 聚合实现
+
+**Date**: 2026-08-23
+**Task**: 简化 LACP 802.3ad 聚合实现
+**Branch**: `feat/lacp-aggregation`
+
+### Summary
+
+对 f41245e（LACP 802.3ad 特性）做行为保持的简化重构：新增 NetworkMode.IsBond() 作为绑定模式单一事实来源；fake 平台 buildLACPStatus 三个场景收敛为 lacpPortState/lacpAggregatorID 助手；service 抽出 slaveUsableForBond/slaveLinkMismatch 消除重复校验与空 if 分支；前端抽取 lacpSlaveStatus/isSlaveActive/bondSlaveTagColor/canSubmitModeForm 消除重复查找与嵌套三元；删除 api 测试中未使用的 testNetworkServiceWrapper/mockFailLACPPlatform 死代码。
+
+### Main Changes
+
+- 后端：IsBond() 谓词 + 校验/告警助手抽取，types.go gofmt 对齐修复
+- 前端：模板重复 LACP 查找与禁用条件收敛为助手方法与 computed
+- 测试：清理 api/network_test.go 死代码（wrapper/interface 未使用）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c6b1bef` | (see git log) |
+
+### Testing
+
+- [OK] make vet + make test 全绿；LACP 专项 12 用例通过；pnpm check（circular/dep/typecheck/cspell）通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 08-23-lacp-aggregation 待台架（多网卡 + 802.3ad 交换机）验证 AC5-AC7 后归档；提交前需 lefthook install 以恢复 oxfmt/gofmt/commitlint 门禁

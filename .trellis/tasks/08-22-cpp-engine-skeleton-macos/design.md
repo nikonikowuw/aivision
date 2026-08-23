@@ -13,7 +13,7 @@
 │ engine_app  (可执行文件 aivision-engine)      │        自包含工程，可单独 cp 走编译
 ├──────────────────────────────────────────────┤                    │
 │ engine_core   平台无关核心层（静态库）         │                    │ 构建产出 zip
-│  · media    统一媒体源 / ZLM / 有界编码帧队列  │                    ▼
+│  · media    统一媒体源（media_api 接口；ZLM 实现位于 media_zlm）│                    ▼
 │  · frame    通用帧描述符 / 引用计数句柄 / 池   │        安装校验七步 → 解压到
 │  · task     摄像头任务 / 算法实例 / 采样调度   │  var/packages/<algorithm_id>/<version>/
 │  · algo     算法包运行时 / 安装 / 升级 / 配置  │                    │
@@ -36,12 +36,12 @@
 
 **边界铁律**
 
-1. `engine_core` 的 CMake target 只链接 `platform_api` + gRPC/protobuf + ZLM，不链接任何 `platform_*`。适配层由 `engine_app` 在链接期注入，通过注册表按 `platform_id` 激活。
+1. `engine_core` 的 CMake target 只链接 `platform_api` + `media_api` + gRPC/protobuf，不直接链接 ZLM，也不链接任何 `platform_*`。媒体后端 `media_zlm` 与平台适配层由 `engine_app` 在链接期注入，通过注册表按 `platform_id` 激活。
 2. `platform_api` 与 `sdk/` 的公共头中不得出现 `CVPixelBuffer`、`MLModel`、`rknn_*` 等私有类型；平台句柄一律走 `void* opaque` + `uint32_t opaque_kind`。
 3. `sdk/` 是纯 C 头文件 + cmake 脚本 + 文档，**零实现、零第三方依赖**，可独立 `tar czf` 分发给第三方算法商，其中不含任何 engine 痕迹。
 4. 算法包在**引擎构建之外**编译，vendored SDK 副本，无任何指向仓库其他位置的路径依赖（D7）。
 
-**D2 的直接后果**：ZLM 属于 `engine_core/media`，不属于适配层。RKNN 接入时 media 层不动。
+**D2 的直接后果**：ZLM 位于独立媒体后端 target `media_zlm`，通过 `media_api` 接口注入，不属于平台适配层。RKNN 接入时只需新增平台适配层，media 层不动。
 
 ## 2. 目录布局
 
@@ -149,40 +149,45 @@ algo-packages/                        ★ 插件工程，与 engine 无边
 
 ```c
 typedef struct av_frame_desc {
-  /* --- 8 字节对齐块 --- */
-  uint64_t frame_id;
-  uint64_t modifier;             /* DRM format modifier；无此概念的平台填 0 */
-  int64_t  wall_time_ns;         /* 业务时间：收帧时的系统时间（§7.1.2） */
-  int64_t  pts_ns;               /* 仅诊断，不得用作业务时间（§7.1.2） */
-  uint64_t offset[4];            /* 各平面字节偏移 */
-  void*    opaque;               /* 平台私有句柄；算法只读，不得释放 */
+  uint32_t size;                 /* 0 */
+  uint32_t api_version;          /* 4 */
 
-  /* --- 4 字节块 --- */
-  uint32_t size;                 /* = sizeof(av_frame_desc)，兼容扩展依据 */
-  uint32_t api_version;
-  uint32_t platform_tag;         /* 数值化 platform_id（见下方说明） */
-  uint32_t opaque_kind;          /* opaque 的类型标签，决定能否 cast */
-  uint32_t memory_type;          /* AV_MEM_HOST / AV_MEM_PLATFORM_SURFACE / ... */
-  uint32_t pixel_format;         /* AV_PIX_NV12 / BGRA / I420 ... */
-  uint32_t layout;               /* linear / tiled / compressed */
-  uint32_t width, height;              /* 有效尺寸 */
-  uint32_t alloc_width, alloc_height;  /* 分配尺寸 */
-  int32_t  stride[4];            /* 有符号：允许负 stride（自下而上布局） */
+  uint64_t frame_id;             /* 8 */
+  int64_t  wall_time_ns;         /* 16 */
+  int64_t  pts_ns;               /* 24 */
+  uint64_t modifier;             /* 32 */
+  uint64_t offset[4];            /* 40 */
+  void*    opaque;               /* 72: 平台原生句柄，只读 */
+  void*    frame_token;          /* 80: 只可传给 av_frame_ops */
 
-  /* --- 小字段块 --- */
-  uint16_t color_primaries;      /* BT.601 / BT.709 / BT.2020 */
-  uint16_t color_transfer;
-  uint16_t color_matrix;
-  uint8_t  color_range;          /* limited(16-235) / full(0-255) */
-  uint8_t  plane_count;          /* stride/offset 的有效项数 */
-  uint8_t  time_synced;          /* §7.1.2 */
-  uint8_t  _reserved[3];
+  uint32_t platform_tag;         /* 88 */
+  uint32_t opaque_kind;          /* 92 */
+  uint32_t memory_type;          /* 96 */
+  uint32_t pixel_format;         /* 100 */
+  uint32_t layout;               /* 104 */
+  uint32_t width;                /* 108 */
+  uint32_t height;               /* 112 */
+  uint32_t alloc_width;          /* 116 */
+  uint32_t alloc_height;         /* 120 */
+  int32_t  stride[4];            /* 124 */
+
+  uint16_t color_primaries;      /* 140 */
+  uint16_t color_transfer;       /* 142 */
+  uint16_t color_matrix;         /* 144 */
+  uint8_t  color_range;          /* 146 */
+  uint8_t  plane_count;          /* 147 */
+  uint8_t  time_synced;          /* 148 */
+  uint8_t  reserved[3];          /* 149 */
 } av_frame_desc;
 
-_Static_assert(sizeof(void*) == 8, "64-bit only");
-_Static_assert(sizeof(av_frame_desc) == 144, "frame desc ABI frozen");
-_Static_assert(offsetof(av_frame_desc, size) == 72, "frame desc ABI frozen");
+AV_STATIC_ASSERT(sizeof(void*) == 8, "64-bit ABI required");
+AV_STATIC_ASSERT(sizeof(av_frame_desc) == 152, "frame ABI size");
+AV_STATIC_ASSERT(offsetof(av_frame_desc, frame_token) == 80, "frame token offset");
+AV_STATIC_ASSERT(offsetof(av_frame_desc, stride) == 124, "stride offset");
+AV_STATIC_ASSERT(offsetof(av_frame_desc, color_primaries) == 140, "color offset");
 ```
+
+> 布局以 `.trellis/spec/engine/abi-guidelines.md` 为权威；`frame_token` 只可传给 `av_frame_ops`，禁止解引用或与 `opaque` 混用。
 
 **几处偏离直觉的地方，都是有意的：**
 
@@ -217,7 +222,7 @@ typedef struct av_frame_ops {
 - **两级生命周期**：Library 级（每个包版本一次，加载模型等只读共享资源）+ Instance 级（每个算法实例一份，独立推理上下文与跟踪/聚合状态）。这是 PRD §7.7「复用只读模型资源、并发工作单元用独立上下文」的直接落地。
 - `dlopen` 必须用 `RTLD_NOW | RTLD_LOCAL`——多个算法包可能各自静链不同版本的同名第三方库，`RTLD_GLOBAL` 会造成符号劫持，症状是随机崩溃且极难归因。
 - **`process` 是完整的一帧处理**（前处理 + 推理 + 后处理 + 跟踪聚合）。引擎不介入算法的内部阶段划分，只通过 `av_image_ops` 提供平台加速的图像原语（convert / pad / alloc / free），算法自行组合。引擎提供机制，不定义策略。
-- 结果经回调返回 JSON 字节串；算法只提交归一化 ROI 的**裁图请求**，裁剪/编码/落盘/图片 ID 全由��擎 image 模块完成，算法不碰文件系统、不链接图像库。
+- 结果经回调返回 JSON 字节串；算法只提交归一化 ROI 的**裁图请求**，裁剪/编码/落盘/图片 ID 全由引擎 image 模块完成，算法不碰文件系统、不链接图像库。
 - 线程模型：同一实例严格串行（含 `update_config` 与 `process` 互斥），实例间可并发。算法内部无需同步代码。
 - 超时不强杀：引擎停止分发新帧并标记实例，已被算法持有的帧缓冲在引用归零前不回收。
 
@@ -257,7 +262,7 @@ typedef struct av_algo_abi {
 IPlatform         : id(), profile(), create_*()
 IDecoder          : open(codec, extradata) / decode(pkt) -> FrameHandle
 IFrameAllocator   : 池化分配 / 引用计数回调
-IInferenceContext : load(model_path) / run(inputs) / query_memory()
+（推理上下文归算法包：平台不提供 IInferenceContext，只经 PlatformProfile.inference_runtime 声明能力）
 IImageProcessor   : crop / resize / convert
 IImageEncoder     : encode_jpeg(frame, roi, quality) -> bytes
 IResourceProvider : total_units() / allocatable_units() / reserved_units() / min_free_memory()
@@ -291,7 +296,7 @@ ZLM MediaSource ──(H264/H265 NAL 引用)──> 有界编码帧队列(每摄
 
 **调度模型：每算法实例一个独占工作线程。**
 
-算法包的整个契约建立在「同一实例的 `process` 不会重入」之上——它因此不写任何同步代码。独占线程让这个保证是**结构性**的：一个线程天然串行，不可能出错。换成共享线程池的话，同一保证要靠调度器里「取任务时打实例占用标记」的逻辑正确，一旦有 bug 就是第三方算法包内部的数据竞争，而你没有它的源码。用��能出错的机制去保障绝不能错的契约，不划算。
+算法包的整个契约建立在「同一实例的 `process` 不会重入」之上——它因此不写任何同步代码。独占线程让这个保证是**结构性**的：一个线程天然串行，不可能出错。换成共享线程池的话，同一保证要靠调度器里「取任务时打实例占用标记」的逻辑正确，一旦有 bug 就是第三方算法包内部的数据竞争，而你没有它的源码。用可能出错的机制去保障绝不能错的契约，不划算。
 
 每摄像头一个解码线程。所有队列有界，解码线程永不阻塞在算法队列上（`try_push` 失败即丢最旧帧）——这是 AC5 的实现依据。
 
@@ -304,11 +309,11 @@ ZLM MediaSource ──(H264/H265 NAL 引用)──> 有界编码帧队列(每摄
 
 共享硬件（RGA / vImage / 推理加速器）的争用在**原语与推理上下文的实现层**排队，引擎不需要理解算法的内部阶段划分。
 
-**关于线程数**：16 路 × 2 算法 = 32 线程，看似与核数脱节，但这些线程绝大部分时间阻塞在帧队列或推理返回上，真正 CPU 密集的只有前后处理两小段。即使同时进入密集段，结果是单帧延迟方差变大而总��吐基本不变，而 PRD §10.3 明确「优先保证实时性，不保证处理每一个采样帧」——这是吞吐型负载，延迟方差不是要害。
+**关于线程数**：16 路 × 2 算法 = 32 线程，看似与核数脱节，但这些线程绝大部分时间阻塞在帧队列或推理返回上，真正 CPU 密集的只有前后处理两小段。即使同时进入密集段，结果是单帧延迟方差变大而总吞吐基本不变，而 PRD §10.3 明确「优先保证实时性，不保证处理每一个采样帧」——这是吞吐型负载，延迟方差不是要害。
 
 **调度模型是引擎内部实现，不是 ABI 契约**。ABI 只承诺「同实例串行」，靠独占线程还是占用标记实现，算法包完全无感。因此这个决定不需要提前做：将来实测证明线程数确实是瓶颈，换成共享线程池即可，不影响 ABI、不影响算法包、无迁移成本。为此代码结构上要求「帧分发」与「执行」解耦——`process` 不得硬编码在解码回调里，届时只需替换执行器。
 
-**同理，不做单实例内的阶段流水线**：把 `process` 拆成无状态 `detect` + 有状态 `commit`、配 reorder buffer 做三段流水，其收益只在整��跑 1~2 个实例时存在；本产品场景是 4~16 路（PRD §10.1），实例间并发已把加速器填满。代价却是 reorder buffer、跨段背压、帧生命周期延长，以及要求第三方算法作者正确切分有状态/无状态逻辑。若将来实测证明必要，可在 `av_algo_abi` 末尾追加这两个函数指针，老包因 `size` 较小自动走串行路径，零破坏。
+**同理，不做单实例内的阶段流水线**：把 `process` 拆成无状态 `detect` + 有状态 `commit`、配 reorder buffer 做三段流水，其收益只在整机跑 1~2 个实例时存在；本产品场景是 4~16 路（PRD §10.1），实例间并发已把加速器填满。代价却是 reorder buffer、跨段背压、帧生命周期延长，以及要求第三方算法作者正确切分有状态/无状态逻辑。若将来实测证明必要，可在 `av_algo_abi` 末尾追加这两个函数指针，老包因 `size` 较小自动走串行路径，零破坏。
 
 ## 5. gRPC 契约（`proto/aivision/v1/`）
 
@@ -318,7 +323,7 @@ ZLM MediaSource ──(H264/H265 NAL 引用)──> 有界编码帧队列(每摄
   `ReportAlarm`、`ReportTaskState`、`ReportInstanceState`、`ReportMetrics`、`ReportOrphanImages`。
 - `person.proto`：**预留**（D4）`PersonService` / `FeatureService` 的 service 与 message 定义，C++ 侧注册但返回 `UNIMPLEMENTED`。
 
-传输：`unix:///var/run/aivision/engine.sock`（macOS 开发期落到 `./run/`），双向各起一个 UDS 端点。断线检测走 gRPC channel 状态；重连成功后 C++ 主动请求 `ApplyDesiredState` 做全量对账（AC13）。
+传输：两个独立 UDS 端点——`engine.sock`（Go → C++ 的 `EngineService`）与 `app.sock`（C++ → Go 的 `ControlPlaneService` + `ReportService`），生产默认位于 `/var/run/aivision/`，macOS 开发 Profile 位于仓库外可写 runtime dir。断线检测走 gRPC channel 状态；`app.sock` 重连成功后 C++ 主动请求 Go 的 `GetDesiredState` 做全量对账（AC13）。
 
 **约束**：任何 message 都不含像素数据。图片只传 `image_id` + 受限相对路径。
 

@@ -28,7 +28,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
    - 验证：`cmake --version`、`protoc --version`、`grpc_cpp_plugin` 可执行。
 2. **【硬风险闸门】ZLMediaKit Spike** — 加 submodule，最小 CMake 编译 ZLM 静态库，编写 20 行 demo 接入测试 RTSP 流并打印 H.264 NAL 长度与 PTS。
    - 验证：demo 持续输出帧信息 ≥60 秒无崩溃。**此步失败则暂停并回到设计评审。**
-3. **三大顶层目录骨架** — `sdk/`、`engine/`、`algo-packages/`；配置 `engine/CMakeLists.txt` + `Makefile`，建立 `engine_core` / `platform_api` / `platform_mock` / `platform_macos` / `engine_app` 五个 target 与空实现，接入 gtest。
+3. **三大顶层目录骨架** — `sdk/`、`engine/`、`algo-packages/`；配置 `engine/CMakeLists.txt` + `Makefile`，建立 `media_api` / `engine_core` / `media_zlm` / `platform_api` / `platform_mock` / `platform_macos` / `package_validator` / `engine_app` 各 target 与空实现（对齐 `.trellis/spec/engine/directory-structure.md` 依赖矩阵），接入 gtest。
    - 验证：`make -C engine configure build test` 通过（0 个测试也算）。
 
 ---
@@ -37,7 +37,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
 
 > **核心目标**：锁定最底层的核心契约，交付完整的 SDK 工具库，用纯内存 Mock 跑通契约测试。
 
-1. **`sdk/include/aivision/` 核心头文件落地** — 纯 C ABI（`algo.h` 虚表、`types.h` 144 字节通用帧描述符、`av_frame_ops`、`result.h` 极简结果 Schema）。
+1. **`sdk/include/aivision/` 核心头文件落地** — 纯 C ABI（`algo.h` 虚表、`types.h` 152 字节通用帧描述符、`av_frame_ops`、`result.h` 极简结果 Schema）。
 2. **跨平台 CV 工具与通用脚手架** — `cv/resize.hpp`、`cv/letterbox.hpp`、`cv/nms.hpp`；`utils/env.hpp`、`utils/json.hpp`、`utils/event_id.hpp`（事件 ID 生成与校验）、`utils/profiler.hpp`（RAII 分段打点）。
 3. **`platform_api` 接口与能力档案** — 落 `design.md` §3.4 全部接口、`PlatformProfile`、`Availability`、注册表、`av_image_ops` 接口定义。
 4. **SPS VUI 色彩信息解析** — 从 H.264/H.265 SPS VUI 提取色彩四元组，缺失时兜底 BT.709 limited 并记一条日志。
@@ -55,7 +55,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
 1. **`sdk/` 分发脚手架与同步工具** — `AivisionAlgoSDKConfig.cmake` + `AivisionAlgoPackage.cmake`（`aivision_add_algo_package()`）+ `sdk/VERSION` + `algo-packages/scripts/sync-sdk.sh`（单向同步）+ `check-consistency.sh`。
 2. **模块化算法包工程模板** — `algo-packages/` 结构确立，各子模块（`preprocess/`、`inference/`、`postprocess/`、`core/`、`runner/`）具备独立 `CMakeLists.txt`；配置标准 `Makefile`（`build`/`run`/`benchmark`/`asan`/`package`/`clean`）。
 3. **单机调试套件（`run_local`）** — 支持读取本地 `.env` 配置文件与环境变量即时覆盖；`make run` 模拟平台帧封装并输出画框打标的 `result.jpg`；`make benchmark` 输出分段性能与 FPS 报告。
-4. **引擎算法包运行时与 7 步安装沙箱** — 基于 `fork()` 临时子进程安全加载校验（解压到 `var/packages/`、路径安全、`testimage.jpg` 全流程自测、坏包回滚、参数原子热更新、升级卸载保护）。
+4. **引擎算法包运行时与 7 步安装沙箱** — 基于独立 `package_validator` 可执行文件（`posix_spawn/exec` 启动、有界管道与超时）安全加载校验（解压到 `var/packages/`、路径安全、`testimage.jpg` 全流程自测、坏包回滚、参数原子热更新、升级卸载保护）。
 5. **测试 fixture 算法包** — 一个 Mock 算法包 + 两个坏包 fixture（自测失败 / 加载失败），打成标准 zip 走真实安装流程。
    - 验证：**AC8、AC10、AC11、AC20、AC25** 在 Mock 平台上先行通过；验证算法包单目录 `/tmp` 独立可搬运构建（AC19）。
 
@@ -67,7 +67,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
 
 1. **`platform_macos` 硬件实现** —
    - `IDecoder`：VideoToolbox 硬解 H.264/H.265 → `CVPixelBuffer` NV12，接入帧池；
-   - `IInferenceContext`：Core ML 模型加载与 ANE/GPU 推理调度；
+   - （推理模型加载与推理上下文归算法包，平台不提供 `IInferenceContext`；Core ML 加载与 ANE/GPU 推理调度在 yolov8n 包内实现）
    - `IImageProcessor` / `av_image_ops`：`vImage` 矢量加速前处理（Resize / Letterbox）与色彩转换；`ImageIO` JPEG 编码；
    - `IResourceProvider` / `ITelemetry`：1000 归一化资源账本与 6 项系统指标采集。
 2. **ZLM 媒体源管理与多实例调度器** —
@@ -79,7 +79,7 @@ Phase 5: 图片落盘、gRPC 跨进程对账与端到端总装 (M5 + M6) ──�
    - 双层心跳看门狗（Ingest 5s 超时断开 + Decoder 3s 超时强制销毁重建）；
    - IDR 关键帧硬性准入闸门（丢弃残缺前导 P 帧，防芯片寄存器死锁）；
    - RTSP PLI/FIR 关键帧补发请求。
-   - 验证：**AC2**（符号检查）、**AC4、AC5、AC9、AC12（含静默挂起自愈测试）、AC15、AC23、AC24**。
+   - 验证：**AC2**（符号检查）、**AC4、AC5、AC9、AC12（含静默挂起自愈测试）、AC15、AC23、AC24**，执行 `make -C engine tsan` 并发安全干净。
 
 ---
 
@@ -104,6 +104,7 @@ make -C engine configure      # cmake 配置
 make -C engine build          # 构建全部 target
 make -C engine test           # gtest 单测 + 契约测试
 make -C engine asan           # ASan/LSan 构建并跑测试
+make -C engine tsan           # TSan 并发安全测试（队列/frame token/worker 停止）
 make -C engine lint           # clang-format + clang-tidy + AC2 边界检查
 make -C engine e2e            # 拉起 stub server + engine，跑端到端脚本
 
@@ -132,4 +133,4 @@ make -C algo-packages/macos/arm64/yolov8n package   # 打出标准分发 zip 包
 - [x] `implement.jsonl` / `check.jsonl` 已填入真实 spec/research 条目
 - [x] `event_id` 生成与幂等职责已统一（算法生成实例内 ID + 引擎组合全局唯一与去重）
 - [x] AC 编号冲突已修正（AC1~AC25 连续不重）
-- [ ] `.trellis/spec/engine/` 规范由本任务 Phase 5 产出，实现期先遵循 `.trellis/spec/guides/`
+- [x] `.trellis/spec/engine/` 规范已存在并生效，作为实现权威；与本任务 PRD/Design 冲突时以规范为准（`index.md` §1）

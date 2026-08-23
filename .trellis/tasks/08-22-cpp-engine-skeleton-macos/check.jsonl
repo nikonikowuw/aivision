@@ -1,5 +1,11 @@
-{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/prd.md", "reason": "逐条核对 AC1-AC25 与 Out of Scope；重点确认未越界实现人脸子系统（D4）、未修改 app/ 下 Go 产品代码（D5）。"}
-{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/design.md", "reason": "校验分层边界铁律：engine_core 不链接 platform_*，platform_api 与 algo_sdk 公共头不含平台私有类型（对应 AC2）。"}
-{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/algo-package-spec.md", "reason": "算法包契约权威草案：dlopen 序列与 RTLD_LOCAL 要求、Library/Instance 两级生命周期、初始化参数结构、能力协商、process 与结果回调、线程模型（单实例串行）、超时语义、错误码表、内存所有权、版本演进规则。Phase 2-3 实现 SDK 与算法包运行时时必读。"}
-{"file": "docs/prd/ai-video-analytics-edge-platform-v1.0.md", "reason": "校验实现未把 RKNN/MPP/RGA/ZLM 私有字段泄漏进通用协议（§6.3、§12 交付物边界）。"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查核心层与两个适配层之间是否存在应下沉到核心层的重复实现。"}
+{"file": ".trellis/spec/engine/index.md", "reason": "以开发前 Gate 和 Quality Check 为总检查清单。"}
+{"file": ".trellis/spec/engine/directory-structure.md", "reason": "核验 target 依赖、私有类型隔离、SDK 分层和算法包可搬运性。"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "核验 ABI 前缀、sizeof/offsetof、frame token 生命周期、枚举和色彩契约。"}
+{"file": ".trellis/spec/engine/algo-package-spec.md", "reason": "核验单导出、生命周期、self-test、线程、回调和异常边界。"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "核验文件集合/SHA、FPS 档位、配置原子性和结果 Schema。"}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "核验 ZLM 回调/teardown、队列隔离、watchdog、图像 fallback、资源和指标。"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "核验图片恢复、双 UDS、DesiredState revision、升级与回滚。"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "核验错误映射、日志脱敏、稳定事件名和低基数指标。"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "核验 sanitizer、fixture、validator 安全矩阵、portable build 和 E2E。"}
+{"file": ".trellis/spec/engine/deployment-profile.md", "reason": "核验 macOS Profile、launchd、目录权限、版本组合与部署回滚。"}
+{"file": ".trellis/tasks/08-22-cpp-engine-skeleton-macos/prd.md", "reason": "逐项映射 AC1-AC25 和 Out of Scope；代码契约以 Engine spec 为准。"}

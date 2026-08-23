@@ -33,7 +33,7 @@
 ## Key Decisions
 
 - **D1**：macOS 是一等运行平台，交付功能完整的适配层与部署 Profile，而非 walking skeleton 或 mock。系统设计之初即已纳入 macOS，原计划先做 RKNN；因当前无 RK3576 开发板改为 macOS 先行。`rk3576-rknn` 后续作为第二个适配层接入，核心层不得因此改动。
-- **D2**：媒体后端在 macOS 与 RK3576 上统一使用 ZLMediaKit（官方支持 macOS 构建）。因此「摄像头上游接入 / 统一媒体源 / 浏览器预览」归属核心层，不进入平台适配层；适配层差异面收敛为：解码、帧内存、图像处理、JPEG 编码、推理运行时、资源配额、设备指标。
+- **D2**：媒体后端在 macOS 与 RK3576 上统一使用 ZLMediaKit（官方支持 macOS 构建）。因此「摄像头上游接入 / 统一媒体源 / 浏览器预览」归属媒体后端 `media_zlm`（经 `media_api` 接口注入，`engine_core` 不直接链接 ZLM），不进入平台适配层；适配层差异面收敛为：解码、帧内存、图像处理、JPEG 编码、推理运行时能力声明（推理实现归算法包）、资源配额、设备指标。
 - **D3**：macOS 推理运行时为**纯 Core ML（`.mlpackage`）**，优先走 ANE。算法包发布 Core ML 模型工件，并按 PRD §7.5.6 独立维护转换证据（coremltools 版本、转换配置、量化校准来源、`.mlpackage` SHA-256、构建报告），与 RKNN 的 ONNX→RKNN 链路只共用源模型身份，不共用模型工件。
 - **D4**：本任务**不含人脸识别子系统**（PRD §7.8.3–7.8.5、§7.9）。gRPC proto 中预留人员/特征/索引相关 service 与 message 定义，本任务不实现其 handler。
 - **D5**：本任务**不修改 `app/` 下任何 Go 产品代码**。跨进程契约由 `.proto` + C++ 侧 gRPC client/server + 一个**测试用 Go stub server**（独立 `go.mod`，置于 engine 测试目录）验证。Go 侧产品实现留给 T2。
@@ -55,6 +55,7 @@
   5. `make run` 驱动算法执行真实推理，在控制台打印检测结果 JSON，**同时调用 `visualizer.hpp` 将检测到的目标框（BBox）、类别标签与置信度绘制在图像上并输出为 `result.jpg`**，供开发者直观肉眼研判算法检测正确性；
   6. `make benchmark` 驱动算法进行多循环（如 100 次）基准压测，输出前处理、推理、后处理分段耗时（Avg/P50/P99）与持续吞吐 FPS 报告，便于快速评估硬件加速效果；
   7. 算法代码支持开发期 `getenv()` 环境变量覆盖（如 `CONF_THRESH=0.8 make run`，`LOOPS=500 make benchmark`），使算法开发者在单机调参、换图测试和快速打包时无需手动敲繁琐的 CMake 命令，也无需启动引擎主进程。
+- **D12（规范权威与关键修订）**：`.trellis/spec/engine/` 为 Engine 实现权威（见 `index.md` §1），与本 PRD/Design 冲突时以规范为准。相对早期草案的关键修订已写入规范：推理模型加载与实例推理上下文归算法包，平台不提供 `IInferenceContext`；ZLM 位于独立 `media_zlm` target，`engine_core` 只依赖 `media_api`；`av_frame_desc` 固定 152 字节并分离 `opaque`/`frame_token`；安装校验运行在独立 `package_validator` 进程（`posix_spawn/exec`，禁止主进程 fork 后加载）；跨进程契约使用 `engine.sock`/`app.sock` 两个 UDS 端点，C++ 经 `GetDesiredState` 拉取期望状态。
 
 ## Requirements
 
@@ -98,7 +99,7 @@
 ### R5 算法包 SDK 与运行时
 
 - R5.1 `sdk/` 交付版本化算法包 C ABI 头文件（`size` + `api_version` 结构体、不透明句柄、错误码、明确所有权，放置于 `include/aivision/algo.h`、`types.h`、`result.h`），纯 C，跨 ABI 不出现 STL / C++ 对象 / 异常。
-- R5.2 定义算法清单 Schema：`algorithm_id`、语义化版本、`platform_id`、算法类型、**告警类型声明 `alarm_types`（至少 1 项，`id` 包内唯一）**、最低适配层版本、`min_os_version` 等运行时约束、支持的帧能力、资源档位、模型与依赖文件、参数 JSON Schema + UI 元数据、`testimage.jpg`。
+- R5.2 定义算法清单 Schema：`algorithm_id`、语义化版本、`platform_id`、算法类型、**告警类型 id `alarm_type_id`（单一，前端据此 i18n 显示告警）**、最低适配层版本、`min_os_version` 等运行时约束、资源档位、模型与依赖文件、参数 JSON Schema（结构约束 + `title`/`description` 展示注解，无 `x-ui` 等 UI 元数据）、`testimage.jpg`。（帧兼容性不在清单声明：平台帧能力由 `PlatformProfile.frame_caps` 定义，算法适配由 `platform_id` 匹配 + 安装自测 + 运行时 `instance_negotiate` 验证。）
 - R5.3 `sdk/` 交付 cmake helper（`AivisionAlgoSDKConfig.cmake` + `AivisionAlgoPackage.cmake`）与**标准前后处理、性能分析及平台工具库**（`include/aivision/cv/` 下 `resize.hpp`、`letterbox.hpp`、`nms.hpp`；`include/aivision/utils/` 下 `env.hpp`、`json.hpp`、`event_id.hpp`、`profiler.hpp`；`include/aivision/platform/<平台>/` 下加速前处理与可视化落盘），使算法包工程在**只拥有自身目录**的前提下即可极速开发、性能剖析、构建并产出规范分发包（配合 D7 的 vendored 副本）。
 - R5.4 `scripts/sync-sdk.sh` 单向同步 + CI SHA-256 一致性校验（D10）。
 - R5.5 实现安装校验七步流程（PRD §7.5.4），失败返回结构化原因，记录包 SHA-256；通过后解压到 `var/packages/<algorithm_id>/<version>/`，运行时仅从该目录 dlopen。
@@ -111,7 +112,7 @@
 ### R6 结果与图片
 
 - R6.1 **职责绝对切分与统一结果 Schema**：
-  - **算法包纯粹职责**：算法包 C ABI 输出包含纯检测目标实体数组（`label`、`confidence`、`bbox` 归一化坐标及可选跟踪/扩展属性）、算法实例内唯一的 `event_id` 与**事件类型 `alarm_type_id`**（PRD §7.10），无目标时返回空；不承担系统级状态编排。`alarm_type_id` 必须取自本包清单 `alarm_types` 声明集合，作用域为包内唯一，事件级而非目标级——需要区分类型时发多次回调。
+  - **算法包纯粹职责**：算法包 C ABI 输出包含纯检测目标实体数组（`label`、`confidence`、`bbox` 归一化坐标及可选跟踪/扩展属性）、算法实例内唯一的 `event_id` 与**事件类型 `alarm_type_id`**（PRD §7.10），无目标时返回空；不承担系统级状态编排。`alarm_type_id` 固定等于本包清单声明的 `alarm_type_id`，作用域为包内唯一，事件级而非目标级。
   - **Engine 统一编排职责**：基于算法 `event_id` 与激活期全局唯一的 `instance_id` 进行全局唯一化组合（`<instance_id>/<algo_event_id>`）、视频帧收帧纳秒绝对时钟绑定（`wall_time_ns`）、单次推理与端到端性能耗时打点（P99 统计）、抓拍裁剪与原子落盘全部由 Engine 宿主统一承担。重复 `event_id` 幂等忽略。Engine **不得推断或改写** `alarm_type_id`，只原样透传并与 `algorithm_id` 组合为 `<algorithm_id>:<alarm_type_id>` 供对端落库与筛选。
 - R6.2 目标框与规则区域使用 `[0,1]` 归一化坐标，原点为有效画面左上角；多边形 ≥3 顶点、不越界不自交。
 - R6.3 图片模块统一管理裁剪、缩放、颜色转换、JPEG 编码；临时文件 + 原子重命名写入；对外只暴露图片 ID 与受限相对路径。
@@ -135,7 +136,7 @@
 ### R9 示例算法包
 
 - R9.1 交付 `algo-packages/macos/arm64/yolov8n/`，类型 `object_detection`，`platform_id` = `macos-arm64-coreml`，为模块化自包含独立工程（D7/D8），各子模块（前处理、推理、后处理、C ABI 核心、调试 Runner）均具备独立 `CMakeLists.txt`。
-- R9.2 支持热更新目标类别列表与置信度阈值；检测到配置类别时输出标准一次性告警事件。
+- R9.2 支持热更新置信度阈值等调优参数；检测到目标时输出标准一次性告警事件。（检测类别是算法包开发时固定的固有属性，不作为运行时配置参数；本地调试可在 `.env` 中选择关注类别，见 AC25。）
 - R9.3 提供单机本地调试工具（`standalone_runner`）、`.env.example` 以及标准 `Makefile`（支持 `build` / `run` / `benchmark` / `asan` / `package` / `clean`）。调试运行必须**完整模拟生产帧管线**（加载图片后包装为平台原生帧格式如 macOS 的 `CVPixelBuffer` NV12 描述符，禁止传伪造的纯 RGB 内存块），支持通过 `.env` 或环境变量即时覆盖运行参数，零重编译验证单图推理，**自动输出画框打标的 `result.jpg`**，支持一键 `make benchmark` 打印分段性能报表与 FPS 吞吐，一键打出合规 zip 分发包。
 - R9.4 记录完整转换证据：源模型身份、coremltools 版本、转换配置、量化校准来源、`.mlpackage` SHA-256、构建报告、运行时张量属性。证据留在源码工程内，不进入分发包。
 - R9.5 检测精度不属于本任务验收范围。
@@ -152,7 +153,7 @@
 - [ ] AC3 `mock` 契约测试适配器可在无摄像头、无模型、无 GPU 的环境完成：适配层加载、能力档案查询、帧生命周期（含引用计数归零校验）、资源配额校验、算法结果回调全流程。
 - [ ] AC4 输入一路真实 RTSP（或本地回放的 RTSP 模拟源）H.264 1080p，引擎持续解码并向示例包分发帧，日志可观测到实际采样 FPS 与丢帧数。
 - [ ] AC5 同一摄像头任务挂载 2 个算法实例（不同 FPS），二者共享同一次上游连接与同一次解码；人为让其中一个实例阻塞时，另一个实例的 FPS 不下降。
-- [ ] AC6 示例包检测到配置类别时生成告警：图片按图片 ID 落盘（可见临时文件已原子重命名），gRPC 上报被 Go stub server 收到，字段含 `event_id`、`alarm_type_id`（事件类型，且值在清单 `alarm_types` 声明集合内）、算法 ID/版本、归一化目标框、置信度、时间与时间同步状态。
+- [ ] AC6 示例包检测到配置类别时生成告警：图片按图片 ID 落盘（可见临时文件已原子重命名），gRPC 上报被 Go stub server 收到，字段含 `event_id`、`alarm_type_id`（事件类型，且值等于清单声明的 `alarm_type_id`）、算法 ID/版本、归一化目标框、置信度、时间与时间同步状态。
 - [ ] AC7 重复 `event_id` 的上报在 C++ 侧被幂等忽略，不重复落盘图片。
 - [ ] AC8 参数热更新：合法配置整份生效（类别列表 / 阈值 / FPS 立刻变化）；非法配置整份拒绝，实例继续使用旧配置且不中断。
 - [ ] AC9 资源配额：把示例包 FPS 提高到超过 1000 单位可分配上限时被拒绝，返回结构化受限原因，且现有实例不受影响。

@@ -1,7 +1,10 @@
 // Package errno 集中定义业务错误码（全项目唯一错误码源，见父 design.md §6）。
 package errno
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // DefaultLang 默认文案语言；未指定或未收录语言时回退到它。
 // 取值对齐前端 vben preferences.app.locale（zh-CN / en-US / zh-TW）。
@@ -45,6 +48,20 @@ const (
 	CodeFileTooLarge       = 1016 // 文件超过大小限制
 	CodeFileTypeNotAllowed = 1017 // 文件类型不允许
 
+	// 网络配置业务错误码 1100 ~ 1111
+	CodeNetworkInvalidConfig        = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
+	CodeNetworkTransactionPending   = 1101 // 已存在整机候选事务
+	CodeNetworkTransactionNotFound  = 1102 // transaction ID 不存在/已完成
+	CodeNetworkTransactionExpired   = 1103 // deadline 已过
+	CodeNetworkInterfaceNotManaged  = 1104 // ID 不在当前可写集合或指纹变化
+	CodeNetworkOwnershipConflict    = 1105 // Linux 外部管理器/漂移/Resolver 非本系统所有
+	CodeNetworkUnsupported          = 1106 // 平台或能力不支持
+	CodeNetworkApplyFailed          = 1107 // 平台应用失败且补偿完成或进入故障
+	CodeNetworkRecoveryFailed       = 1108 // before/last-valid/factory 恢复失败
+	CodeNetworkStateCorrupt         = 1109 // root-only envelope 损坏/版本未知/校验和不符
+	CodeNetworkExternalDrift        = 1110 // 当前状态被外部修改，拒绝覆盖
+	CodeNetworkNotReady             = 1111 // 启动恢复/能力检查未完成
+
 	// NTP 对时错误码 1201-1207
 	CodeNTPManualNotAllowedInNTPMode  = 1201 // NTP 模式下不支持手动设时
 	CodeNTPSyncNotAllowedInManualMode = 1202 // 手动模式下不支持触发 NTP 同步
@@ -85,6 +102,18 @@ var messages = map[string]map[int]string{
 		CodeAdminUserProtected:            "超级管理员账号受系统保护，不可删除、停用或修改用户名",
 		CodeFileTooLarge:                  "文件大小超出限制",
 		CodeFileTypeNotAllowed:            "不支持的文件类型",
+		CodeNetworkInvalidConfig:          "网络配置参数非法或冲突",
+		CodeNetworkTransactionPending:     "已有待确认的网络配置事务，请先确认或取消",
+		CodeNetworkTransactionNotFound:    "网络事务不存在或已处理",
+		CodeNetworkTransactionExpired:     "网络事务已超时回滚",
+		CodeNetworkInterfaceNotManaged:    "网卡不受支持或硬件指纹发生变化",
+		CodeNetworkOwnershipConflict:      "网卡存在外部网络管理器冲突或已被接管",
+		CodeNetworkUnsupported:            "当前平台或运行环境不支持网络配置",
+		CodeNetworkApplyFailed:            "网络配置应用失败已自动恢复",
+		CodeNetworkRecoveryFailed:         "网络配置恢复失败，请检查设备连接",
+		CodeNetworkStateCorrupt:           "网络配置文件校验失败或损坏",
+		CodeNetworkExternalDrift:          "检测到外部网络配置漂移，已拒绝修改",
+		CodeNetworkNotReady:               "网络配置服务未就绪，正在启动或恢复中",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自动对时模式下不支持手动设置时间",
 		CodeNTPSyncNotAllowedInManualMode: "手动对时模式下不支持触发 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下服务器列表不能为空",
@@ -116,6 +145,18 @@ var messages = map[string]map[int]string{
 		CodeAdminUserProtected:            "Super admin user is protected and cannot be deleted, disabled, or renamed",
 		CodeFileTooLarge:                  "File size exceeds the limit",
 		CodeFileTypeNotAllowed:            "File type is not allowed",
+		CodeNetworkInvalidConfig:          "Invalid or conflicting network configuration",
+		CodeNetworkTransactionPending:     "A network transaction is already pending confirmation",
+		CodeNetworkTransactionNotFound:    "Network transaction not found or already completed",
+		CodeNetworkTransactionExpired:     "Network transaction expired and was rolled back",
+		CodeNetworkInterfaceNotManaged:    "Network interface is not managed or hardware fingerprint changed",
+		CodeNetworkOwnershipConflict:      "Network interface ownership conflict detected",
+		CodeNetworkUnsupported:            "Network configuration is not supported on this platform",
+		CodeNetworkApplyFailed:            "Network configuration apply failed and was rolled back",
+		CodeNetworkRecoveryFailed:         "Network recovery failed, please check host connection",
+		CodeNetworkStateCorrupt:           "Network state file checksum mismatch or corrupted",
+		CodeNetworkExternalDrift:          "External network drift detected, write operation rejected",
+		CodeNetworkNotReady:               "Network service is not ready, starting up or recovering",
 		CodeNTPManualNotAllowedInNTPMode:  "Manual time setting is not allowed in NTP mode",
 		CodeNTPSyncNotAllowedInManualMode: "NTP sync is not allowed in manual mode",
 		CodeNTPServersEmpty:               "NTP server list cannot be empty in NTP mode",
@@ -147,6 +188,18 @@ var messages = map[string]map[int]string{
 		CodeAdminUserProtected:            "超級管理員帳號受系統保護，不可刪除、停用或修改使用者名稱",
 		CodeFileTooLarge:                  "檔案大小超出限制",
 		CodeFileTypeNotAllowed:            "不支援的檔案類型",
+		CodeNetworkInvalidConfig:          "網路設定參數非法或衝突",
+		CodeNetworkTransactionPending:     "已有待確認的網路設定事務，請先確認或取消",
+		CodeNetworkTransactionNotFound:    "網路事務不存在或已處理",
+		CodeNetworkTransactionExpired:     "網路事務已超時回滾",
+		CodeNetworkInterfaceNotManaged:    "網卡不受支援或硬體指紋發生變化",
+		CodeNetworkOwnershipConflict:      "網卡存在外部網路管理器衝突或已被接管",
+		CodeNetworkUnsupported:          "當前平台或運行環境不支援網路設定",
+		CodeNetworkApplyFailed:            "網路設定套用失敗已自動復原",
+		CodeNetworkRecoveryFailed:         "網路設定復原失敗，請檢查設備連接",
+		CodeNetworkStateCorrupt:           "網路設定檔案校驗失敗或損壞",
+		CodeNetworkExternalDrift:          "偵測到外部網路設定漂移，已拒絕修改",
+		CodeNetworkNotReady:               "網路設定服務未就緒，正在啟動或復原中",
 		CodeNTPManualNotAllowedInNTPMode:  "NTP 自動對時模式下不支援手動設定時間",
 		CodeNTPSyncNotAllowedInManualMode: "手動對時模式下不支援觸發 NTP 同步",
 		CodeNTPServersEmpty:               "NTP 模式下伺服器清單不能為空",
@@ -204,7 +257,25 @@ func (e *Error) Error() string {
 	return Message(DefaultLang, e.Code)
 }
 
+// Is 判定错误码是否一致。
+func Is(err error, code int) bool {
+	if err == nil {
+		return false
+	}
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Code == code
+	}
+	return false
+}
+
+// NewError 构造携带业务错误码的 Error。
 func NewError(code int) *Error {
+	return &Error{Code: code}
+}
+
+// New 是 NewError 的简写别名。
+func New(code int) *Error {
 	return &Error{Code: code}
 }
 

@@ -212,6 +212,12 @@ var actionI18nMap = map[string]string{
 	"PUT /api/ntp/config":    "ops.time.updateConfig",
 	"POST /api/ntp/sync":     "ops.time.sync",
 	"POST /api/ntp/set-time": "ops.time.setTime",
+
+	// Network
+	"PUT /api/network/interfaces/:interfaceId":                "system.log.actionNetworkApply",
+	"POST /api/network/transactions/:transactionId/confirm":   "system.log.actionNetworkConfirm",
+	"POST /api/network/transactions/:transactionId/cancel":    "system.log.actionNetworkCancel",
+	"POST /api/network/interfaces/:interfaceId/factory-reset": "system.log.actionNetworkReset",
 }
 
 // inferAction 根据 Gin FullPath 和 Method 推断语义化的 i18n action key，未匹配则 fallback 到 "Method Path"。

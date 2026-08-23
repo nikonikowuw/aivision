@@ -35,6 +35,7 @@ type App struct {
 	Logger     *zap.Logger
 	Engine     *gin.Engine
 	NTPService service.NTPService
+	Network    service.NetworkService
 }
 
 const (
@@ -48,6 +49,11 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := requireRoot(os.Geteuid(), cfg.Network.FakePlatform); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: root check failed: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -81,6 +87,13 @@ func main() {
 		}
 	}
 
+	// 启动网络配置服务（首次接管基线、未决事务启动恢复）
+	if app.Network != nil {
+		if err := app.Network.Start(context.Background()); err != nil {
+			log.Fatal("network service start failed", zap.Error(err))
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:           app.Engine,
@@ -104,6 +117,11 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error("graceful shutdown failed", zap.Error(err))
+	}
+	if app.Network != nil {
+		if err := app.Network.Close(ctx); err != nil {
+			log.Error("network service close failed", zap.Error(err))
+		}
 	}
 	log.Info("server exited")
 }

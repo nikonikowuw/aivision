@@ -62,8 +62,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 24 {
-		t.Errorf("menu rows = %d, want 24", menuCount)
+	if menuCount != 30 {
+		t.Errorf("menu rows = %d, want 30", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -116,6 +116,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"system:menu", "system:menu:add", "system:menu:edit", "system:menu:delete",
 		"system:dept", "system:dept:add", "system:dept:edit", "system:dept:delete",
 		"system:log",
+		"ops:network", "ops:network:edit", "ops:network:confirm", "ops:network:cancel", "ops:network:reset",
 	}
 	sort.Strings(got)
 	sort.Strings(want)
@@ -140,13 +141,13 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		Where("menus.type = ?", MenuTypeMenu).
 		Group("menus.id").
 		Scan(&buttonCounts)
-	expect := map[string]int64{"User": 6, "Role": 4, "Menu": 3, "Dept": 3, "Log": 0, "dashboard": 0}
+	expect := map[string]int64{"User": 6, "Role": 4, "Menu": 3, "Dept": 3, "Log": 0, "Network": 4, "dashboard": 0}
 	for _, bc := range buttonCounts {
 		if expect[bc.Parent] != bc.Count {
 			t.Errorf("menu %s buttons = %d, want %d", bc.Parent, bc.Count, expect[bc.Parent])
 		}
 	}
-	for _, name := range []string{"User", "Role", "Menu", "Dept", "Log", "dashboard"} {
+	for _, name := range []string{"User", "Role", "Menu", "Dept", "Log", "Network", "dashboard"} {
 		found := false
 		for _, bc := range buttonCounts {
 			if bc.Parent == name {
@@ -164,6 +165,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"System": "routes.system.system", "User": "routes.system.user",
 		"Role": "routes.system.role", "Menu": "routes.system.menu",
 		"Dept": "routes.system.dept", "Log": "routes.system.log",
+		"Ops": "routes.ops.ops", "Network": "routes.ops.network",
 		"Dashboard": "routes.dashboard.title", "dashboard": "routes.dashboard.analytics",
 	}
 	var titled []Menu
@@ -183,19 +185,19 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		t.Errorf("buttons with title = %d, want 0", untitledButton)
 	}
 
-	// super 角色绑定全部 24 条菜单
+	// super 角色绑定全部 30 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 24 {
-		t.Errorf("role_menus for super = %d, want 24", rmCount)
+	if rmCount != 30 {
+		t.Errorf("role_menus for super = %d, want 30", rmCount)
 	}
 
-	// 树结构：2 个根（System 在前，Dashboard 在后），System 下 5 个子节点
+	// 树结构：3 个根（System 在前，Ops 在中，Dashboard 在后），System 下 5 个子节点
 	roots := BuildMenuTree(menus)
-	if len(roots) != 2 {
-		t.Fatalf("roots = %d, want 2", len(roots))
+	if len(roots) != 3 {
+		t.Fatalf("roots = %d, want 3", len(roots))
 	}
-	if roots[0].Name != "System" || roots[1].Name != "Dashboard" {
+	if roots[0].Name != "System" || roots[1].Name != "Ops" || roots[2].Name != "Dashboard" {
 		t.Errorf("root order = [%s, %s], want [System, Dashboard]", roots[0].Name, roots[1].Name)
 	}
 	if len(roots[0].Children) != 5 {

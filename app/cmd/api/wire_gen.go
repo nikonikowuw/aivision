@@ -63,6 +63,11 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	executor := ntp.NewExecutor()
 	ntpService := service.NewNTPService(systemConfigRepository, executor, zapLogger)
 	ntpHandler := api.NewNTPHandler(ntpService)
+	networkService, err := service.NewNetworkService(cfg, operationLogService, zapLogger)
+	if err != nil {
+		return nil, err
+	}
+	networkHandler := api.NewNetworkHandler(networkService)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
 		AuthMiddleware:      authMiddleware,
@@ -76,6 +81,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		AuthHandler:         authHandler,
 		FileHandler:         fileHandler,
 		NTPHandler:          ntpHandler,
+		NetworkHandler:      networkHandler,
 	}
 	engine := router.New(cfg, deps)
 	app := &App{
@@ -83,6 +89,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		Logger:     zapLogger,
 		Engine:     engine,
 		NTPService: ntpService,
+		Network:    networkService,
 	}
 	return app, nil
 }

@@ -1,4 +1,8 @@
 {
+  "ops": {
+    "ops": "Operations",
+    "network": "Network Configuration"
+  },
   "system": {
     "dept": "Department Management",
     "log": "Operation Log",

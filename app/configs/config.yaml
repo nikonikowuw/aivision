@@ -32,3 +32,8 @@ storage:
     bucket: niko-vue-admin
     use_ssl: false
     public_base_url: http://127.0.0.1:9000/niko-vue-admin
+network:
+  state_dir: /var/lib/aivision/network
+  profile_path: /etc/aivision/network-profile.json
+  confirm_timeout: 120s
+  fake_platform: true

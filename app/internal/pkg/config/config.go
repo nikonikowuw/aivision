@@ -18,6 +18,7 @@ type Config struct {
 	JWT     JWT
 	Log     Log
 	Storage Storage `mapstructure:"storage"`
+	Network Network `mapstructure:"network"`
 }
 
 // Server HTTP 服务配置。
@@ -75,6 +76,14 @@ type MinIO struct {
 	PublicBaseURL string `mapstructure:"public_base_url"`
 }
 
+// Network 网络配置服务配置。
+type Network struct {
+	StateDir       string        `mapstructure:"state_dir"`        // root-only 状态存储目录
+	ProfilePath    string        `mapstructure:"profile_path"`     // Linux Profile 声明文件路径
+	ConfirmTimeout time.Duration `mapstructure:"confirm_timeout"`  // 候选确认超时时间（默认 120s）
+	FakePlatform   bool          `mapstructure:"fake_platform"`    // 是否启用测试替身平台（单元/集成测试用）
+}
+
 const (
 	defaultConfigPath = "configs/config.yaml"
 
@@ -104,6 +113,11 @@ const (
 	defaultStorageLocalRoot            = "./uploads"
 	defaultStorageLocalURLPrefix       = "/uploads"
 	defaultStorageMinIOUseSSL          = false
+
+	defaultNetworkStateDir        = "/var/lib/aivision/network"
+	defaultNetworkProfilePath     = "/etc/aivision/network-profile.json"
+	defaultNetworkConfirmTimeout  = 120 * time.Second
+	defaultNetworkFakePlatform    = false
 )
 
 // Load 读取配置：默认路径 configs/config.yaml，可用环境变量 APP_CONFIG_PATH 覆盖，
@@ -179,6 +193,10 @@ func defaults() []keyValue {
 		{"storage.minio.bucket", ""},
 		{"storage.minio.use_ssl", defaultStorageMinIOUseSSL},
 		{"storage.minio.public_base_url", ""},
+		{"network.state_dir", defaultNetworkStateDir},
+		{"network.profile_path", defaultNetworkProfilePath},
+		{"network.confirm_timeout", defaultNetworkConfirmTimeout},
+		{"network.fake_platform", defaultNetworkFakePlatform},
 	}
 }
 
@@ -204,7 +222,23 @@ func validate(cfg *Config) error {
 	if strings.TrimSpace(cfg.JWT.Secret) == "" {
 		return fmt.Errorf("jwt.secret cannot be empty")
 	}
-	return validateStorage(&cfg.Storage)
+	if err := validateStorage(&cfg.Storage); err != nil {
+		return err
+	}
+	return validateNetwork(&cfg.Network)
+}
+
+func validateNetwork(network *Network) error {
+	if strings.TrimSpace(network.StateDir) == "" {
+		return fmt.Errorf("network.state_dir cannot be empty")
+	}
+	if strings.TrimSpace(network.ProfilePath) == "" {
+		return fmt.Errorf("network.profile_path cannot be empty")
+	}
+	if network.ConfirmTimeout <= 0 {
+		return fmt.Errorf("network.confirm_timeout must be greater than zero")
+	}
+	return nil
 }
 
 func validateStorage(storage *Storage) error {

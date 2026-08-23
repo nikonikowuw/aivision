@@ -131,6 +131,10 @@ func TestLoadDefaultsForMissingKeys(t *testing.T) {
 	if cfg.Storage.Local.Root != "./uploads" || cfg.Storage.Local.URLPrefix != "/uploads" {
 		t.Errorf("storage.local defaults not applied: %+v", cfg.Storage.Local)
 	}
+	if cfg.Network.StateDir != "/var/lib/aivision/network" || cfg.Network.ProfilePath != "/etc/aivision/network-profile.json" ||
+		cfg.Network.ConfirmTimeout != 120*time.Second || cfg.Network.FakePlatform {
+		t.Errorf("network defaults not applied: %+v", cfg.Network)
+	}
 }
 
 func TestLoadEnvOverride(t *testing.T) {
@@ -160,6 +164,10 @@ log:
 	t.Setenv("APP_STORAGE_MAX_SIZE", "2097152")
 	t.Setenv("APP_STORAGE_LOCAL_ROOT", "/var/lib/uploads")
 	t.Setenv("APP_STORAGE_LOCAL_URL_PREFIX", "/public-files")
+	t.Setenv("APP_NETWORK_STATE_DIR", "/tmp/test-network")
+	t.Setenv("APP_NETWORK_PROFILE_PATH", "/tmp/test-profile.json")
+	t.Setenv("APP_NETWORK_CONFIRM_TIMEOUT", "60s")
+	t.Setenv("APP_NETWORK_FAKE_PLATFORM", "true")
 
 	cfg, err := load(path)
 	if err != nil {
@@ -189,6 +197,10 @@ log:
 	if cfg.Storage.MaxSize != 2097152 || cfg.Storage.Local.Root != "/var/lib/uploads" ||
 		cfg.Storage.Local.URLPrefix != "/public-files" {
 		t.Errorf("storage env overrides not applied: %+v", cfg.Storage)
+	}
+	if cfg.Network.StateDir != "/tmp/test-network" || cfg.Network.ProfilePath != "/tmp/test-profile.json" ||
+		cfg.Network.ConfirmTimeout != 60*time.Second || !cfg.Network.FakePlatform {
+		t.Errorf("network env overrides not applied: %+v", cfg.Network)
 	}
 }
 

@@ -52,6 +52,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		repository.NewSystemConfigRepository,
 		service.NewNTPService,
 		api.NewNTPHandler,
+		service.NewNetworkService,
+		api.NewNetworkHandler,
 		router.New,
 		wire.Struct(new(router.Deps), "*"),
 		wire.Struct(new(App), "*"),

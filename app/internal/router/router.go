@@ -66,6 +66,7 @@ type Deps struct {
 	AuthHandler         *api.AuthHandler
 	FileHandler         *api.FileHandler
 	NTPHandler          *api.NTPHandler
+	NetworkHandler      *api.NetworkHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -214,6 +215,22 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+ntpRoutePath+syncRoutePath, "ops:time:edit")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+ntpRoutePath+setTimeRoutePath, "ops:time:edit")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+ntpRoutePath+syncedRoutePath, middleware.PermCodeAuthenticated)
+
+		networkGroup := apiGroup.Group("/network")
+		{
+			networkGroup.GET("", deps.NetworkHandler.GetOverview)
+			networkGroup.GET("/transactions/:transactionId", deps.NetworkHandler.GetTransaction)
+			networkGroup.PUT("/interfaces/:interfaceId", deps.NetworkHandler.ApplyInterface)
+			networkGroup.POST("/transactions/:transactionId/confirm", deps.NetworkHandler.ConfirmTransaction)
+			networkGroup.POST("/transactions/:transactionId/cancel", deps.NetworkHandler.CancelTransaction)
+			networkGroup.POST("/interfaces/:interfaceId/factory-reset", deps.NetworkHandler.FactoryReset)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/network", "ops:network")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/network/transactions/:transactionId", "ops:network")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+"/network/interfaces/:interfaceId", "ops:network:edit")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/transactions/:transactionId/confirm", "ops:network:confirm")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/transactions/:transactionId/cancel", "ops:network:cancel")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/interfaces/:interfaceId/factory-reset", "ops:network:reset")
 	}
 
 	return engine

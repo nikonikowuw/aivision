@@ -38,28 +38,31 @@ ui/
 
 ## 模块组织
 
-- **API 模块**：`api/core/` 中每个领域一个文件（`auth.ts`、`user.ts`、`role.ts`、`menu.ts`、`dept.ts`、`log.ts`），各自导出一个 `namespace <Domain>Api`，含类型化 params/result 接口以及调用 `requestClient` / `baseRequestClient` 的异步函数。通过 `api/index.ts` 重新导出（`export * from './core'`）。
+- **API 模块**：`api/core/` 中每个领域一个文件（如系统管理的 `auth.ts`、`user.ts`、`role.ts`、`menu.ts`、`dept.ts`、`log.ts`，以及运维管理的 `network.ts`、`ntp.ts` 等），各自导出一个 `namespace <Domain>Api`，含类型化 params/result 接口以及调用 `requestClient` / `baseRequestClient` 的异步函数。通过 `api/index.ts` 重新导出（`export * from './core'`）。
 - **Stores**：`store/` 中的应用级 pinia stores（`auth.ts`）；框架 stores（access/user/preferences）来自 `@vben/stores`，不重复造轮子。
 - **路由与权限**：`router/access.ts` 生成动态可访问路由表，`router/guard.ts` 执行守卫鉴权；基础路由在 `router/routes/core.ts`。
-- **视图**：`views/<module>/<page>/` 下的页面，如 `views/system/user/`、`views/system/role/`、`views/system/menu/`、`views/system/dept/`、`views/system/log/`，遵循 vben 5.7 页面与 VxeTable/VbenForm 规范。
+- **视图**：`views/<module>/<page>/` 下的页面，按一级业务域分类：
+  - 系统管理：`views/system/user/`、`views/system/role/`、`views/system/menu/`、`views/system/dept/`、`views/system/log/`；
+  - 运维管理：`views/ops/network/`（网络配置）、`views/ops/time/`（时间管理/NTP）等。网络配置与时间管理等设备运维功能必须归属于运维管理 `views/ops/`，严禁放置于系统管理 `views/system/` 下。
+  - 页面遵循 vben 5.7 页面与 VxeTable/VbenForm 规范。
 - **适配器**：`adapter/` 统一封装 UI 控件行为，包括表单组件适配 `adapter/form.ts` 与表格适配 `adapter/vxe-table.ts`。
 
 ---
 
 ## 命名约定
 
-- `.ts` 文件：camelCase（`request.ts`、`auth.ts`）；`.vue` 组件：PascalCase。
+- `.ts` 文件：camelCase（`request.ts`、`auth.ts`、`network.ts`）；`.vue` 组件：PascalCase。
 - 路径别名：`#/` → `apps/web-antd/src`（应用代码），`@vben/*` → workspace
   包。优先从 `@vben/*` 导入，而不是深层的 `../../packages/...` 路径。
 - API 函数：`<verb><Domain>Api`（`getUserInfoApi`、`loginApi`、
-  `getAllMenusApi`）；类型集中在 `<Domain>Api` 命名空间下。
+  `getAllMenusApi`、`getNetworkOverviewApi`）；类型集中在 `<Domain>Api` 命名空间下。
 
 ---
 
 ## 示例
 
-- API 模块模式：`apps/web-antd/src/api/core/auth.ts`、`apps/web-antd/src/api/core/user.ts`
+- API 模块模式：`apps/web-antd/src/api/core/auth.ts`、`apps/web-antd/src/api/core/user.ts`、`apps/web-antd/src/api/core/network.ts`
 - Request client + 拦截器契约：`apps/web-antd/src/api/request.ts`
 - 应用 store 模式：`apps/web-antd/src/store/auth.ts`
-- 系统管理视图组件：`apps/web-antd/src/views/system/user/index.vue`
+- 视图组件：系统管理 `apps/web-antd/src/views/system/user/index.vue`、运维管理 `apps/web-antd/src/views/ops/network/index.vue`
 - UI 适配层扩展：`apps/web-antd/src/adapter/form.ts`、`apps/web-antd/src/adapter/vxe-table.ts`

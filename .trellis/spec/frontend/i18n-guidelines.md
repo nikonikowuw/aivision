@@ -21,6 +21,7 @@ UI 基于 `@vben/locales`（vue-i18n 封装）+ Ant Design Vue 国际化 + Day.j
    - `zh-CN/`, `en-US/`, `zh-TW/`
    - 按业务命名空间拆分文件：
      - `system.json`：系统管理模块文案（用户、角色、菜单、部门、操作日志）
+     - `ops.json`：运维管理模块文案（网络配置、时间管理/NTP、Webhook 管理、设备监控、平台信息、存储管理）
      - `routes.json`：路由与菜单标题翻译
      - `page.json` / `demos.json`：通用页面或演示文案
 2. **全局/框架级文案** (`packages/locales/src/langs/`)：
@@ -52,7 +53,7 @@ UI 基于 `@vben/locales`（vue-i18n 封装）+ Ant Design Vue 国际化 + Day.j
 
 ### 3. 路由与动态菜单 i18n 契约
 
-- 后端数据表 `menus.title` 存入标准 i18n key（例如 `routes.system.user`）。
+- 后端数据表 `menus.title` 存入标准 i18n key（例如系统管理 `routes.system.user`，运维管理 `routes.ops.network`、`routes.ops.time`）。
 - 菜单展示与树形选择器中，必须做 i18n 解析：
 
   ```ts

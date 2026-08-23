@@ -706,7 +706,7 @@ Webhook 统一使用以下事件信封：
 | 1 | 实时预览 | 无可见子菜单，直接进入默认首页 |
 | 2 | 资源管理 | 摄像头管理、任务管理、算法包管理、人员管理 |
 | 3 | 智能记录 | 抓拍记录、识别记录、告警记录 |
-| 4 | 运维管理 | Webhook 管理、推送记录、设备监控、平台信息、存储管理 |
+| 4 | 运维管理 | Webhook 管理、推送记录、设备监控、平台信息、存储管理、时间管理、网络配置 |
 | 5 | 系统管理 | 用户管理、角色管理、菜单管理、部门管理、操作日志 |
 
 “平台信息”只展示当前运行平台及能力档案，不提供运行时切换 `platform_id` 的操作。
@@ -728,6 +728,8 @@ Webhook 统一使用以下事件信封：
 | 运维管理 | 设备监控 | `/ops/monitor` | `OpsMonitor` | `ops:monitor` | `ant-design:dashboard-outlined` |
 | 运维管理 | 平台信息 | `/ops/platform` | `OpsPlatform` | `ops:platform` | `ant-design:info-circle-outlined` |
 | 运维管理 | 存储管理 | `/ops/storage` | `OpsStorage` | `ops:storage` | `ant-design:hdd-outlined` |
+| 运维管理 | 时间管理 | `/ops/time` | `OpsTime` | `ops:time` | `ant-design:field-time-outlined` |
+| 运维管理 | 网络配置 | `/ops/network` | `OpsNetwork` | `ops:network` | `ant-design:global-outlined` |
 | 系统管理 | 现有页面 | `/system/*` | 保持现状 | `system:*` | 保持现状 |
 
 一级目录图标分别为：资源管理 `ant-design:appstore-outlined`、智能记录 `ant-design:database-outlined`、运维管理 `ant-design:tool-outlined`、系统管理保持 `ant-design:setting-outlined`。

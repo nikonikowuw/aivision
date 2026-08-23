@@ -32,3 +32,4 @@ coverage.out
 
 # Trellis per-developer workspace (journals)
 .trellis/workspace/
+.worktrees/

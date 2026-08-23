@@ -3,7 +3,7 @@
   "name": "edge-gateway-dhcp",
   "title": "边缘网关模式与内置 DHCP Server",
   "description": "下行 LAN 口开启内置 Go DHCP Server 与 ip_forward 三层转发，不引入 dnsmasq 与 NAT",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

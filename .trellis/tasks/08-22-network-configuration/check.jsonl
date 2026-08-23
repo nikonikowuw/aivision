@@ -1,0 +1,12 @@
+{"file":".trellis/spec/backend/index.md","reason":"质量检查需要后端规范入口和预提交门禁。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"检查 errno、HTTP 状态映射、错误 envelope 和内部细节泄露。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"检查操作日志、后台恢复审计、脱敏和异步记录行为。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查并发状态机、资源生命周期、测试隔离和跨平台构建。"}
+{"file":".trellis/spec/frontend/index.md","reason":"质量检查需要前端规范入口和整体门禁。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"检查 zh-CN/en-US/zh-TW 菜单、页面、错误和 action key 完整性。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"检查 Vitest、type safety、check 和页面回归。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查前端 API DTO、枚举、nullable 字段和表单约束。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查 API、RBAC、审计、菜单、状态和平台实际值的端到端一致性。"}
+{"file":".trellis/tasks/08-22-network-configuration/research/linux-network-stack.md","reason":"核对 Linux 平台实现不依赖 shell、主出口/非主出口、DNS 所有权和安全测试。"}
+{"file":".trellis/tasks/08-22-network-configuration/research/macos-systemconfiguration.md","reason":"核对 macOS commit/apply、Dynamic Store 主服务、scoped 状态和 cgo 资源释放。"}
+{"file":".trellis/tasks/08-22-network-configuration/research/repository-integration.md","reason":"核对 Wire、启动恢复、权限注册、后台审计、migration 和前端动态菜单集成。"}

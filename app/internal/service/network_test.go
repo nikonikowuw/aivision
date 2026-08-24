@@ -13,6 +13,14 @@ import (
 	"niko-vue-admin/app/internal/pkg/netconfig"
 )
 
+func strPtr(s string) *string {
+	return &s
+}
+
+func intPtr(i int) *int {
+	return &i
+}
+
 func newTestNetworkService(t *testing.T) NetworkService {
 	return newTestNetworkServiceCfg(t, &config.Config{
 		Network: config.Network{
@@ -897,4 +905,3 @@ func TestNetworkService_SwitchMode_LACP_DirectSwitchBetweenBonds(t *testing.T) {
 		t.Errorf("mode = %s, want lacp-aggregation", overview.Mode)
 	}
 }
-

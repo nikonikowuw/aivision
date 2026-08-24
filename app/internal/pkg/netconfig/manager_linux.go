@@ -4,7 +4,6 @@ package netconfig
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"sync"

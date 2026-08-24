@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { NetworkApi } from '#/api/core/network';
+
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
@@ -22,8 +24,7 @@ import {
   Tag,
   Tooltip,
 } from 'ant-design-vue';
-
-import dayjs from "dayjs";
+import dayjs from 'dayjs';
 
 import {
   applyInterfaceApi,
@@ -33,7 +34,6 @@ import {
   getNetworkOverviewApi,
   NETWORK_MODES,
   switchNetworkModeApi,
-  type NetworkApi,
 } from '#/api/core/network';
 
 const loading = ref(false);
@@ -42,7 +42,7 @@ const overview = ref<NetworkApi.NetworkOverview | null>(null);
 
 // 120s 事务倒计时
 const remainingSeconds = ref(0);
-let timer: ReturnType<typeof setInterval> | null = null;
+let timer: null | ReturnType<typeof setInterval> = null;
 
 // 工作模式切换抽屉
 const modeDrawerVisible = ref(false);
@@ -54,6 +54,14 @@ interface ModeFormState {
   primarySlaveId: string;
   xmitHashPolicy: NetworkApi.BondXmitHashPolicy;
   ipv4: NetworkApi.ApplyInterfaceParams;
+  gateway: {
+    downstreamInterfaceId: string;
+    ipForward: boolean;
+    leaseDurationSeconds: number;
+    poolEnd: string;
+    poolStart: string;
+    prefix: number;
+  };
 }
 
 const modeForm = ref<ModeFormState>({
@@ -64,6 +72,14 @@ const modeForm = ref<ModeFormState>({
     mode: 'dhcp',
     primary: true,
     dnsServers: [],
+  },
+  gateway: {
+    downstreamInterfaceId: '',
+    poolStart: '',
+    poolEnd: '',
+    prefix: 24,
+    leaseDurationSeconds: 3600,
+    ipForward: false,
   },
 });
 
@@ -88,7 +104,7 @@ const eligibleGatewayIfaces = computed(() =>
       !i.isBond &&
       !i.masterId &&
       !i.isPrimary &&
-      i.ipv4.mode === "static" &&
+      i.ipv4.mode === 'static' &&
       i.ipv4.address &&
       i.ipv4.prefix,
   ),
@@ -107,25 +123,25 @@ const gatewaySupported = computed(() =>
 );
 
 const canEnterGateway = computed(
-  () => gatewaySupported.value && eligibleGatewayIfaces.value.length >= 1,
+  () => gatewaySupported.value && eligibleGatewayIfaces.value.length > 0,
 );
 
-function deriveDefaultPool(ip?: string | null): { start: string; end: string } {
-  if (!ip) return { start: "", end: "" };
-  const parts = ip.split(".");
+function deriveDefaultPool(ip?: null | string): { end: string; start: string } {
+  if (!ip) return { start: '', end: '' };
+  const parts = ip.split('.');
   if (parts.length === 4) {
     return {
       start: `${parts[0]}.${parts[1]}.${parts[2]}.100`,
       end: `${parts[0]}.${parts[1]}.${parts[2]}.200`,
     };
   }
-  return { start: "", end: "" };
+  return { start: '', end: '' };
 }
 
-function formatDateTime(timeStr?: string | null): string {
-  if (!timeStr) return "-";
+function formatDateTime(timeStr?: null | string): string {
+  if (!timeStr) return '-';
   const d = dayjs(timeStr);
-  return d.isValid() ? d.format("YYYY-MM-DD HH:mm:ss") : timeStr;
+  return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : timeStr;
 }
 
 function onGatewayIfaceChange(ifaceId: string) {
@@ -202,19 +218,36 @@ function bondSlaveTagColor(sid: string): string {
   return lacpSlaveStatus(sid)?.inAggregator ? 'success' : 'warning';
 }
 
-function openModeDrawer(mode: NetworkApi.NetworkMode = NETWORK_MODES.ActiveBackup) {
+function openModeDrawer(
+  mode: NetworkApi.NetworkMode = NETWORK_MODES.ActiveBackup,
+) {
   targetMode.value = mode;
-  const candidates = eligibleSlaves.value.slice(0, 2);
-  modeForm.value = {
-    slaveIds: candidates.map((i) => i.id),
-    primarySlaveId: candidates[0]?.id ?? '',
-    xmitHashPolicy: 'layer2+3',
-    ipv4: {
+  if (
+    mode === NETWORK_MODES.ActiveBackup ||
+    mode === NETWORK_MODES.LACPAggregation
+  ) {
+    const candidates = eligibleSlaves.value.slice(0, 2);
+    modeForm.value.slaveIds = candidates.map((i) => i.id);
+    modeForm.value.primarySlaveId = candidates[0]?.id ?? '';
+    modeForm.value.xmitHashPolicy = 'layer2+3';
+    modeForm.value.ipv4 = {
       mode: 'dhcp',
       primary: true,
       dnsServers: [],
-    },
-  };
+    };
+  } else if (mode === NETWORK_MODES.Gateway) {
+    const candidate = eligibleGatewayIfaces.value[0];
+    const ifacePrefix = candidate?.ipv4.prefix ?? 24;
+    const pool = deriveDefaultPool(candidate?.ipv4.address);
+    modeForm.value.gateway = {
+      downstreamInterfaceId: candidate?.id ?? '',
+      poolStart: pool.start,
+      poolEnd: pool.end,
+      prefix: ifacePrefix,
+      leaseDurationSeconds: 3600,
+      ipForward: false,
+    };
+  }
   modeDrawerVisible.value = true;
 }
 
@@ -225,7 +258,10 @@ function toggleSlave(ifaceId: string) {
     if (modeForm.value.primarySlaveId === ifaceId) {
       modeForm.value.primarySlaveId = modeForm.value.slaveIds[0] ?? '';
     }
-  } else if (targetMode.value === NETWORK_MODES.ActiveBackup && modeForm.value.slaveIds.length >= 2) {
+  } else if (
+    targetMode.value === NETWORK_MODES.ActiveBackup &&
+    modeForm.value.slaveIds.length >= 2
+  ) {
     message.warning($t('ops.network.modeSlaveLimitTip'));
   } else {
     modeForm.value.slaveIds.push(ifaceId);
@@ -301,12 +337,12 @@ async function handleModeExit() {
 const drawerVisible = ref(false);
 const currentIface = ref<NetworkApi.InterfaceInfo | null>(null);
 const formModel = ref<{
-  mode: NetworkApi.IPMode;
-  primary: boolean;
   address?: string;
-  prefix?: number;
-  gateway?: string;
   dnsServers: string[];
+  gateway?: string;
+  mode: NetworkApi.IPMode;
+  prefix?: number;
+  primary: boolean;
 }>({
   mode: 'dhcp',
   primary: false,
@@ -327,7 +363,7 @@ const isStatic = computed(() => formModel.value.mode === 'static');
 const calculatedSubnetMask = computed(() => {
   const prefix = formModel.value.prefix;
   if (!prefix || prefix < 1 || prefix > 32) return '-';
-  const mask = (0xffffffff << (32 - prefix)) >>> 0;
+  const mask = (0xff_ff_ff_ff << (32 - prefix)) >>> 0;
   return [
     (mask >>> 24) & 255,
     (mask >>> 16) & 255,
@@ -491,7 +527,7 @@ async function handleFactoryReset(iface: NetworkApi.InterfaceInfo) {
 }
 
 function copyToClipboard(
-  text: string | null | undefined,
+  text: null | string | undefined,
   type: 'ip' | 'mac' = 'ip',
 ) {
   if (!text) return;
@@ -645,7 +681,9 @@ onUnmounted(() => {
               <template v-if="overview.mode === NETWORK_MODES.ActiveBackup">
                 (miimon={{ overview.bond.miimon }})
               </template>
-              <template v-else-if="overview.mode === NETWORK_MODES.LACPAggregation">
+              <template
+                v-else-if="overview.mode === NETWORK_MODES.LACPAggregation"
+              >
                 (mode 4, hash={{ overview.bond.xmitHashPolicy || 'layer2+3' }})
               </template>
             </Tag>
@@ -667,7 +705,10 @@ onUnmounted(() => {
                   (primary)
                 </span>
                 <span
-                  v-if="overview.mode === NETWORK_MODES.LACPAggregation && !isSlaveActive(sid)"
+                  v-if="
+                    overview.mode === NETWORK_MODES.LACPAggregation &&
+                    !isSlaveActive(sid)
+                  "
                   class="text-[10px] opacity-80 text-amber-500"
                 >
                   ({{ $t('ops.network.modeLACPNotInAggregator') }})
@@ -678,28 +719,50 @@ onUnmounted(() => {
 
           <!-- LACP 专属可观测状态面板 -->
           <div
-            v-if="overview.mode === NETWORK_MODES.LACPAggregation && overview.bond.lacp"
+            v-if="
+              overview.mode === NETWORK_MODES.LACPAggregation &&
+              overview.bond.lacp
+            "
             class="rounded-lg bg-muted/40 p-3 border space-y-2 mt-2"
           >
             <div class="flex items-center justify-between text-xs">
               <div class="flex items-center gap-2">
                 <span class="font-semibold">{{ $t('ops.network.modeLACPStatus') }}:</span>
-                <Tag :color="overview.bond.lacp.negotiated ? 'success' : 'warning'" class="border-0 font-mono">
-                  {{ overview.bond.lacp.negotiated ? $t('ops.network.modeLACPNegotiated') : $t('ops.network.modeLACPUnnegotiated') }}
+                <Tag
+                  :color="overview.bond.lacp.negotiated ? 'success' : 'warning'"
+                  class="border-0 font-mono"
+                >
+                  {{
+                    overview.bond.lacp.negotiated
+                      ? $t('ops.network.modeLACPNegotiated')
+                      : $t('ops.network.modeLACPUnnegotiated')
+                  }}
                 </Tag>
-                <span v-if="overview.bond.lacp.aggregatorId" class="text-muted-foreground">
-                  {{ $t('ops.network.modeLACPAggregator') }}: #{{ overview.bond.lacp.aggregatorId }}
+                <span
+                  v-if="overview.bond.lacp.aggregatorId"
+                  class="text-muted-foreground"
+                >
+                  {{ $t('ops.network.modeLACPAggregator') }}: #{{
+                    overview.bond.lacp.aggregatorId
+                  }}
                 </span>
               </div>
             </div>
 
             <!-- 诊断提示 -->
             <div
-              v-if="overview.bond.lacp.diagnosticCode === 'partner_not_configured'"
+              v-if="
+                overview.bond.lacp.diagnosticCode === 'partner_not_configured'
+              "
               class="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 p-2 rounded border border-amber-500/30 flex items-center gap-1.5"
             >
-              <IconifyIcon icon="lucide:alert-triangle" class="size-3.5 shrink-0" />
-              <span>{{ $t('ops.network.modeLACPDiagnosticPartnerNotConfigured') }}</span>
+              <IconifyIcon
+                icon="lucide:alert-triangle"
+                class="size-3.5 shrink-0"
+              />
+              <span>{{
+                $t('ops.network.modeLACPDiagnosticPartnerNotConfigured')
+              }}</span>
             </div>
 
             <!-- 各 slave 成员状态明细 -->
@@ -711,17 +774,30 @@ onUnmounted(() => {
               >
                 <div class="flex items-center justify-between font-bold">
                   <span>{{ st.interfaceId }}</span>
-                  <Tag :color="st.inAggregator ? 'success' : 'default'" class="border-0 text-[10px]">
-                    {{ st.inAggregator ? $t('ops.network.modeLACPInAggregator') : $t('ops.network.modeLACPNotInAggregator') }}
+                  <Tag
+                    :color="st.inAggregator ? 'success' : 'default'"
+                    class="border-0 text-[10px]"
+                  >
+                    {{
+                      st.inAggregator
+                        ? $t('ops.network.modeLACPInAggregator')
+                        : $t('ops.network.modeLACPNotInAggregator')
+                    }}
                   </Tag>
                 </div>
                 <div class="text-muted-foreground flex justify-between">
                   <span>{{ $t('ops.network.modeActorState') }}:</span>
-                  <span>sync={{ st.actorState.synchronized }} col={{ st.actorState.collecting }} dist={{ st.actorState.distributing }}</span>
+                  <span>sync={{ st.actorState.synchronized }} col={{
+                      st.actorState.collecting
+                    }}
+                    dist={{ st.actorState.distributing }}</span>
                 </div>
                 <div class="text-muted-foreground flex justify-between">
                   <span>{{ $t('ops.network.modePartnerState') }}:</span>
-                  <span>sync={{ st.partnerState.synchronized }} col={{ st.partnerState.collecting }} dist={{ st.partnerState.distributing }}</span>
+                  <span>sync={{ st.partnerState.synchronized }} col={{
+                      st.partnerState.collecting
+                    }}
+                    dist={{ st.partnerState.distributing }}</span>
                 </div>
               </div>
             </div>
@@ -791,10 +867,15 @@ onUnmounted(() => {
                 v-access:code="['ops:network:mode']"
                 type="primary"
                 ghost
-                :disabled="!canEnterActiveBackup || !!overview?.pendingTransaction"
+                :disabled="
+                  !canEnterActiveBackup || !!overview?.pendingTransaction
+                "
                 @click="openModeDrawer(NETWORK_MODES.ActiveBackup)"
               >
-                <IconifyIcon icon="lucide:layers" class="size-3.5 inline mr-1" />
+                <IconifyIcon
+                  icon="lucide:layers"
+                  class="size-3.5 inline mr-1"
+                />
                 {{ $t('ops.network.modeEnter') }}
               </Button>
 
@@ -806,7 +887,10 @@ onUnmounted(() => {
                 :disabled="!canEnterLACP || !!overview?.pendingTransaction"
                 @click="openModeDrawer(NETWORK_MODES.LACPAggregation)"
               >
-                <IconifyIcon icon="lucide:network" class="size-3.5 inline mr-1" />
+                <IconifyIcon
+                  icon="lucide:network"
+                  class="size-3.5 inline mr-1"
+                />
                 {{ $t('ops.network.modeEnterLACP') }}
               </Button>
 
@@ -818,7 +902,10 @@ onUnmounted(() => {
                 :disabled="!canEnterGateway || !!overview?.pendingTransaction"
                 @click="openModeDrawer(NETWORK_MODES.Gateway)"
               >
-                <IconifyIcon icon="lucide:router" class="size-3.5 inline mr-1" />
+                <IconifyIcon
+                  icon="lucide:router"
+                  class="size-3.5 inline mr-1"
+                />
                 {{ $t('ops.network.modeEnterGateway') }}
               </Button>
             </template>
@@ -1025,9 +1112,7 @@ onUnmounted(() => {
                           class="font-bold text-sm text-foreground flex items-center gap-1.5"
                         >
                           <span>{{ iface.displayName || iface.name }}</span>
-                          <span class="font-mono text-xs text-muted-foreground"
-                            >({{ iface.name }})</span
-                          >
+                          <span class="font-mono text-xs text-muted-foreground">({{ iface.name }})</span>
                         </div>
                         <div
                           class="text-[11px] text-muted-foreground uppercase font-mono"
@@ -1091,9 +1176,7 @@ onUnmounted(() => {
                         class="font-mono font-bold text-base text-foreground group-hover:text-primary transition-colors"
                       >
                         {{ iface.ipv4.address }}
-                        <span class="text-muted-foreground font-normal text-xs"
-                          >/{{ iface.ipv4.prefix || 24 }}</span
-                        >
+                        <span class="text-muted-foreground font-normal text-xs">/{{ iface.ipv4.prefix || 24 }}</span>
                       </span>
                       <Tooltip :title="$t('ops.network.ipCopied')">
                         <IconifyIcon
@@ -1207,7 +1290,9 @@ onUnmounted(() => {
 
             <!-- DHCP 租约列表（网关模式生效时展示） -->
             <div
-              v-if="overview?.mode === NETWORK_MODES.Gateway && overview?.gateway"
+              v-if="
+                overview?.mode === NETWORK_MODES.Gateway && overview?.gateway
+              "
               class="mt-6 bg-card text-card-foreground rounded-xl border p-5 shadow-xs"
             >
               <div class="flex items-center justify-between mb-4">
@@ -1232,15 +1317,29 @@ onUnmounted(() => {
                 <Empty :description="$t('ops.network.none')" />
               </div>
               <div v-else class="overflow-x-auto">
-                <table class="w-full text-xs text-left border-collapse font-mono">
+                <table
+                  class="w-full text-xs text-left border-collapse font-mono"
+                >
                   <thead>
                     <tr class="border-b border-border/60 text-muted-foreground">
-                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseIP') }}</th>
-                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseMAC') }}</th>
-                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseHostname') }}</th>
-                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseStartsAt') }}</th>
-                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseExpiresAt') }}</th>
-                      <th class="py-2.5 px-3 font-semibold">{{ $t('ops.network.gatewayLeaseRenewedAt') }}</th>
+                      <th class="py-2.5 px-3 font-semibold">
+                        {{ $t('ops.network.gatewayLeaseIP') }}
+                      </th>
+                      <th class="py-2.5 px-3 font-semibold">
+                        {{ $t('ops.network.gatewayLeaseMAC') }}
+                      </th>
+                      <th class="py-2.5 px-3 font-semibold">
+                        {{ $t('ops.network.gatewayLeaseHostname') }}
+                      </th>
+                      <th class="py-2.5 px-3 font-semibold">
+                        {{ $t('ops.network.gatewayLeaseStartsAt') }}
+                      </th>
+                      <th class="py-2.5 px-3 font-semibold">
+                        {{ $t('ops.network.gatewayLeaseExpiresAt') }}
+                      </th>
+                      <th class="py-2.5 px-3 font-semibold">
+                        {{ $t('ops.network.gatewayLeaseRenewedAt') }}
+                      </th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-border/40">
@@ -1249,12 +1348,24 @@ onUnmounted(() => {
                       :key="l.mac"
                       class="hover:bg-muted/30 transition-colors"
                     >
-                      <td class="py-2.5 px-3 font-bold text-foreground">{{ l.ip }}</td>
-                      <td class="py-2.5 px-3 text-muted-foreground">{{ l.mac }}</td>
-                      <td class="py-2.5 px-3 text-foreground">{{ l.hostname || '-' }}</td>
-                      <td class="py-2.5 px-3 text-muted-foreground">{{ formatDateTime(l.startsAt) }}</td>
-                      <td class="py-2.5 px-3 text-muted-foreground">{{ formatDateTime(l.expiresAt) }}</td>
-                      <td class="py-2.5 px-3 text-muted-foreground">{{ formatDateTime(l.lastRenewedAt) }}</td>
+                      <td class="py-2.5 px-3 font-bold text-foreground">
+                        {{ l.ip }}
+                      </td>
+                      <td class="py-2.5 px-3 text-muted-foreground">
+                        {{ l.mac }}
+                      </td>
+                      <td class="py-2.5 px-3 text-foreground">
+                        {{ l.hostname || '-' }}
+                      </td>
+                      <td class="py-2.5 px-3 text-muted-foreground">
+                        {{ formatDateTime(l.startsAt) }}
+                      </td>
+                      <td class="py-2.5 px-3 text-muted-foreground">
+                        {{ formatDateTime(l.expiresAt) }}
+                      </td>
+                      <td class="py-2.5 px-3 text-muted-foreground">
+                        {{ formatDateTime(l.lastRenewedAt) }}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -1576,9 +1687,9 @@ onUnmounted(() => {
 
       <template #footer>
         <div class="flex justify-end gap-2.5">
-          <Button @click="drawerVisible = false">{{
-            $t('ops.network.cancel')
-          }}</Button>
+          <Button @click="drawerVisible = false">
+            {{ $t('ops.network.cancel') }}
+          </Button>
           <Button
             v-access:code="['ops:network:edit']"
             type="primary"
@@ -1594,13 +1705,22 @@ onUnmounted(() => {
     <!-- 网络工作模式切换抽屉 (Mode Switch Drawer) -->
     <Drawer
       v-model:open="modeDrawerVisible"
-      :title="targetMode === NETWORK_MODES.ActiveBackup ? $t('ops.network.modeEnter') : targetMode === NETWORK_MODES.LACPAggregation ? $t('ops.network.modeEnterLACP') : $t('ops.network.modeEnterGateway')"
+      :title="
+        targetMode === NETWORK_MODES.ActiveBackup
+          ? $t('ops.network.modeEnter')
+          : targetMode === NETWORK_MODES.LACPAggregation
+            ? $t('ops.network.modeEnterLACP')
+            : $t('ops.network.modeEnterGateway')
+      "
       width="460px"
       :destroy-on-close="true"
     >
       <div class="space-y-5">
         <Alert
-          v-if="targetMode === NETWORK_MODES.ActiveBackup || targetMode === NETWORK_MODES.LACPAggregation"
+          v-if="
+            targetMode === NETWORK_MODES.ActiveBackup ||
+            targetMode === NETWORK_MODES.LACPAggregation
+          "
           type="warning"
           show-icon
           :message="$t('ops.network.modeSwitchWarning')"
@@ -1633,11 +1753,20 @@ onUnmounted(() => {
         />
 
         <!-- Active-Backup 与 LACP 表单 -->
-        <template v-if="targetMode === NETWORK_MODES.ActiveBackup || targetMode === NETWORK_MODES.LACPAggregation">
+        <template
+          v-if="
+            targetMode === NETWORK_MODES.ActiveBackup ||
+            targetMode === NETWORK_MODES.LACPAggregation
+          "
+        >
           <!-- slave 选择 -->
           <div>
             <label class="text-sm font-semibold text-foreground block mb-2.5">
-              {{ targetMode === NETWORK_MODES.ActiveBackup ? $t('ops.network.modeSlaveSelect') : $t('ops.network.modeLACPSlaveSelect') }}
+              {{
+                targetMode === NETWORK_MODES.ActiveBackup
+                  ? $t('ops.network.modeSlaveSelect')
+                  : $t('ops.network.modeLACPSlaveSelect')
+              }}
             </label>
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div
@@ -1675,14 +1804,20 @@ onUnmounted(() => {
                     ></div>
                   </div>
                 </div>
-                <div class="mt-1.5 flex items-center justify-between text-[11px] font-mono text-muted-foreground">
+                <div
+                  class="mt-1.5 flex items-center justify-between text-[11px] font-mono text-muted-foreground"
+                >
                   <span>{{ iface.mac || '-' }}</span>
                   <span v-if="iface.speedMbps">{{ iface.speedMbps }}M/{{ iface.duplex || 'full' }}</span>
                 </div>
               </div>
             </div>
             <p class="text-muted-foreground mt-2 text-[11px]">
-              {{ targetMode === NETWORK_MODES.ActiveBackup ? $t('ops.network.modeSlaveTip') : $t('ops.network.modeLACPSlaveTip') }}
+              {{
+                targetMode === NETWORK_MODES.ActiveBackup
+                  ? $t('ops.network.modeSlaveTip')
+                  : $t('ops.network.modeLACPSlaveTip')
+              }}
             </p>
           </div>
 
@@ -1714,14 +1849,23 @@ onUnmounted(() => {
             </p>
             <div class="flex flex-wrap gap-2">
               <Tag
-                v-for="pol in ['layer2', 'layer2+3', 'layer3+4'] as NetworkApi.BondXmitHashPolicy[]"
+                v-for="pol in [
+                  'layer2',
+                  'layer2+3',
+                  'layer3+4',
+                ] as NetworkApi.BondXmitHashPolicy[]"
                 :key="pol"
-                :color="modeForm.xmitHashPolicy === pol ? 'processing' : 'default'"
+                :color="
+                  modeForm.xmitHashPolicy === pol ? 'processing' : 'default'
+                "
                 class="cursor-pointer font-mono border-0 px-2.5 py-1"
                 @click="modeForm.xmitHashPolicy = pol"
               >
                 {{ pol }}
-                <span v-if="pol === 'layer2+3'" class="text-[10px] opacity-70 ml-1">(default)</span>
+                <span
+                  v-if="pol === 'layer2+3'"
+                  class="text-[10px] opacity-70 ml-1"
+                  >(default)</span>
               </Tag>
             </div>
           </div>
@@ -1733,14 +1877,18 @@ onUnmounted(() => {
             </label>
             <div class="flex items-center gap-2 mb-3">
               <Tag
-                :color="modeForm.ipv4.mode === 'dhcp' ? 'processing' : 'default'"
+                :color="
+                  modeForm.ipv4.mode === 'dhcp' ? 'processing' : 'default'
+                "
                 class="cursor-pointer border-0"
                 @click="modeForm.ipv4.mode = 'dhcp'"
               >
                 {{ $t('ops.network.modeDHCP') }}
               </Tag>
               <Tag
-                :color="modeForm.ipv4.mode === 'static' ? 'processing' : 'default'"
+                :color="
+                  modeForm.ipv4.mode === 'static' ? 'processing' : 'default'
+                "
                 class="cursor-pointer border-0"
                 @click="modeForm.ipv4.mode = 'static'"
               >
@@ -1785,12 +1933,14 @@ onUnmounted(() => {
                       :value="modeForm.ipv4.dnsServers?.[0] ?? ''"
                       placeholder="8.8.8.8"
                       class="font-mono"
-                      @update:value="(val: string) => {
-                        if (!modeForm.ipv4.dnsServers) {
-                          modeForm.ipv4.dnsServers = [];
+                      @update:value="
+                        (val: string) => {
+                          if (!modeForm.ipv4.dnsServers) {
+                            modeForm.ipv4.dnsServers = [];
+                          }
+                          modeForm.ipv4.dnsServers[0] = val;
                         }
-                        modeForm.ipv4.dnsServers[0] = val;
-                      }"
+                      "
                     />
                   </Form.Item>
                 </template>
@@ -1816,10 +1966,12 @@ onUnmounted(() => {
                     ? 'border-primary bg-primary/5 dark:bg-primary/10'
                     : 'border-border hover:border-primary/50 hover:bg-muted/30',
                 ]"
-                @click="() => {
-                  modeForm.gateway.downstreamInterfaceId = iface.id;
-                  onGatewayIfaceChange(iface.id);
-                }"
+                @click="
+                  () => {
+                    modeForm.gateway.downstreamInterfaceId = iface.id;
+                    onGatewayIfaceChange(iface.id);
+                  }
+                "
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
@@ -1907,19 +2059,33 @@ onUnmounted(() => {
         </template>
 
         <div class="flex justify-end gap-2.5">
-          <Button @click="modeDrawerVisible = false">{{
-            $t('ops.network.cancel')
-          }}</Button>
+          <Button @click="modeDrawerVisible = false">
+            {{ $t('ops.network.cancel') }}
+          </Button>
           <Popconfirm
-            :title="targetMode === NETWORK_MODES.ActiveBackup ? $t('ops.network.modeEnterConfirm') : targetMode === NETWORK_MODES.LACPAggregation ? $t('ops.network.modeEnterConfirm') : $t('ops.network.modeSwitchWarning')"
-            :disabled="targetMode === NETWORK_MODES.Gateway ? !modeForm.gateway.downstreamInterfaceId : !canSubmitModeForm"
+            :title="
+              targetMode === NETWORK_MODES.ActiveBackup
+                ? $t('ops.network.modeEnterConfirm')
+                : targetMode === NETWORK_MODES.LACPAggregation
+                  ? $t('ops.network.modeEnterConfirm')
+                  : $t('ops.network.modeSwitchWarning')
+            "
+            :disabled="
+              targetMode === NETWORK_MODES.Gateway
+                ? !modeForm.gateway.downstreamInterfaceId
+                : !canSubmitModeForm
+            "
             @confirm="handleModeSwitch"
           >
             <Button
               v-access:code="['ops:network:mode']"
               type="primary"
               :loading="modeSubmitting"
-              :disabled="targetMode === NETWORK_MODES.Gateway ? !modeForm.gateway.downstreamInterfaceId : !canSubmitModeForm"
+              :disabled="
+                targetMode === NETWORK_MODES.Gateway
+                  ? !modeForm.gateway.downstreamInterfaceId
+                  : !canSubmitModeForm
+              "
             >
               {{ $t('ops.network.confirm') }}
             </Button>

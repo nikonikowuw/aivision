@@ -59,13 +59,16 @@ func (b *LinuxGatewayBackend) ProbeDHCP(ctx context.Context, interfaceName strin
 	}
 	defer client.Close()
 
-	lease, err := client.Discover(ctx)
+	offer, err := client.DiscoverOffer(ctx)
 	if err != nil {
 		// 未收到任何响应，说明链路无其他 DHCP 服务
 		return false, nil
 	}
-	if lease != nil && lease.Offer != nil {
-		offeredServerIP := lease.Offer.ServerIPAddr()
+	if offer != nil {
+		offeredServerIP := offer.ServerIdentifier()
+		if offeredServerIP == nil || offeredServerIP.IsUnspecified() {
+			offeredServerIP = offer.ServerIPAddr
+		}
 		// 如果 Offer 来自本机配置的 ServerIP，说明是自身运行中的 DHCP Server，不计为外部冲突
 		if serverIP != nil && offeredServerIP != nil && offeredServerIP.Equal(serverIP) {
 			b.logger.Debug("dhcp probe detected own server response, ignoring",
@@ -78,7 +81,7 @@ func (b *LinuxGatewayBackend) ProbeDHCP(ctx context.Context, interfaceName strin
 		b.logger.Warn("detected existing dhcp server on link",
 			zap.String("interface", interfaceName),
 			zap.String("server_ip", offeredServerIP.String()),
-			zap.String("offered_ip", lease.Offer.YourIPAddr.String()),
+			zap.String("offered_ip", offer.YourIPAddr.String()),
 		)
 		return true, nil
 	}
@@ -87,14 +90,14 @@ func (b *LinuxGatewayBackend) ProbeDHCP(ctx context.Context, interfaceName strin
 
 // insomniacDHCPServer 包装 server4.Server 并管理租约分配。
 type insomniacDHCPServer struct {
-	cfg        DHCPServerConfig
-	store      StateStore
-	server     *server4.Server
-	logger     *zap.Logger
-	mu         sync.Mutex
-	leases     map[string]*GatewayLease // key: MAC
-	allocated  map[string]string        // IP -> MAC
-	closed     bool
+	cfg       DHCPServerConfig
+	store     StateStore
+	server    *server4.Server
+	logger    *zap.Logger
+	mu        sync.Mutex
+	leases    map[string]*GatewayLease // key: MAC
+	allocated map[string]string        // IP -> MAC
+	closed    bool
 }
 
 func (b *LinuxGatewayBackend) StartDHCP(ctx context.Context, cfg DHCPServerConfig, store StateStore) (DHCPServer, error) {
@@ -174,7 +177,8 @@ func (s *insomniacDHCPServer) handleDHCP(conn net.PacketConn, peer net.Addr, m *
 			return
 		}
 
-		reply, err := dhcpv4.NewOfferFromDHCPv4(m,
+		reply, err := dhcpv4.NewReplyFromRequest(m,
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeOffer),
 			dhcpv4.WithYourIP(ip),
 			dhcpv4.WithServerIP(s.cfg.ServerIP),
 			dhcpv4.WithNetmask(s.cfg.SubnetMask),
@@ -203,7 +207,10 @@ func (s *insomniacDHCPServer) handleDHCP(conn net.PacketConn, peer net.Addr, m *
 		// 校验/分配 IP（优先满足客户端请求的合法地址）
 		ip := s.allocateOrReuseIP(mac, preferredIP)
 		if ip == nil {
-			nak, err := dhcpv4.NewNakFromDHCPv4(m, dhcpv4.WithServerIP(s.cfg.ServerIP))
+			nak, err := dhcpv4.NewReplyFromRequest(m,
+				dhcpv4.WithMessageType(dhcpv4.MessageTypeNak),
+				dhcpv4.WithServerIP(s.cfg.ServerIP),
+			)
 			if err == nil {
 				_, _ = conn.WriteTo(nak.ToBytes(), peer)
 			}
@@ -222,7 +229,8 @@ func (s *insomniacDHCPServer) handleDHCP(conn net.PacketConn, peer net.Addr, m *
 		s.allocated[ip.String()] = mac
 		s.persistLeases()
 
-		ack, err := dhcpv4.NewAckFromDHCPv4(m,
+		ack, err := dhcpv4.NewReplyFromRequest(m,
+			dhcpv4.WithMessageType(dhcpv4.MessageTypeAck),
 			dhcpv4.WithYourIP(ip),
 			dhcpv4.WithServerIP(s.cfg.ServerIP),
 			dhcpv4.WithNetmask(s.cfg.SubnetMask),

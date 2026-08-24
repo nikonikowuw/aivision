@@ -1,0 +1,271 @@
+syntax = "proto3";
+
+package aivision.v1;
+
+import "aivision/v1/common.proto";
+
+option go_package = "niko-vue-admin/app/internal/proto/aivision/v1;aivisionv1";
+
+// 摄像头拉流任务配置
+message CameraTaskConfig {
+  string camera_id = 1;
+  string rtsp_url = 2;
+  bool enabled = 3;
+}
+
+// 检测规则角色（对齐 C ABI av_rule_role，0 为未指定占位）
+enum DetectionRuleRole {
+  DETECTION_RULE_ROLE_UNSPECIFIED = 0;
+  DETECTION_RULE_ROLE_ROI = 1;   // 布防/检测区域：只在此区域内检测
+  DETECTION_RULE_ROLE_MASK = 2;  // 屏蔽/遮罩区域：此区域内目标忽略
+  DETECTION_RULE_ROLE_LINE = 3;  // 分界线：目标跨线触发
+}
+
+// 分界线方向（对齐 C ABI av_line_dir，仅 LINE 规则使用）
+enum DetectionLineDirection {
+  DETECTION_LINE_DIRECTION_BOTH = 0;    // 双向跨越
+  DETECTION_LINE_DIRECTION_A_TO_B = 1;  // 沿折线方向跨越
+  DETECTION_LINE_DIRECTION_B_TO_A = 2;  // 逆折线方向跨越
+}
+
+// 归一化检测点（原点为有效画面左上角，[0.0, 1.0]）
+message DetectionPoint {
+  float x = 1;
+  float y = 2;
+}
+
+// 检测规则（ROI / Mask / 分界线）——任务级配置，由 Engine 从 DesiredState 校验后下发，
+// 不进入算法 params_json（对齐 manifest-schema §3 与 algo-package-spec §3.4）
+message DetectionRule {
+  DetectionRuleRole role = 1;
+  DetectionLineDirection line_direction = 2; // 仅 role=LINE 有效；区域规则忽略
+  repeated DetectionPoint points = 3;        // 区域 >=3 首尾相连多边形；线 >=2 折线顶点
+}
+
+// 算法实例运行配置
+message AlgorithmInstanceConfig {
+  string instance_id = 1;
+  string camera_id = 2;
+  string algorithm_id = 3;
+  string algorithm_version = 4;
+  int32 analysis_fps = 5;        // 任务级采样 FPS（对齐 manifest 的 analysis_fps），
+                                 // 资源按 manifest fps_tiers 就近档位结算
+  string params_json = 6;        // 算法自有参数（仅含 config.schema.json 声明字段）
+  bool enabled = 7;
+  repeated DetectionRule rules = 8; // 任务级检测规则；空表示不过滤
+}
+
+// 算法包版本信息
+message ActivePackageVersion {
+  string algorithm_id = 1;
+  string version = 2;
+}
+
+// 全量期望状态定义
+message DesiredState {
+  string device_id = 1;
+  uint64 revision = 2;
+  repeated CameraTaskConfig tasks = 3;
+  repeated AlgorithmInstanceConfig instances = 4;
+  repeated ActivePackageVersion active_package_versions = 5;
+}
+
+// 下发期望状态请求
+message ApplyDesiredStateRequest {
+  DesiredState desired_state = 1;
+}
+
+// 对账项类型
+enum ReconcileItemKind {
+  RECONCILE_ITEM_KIND_UNSPECIFIED = 0;
+  RECONCILE_ITEM_KIND_TASK = 1;       // 摄像头任务
+  RECONCILE_ITEM_KIND_INSTANCE = 2;   // 算法实例
+  RECONCILE_ITEM_KIND_PACKAGE = 3;    // 算法包版本
+}
+
+// 对账单项结果状态
+enum ReconcileItemStatus {
+  RECONCILE_ITEM_STATUS_UNSPECIFIED = 0;
+  RECONCILE_ITEM_STATUS_OK = 1;
+  RECONCILE_ITEM_STATUS_FAILED = 2;
+}
+
+// 对账单项结果（全量对账逐项报告，避免谎报整个 revision 成功）
+message ReconcileItemResult {
+  ReconcileItemKind kind = 1;
+  string id = 2;               // task 为 camera_id；instance 为 instance_id；package 为 algorithm_id
+  ReconcileItemStatus status = 3;
+  string code = 4;             // 失败时的稳定机器码，如 RESOURCE_LIMIT_EXCEEDED；成功为空
+  string error_message = 5;    // 诊断信息，客户端不得解析其文本
+}
+
+message ApplyDesiredStateResponse {
+  // 最近成功应用的 revision；本次失败时保持旧值
+  uint64 applied_revision = 1;
+  repeated ReconcileItemResult results = 2; // 逐项对账结果
+  // 整体稳定机器码；空串表示成功，否则如 STALE_REVISION / CONFIG_INVALID
+  string code = 3;
+  string error_message = 4;    // 诊断信息，客户端不得解析其文本
+}
+
+// 单任务更新请求
+message UpsertTaskRequest {
+  CameraTaskConfig task = 1;
+}
+
+message UpsertTaskResponse {
+  string code = 1;          // 空串表示成功
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 实例状态设置请求
+message SetInstanceStateRequest {
+  string instance_id = 1;
+  bool enabled = 2;
+}
+
+message SetInstanceStateResponse {
+  string code = 1;          // 空串表示成功
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 实例配置热更新请求
+message UpdateInstanceConfigRequest {
+  string instance_id = 1;
+  string params_json = 2;
+}
+
+message UpdateInstanceConfigResponse {
+  string code = 1;          // 空串表示成功
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 算法包生命周期管理
+message InstallPackageRequest {
+  string package_path = 1;
+}
+
+message InstallPackageResponse {
+  string code = 1;          // 空串表示成功，否则如 PACKAGE_CHECKSUM_MISMATCH
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+  string algorithm_id = 3;
+  string version = 4;
+}
+
+message UpgradePackageRequest {
+  string package_path = 1;
+}
+
+message UpgradePackageResponse {
+  string code = 1;          // 空串表示成功，否则如 PACKAGE_CHECKSUM_MISMATCH
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+  string algorithm_id = 3;
+  string version = 4;
+}
+
+message RollbackPackageRequest {
+  string algorithm_id = 1;
+  string target_version = 2;
+}
+
+message RollbackPackageResponse {
+  string code = 1;          // 空串表示成功
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+message UninstallPackageRequest {
+  string algorithm_id = 1;
+  string version = 2;
+}
+
+message UninstallPackageResponse {
+  string code = 1;          // 空串表示成功，否则如 PACKAGE_IN_USE
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 图片删除与对账请求
+message DeleteImagesRequest {
+  repeated string image_ids = 1;
+}
+
+message DeleteImagesResponse {
+  repeated DeleteImageResult results = 1;
+  string code = 2;          // 空串表示成功
+  string error_message = 3; // 诊断信息，客户端不得解析其文本
+}
+
+// 图片对账请求：Go 推送其权威保留的图片 ID 集合，Engine 对本地 image catalog 对账，
+// 删除不在保留集合中、且非 unreported 的孤儿图片并逐项返回结果（与 ReportOrphanImages
+// 方向互补：Engine 主动上报走 ReportOrphanImages，Go 主动对账走本 RPC）
+message ReconcileImagesRequest {
+  repeated string retain_image_ids = 1; // Go 权威保留的已引用图片 ID
+}
+
+message ReconcileImagesResponse {
+  repeated DeleteImageResult results = 1;
+  string code = 2;          // 空串表示成功
+  string error_message = 3; // 诊断信息，客户端不得解析其文本
+}
+
+// 性能指标与能力档案查询
+message QueryProfileRequest {}
+
+// 能力可用性（对齐 platform-guidelines 的 Availability）
+enum CapabilityStatus {
+  CAPABILITY_STATUS_UNSPECIFIED = 0;
+  CAPABILITY_STATUS_AVAILABLE = 1;
+  CAPABILITY_STATUS_DEGRADED = 2;
+  CAPABILITY_STATUS_UNSUPPORTED = 3;
+}
+
+// 单能力可用性
+message CapabilityState {
+  string id = 1;                // 如 inference_runtime / image_ops / jpeg / media_backend
+  CapabilityStatus status = 2;
+  string reason = 3;            // degraded/unsupported 时非空
+}
+
+// 平台能力档案（控制面视图，对齐 PlatformProfile 的关键字段）
+message PlatformProfileInfo {
+  string schema_version = 1;
+  string platform_id = 2;
+  string adapter_version = 3;
+  string arch = 4;
+  string os_or_bsp = 5;
+  string media_backend = 6;             // 媒体后端名称+版本，如 "ZLMediaKit 6.0"
+  repeated FramePixelFormat frame_caps = 7; // 支持的像素格式
+  string inference_runtime = 8;         // 推理运行时，如 "coreml"
+  repeated CapabilityState capabilities = 9;
+  int32 max_cameras = 10;               // 资源账本导出的容量上限
+  int32 max_instances = 11;
+}
+
+message QueryProfileResponse {
+  PlatformProfileInfo profile = 1;
+  string code = 2;          // 空串表示成功
+  string error_message = 3; // 诊断信息，客户端不得解析其文本
+}
+
+message QueryMetricsRequest {}
+
+message QueryMetricsResponse {
+  DeviceTelemetry telemetry = 1;
+  string code = 2;          // 空串表示成功
+  string error_message = 3; // 诊断信息，客户端不得解析其文本
+}
+
+// EngineService: 运行在 C++ 引擎（绑定 engine.sock），供 Go 控制面调用
+service EngineService {
+  rpc ApplyDesiredState(ApplyDesiredStateRequest) returns (ApplyDesiredStateResponse);
+  rpc UpsertTask(UpsertTaskRequest) returns (UpsertTaskResponse);
+  rpc SetInstanceState(SetInstanceStateRequest) returns (SetInstanceStateResponse);
+  rpc UpdateInstanceConfig(UpdateInstanceConfigRequest) returns (UpdateInstanceConfigResponse);
+  rpc InstallPackage(InstallPackageRequest) returns (InstallPackageResponse);
+  rpc UpgradePackage(UpgradePackageRequest) returns (UpgradePackageResponse);
+  rpc RollbackPackage(RollbackPackageRequest) returns (RollbackPackageResponse);
+  rpc UninstallPackage(UninstallPackageRequest) returns (UninstallPackageResponse);
+  rpc DeleteImages(DeleteImagesRequest) returns (DeleteImagesResponse);
+  rpc ReconcileImages(ReconcileImagesRequest) returns (ReconcileImagesResponse);
+  rpc QueryProfile(QueryProfileRequest) returns (QueryProfileResponse);
+  rpc QueryMetrics(QueryMetricsRequest) returns (QueryMetricsResponse);
+}

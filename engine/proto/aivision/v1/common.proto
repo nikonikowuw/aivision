@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package aivision.v1;
+
+option go_package = "niko-vue-admin/app/internal/proto/aivision/v1;aivisionv1";
+
+// 像素格式枚举（对齐 C ABI av_pixel_format，sdk/include/aivision/types.h）
+enum FramePixelFormat {
+  FRAME_PIX_UNSPECIFIED = 0;
+  FRAME_PIX_NV12 = 1;
+  FRAME_PIX_BGRA = 2;
+  FRAME_PIX_RGB24 = 3;
+  FRAME_PIX_I420 = 4;
+}
+
+// 色彩空间与转换枚举（对齐 C ABI av_color_*）
+enum ColorPrimaries {
+  COLOR_PRIM_UNSPECIFIED = 0;
+  COLOR_PRIM_BT709 = 1;
+  COLOR_PRIM_BT2020 = 2;
+}
+
+enum ColorTransfer {
+  COLOR_TRC_UNSPECIFIED = 0;
+  COLOR_TRC_BT709 = 1;
+  COLOR_TRC_IEC61966_2_1 = 2;
+}
+
+enum ColorMatrix {
+  COLOR_MAT_UNSPECIFIED = 0;
+  COLOR_MAT_BT709 = 1;
+  COLOR_MAT_BT2020_NCL = 2;
+}
+
+enum ColorRange {
+  COLOR_RANGE_UNSPECIFIED = 0;
+  COLOR_RANGE_LIMITED = 1;
+  COLOR_RANGE_FULL = 2;
+}
+
+// 边界框（采用 [0.0, 1.0] 相对归一化坐标系）
+message BoundingBox {
+  float x_min = 1; // 归一化左边界 [0.0, 1.0]
+  float y_min = 2; // 归一化顶边界 [0.0, 1.0]
+  float x_max = 3; // 归一化右边界 [0.0, 1.0]
+  float y_max = 4; // 归一化底边界 [0.0, 1.0]
+}
+
+// 检测目标对象
+message DetectedObject {
+  string label = 1;
+  float confidence = 2;
+  BoundingBox bbox = 3;
+  int64 track_id = 4; // 目标追踪 ID；<= 0 或 -1 表示无追踪 ID
+}
+
+// 图片删除状态枚举（三态幂等契约）
+enum ImageDeleteStatus {
+  IMAGE_DELETE_STATUS_UNSPECIFIED = 0;
+  IMAGE_DELETE_STATUS_DELETED = 1;         // 成功删除物理文件与 catalog 记录
+  IMAGE_DELETE_STATUS_ALREADY_ABSENT = 2;  // 文件原本已不存在，视为幂等成功
+  IMAGE_DELETE_STATUS_FAILED = 3;          // 删除失败（如 IO 错误、权限不足等）
+}
+
+// 单张图片删除结果
+message DeleteImageResult {
+  string image_id = 1;
+  ImageDeleteStatus status = 2;
+  string error_message = 3;
+}
+
+// 通用设备性能遥测数据
+message DeviceTelemetry {
+  int64 uptime_seconds = 1;
+  float cpu_usage_percent = 2;
+  float memory_usage_percent = 3;
+  float disk_usage_percent = 4;
+  float accelerator_usage_percent = 5;
+  bool accelerator_usage_supported = 6;
+  float temperature_celsius = 7;
+  bool temperature_supported = 8;
+}

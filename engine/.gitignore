@@ -1,0 +1,5 @@
+build/
+build_*/
+var/
+.DS_Store
+*.tmp

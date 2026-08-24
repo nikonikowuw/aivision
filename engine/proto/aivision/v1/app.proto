@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package aivision.v1;
+
+import "aivision/v1/common.proto";
+import "aivision/v1/engine.proto";
+
+option go_package = "niko-vue-admin/app/internal/proto/aivision/v1;aivisionv1";
+
+// 告警事件上报
+message AlarmEvent {
+  // 全局事件 ID = "<instance_run_id>/<algo_event_id>"（Engine 生成，
+  // instance_run_id 为每次激活唯一的 UUID/ULID，algo_event_id 不含 "/"）；
+  // Go 必须按本字段幂等去重（对齐 runtime-guidelines §6）
+  string event_id = 1;
+  // 稳定实例配置 ID（对应 AlgorithmInstanceConfig.instance_id）
+  string instance_id = 2;
+  string camera_id = 3;
+  string algorithm_id = 4;
+  string algorithm_version = 5;
+  string alarm_type_id = 6;
+  int64 wall_time_ns = 7;
+  bool time_synced = 8;
+  repeated DetectedObject objects = 9;
+  string image_id = 10;
+  string image_rel_path = 11; // 规范化相对路径；禁止绝对路径
+  int64 inference_duration_us = 12;
+  int64 e2e_duration_us = 13;
+}
+
+message ReportAlarmRequest {
+  AlarmEvent alarm = 1;
+}
+
+message ReportAlarmResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 任务运行状态
+enum TaskStatusCode {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_STARTING = 1;
+  TASK_STATUS_RUNNING = 2;
+  TASK_STATUS_DEGRADED = 3;
+  TASK_STATUS_RECONNECTING = 4;
+  TASK_STATUS_STOPPED = 5;
+  TASK_STATUS_ERROR = 6;
+}
+
+message TaskState {
+  string camera_id = 1;
+  TaskStatusCode status = 2;
+  string message = 3;
+  int64 last_frame_wall_time_ns = 4;
+}
+
+message ReportTaskStateRequest {
+  TaskState task_state = 1;
+}
+
+message ReportTaskStateResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 实例运行状态
+enum InstanceStatusCode {
+  INSTANCE_STATUS_UNSPECIFIED = 0;
+  INSTANCE_STATUS_STARTING = 1;
+  INSTANCE_STATUS_RUNNING = 2;
+  INSTANCE_STATUS_DEGRADED = 3;
+  INSTANCE_STATUS_STOPPED = 4;
+  INSTANCE_STATUS_ERROR = 5;
+}
+
+message InstanceState {
+  string instance_id = 1;
+  InstanceStatusCode status = 2;
+  string message = 3;
+  float current_fps = 4;
+}
+
+message ReportInstanceStateRequest {
+  InstanceState instance_state = 1;
+}
+
+message ReportInstanceStateResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 设备遥测指标上报
+message ReportMetricsRequest {
+  DeviceTelemetry telemetry = 1;
+}
+
+message ReportMetricsResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+// 孤儿图片元数据与对账上报
+message OrphanImageEntry {
+  // 全局事件 ID，与 AlarmEvent.event_id 同形（<instance_run_id>/<algo_event_id>）
+  string event_id = 1;
+  string image_id = 2;
+  string relative_path = 3;
+  int64 created_at_ns = 4;
+}
+
+message ReportOrphanImagesRequest {
+  repeated OrphanImageEntry orphan_images = 1;
+}
+
+message ReportOrphanImagesResponse {
+  repeated string retain_image_ids = 1; // Go 告知 Engine 需要保留的已引用图片 ID
+  repeated string delete_image_ids = 2; // Go 告知 Engine 可以安全物理删除的孤儿图片 ID
+  string code = 3;          // 空串表示接受
+  string error_message = 4; // 诊断信息，客户端不得解析其文本
+}
+
+// 期望状态拉取请求
+message GetDesiredStateRequest {
+  uint64 current_revision = 1;
+}
+
+message GetDesiredStateResponse {
+  DesiredState desired_state = 1;
+  string code = 2;          // 空串表示成功
+  string error_message = 3; // 诊断信息，客户端不得解析其文本
+}
+
+// ControlPlaneService: 运行在 Go 服务（绑定 app.sock），供 C++ 引擎拉取期望状态
+service ControlPlaneService {
+  rpc GetDesiredState(GetDesiredStateRequest) returns (GetDesiredStateResponse);
+}
+
+// ReportService: 运行在 Go 服务（绑定 app.sock），供 C++ 引擎异步上报事件与指标
+service ReportService {
+  rpc ReportAlarm(ReportAlarmRequest) returns (ReportAlarmResponse);
+  rpc ReportTaskState(ReportTaskStateRequest) returns (ReportTaskStateResponse);
+  rpc ReportInstanceState(ReportInstanceStateRequest) returns (ReportInstanceStateResponse);
+  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsResponse);
+  rpc ReportOrphanImages(ReportOrphanImagesRequest) returns (ReportOrphanImagesResponse);
+}

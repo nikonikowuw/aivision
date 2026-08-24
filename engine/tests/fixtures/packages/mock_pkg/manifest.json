@@ -1,0 +1,47 @@
+{
+  "manifest_version": 1,
+  "algorithm_id": "mock-detector",
+  "version": "1.0.0",
+  "name": "Mock Detector",
+  "description": "Deterministic test algorithm package",
+  "algorithm_type": "object_detection",
+  "alarm_type_id": "mock_alarm",
+  "platform_id": "mock",
+  "min_adapter_version": "1.0.0",
+  "runtime_constraints": {
+    "min_os_version": "0.0"
+  },
+  "resource_profile": {
+    "min_free_memory_mb": 1,
+    "fps_tiers": [
+      {
+        "fps": 1,
+        "units": 1
+      }
+    ]
+  },
+  "entry_library": "lib/libmock_algo.dylib",
+  "config_schema_file": "config.schema.json",
+  "test_image_file": "testimage.jpg",
+  "self_test": {
+    "timeout_ms": 10000,
+    "input_mode": "test_image"
+  },
+  "files": [
+    {
+      "path": "lib/libmock_algo.dylib",
+      "kind": "library",
+      "sha256": "@LIBRARY_SHA256@"
+    },
+    {
+      "path": "config.schema.json",
+      "kind": "config_schema",
+      "sha256": "8491177ce18b8c2860389a81e3022162f5ba7d98024abf04251bf0eb8d16bd57"
+    },
+    {
+      "path": "testimage.jpg",
+      "kind": "test_image",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

@@ -886,8 +886,10 @@ private:
     template <typename Response>
     void install_package(const std::string& package_path, const char* operation, Response* response) {
         std::lock_guard<std::mutex> lifecycle_lock(reconcile_mutex_);
+        const std::string validator_bin = env_or_default("AIVISION_PACKAGE_VALIDATOR_PATH",
+            env_or_default("AIVISION_PACKAGE_VALIDATOR", "package_validator").c_str());
         const auto validation = PackageValidator::run_sandbox_validator(
-            env_or_default("AIVISION_PACKAGE_VALIDATOR", "package_validator"),
+            validator_bin,
             package_path, package_root().string());
         if (!validation.success) {
             std::string code;

@@ -1,4 +1,4 @@
-.PHONY: all configure build test lint asan tsan clean clean-zlm-archives
+.PHONY: all configure build test lint asan tsan clean clean-zlm-archives e2e
 
 BUILD_DIR ?= build
 GENERATOR ?= Ninja
@@ -8,6 +8,7 @@ all: build
 
 clean-zlm-archives:
 	rm -f $(ZLM_RELEASE_DIR)/lib*.a
+	rm -f third_party/ZLMediaKit/release/*/*/lib*.a
 
 configure:
 	cmake -B $(BUILD_DIR) -G $(GENERATOR) -DCMAKE_BUILD_TYPE=Debug
@@ -33,4 +34,8 @@ tsan: clean-zlm-archives
 
 clean:
 	rm -rf $(BUILD_DIR) $(BUILD_DIR)_asan $(BUILD_DIR)_tsan
+	rm -f tests/stub_server/stub_server tests/stub_server/stub_client
 	$(MAKE) clean-zlm-archives
+
+e2e: build
+	bash tests/e2e.sh

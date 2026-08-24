@@ -30,6 +30,8 @@ make -C engine e2e
 
 `lint` 至少执行：格式检查、clang-tidy、公共 ABI 头禁用私有类型、CMake target 依赖矩阵、动态库导出符号和 `engine_core` 链接纯洁性。
 
+ZLMediaKit 的嵌套 CMake 工程会把静态归档写入 `third_party/ZLMediaKit/release/<platform>/<config>/`，而不是当前 Engine build 目录。`clean-zlm-archives` 必须在普通构建、ASan 和 TSan 之间清理这些共享归档，避免带 sanitizer instrumentation 的归档被后续普通链接复用。
+
 Sanitizer：
 
 - ASan + UBSan：单测、Mock 契约、包 validator fixture 和 shutdown 压力测试；

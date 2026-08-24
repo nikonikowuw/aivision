@@ -1,0 +1,35 @@
+{
+  "manifest_version": 1,
+  "algorithm_id": "yolov8n",
+  "version": "1.0.0",
+  "name": "YOLOv8n Object Detection",
+  "description": "Ultralytics YOLOv8n object detection model powered by RKNN on Rockchip RK3576 NPU",
+  "algorithm_type": "object_detection",
+  "alarm_type_id": "object_detect",
+  "platform_id": "rk3576-rknn",
+  "min_adapter_version": "1.0.0",
+  "runtime_constraints": {
+    "min_librknnrt_version": "2.0.0"
+  },
+  "resource_profile": {
+    "min_free_memory_mb": 128,
+    "fps_tiers": [
+      {
+        "fps": 5,
+        "units": 50
+      },
+      {
+        "fps": 15,
+        "units": 120
+      },
+      {
+        "fps": 30,
+        "units": 240
+      }
+    ]
+  },
+  "self_test": {
+    "timeout_ms": 10000,
+    "input_mode": "test_image"
+  }
+}

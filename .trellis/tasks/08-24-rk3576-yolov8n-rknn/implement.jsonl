@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/engine/index.md", "reason": "引擎/算法包规范入口：开发前 Gate 与 Quality Check 最低验证命令"}
+{"file": ".trellis/spec/engine/algo-package-spec.md", "reason": "C ABI 权威：单导出、Library/Instance 两级生命周期、negotiate、rules 过滤、self-test、线程与内存所有权"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "manifest.json 16 个顶层字段、fps_tiers 契约、config.schema.json 受限子集、告警与 self-test 结果 JSON"}
+{"file": ".trellis/spec/engine/directory-structure.md", "reason": "algo-packages 目录契约与可搬运性：包 CMake 只能引用自身目录与 vendor/aivision-sdk"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "152B 帧描述符字段语义、opaque/frame_token 双句柄、像素格式与色彩枚举"}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "av_image_ops 图像原语契约——D4 判定预处理归属与 CPU fallback 边界的依据"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "错误码语义与日志字段：ABI 入口异常转换与降级日志的写法"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "从 macOS 包与 SDK toolkit 复用而非重写的判断依据（design.md §2 移植矩阵）"}

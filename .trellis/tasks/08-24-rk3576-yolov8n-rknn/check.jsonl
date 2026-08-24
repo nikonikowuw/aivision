@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/engine/index.md", "reason": "Quality Check 章节：报告完成前必须列出执行过的命令、结果、跳过项与跳过原因"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "算法包独立工程门禁 §4（8 个 make target、.env 覆盖、真实帧、result.jpg、benchmark 字段、asan、package sha256、/tmp 可搬运）与 §6 错误矩阵"}
+{"file": ".trellis/spec/engine/algo-package-spec.md", "reason": "§7 Validation & Error Matrix 与 §9 Tests Required：逐条核对 ABI 契约测试覆盖"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "§5 错误矩阵与 §7 Tests Required：manifest/config/结果 JSON 的正反例覆盖"}
+{"file": ".trellis/spec/engine/directory-structure.md", "reason": "§4 错误矩阵：包引用父仓库路径、多余导出符号、ABI 头污染的判定"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层一致性检查：算法包与 SDK/Engine 契约是否出现第二套事实来源"}

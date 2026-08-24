@@ -1,0 +1,7 @@
+# ZLToolKit's global millisecond thread uses a non-atomic stop flag.
+race:toolkit::initMillisecondThread
+# ZLToolKit's global logger swaps a shared context without synchronizing writers.
+race:toolkit::Logger::writeChannels
+race:toolkit::Logger::writeChannels_l
+# ZLToolKit lazily initializes its shared task executor from event threads.
+race:toolkit::TaskExecutorGetterImp::getExecutor

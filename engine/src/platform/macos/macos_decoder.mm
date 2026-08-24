@@ -31,22 +31,26 @@ size_t start_code_size(const uint8_t* data, size_t size, size_t offset) {
 std::vector<NalUnit> split_nals(const uint8_t* data, size_t size) {
     std::vector<NalUnit> result;
     if (!data || size == 0) return result;
-    size_t first = 0;
     size_t prefix = start_code_size(data, size, 0);
     if (prefix != 0) {
-        first = prefix;
-        while (first < size) {
-            size_t next = first;
-            while (next + 3 < size && start_code_size(data, size, next) == 0) ++next;
-            const size_t end = next < size ? next : size;
-            if (end > first) result.push_back({std::vector<uint8_t>(data + first, data + end)});
-            if (next == size) break;
-            first = next + start_code_size(data, size, next);
+        size_t nal_start = prefix;
+        while (nal_start < size) {
+            size_t nal_end = nal_start;
+            size_t next_prefix = 0;
+            while (nal_end < size) {
+                next_prefix = start_code_size(data, size, nal_end);
+                if (next_prefix > 0) break;
+                ++nal_end;
+            }
+            if (nal_end > nal_start) {
+                result.push_back({std::vector<uint8_t>(data + nal_start, data + nal_end)});
+            }
+            nal_start = nal_end + next_prefix;
         }
         return result;
     }
 
-    // Accept AVCC packets as well as Annex-B packets.
+    // Try AVCC 4-byte length prefix splitting
     size_t offset = 0;
     while (offset + 4 <= size) {
         const uint32_t length = (static_cast<uint32_t>(data[offset]) << 24) |
@@ -62,7 +66,10 @@ std::vector<NalUnit> split_nals(const uint8_t* data, size_t size) {
         result.push_back({std::vector<uint8_t>(data + offset, data + offset + length)});
         offset += length;
     }
-    if (result.empty()) result.push_back({std::vector<uint8_t>(data, data + size)});
+    if (offset != size || result.empty()) {
+        result.clear();
+        result.push_back({std::vector<uint8_t>(data, data + size)});
+    }
     return result;
 }
 
@@ -81,44 +88,53 @@ public:
 
     av_status send_packet(const uint8_t* data, size_t size, int64_t pts_us, bool) override {
         if (!data || size == 0) return AV_ERR_INVALID_ARG;
-        std::lock_guard<std::mutex> lock(mutex_);
-        const auto nals = split_nals(data, size);
-        if (nals.empty()) return AV_ERR_INVALID_ARG;
-        update_parameter_sets_locked(nals);
-        if (!session_ && !create_session_locked()) return AV_ERR_RETRY;
 
-        std::vector<uint8_t> avcc;
-        for (const auto& nal : nals) {
-            const uint32_t length = static_cast<uint32_t>(nal.bytes.size());
-            avcc.push_back(static_cast<uint8_t>(length >> 24));
-            avcc.push_back(static_cast<uint8_t>(length >> 16));
-            avcc.push_back(static_cast<uint8_t>(length >> 8));
-            avcc.push_back(static_cast<uint8_t>(length));
-            avcc.insert(avcc.end(), nal.bytes.begin(), nal.bytes.end());
-        }
-
-        CMBlockBufferRef block = nullptr;
-        if (CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nullptr, avcc.size(),
-                                                kCFAllocatorDefault, nullptr, 0, avcc.size(), 0, &block) != kCMBlockBufferNoErr ||
-            CMBlockBufferReplaceDataBytes(avcc.data(), block, 0, avcc.size()) != kCMBlockBufferNoErr) {
-            if (block) CFRelease(block);
-            return AV_ERR_OUT_OF_MEMORY;
-        }
-        const CMTime timestamp = CMTimeMake(pts_us, 1000000);
-        CMSampleTimingInfo timing{CMTimeMake(1, 30), timestamp, timestamp};
-        const size_t sample_size = avcc.size();
+        VTDecompressionSessionRef session = nullptr;
         CMSampleBufferRef sample = nullptr;
-        const OSStatus sample_status = CMSampleBufferCreateReady(kCFAllocatorDefault, block, format_desc_, 1,
-                                                                  1, &timing, 1, &sample_size, &sample);
-        CFRelease(block);
-        if (sample_status != noErr || !sample) return AV_ERR_INTERNAL;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto nals = split_nals(data, size);
+            if (nals.empty()) return AV_ERR_INVALID_ARG;
+            update_parameter_sets_locked(nals);
+            if (!session_ && !create_session_locked()) return AV_ERR_RETRY;
+
+            std::vector<uint8_t> avcc;
+            for (const auto& nal : nals) {
+                const uint32_t length = static_cast<uint32_t>(nal.bytes.size());
+                avcc.push_back(static_cast<uint8_t>(length >> 24));
+                avcc.push_back(static_cast<uint8_t>(length >> 16));
+                avcc.push_back(static_cast<uint8_t>(length >> 8));
+                avcc.push_back(static_cast<uint8_t>(length));
+                avcc.insert(avcc.end(), nal.bytes.begin(), nal.bytes.end());
+            }
+
+            CMBlockBufferRef block = nullptr;
+            if (CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nullptr, avcc.size(),
+                                                    kCFAllocatorDefault, nullptr, 0, avcc.size(), 0, &block) != kCMBlockBufferNoErr ||
+                CMBlockBufferReplaceDataBytes(avcc.data(), block, 0, avcc.size()) != kCMBlockBufferNoErr) {
+                if (block) CFRelease(block);
+                return AV_ERR_OUT_OF_MEMORY;
+            }
+            const CMTime timestamp = CMTimeMake(pts_us, 1000000);
+            CMSampleTimingInfo timing{CMTimeMake(1, 30), timestamp, timestamp};
+            const size_t sample_size = avcc.size();
+            const OSStatus sample_status = CMSampleBufferCreateReady(kCFAllocatorDefault, block, format_desc_, 1,
+                                                                      1, &timing, 1, &sample_size, &sample);
+            CFRelease(block);
+            if (sample_status != noErr || !sample) return AV_ERR_INTERNAL;
+
+            session = session_;
+            CFRetain(session);
+        }
 
         VTDecodeInfoFlags flags = 0;
-        const OSStatus status = VTDecompressionSessionDecodeFrame(session_, sample,
+        const OSStatus status = VTDecompressionSessionDecodeFrame(session, sample,
                                                                    kVTDecodeFrame_EnableAsynchronousDecompression,
                                                                    nullptr, &flags);
         CFRelease(sample);
-        return status == noErr ? AV_OK : AV_ERR_INFERENCE_FAILED;
+        CFRelease(session);
+        if (status != noErr) return AV_ERR_INFERENCE_FAILED;
+        return AV_OK;
     }
 
     av_status receive_frame(av_frame_desc* out_frame) override {
@@ -164,10 +180,12 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session = session_;
+            if (session) CFRetain(session);
         }
         if (session) {
             VTDecompressionSessionFinishDelayedFrames(session);
             VTDecompressionSessionWaitForAsynchronousFrames(session);
+            CFRelease(session);
         }
         std::lock_guard<std::mutex> lock(mutex_);
         clear_pending_locked();
@@ -201,12 +219,14 @@ private:
         const int64_t pts_us = CMTIME_IS_VALID(scaled) ? scaled.value : 0;
         const int64_t wall_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-        std::lock_guard<std::mutex> lock(decoder->mutex_);
-        if (decoder->pending_.size() >= 8) {
-            CVPixelBufferRelease(decoder->pending_.front().buffer);
-            decoder->pending_.pop_front();
+        {
+            std::lock_guard<std::mutex> lock(decoder->mutex_);
+            if (decoder->pending_.size() >= 32) {
+                CVPixelBufferRelease(decoder->pending_.front().buffer);
+                decoder->pending_.pop_front();
+            }
+            decoder->pending_.push_back({pixel_buffer, pts_us, wall_time_ns});
         }
-        decoder->pending_.push_back({pixel_buffer, pts_us, wall_time_ns});
     }
 
     void update_parameter_sets_locked(const std::vector<NalUnit>& nals) {

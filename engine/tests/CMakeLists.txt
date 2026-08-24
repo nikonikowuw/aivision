@@ -52,6 +52,7 @@ add_executable(unit_tests
     unit/test_algo_sandbox.cpp
     unit/test_camera_task.cpp
     unit/test_image_manager.cpp
+    unit/test_real_media.cpp
 )
 target_include_directories(unit_tests PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
@@ -62,6 +63,8 @@ target_include_directories(unit_tests PRIVATE
 target_compile_definitions(unit_tests PRIVATE
     AIVISION_FIXTURE_PACKAGE_DIR="${MOCK_FIXTURE_DIR}"
     AIVISION_PACKAGE_VALIDATOR_PATH="${CMAKE_BINARY_DIR}/package_validator"
+    AIVISION_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
+    AIVISION_BINARY_DIR="${CMAKE_BINARY_DIR}"
 )
 target_link_libraries(unit_tests PRIVATE
     engine_core
@@ -69,6 +72,15 @@ target_link_libraries(unit_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
 )
+if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
+    target_compile_definitions(unit_tests PRIVATE AIVISION_PLATFORM_MACOS=1)
+    target_link_libraries(unit_tests PRIVATE platform_macos)
+endif()
+if(AIVISION_USE_ZLM)
+    target_compile_definitions(unit_tests PRIVATE AIVISION_USE_ZLM=1)
+    target_link_libraries(unit_tests PRIVATE media_zlm)
+endif()
+
 if(ENGINE_ENABLE_ASAN OR ENGINE_ENABLE_TSAN)
     target_compile_definitions(unit_tests PRIVATE AIVISION_SKIP_IPC_TESTS=1)
 elseif(PLATFORM_TARGET STREQUAL "mock")
@@ -79,6 +91,12 @@ elseif(PLATFORM_TARGET STREQUAL "mock")
 endif()
 add_dependencies(unit_tests mock_algo_fixture mock_algo_fixture_assets)
 add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+if(ENGINE_ENABLE_TSAN)
+    # Keep real-media coverage; suppress only known ZLToolKit initialization races.
+    set_tests_properties(unit_tests PROPERTIES
+        ENVIRONMENT "TSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tsan.supp:halt_on_error=1"
+    )
+endif()
 
 # Contract tests
 add_executable(contract_tests
@@ -96,3 +114,19 @@ target_link_libraries(contract_tests PRIVATE
 )
 add_dependencies(contract_tests mock_algo_fixture mock_algo_fixture_assets)
 add_test(NAME contract_tests COMMAND contract_tests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+if(AIVISION_USE_ZLM)
+    add_executable(test_rtsp_server media/rtsp_server.cpp)
+    target_include_directories(test_rtsp_server PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ZLMediaKit/src>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ZLMediaKit/3rdpart/ZLToolKit/src>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ZLMediaKit/3rdpart/media-server/libmov/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ZLMediaKit/3rdpart/media-server/libmpeg/include>
+    )
+    target_compile_definitions(test_rtsp_server PRIVATE ENABLE_MP4)
+    target_link_libraries(test_rtsp_server PRIVATE
+        ext-codec
+    )
+    add_dependencies(unit_tests test_rtsp_server)
+endif()

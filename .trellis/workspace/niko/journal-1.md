@@ -544,3 +544,38 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 20: 完成真实 RTSP 与 VideoToolbox 媒体链路验证
+
+**Date**: 2026-08-24
+**Task**: 08-22-cpp-engine-skeleton-macos / P0-2
+**Branch**: `main`
+
+### Summary
+
+完成本地 ZLMediaKit `MP4Reader` RTSP fixture 与 macOS VideoToolbox 真实媒体验证：修复 RTSP 测试 server 的直接子进程回收、ZLM owner-poller 线程归属、`media_zlm` stop/delegate teardown 竞态、VideoToolbox 异步回调死锁与 NAL 输入 fallback，并覆盖 H.264、H.265、断流重连。
+
+### Main Changes
+
+- `media_zlm` 使用 `MediaPlayer`，在同一 EventPoller 上完成配置、播放、delegate 注册和 teardown；回调只复制编码 access unit。
+- RTSP fixture 使用 `MP4Reader` 发布固定媒体，server 使用 `posix_spawn`，避免 shell background 进程泄漏。
+- `MacosDecoder` 将 `VTDecompressionSessionWaitForAsynchronousFrames` 限定在 `flush()`，异步输出队列有界并保持 `CVPixelBuffer` 生命周期。
+- TSan 下保留真实媒体测试，通过 `engine/tests/tsan.supp` 仅屏蔽已定位的 ZLToolKit 第三方 Logger/毫秒计时初始化 race。
+
+### Testing
+
+- [OK] `make -C engine build`
+- [OK] `make -C engine test`（unit + contract，含 H.264/H.265/断流重连）
+- [OK] `make -C engine asan`
+- [OK] `make -C engine tsan`
+- [OK] `make -C engine lint`
+- [OK] 最终恢复普通 Debug 构建并再次通过 ctest；无残留测试进程或媒体二进制。
+
+### Status
+
+[OK] **P0-2 本地媒体链路已完成；60 秒持续流、track replacement、多实例压力及真实指标断言仍在 remaining-work.md 中保留**
+
+### Next Steps
+
+- 实现 P0-1 Go gRPC stub/E2E 与 P0-3 永久阻塞插件的进程隔离设计。

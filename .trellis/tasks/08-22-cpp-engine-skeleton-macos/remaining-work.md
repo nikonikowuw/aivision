@@ -23,7 +23,7 @@
 
 1. `engine/tests/stub_server/main.go` 目前只是 Unix socket listener，不是真正的 gRPC server。
 2. Engine 没有可执行的 `make -C engine e2e` 流程，真实 `app.sock` 对账、告警 ACK、图片元数据上报尚未闭环。
-3. 尚未完成真实 RTSP/ZLMediaKit + VideoToolbox 60 秒持续流、断流、track 替换和真实帧输出验证。
+3. 已完成本地可复现的 ZLMediaKit `MP4Reader` RTSP fixture、H.264/H.265 VideoToolbox 解码、断流重连和测试进程生命周期清理；普通 Debug、ASan、TSan（精确屏蔽已定位的 ZLToolKit 第三方初始化 race）均通过，但 60 秒持续流、track 替换、多实例压力和完整真实帧输出指标验收仍未完成。
 4. 插件在 `instance_process` 内永久阻塞时，当前 worker join 没有严格上限；不能通过 detached thread 或不安全强杀线程解决。
 5. sanitizer 下的 gRPC/Protobuf IPC 覆盖仍受当前 Homebrew Protobuf/gRPC 运行时问题限制。
 6. 坏包 fixture、完整 validator 错误矩阵、部署 Profile/launchd 文件和生产目录权限检查尚不完整。
@@ -93,11 +93,19 @@
 
 ### P0-2：完成真实 RTSP、ZLMediaKit 和 VideoToolbox 集成验证
 
-**当前问题**
+### 已完成的 P0-2 工作
 
-当前的媒体测试主要是 `DummyMediaSource` 和 mock decoder。它们能验证状态机和 NAL gate，但不能证明 ZLMediaKit 回调、真实 access unit、VideoToolbox 输出和 macOS 原生帧生命周期正确。
+- 本地媒体 fixture 使用 ZLMediaKit `MP4Reader` 发布固定 H.264/H.265 MP4，测试 server 通过 `posix_spawn` 直接建立父子进程关系，并在 owner poller 上创建/启动/停止 reader。
+- `media_zlm` 使用 `MediaPlayer` 的 owner poller 串行化 player 配置、播放、delegate 注册和 teardown；回调仅复制编码 access unit 到有界队列，停止路径同步删除 delegate 并释放 player。
+- `MacosDecoder` 支持 Annex-B/AVCC 输入，VideoToolbox 解码调用保持异步，`flush()` 才等待异步回调；输出队列受限并正确保留 `CVPixelBuffer` 生命周期。
+- `CameraTask` 增加 H.264/H.265 参数集与随机访问帧 gate、畸形 NAL fallback、解码器 watchdog 兼容处理和真实媒体测试覆盖。
+- `make -C engine test`、`make -C engine asan`、`make -C engine tsan` 和 `make -C engine lint` 均通过；TSan 仅对已定位的 ZLToolKit 全局 Logger/毫秒计时初始化 race 使用精确 suppression。
 
-**需要实现的功能**
+### P0-2 仍未完成的验证
+
+- 尚未覆盖 60 秒持续流的长时间稳定性证据、真实 track replacement 故障注入、同一 camera 多算法实例压力隔离，以及 decoded/sampled/dropped/reconnect/reset 指标的真实采集断言。
+
+**验收契约映射（已完成项与后续补齐项）**
 
 1. 提供仓库内可复现的本地媒体 fixture：
    - 固定的 H.264 1080p 回放流；

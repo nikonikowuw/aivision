@@ -29,7 +29,6 @@ struct PacketNalFlags {
     bool has_vps = false;
     bool has_sps = false;
     bool has_pps = false;
-    bool has_parameter_set = false;
     bool has_random_access = false;
 };
 
@@ -48,7 +47,6 @@ void inspect_nal(PacketNalFlags& flags, const uint8_t* nal, size_t size, bool he
         flags.has_pps = flags.has_pps || type == 8;
         flags.has_random_access = flags.has_random_access || type == 5;
     }
-    flags.has_parameter_set = flags.has_vps || flags.has_sps || flags.has_pps;
 }
 
 PacketNalFlags inspect_packet(const media::EncodedPacket& packet, const std::string& codec) {
@@ -80,11 +78,20 @@ PacketNalFlags inspect_packet(const media::EncodedPacket& packet, const std::str
                                   (static_cast<uint32_t>(packet.data[offset + 2]) << 8) |
                                   packet.data[offset + 3];
         offset += 4;
-        if (nal_size == 0 || nal_size > packet.size - offset) return PacketNalFlags{};
+        if (nal_size == 0 || nal_size > packet.size - offset) {
+            // If length prefix is not valid AVCC 4-byte length, treat the entire payload as a single NAL
+            flags = PacketNalFlags{};
+            inspect_nal(flags, packet.data, packet.size, hevc);
+            return flags;
+        }
         inspect_nal(flags, packet.data + offset, nal_size, hevc);
         offset += nal_size;
     }
-    if (offset != packet.size) return PacketNalFlags{};
+    if (offset != packet.size) {
+        flags = PacketNalFlags{};
+        inspect_nal(flags, packet.data, packet.size, hevc);
+        return flags;
+    }
     return flags;
 }
 
@@ -366,17 +373,25 @@ void CameraTask::decode_loop() {
             ? saw_vps_ && saw_sps_ && saw_pps_
             : saw_sps_ && saw_pps_;
         const bool waiting_for_idr = !saw_idr_keyframe_.load(std::memory_order_acquire);
-        if (waiting_for_idr && !nal_flags.has_parameter_set &&
-            !(parameter_sets_ready && nal_flags.has_random_access)) continue;
+        bool is_param_set = false;
+        if (decoder_codec_ == "H265" || decoder_codec_ == "HEVC") {
+            is_param_set = nal_flags.has_vps || nal_flags.has_sps || nal_flags.has_pps;
+        } else {
+            is_param_set = nal_flags.has_sps || nal_flags.has_pps;
+        }
+        if (waiting_for_idr && !is_param_set &&
+            !(parameter_sets_ready && nal_flags.has_random_access)) {
+            continue;
+        }
 
-        if (decoder_->send_packet(packet.data, packet.size, packet.pts_us, packet.is_keyframe) != AV_OK) continue;
+        const av_status send_st = decoder_->send_packet(packet.data, packet.size, packet.pts_us, packet.is_keyframe);
+        if (send_st != AV_OK) continue;
         last_decoder_input_time_ms_.store(std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count(), std::memory_order_release);
         decoder_waiting_for_output_.store(true, std::memory_order_release);
         if (parameter_sets_ready && nal_flags.has_random_access) {
             saw_idr_keyframe_.store(true, std::memory_order_release);
         }
-        if (!saw_idr_keyframe_.load(std::memory_order_acquire)) continue;
 
         for (;;) {
             av_frame_desc* frame = FramePool::instance().acquire_frame();
@@ -424,7 +439,6 @@ void CameraTask::on_media_status(const std::string&, bool is_error) {
         reconnect_backoff_seconds_.store(1, std::memory_order_release);
         reconnect_requested_.store(false, std::memory_order_release);
         state_.store(CameraState::RUNNING);
-        encoded_cv_.notify_one();
     }
 }
 

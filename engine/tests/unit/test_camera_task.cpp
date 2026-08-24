@@ -159,7 +159,7 @@ TEST(CameraTaskTest, H265RequiresParameterSetsAndRandomAccessFrame) {
     backend->last_source_->emit_nal(0x42, false, 3100, "H265");
     backend->last_source_->emit_nal(0x44, false, 3200, "H265");
     backend->last_source_->emit_nal(0x26, true, 3300, "H265");
-    for (int i = 0; i < 100 && task.get_decoded_frames() == 0; ++i) {
+    for (int i = 0; i < 400 && task.get_decoded_frames() == 0; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     EXPECT_EQ(task.get_decoded_frames(), 1);

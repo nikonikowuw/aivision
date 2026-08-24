@@ -4,9 +4,12 @@
 #include <memory>
 #include <mutex>
 #include <utility>
+#include <vector>
 
+#include "Common/config.h"
 #include "Extension/Frame.h"
-#include "Player/PlayerProxy.h"
+#include "Player/MediaPlayer.h"
+#include "Rtsp/Rtsp.h"
 
 namespace aivision::media {
 namespace {
@@ -17,7 +20,7 @@ struct ZlmSourceState {
     std::mutex mutex;
     PacketCallback on_packet;
     StatusCallback on_status;
-    mediakit::PlayerProxy::Ptr player;
+    mediakit::MediaPlayer::Ptr player;
     mediakit::Track::Ptr video_track;
     mediakit::FrameWriterInterface* delegate = nullptr;
 };
@@ -54,8 +57,8 @@ public:
         state->active.store(true);
         state->on_packet = std::move(on_packet);
         state->on_status = std::move(on_status);
-        mediakit::MediaTuple tuple{"__defaultVhost__", "aivision", id_, ""};
-        auto player = std::make_shared<mediakit::PlayerProxy>(tuple, mediakit::ProtocolOption{});
+        auto player_poller = toolkit::EventPollerPool::Instance().getPoller();
+        auto player = std::make_shared<mediakit::MediaPlayer>(player_poller);
         state->player = player;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
@@ -63,72 +66,94 @@ public:
         }
 
         const std::weak_ptr<ZlmSourceState> weak_state = state;
-        player->setPlayCallbackOnce([weak_state, player](const toolkit::SockException& error) {
-            auto state = weak_state.lock();
-            if (!state || !state->active.load()) return;
-            if (error) {
-                state->connected.store(false);
-                report_status(state, error.what(), true);
-                return;
-            }
-
-            auto video_track = player->getTrack(mediakit::TrackVideo, true);
-            if (!video_track) {
-                state->connected.store(false);
-                report_status(state, "video track is unavailable", true);
-                return;
-            }
-            auto delegate = video_track->addDelegate([weak_state](const mediakit::Frame::Ptr& frame) {
+        player_poller->sync([&] {
+            if (!state->active.load(std::memory_order_acquire)) return;
+            (*player)[mediakit::Client::kWaitTrackReady] = true;
+            (*player)[mediakit::Client::kRtpType] = mediakit::Rtsp::RTP_TCP;
+            player->setOnPlayResult([weak_state](const toolkit::SockException& error) {
                 auto state = weak_state.lock();
-                if (!state || !state->active.load() || !frame) return false;
+                if (!state || !state->active.load()) return;
 
-                PacketCallback callback;
+                mediakit::MediaPlayer::Ptr player;
                 {
                     std::lock_guard<std::mutex> lock(state->mutex);
-                    callback = state->on_packet;
+                    player = state->player;
                 }
-                if (!callback) return false;
+                if (!player) return;
 
-                auto bytes = std::make_shared<std::vector<uint8_t>>(
-                    reinterpret_cast<const uint8_t*>(frame->data()),
-                    reinterpret_cast<const uint8_t*>(frame->data()) + frame->size());
-                EncodedPacket packet;
-                packet.storage = bytes;
-                packet.data = bytes->data();
-                packet.size = bytes->size();
-                packet.pts_us = static_cast<int64_t>(frame->pts()) * 1000;
-                packet.dts_us = static_cast<int64_t>(frame->dts()) * 1000;
-                packet.is_keyframe = frame->keyFrame();
-                packet.codec_name = frame->getCodecName();
-                try {
-                    callback(packet);
-                } catch (...) {
-                    return false;
+                if (error) {
+                    state->connected.store(false);
+                    report_status(state, error.what(), true);
+                    return;
                 }
-                return true;
+
+                auto video_track = player->getTrack(mediakit::TrackVideo, false);
+                if (!video_track) {
+                    state->connected.store(false);
+                    report_status(state, "video track is unavailable", true);
+                    return;
+                }
+                auto delegate = video_track->addDelegate([weak_state](const mediakit::Frame::Ptr& frame) {
+                    if (!frame) return false;
+                    auto state = weak_state.lock();
+                    if (!state || !state->active.load()) return false;
+
+                    PacketCallback callback;
+                    {
+                        std::lock_guard<std::mutex> lock(state->mutex);
+                        callback = state->on_packet;
+                    }
+                    if (!callback) return false;
+
+                    auto bytes = std::make_shared<std::vector<uint8_t>>(
+                        reinterpret_cast<const uint8_t*>(frame->data()),
+                        reinterpret_cast<const uint8_t*>(frame->data()) + frame->size());
+                    EncodedPacket packet;
+                    packet.storage = bytes;
+                    packet.data = bytes->data();
+                    packet.size = bytes->size();
+                    packet.pts_us = static_cast<int64_t>(frame->pts()) * 1000;
+                    packet.dts_us = static_cast<int64_t>(frame->dts()) * 1000;
+                    packet.is_keyframe = frame->keyFrame();
+                    packet.codec_name = frame->getCodecName();
+                    try {
+                        callback(packet);
+                    } catch (...) {
+                        return false;
+                    }
+                    return true;
+                });
+                bool keep_delegate = false;
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    if (state->active.load()) {
+                        state->video_track = video_track;
+                        state->delegate = delegate;
+                        keep_delegate = true;
+                    }
+                }
+                if (!keep_delegate) {
+                    if (delegate) video_track->delDelegate(delegate);
+                    return;
+                }
+                state->connected.store(delegate != nullptr);
+                report_status(state, state->connected.load() ? "connected" : "video delegate registration failed",
+                              !state->connected.load());
             });
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                state->video_track = video_track;
-                state->delegate = delegate;
-            }
-            state->connected.store(delegate != nullptr);
-            report_status(state, state->connected.load() ? "connected" : "video delegate registration failed",
-                          !state->connected.load());
+            player->setOnShutdown([weak_state](const toolkit::SockException& error) {
+                if (auto state = weak_state.lock()) {
+                    state->connected.store(false);
+                    report_status(state, error.what(), true);
+                }
+            });
+            player->setOnResume([weak_state] {
+                if (auto state = weak_state.lock()) {
+                    state->connected.store(true);
+                    report_status(state, "resumed", false);
+                }
+            });
+            player->play(rtsp_url);
         });
-        player->setOnDisconnect([weak_state] {
-            if (auto state = weak_state.lock()) {
-                state->connected.store(false);
-                report_status(state, "disconnected", true);
-            }
-        });
-        player->setOnClose([weak_state](const toolkit::SockException& error) {
-            if (auto state = weak_state.lock()) {
-                state->connected.store(false);
-                report_status(state, error.what(), true);
-            }
-        });
-        player->play(rtsp_url);
         return AV_OK;
     }
 
@@ -143,7 +168,7 @@ public:
         state->connected.store(false);
         mediakit::Track::Ptr video_track;
         mediakit::FrameWriterInterface* delegate = nullptr;
-        mediakit::PlayerProxy::Ptr player;
+        mediakit::MediaPlayer::Ptr player;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             video_track = state->video_track;
@@ -153,8 +178,16 @@ public:
             state->video_track.reset();
             state->player.reset();
         }
-        if (video_track && delegate) video_track->delDelegate(delegate);
-        if (player) player->teardown();
+        auto player_poller = player ? player->getPoller() : nullptr;
+        auto cleanup = [video_track, delegate, player] {
+            if (video_track && delegate) video_track->delDelegate(delegate);
+            if (player) player->teardown();
+        };
+        if (player_poller) {
+            player_poller->sync(cleanup);
+        } else {
+            cleanup();
+        }
     }
 
     bool is_connected() const override {

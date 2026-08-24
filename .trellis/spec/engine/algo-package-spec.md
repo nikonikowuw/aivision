@@ -65,7 +65,7 @@ typedef struct av_algo_library_args {
 } av_algo_library_args;
 ```
 
-算法必须以 `package_root` 为根定位 manifest 中声明的模型和依赖。禁止依赖当前工作目录、仓库路径或自行写日志文件。
+算法必须以 `package_root` 为根定位模型、依赖和私有配置（例如 `<package_root>/.env`）。禁止依赖当前工作目录（CWD）、全局环境变量（`std::getenv`）、仓库路径或自行写日志文件。
 
 `av_algo_library_info` 至少回填算法 ID、版本、类型；帧能力不进入 manifest，也不在虚表中复制第二份可漂移数据，具体帧格式/尺寸由 `instance_negotiate` 运行时协商。资源 FPS 档位以 manifest 为权威。
 

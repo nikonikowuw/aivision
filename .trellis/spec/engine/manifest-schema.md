@@ -23,11 +23,7 @@
 | `min_adapter_version` | string | SemVer，SDK/适配层 ABI 最低版本 |
 | `runtime_constraints` | object | 平台相关增量约束，由对应平台适配器校验 |
 | `resource_profile` | object | 内存阈值和离散 FPS 档位 |
-| `entry_library` | string | 必须引用 `files[]` 中 kind=`library` 的一项 |
-| `config_schema_file` | string | 必须引用 kind=`config_schema` 的一项 |
-| `test_image_file` | string | 必须引用 kind=`test_image` 的一项 |
 | `self_test` | object | 安装自测超时和输入模式 |
-| `files` | array | 关键入口文件的清单和 SHA-256 |
 
 未知顶层字段在 v1 中拒绝，避免拼写错误被静默忽略。需要扩展时提升 `manifest_version` 或在明确的 `extensions` 命名空间中版本化。
 
@@ -64,26 +60,43 @@
 - `min_free_memory_mb` 是独立安全门槛，不参与 units 求和。
 - `units` 是包作者声明、平台验收的绝对消耗；T1 阶段标注为「开发期估算」，平台实测后再校准。
 
-### 2.4 文件清单与完整性
+### 2.4 包目录约定、私有配置与完整性
 
-```json
-"files": [
-  {"path": "lib/libyolov8n.dylib", "kind": "library", "sha256": "<64 lowercase hex>"},
-  {"path": "config.schema.json", "kind": "config_schema", "sha256": "<64 lowercase hex>"},
-  {"path": "testimage.jpg", "kind": "test_image", "sha256": "<64 lowercase hex>"},
-  {"path": "model/yolov8n.mlpackage/Data/com.apple.CoreML/model.mlmodel", "kind": "model", "sha256": "<64 lowercase hex>"}
-]
+算法包采用**约定优于配置（Convention over Configuration）**的目录结构，无需在 manifest 中冗余声明文件列表与各文件哈希：
+
+```text
+<package_root>/
+├── manifest.json          # 算法身份、资源档位与元数据（必选）
+├── .env                   # 算法私有默认参数与模型路径配置（可选，推荐）
+├── config.schema.json     # 算法动态业务参数 Schema（可选，无自定义参数时可省略）
+├── testimage.jpg          # 安装自测输入图（必选）
+├── lib/
+│   └── lib<algorithm_id>.{dylib,so} # C ABI 动态库入口（必选）
+└── model/                 # 算法模型与权重目录（可选，由 .env 或算法内部定位）
 ```
 
-契约：
+#### 2.4.1 配置与参数覆盖分层
 
-- `path` 使用 `/` 分隔的规范化相对路径；禁止空段、`.`、`..`、反斜杠、绝对路径和重复项。
-- `kind` 为 `library|config_schema|test_image|model`。
-- `files[]` 只列**关键入口文件**（单文件），每项必须实际存在于包内且 SHA-256 匹配；缺失或哈希不符即拒绝安装。
-- `library`/`config_schema`/`test_image` 各恰好一项（由 `entry_library`、`config_schema_file`、`test_image_file` 引用）；`model` 为 0..N 项。
-- `.mlpackage` 这类目录结构**不逐文件枚举**：目录内非关键文件由 zip 整体完整性覆盖，不对目录本身哈希。
-- 包内允许存在 `files[]` 之外的附加文件（README、license 等），不阻断安装；但受部署 Profile 的解压上限（文件数、解压总大小、zip bomb 防御）与路径安全校验约束。
-- **zip 整体 SHA-256 是包完整性的唯一锚点**，由 Engine 在 manifest 外记录，用于审计和版本追踪；入口文件哈希用于安装后定位与验证关键文件。
+算法实例加载与运行参数遵循严格的三层优先级覆盖机制：
+
+```text
+[1. 宿主/Go 下发的动态业务参数 (instance_update_config / instance_args.config_json)]
+       ↓ 覆盖
+[2. package_root/.env 算法包私有配置文件 (MODEL_PATH, 默认阈值等)]
+       ↓ 覆盖
+[3. C++ 编译期默认硬编码兜底值]
+```
+
+- **包私有配置隔离**：算法库必须严格基于 `package_root` 相对解析 `<package_root>/.env`，**严禁读取宿主进程的全局环境变量（如 `std::getenv`）或依赖当前工作目录（CWD）**，避免多算法包共存时发生环境污染与冲突。
+- **动态模型与参数切换**：算法包可以在 `.env` 中通过 `MODEL_PATH=model/yolov8n.mlpackage`（或 `.rknn`/`.om`）指定模型相对路径。更换模型权重或调整默认阈值只需更新 `.env`，无需重新编译 C++ 动态库。
+
+#### 2.4.2 包完整性与安全校验
+
+- **zip 整体 SHA-256 是包完整性的唯一锚点**：由 Engine / Go 后端在安装包发布或上传时记录与审计（`<archive>.zip.sha256`），不再在 manifest 内部手工维护冗余的单文件哈希清单。
+- **解压与安装校验**：
+  - Engine 解压算法包时校验约定必须存在的文件（`manifest.json`、`testimage.jpg`、`lib/lib<algorithm_id>.*`）。
+  - 若包含 `config.schema.json`，校验其为合法的 JSON Schema 且 `additionalProperties=false`。
+  - 受部署 Profile 的解压上限（文件数、解压总大小、zip bomb 防御）与路径安全校验（禁止绝对路径、`..` 越界与符号链接逃逸）约束。
 
 ### 2.5 运行时约束和自测
 
@@ -101,7 +114,7 @@ macOS 示例：
 
 - 帧兼容性不由 manifest 声明：平台可产出的帧格式由 `PlatformProfile.frame_caps` 定义（见 `platform-guidelines.md`），算法包是否适配由「`platform_id` 匹配 + 安装自测用真实平台帧跑一次」验证，具体实例的格式/尺寸协商走 `instance_negotiate`（见 `algo-package-spec.md` §3.3）。
 - `platform_id` 已唯一确定平台与架构，`runtime_constraints` 只声明平台相关增量约束（如 `min_os_version`），不重复声明 `arch`；未知约束字段必须拒绝。
-- `self_test.input_mode` 为 `test_image`（使用 `test_image_file` 作为输入）；`timeout_ms` 必须位于部署 Profile 允许的范围内。
+- `self_test.input_mode` 为 `test_image`（固定使用包根目录下的 `testimage.jpg` 作为输入）；`timeout_ms` 必须位于部署 Profile 允许的范围内。
 - 安装自测的期望结果类型恒为 self-test（validator 检查 `kind == SELF_TEST`），不需要包作者声明。
 
 ## 3. 算法配置契约
@@ -223,7 +236,7 @@ InstanceDesiredConfig {
 | 条件 | 结果 |
 | --- | --- |
 | manifest 未知字段、缺字段、格式错误 | `PACKAGE_MANIFEST_INVALID` |
-| 入口文件缺失或 SHA-256 不匹配 | `PACKAGE_CHECKSUM_MISMATCH` |
+| 约定的核心文件缺失或 Zip 包 SHA-256 不匹配 | `PACKAGE_CHECKSUM_MISMATCH` |
 | 平台/OS/adapter 不兼容 | `PACKAGE_INCOMPATIBLE` |
 | 请求 FPS 无对应档位或总 units 超限 | `RESOURCE_LIMIT_EXCEEDED` |
 | 算法配置 Schema 失败 | `CONFIG_SCHEMA_INVALID` |
@@ -233,14 +246,15 @@ InstanceDesiredConfig {
 
 ## 6. Good / Base / Bad Cases
 
-- Good：15 FPS 精确命中 15 FPS 档位；12 FPS 向上选择 15 FPS 档位；包内 README 等附加文件不阻断安装，zip 整体 SHA 仍是完整性锚点。
+- Good：15 FPS 精确命中 15 FPS 档位；12 FPS 向上选择 15 FPS 档位；通过 `<package_root>/.env` 声明模型路径与默认参数；zip 整体 SHA-256 作为完整性锚点。
 - Base：测试图无目标，self-test 返回 `object_count=0` 并安装成功。
-- Bad：把 `.mlpackage` 内每个文件都写进 `files[]` 并手工维护哈希，coremltools 一升级清单就失配；或入口 library 哈希与包内实际文件不符仍被放行。
+- Bad：在 manifest 里枚举所有内部文件并手工维护 SHA-256；算法库直接读取操作系统全局环境变量（`std::getenv`）导致多实例配置冲突。
 
 ## 7. Tests Required
 
-- manifest JSON Schema 正反例、未知字段、SemVer、路径规范化和重复文件测试。
-- 入口文件存在性与 SHA-256、zip 整体 SHA-256、附加文件与解压上限测试。
+- manifest JSON Schema 正反例、未知字段、SemVer 测试。
+- 约定文件存在性（`manifest.json`、`testimage.jpg`、`lib/lib<algo>.*`）、zip 整体 SHA-256、附加文件与解压上限测试。
+- `.env` 包内隔离读取、三层配置优先级（Go 下发 > .env > 硬编码默认值）覆盖测试。
 - FPS 精确命中、向上取档、超最大档、units 超限和内存门槛测试。
 - 配置 good/base/bad、检测规则几何校验（越界/自交/点数）、revision 过期和原子回滚测试。
 - 告警零/多对象、未声明类型、重复 event ID、bbox 越界和大小上限测试。
@@ -249,15 +263,42 @@ InstanceDesiredConfig {
 ## 8. Wrong vs Correct
 
 ```json
-// Wrong: 全量枚举包内每个文件并要求集合完全相等，打包工具一升级就失配
-{"files": ["<.mlpackage 内部每个文件>", "..."]}
+// Wrong: 在 manifest 中冗余维护 files[] 列表与逐文件 SHA-256，打包工具或模型升级时极易失配
+{
+  "manifest_version": 1,
+  "algorithm_id": "yolov8n",
+  "files": [
+    {"path": "lib/libyolov8n.dylib", "kind": "library", "sha256": "..."},
+    {"path": "model/yolov8n.mlpackage/...", "kind": "model", "sha256": "..."}
+  ]
+}
 
-// Correct: 只列关键入口文件，zip 整体 SHA-256 锚定包完整性
-{"files": [
-  {"path": "lib/libyolov8n.dylib", "kind": "library", "sha256": "..."},
-  {"path": "config.schema.json", "kind": "config_schema", "sha256": "..."},
-  {"path": "testimage.jpg", "kind": "test_image", "sha256": "..."}
-]}
+// Correct: 约定优于配置，manifest 只保留元数据，模型与默认参数放 package_root/.env，zip 整体 SHA-256 锚定完整性
+{
+  "manifest_version": 1,
+  "algorithm_id": "yolov8n",
+  "version": "1.0.0",
+  "name": "YOLOv8n Object Detection",
+  "algorithm_type": "object_detection",
+  "alarm_type_id": "object_detect",
+  "platform_id": "macos-arm64-coreml",
+  "min_adapter_version": "1.0.0",
+  "runtime_constraints": {
+    "min_os_version": "14.0"
+  },
+  "resource_profile": {
+    "min_free_memory_mb": 256,
+    "fps_tiers": [
+      {"fps": 5, "units": 60},
+      {"fps": 15, "units": 150},
+      {"fps": 30, "units": 300}
+    ]
+  },
+  "self_test": {
+    "timeout_ms": 10000,
+    "input_mode": "test_image"
+  }
+}
 ```
 
 ```json

@@ -14,7 +14,8 @@ enum class CapabilityStatus {
     UNSPECIFIED = 0,
     AVAILABLE = 1,
     DEGRADED = 2,
-    UNAVAILABLE = 3,
+    UNSUPPORTED = 3,
+    UNAVAILABLE = 3, // Alias for UNSUPPORTED for compatibility
 };
 
 struct CapabilityItem {

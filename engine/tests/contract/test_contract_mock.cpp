@@ -2,6 +2,12 @@
 #include "aivision/platform/mock_platform.hpp"
 
 TEST(ContractMockTest, PlatformProfileAndImageOps) {
+    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::UNSPECIFIED) == 0);
+    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::AVAILABLE) == 1);
+    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::DEGRADED) == 2);
+    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::UNSUPPORTED) == 3);
+    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::UNAVAILABLE) == 3);
+
     aivision::platform::MockPlatformAdapter mock_adapter;
     const auto& profile = mock_adapter.get_profile();
     EXPECT_EQ(profile.platform_id, "mock");

@@ -48,4 +48,8 @@ TEST(ResourceLedgerTest, QuotaExceeded) {
     EXPECT_EQ(ledger.allocate(memory_req), AV_OK);
     memory_req.instance_id = "inst-2";
     EXPECT_EQ(ledger.can_allocate(memory_req), AV_ERR_OUT_OF_MEMORY);
+
+    // Release on failure regression test
+    ledger.release("inst-1");
+    EXPECT_EQ(ledger.get_used_compute_units(), 0);
 }

@@ -544,3 +544,24 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 20: 完成 RK3576 YOLOv8n RKNN 算法包验证与归档
+
+**Date**: 2026-08-24
+**Task**: 完成 RK3576 YOLOv8n RKNN 算法包验证与归档
+**Branch**: `dev`
+
+### Summary
+
+排查并修复了 RK3576 开发板上算法包的构建与运行时问题：修正 runner 链接 rknnrt 缺失、补全各阶段耗时指标采集、集成 stb_image 视觉渲染输出 result.jpg，并在实体板端完成 100 轮 benchmark 与打包验证，最后完成任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9fada7c` | (see git log) |
+
+### Status
+
+[OK] **Completed**

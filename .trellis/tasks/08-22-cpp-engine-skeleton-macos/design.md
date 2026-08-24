@@ -254,7 +254,7 @@ typedef struct av_algo_abi {
 **职责清晰切分**：
 
 - **算法包**：负责模型推理、目标检测与实例内唯一 `event_id` 生成（PRD §7.10），不回填 `wall_time_ns`，不统计端到端耗时性能；
-- **Engine 宿主**：在接收回调后，基于 `<instance_id>/<algo_event_id>` 形成全局唯一事件标识并执行幂等去重，绑定帧原生纳秒时间戳（`wall_time_ns`）、测量 P99 推理性能耗时、执行图像裁剪落盘并封装 gRPC 消息上报。
+- **Engine 宿主**：在接收回调后，基于 `<instance_run_id>/<algo_event_id>` 形成全局唯一事件标识并执行幂等去重，绑定帧原生纳秒时间戳（`wall_time_ns`）、测量 P99 推理性能耗时、执行图像裁剪落盘并封装 gRPC 消息上报。
 
 ### 3.4 适配接口（`platform_api`）
 
@@ -318,12 +318,14 @@ ZLM MediaSource ──(H264/H265 NAL 引用)──> 有界编码帧队列(每摄
 ## 5. gRPC 契约（`proto/aivision/v1/`）
 
 - `engine.proto`：`EngineService`（对端 → C++）
-  `ApplyDesiredState`（全量对账）、`UpsertTask`、`SetInstanceState`、`UpdateInstanceConfig`、`InstallPackage`、`UpgradePackage`、`RollbackPackage`、`UninstallPackage`、`DeleteImages`、`QueryProfile`、`QueryMetrics`。
-- `report.proto`：`ReportService`（C++ → 对端）
+  `ApplyDesiredState`（全量对账，逐项结果）、`UpsertTask`、`SetInstanceState`、`UpdateInstanceConfig`、`InstallPackage`、`UpgradePackage`、`RollbackPackage`、`UninstallPackage`、`DeleteImages`、`ReconcileImages`、`QueryProfile`（`PlatformProfileInfo` 档案）、`QueryMetrics`。
+- `app.proto`：`ControlPlaneService`（`GetDesiredState`）+ `ReportService`（C++ → 对端）
   `ReportAlarm`、`ReportTaskState`、`ReportInstanceState`、`ReportMetrics`、`ReportOrphanImages`。
-- `person.proto`：**预留**（D4）`PersonService` / `FeatureService` 的 service 与 message 定义，C++ 侧注册但返回 `UNIMPLEMENTED`。
+- `person.proto`：**预留**（D4）`PersonService.SyncPersons`（`FeatureService` 为后续扩展），C++ 侧注册但返回 `UNIMPLEMENTED`。
 
-传输：两个独立 UDS 端点——`engine.sock`（Go → C++ 的 `EngineService`）与 `app.sock`（C++ → Go 的 `ControlPlaneService` + `ReportService`），生产默认位于 `/var/run/aivision/`，macOS 开发 Profile 位于仓库外可写 runtime dir。断线检测走 gRPC channel 状态；`app.sock` 重连成功后 C++ 主动请求 Go 的 `GetDesiredState` 做全量对账（AC13）。
+传输：两个独立 UDS 端点——`engine.sock`（Go → C++ 的 `EngineService` + `PersonService`）与 `app.sock`（C++ → Go 的 `ControlPlaneService` + `ReportService`），生产默认位于 `/var/run/aivision/`，macOS 开发 Profile 位于仓库外可写 runtime dir。断线检测走 gRPC channel 状态；`app.sock` 重连成功后 C++ 主动请求 Go 的 `GetDesiredState` 做全量对账（AC13）。
+
+**错误契约**：transport 错误用 gRPC status；业务失败在响应内携带稳定字符串 `code`（空串=成功，如 `STALE_REVISION`）与仅诊断用途的 `error_message`，客户端不得解析 message 文本。`DesiredState` 使用 `tasks[]`；`AlgorithmInstanceConfig` 携带 `analysis_fps` 与任务级 `rules`（ROI/Mask/Line）。
 
 **约束**：任何 message 都不含像素数据。图片只传 `image_id` + 受限相对路径。
 

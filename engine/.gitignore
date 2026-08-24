@@ -3,3 +3,10 @@ build_*/
 var/
 .DS_Store
 *.tmp
+compile_commands.json
+.ninja_*
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.dSYM/
+

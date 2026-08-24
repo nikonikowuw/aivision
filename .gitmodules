@@ -1,0 +1,3 @@
+[submodule "engine/third_party/ZLMediaKit"]
+	path = engine/third_party/ZLMediaKit
+	url = https://github.com/ZLMediaKit/ZLMediaKit.git

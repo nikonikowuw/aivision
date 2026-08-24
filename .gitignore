@@ -1,9 +1,17 @@
 # macOS
 .DS_Store
+*.dSYM/
+.AppleDouble
+.LSOverride
 
-# IDE
+# IDE & Editors
 .idea/
 *.iml
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
 
 # Env / local config
 .env
@@ -16,12 +24,22 @@
 !**/.env.template
 .claude/settings.local.json
 
-# Runtime data / generated artifacts
+# Runtime data & temp files
 /var/
+*.tmp
+*.temp
+
+# Root build artifacts
+build/
+build_*/
 
 # Logs
 *.log
 logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Go (app/)
 app/bin/
@@ -30,9 +48,38 @@ app/uploads/
 coverage.out
 *.test
 *.exe
+
+# C / C++ / Native Build Artifacts (engine/ & algo-packages/ & sdk/)
+*.o
+*.obj
+*.a
+*.lib
 *.so
+*.so.*
 *.dylib
+*.dll
+*.ninja
+.ninja_*
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.old
+
+# Node / Frontend (ui/)
+ui/node_modules/
+ui/dist/
+ui/dist-ssr/
+ui/.nitro/
+ui/.output/
+ui/.turbo/
+ui/.temp/
+ui/.cache/
+ui/.eslintcache
+ui/.stylelintcache
+ui/coverage/
 
 # Trellis per-developer workspace (journals)
 .trellis/workspace/
 .worktrees/
+

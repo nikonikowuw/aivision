@@ -5,3 +5,13 @@ var/
 *.tmp
 result.jpg
 .env
+compile_commands.json
+.ninja_*
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+package_out/
+*.zip
+*.tar.gz
+*.dSYM/
+

@@ -53,6 +53,8 @@ DeleteImageResult {image_id, status: deleted|already_absent|failed, error?}
 
 告警上报 ACK 后 catalog 标记 `reported`。写图成功但未收到 ACK 的条目是 orphan candidate；重连后通过 `ReportOrphanImages` 报告，由 Go 返回已引用/可删除 ID，再执行清理。Engine 不得仅按时间单方面删除业务可能已引用的图片。
 
+Go 也可主动发起对账：通过 `ReconcileImages` 推送权威保留 ID 集合，Engine 删除不在保留集合中、且非 `unreported` 的孤儿图片并逐项返回结果；两个方向互补（Engine 主动上报走 `ReportOrphanImages`，Go 主动对账走 `ReconcileImages`）。
+
 ## 3. UDS 与 Proto 签名
 
 ### 3.1 两个明确端点
@@ -87,7 +89,9 @@ ReportService (C++ -> Go)
   ReportOrphanImages
 ```
 
-`person.proto` 可预留 service/message 名称，但当前 handler 返回 `UNIMPLEMENTED`。视频帧、解码图片和张量不得跨进程；未来人员注册图的有界 JPEG 例外必须在独立任务中定义大小限制与安全校验。
+`person.proto` 预留 `PersonService`（当前 `SyncPersons` handler 返回 `UNIMPLEMENTED`；`FeatureService` 为后续扩展）。视频帧、解码图片和张量不得跨进程；未来人员注册图的有界 JPEG 例外必须在独立任务中定义大小限制与安全校验，特征向量等张量字段不得写死进 person 契约。
+
+跨进程响应统一错误契约：transport 错误用 gRPC status 表达；业务失败在响应内携带稳定字符串 `code`（空串=成功，如 `STALE_REVISION`）与仅诊断用途的 `error_message`，客户端不得解析 message 文本（见 error-observability-guidelines §2）。
 
 ### 3.3 期望状态与 revision
 

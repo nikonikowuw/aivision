@@ -256,9 +256,13 @@ typedef enum av_algo_status {
   AV_ERR_OUT_OF_MEMORY = -7,
   AV_ERR_NOT_IMPLEMENTED = -8,
   AV_ERR_TIMEOUT = -9,
+  AV_ERR_RETRY = -10,   /* 仅 Engine 平台层（IDecoder 暂无帧）使用，算法包不得返回 */
   AV_ERR_INTERNAL = -99
 } av_algo_status;
 ```
+
+> `AV_ERR_RETRY` 是 Engine 平台接口（`IDecoder.receive_frame`）的“暂无可用帧”信号，
+> 不属于算法包 ABI 的错误语义；算法包在 process/flush 等任何入口都不得返回它。
 
 | 条件 | 结果 |
 | --- | --- |

@@ -31,6 +31,8 @@ struct EngineError {
 
 gRPC 失败使用标准 status 表达 transport 类别，并在结构化 details 中携带稳定 `code`、`retryable` 和字段错误；禁止客户端解析 message 文本。
 
+跨进程 gRPC 响应在 message 内携带稳定字符串 `code` 字段（空串=成功，如 `STALE_REVISION`）与仅诊断用途的 `error_message`；transport 类别仍用 gRPC status。客户端只依赖 status + `code`，不解析 `error_message` 文本。
+
 ## 3. Contracts
 
 ### 3.1 稳定错误码

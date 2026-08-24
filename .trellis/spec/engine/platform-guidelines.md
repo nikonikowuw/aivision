@@ -147,7 +147,8 @@ connecting -> waiting_keyframe -> running
 ```
 
 - 启动/重连后必须收齐 codec 配置（H.264 SPS/PPS；H.265 VPS/SPS/PPS）并等到可解码关键帧，再向新 decoder session 喂帧。
-- “输入队列非空且 decoder 持续无输出”达到 decoder timeout 时，销毁并重建 decoder session，回到 `waiting_keyframe`；算法实例和配置保留。
+  `EncodedPacket::is_keyframe` 只能作为媒体层提示，不能单独打开 gate：H.264 必须解析到 NAL type 5，H.265 必须解析到 IRAP NAL type 16--23；参数集状态可跨 access unit 累积，decoder reset/codec 切换/重连时必须清空。
+- “输入队列非空且 decoder 持续无输出”达到 decoder timeout 时，销毁并重建 decoder session，回到 `waiting_keyframe`；算法实例和配置保留。watchdog 必须跟踪已成功送入 decoder 但尚未产出帧的状态，即使编码队列已经被消费为空也必须唤醒 worker 执行 reset。
 - 只有媒体后端明确声明支持关键帧请求时才发送 PLI/FIR；不支持时记录 capability reason 并等待下一个 IDR，不能承诺固定 1 秒恢复。
 - 所有超时使用 monotonic clock；业务 `wall_time_ns` 不用于 watchdog。
 

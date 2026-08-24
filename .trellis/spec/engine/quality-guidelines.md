@@ -46,6 +46,7 @@ Sanitizer：
 - 已知色块 JPEG/YUV 和 CPU/vImage 期望像素；
 - Mock 正常包、额外导出符号包、校验和错误包、自测无回调/多回调/超时包；
 - 固定模型转换输入身份和 `.mlpackage` 入口文件校验工具脚本；
+- Engine fixture 的构建 asset target 必须每次同步 manifest 声明的全部文件（至少 manifest、config schema、test image 和动态库），不能只在 mock 动态库重新编译时复制静态资产；
 
 测试不得依赖公共互联网摄像头、开发者手工输入或真实 sleep。ZLMediaKit commit、构建选项和 test `config.ini` 必须固定。
 
@@ -67,6 +68,8 @@ make clean
 - macOS runner 必须把测试图转换成真实 `CVPixelBuffer` NV12 `av_frame_desc`，不能向 process 传伪造裸 RGB。
 - `make run` 打印结果并生成带 bbox/label/confidence 的 `result.jpg`；该可视化属于 runner/toolkit，不进入算法动态库生产路径。
 - `make benchmark` 预热后输出 preprocess/inference/postprocess/end-to-end 的 Avg/P50/P99 与持续 FPS，并记录 loops、输入尺寸、模型 digest 和运行平台。
+- `make asan` 同时启用 AddressSanitizer 和 UndefinedBehaviorSanitizer，并先运行包内 CTest，再运行真实 runner。
+- `make package` 必须生成与 zip 同名的 `<archive>.sha256` 外部摘要；zip validator 在解压前必须校验该摘要，并在成功安装目录写入 `package.sha256` 作为审计记录。
 - 从仓库外 `/tmp` 构建时，不允许读取父仓库；`otool -L`/`ldd` 不得出现 engine 库。
 
 ## 5. 安装 Validator 进程模型
@@ -119,7 +122,8 @@ macOS `fork` child 在 exec 前只能执行 async-signal-safe 操作。Linux 也
 - 每个公共 Make target 在干净 build dir 可运行；`configure` 可重复。
 - C11/AppleClang/aarch64 GCC ABI 编译；单导出和链接依赖检查。
 - ASan/UBSan/TSan 覆盖帧生命周期、队列、delegate、重连和 shutdown。
-- validator 全错误矩阵、崩溃、超时、进程组清理和 staging 清理测试。
+- 算法包测试必须覆盖 manifest 模型入口、C ABI 缺省/非法配置、self-test 回调契约，以及注入 `av_image_ops` 与本地 fallback 的像素一致性。
+- validator 测试必须覆盖缺失摘要、错误摘要、路径/类型错误、自测失败、崩溃、超时、进程组清理和 staging 清理。
 - 算法包 `/tmp` build/run/package、环境覆盖、result.jpg 像素非空和 benchmark 字段测试。
 - RTSP 60 秒解码之外，还必须重复执行断开、track 替换、停止、join 和析构。
 - E2E 固定输入，断言 event ID、告警类型、图片原子落盘、gRPC ACK 和重连对账。

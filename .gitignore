@@ -16,6 +16,9 @@
 !**/.env.template
 .claude/settings.local.json
 
+# Runtime data / generated artifacts
+/var/
+
 # Logs
 *.log
 logs/

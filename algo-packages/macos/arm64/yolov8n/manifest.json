@@ -1,0 +1,60 @@
+{
+  "manifest_version": 1,
+  "algorithm_id": "yolov8n",
+  "version": "1.0.0",
+  "name": "YOLOv8n Object Detection",
+  "description": "Ultralytics YOLOv8n object detection model powered by CoreML on Apple Silicon",
+  "algorithm_type": "object_detection",
+  "alarm_type_id": "object_detect",
+  "platform_id": "macos-arm64-coreml",
+  "min_adapter_version": "1.0.0",
+  "runtime_constraints": {
+    "min_os_version": "14.0"
+  },
+  "resource_profile": {
+    "min_free_memory_mb": 256,
+    "fps_tiers": [
+      {
+        "fps": 5,
+        "units": 60
+      },
+      {
+        "fps": 15,
+        "units": 150
+      },
+      {
+        "fps": 30,
+        "units": 300
+      }
+    ]
+  },
+  "entry_library": "lib/libyolov8n.dylib",
+  "config_schema_file": "config.schema.json",
+  "test_image_file": "testimage.jpg",
+  "self_test": {
+    "timeout_ms": 10000,
+    "input_mode": "test_image"
+  },
+  "files": [
+    {
+      "path": "lib/libyolov8n.dylib",
+      "kind": "library",
+      "sha256": "@LIBRARY_SHA256@"
+    },
+    {
+      "path": "config.schema.json",
+      "kind": "config_schema",
+      "sha256": "06734cc64c3617770a0ca45953f1989ec4e4732cc6d348c84e6c8f316f185d56"
+    },
+    {
+      "path": "testimage.jpg",
+      "kind": "test_image",
+      "sha256": "c02019c4979c191eb739ddd944445ef408dad5679acab6fd520ef9d434bfbc63"
+    },
+    {
+      "path": "model/yolov8n.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+      "kind": "model",
+      "sha256": "e43e5e204266e47013500a870444fd992b1f5150f6f0f6e6c5066c47f056cd25"
+    }
+  ]
+}

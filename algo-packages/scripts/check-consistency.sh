@@ -7,7 +7,11 @@ echo "[check-consistency] Verifying platform_id and vendor SDK integrity..."
 
 # Full vendored SDK surface: include + toolkit + cmake + VERSION
 sdk_full_hash() {
-    (cd "$1" && find . -type f \( -path './include/*' -o -path './toolkit/*' -o -path './cmake/*' -o -name 'VERSION' \) -exec shasum -a 256 {} + | sort | shasum -a 256 | awk '{print $1}')
+    local sha_cmd="sha256sum"
+    if command -v shasum >/dev/null 2>&1; then
+        sha_cmd="shasum -a 256"
+    fi
+    (cd "$1" && find . -type f \( -path './include/*' -o -path './toolkit/*' -o -path './cmake/*' -o -name 'VERSION' \) -exec ${sha_cmd} {} + | sort | ${sha_cmd} | awk '{print $1}')
 }
 
 UPSTREAM_SDK_HASH=$(sdk_full_hash "${REPO_ROOT}/sdk")

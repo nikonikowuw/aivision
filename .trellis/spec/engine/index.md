@@ -34,6 +34,7 @@
 开始实现前逐项确认：
 
 - [ ] 已读取目标规范和 task 的 PRD/Design/Implement；未决策项没有被当成默认实现。
+- [ ] 源码包含标准 Doxygen 文件头，业务代码、复杂状态机与并发队列包含清晰的中文注释。
 - [ ] 新 CMake target 符合 [目录边界矩阵](./directory-structure.md)。
 - [ ] ABI 变更同时更新 C 头、offset 断言、双编译器测试、版本与 vendored SDK。
 - [ ] 新 manifest/Proto/JSON 字段只有一个解析与校验所有者，没有多层复制契约。

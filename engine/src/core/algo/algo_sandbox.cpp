@@ -1,5 +1,6 @@
 #include "aivision/core/algo_sandbox.hpp"
 #include "aivision/algo.h"
+#include "aivision/utils/package_layout.hpp"
 
 #include <algorithm>
 #include <array>
@@ -244,7 +245,7 @@ bool safe_relative_path(const std::string& value) {
 }
 
 bool safe_identifier(const std::string& value) {
-    if (value.empty() || value.size() > 128) return false;
+    if (value.empty() || value == "." || value == ".." || value.size() > 128) return false;
     for (const unsigned char ch : value) {
         if (!(std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.')) return false;
     }
@@ -528,7 +529,13 @@ bool is_zip_path(const fs::path& path) {
 bool validate_package_tree(const fs::path& root, std::string& error) {
     std::error_code iterator_error;
     size_t entry_count = 0;
-    for (fs::recursive_directory_iterator it(root, iterator_error), end; it != end; it.increment(iterator_error)) {
+    fs::recursive_directory_iterator it(root, iterator_error);
+    if (iterator_error) {
+        error = "cannot inspect package directory";
+        return false;
+    }
+    const fs::recursive_directory_iterator end;
+    for (; it != end; it.increment(iterator_error)) {
         if (iterator_error) {
             error = "cannot inspect package directory";
             return false;
@@ -609,7 +616,8 @@ bool is_semver(const std::string& value) {
     return std::regex_match(value, pattern);
 }
 
-bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifest, std::string& error) {
+bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifest,
+                             std::string& library_name, std::string& error) {
     if (!manifest.is_object()) {
         error = "manifest must be an object";
         return false;
@@ -617,7 +625,7 @@ bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifes
     const std::set<std::string> allowed_top_level = {
         "manifest_version", "algorithm_id", "version", "name", "description", "algorithm_type",
         "alarm_type_id", "platform_id", "min_adapter_version", "runtime_constraints", "resource_profile",
-        "entry_library", "config_schema_file", "test_image_file", "self_test", "files"
+        "self_test"
     };
     for (const auto& item : manifest.items()) {
         if (!allowed_top_level.contains(item.key())) {
@@ -647,14 +655,10 @@ bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifes
     std::string alarm_type_id;
     std::string platform_id;
     std::string min_adapter_version;
-    std::string entry_library;
-    std::string config_schema_file;
-    std::string test_image_file;
     if (!required_string("algorithm_id", algorithm_id) || !required_string("version", version) ||
         !required_string("name", name) || !required_string("algorithm_type", algorithm_type) ||
         !required_string("alarm_type_id", alarm_type_id) || !required_string("platform_id", platform_id) ||
-        !required_string("min_adapter_version", min_adapter_version) || !required_string("entry_library", entry_library) ||
-        !required_string("config_schema_file", config_schema_file) || !required_string("test_image_file", test_image_file)) {
+        !required_string("min_adapter_version", min_adapter_version)) {
         return false;
     }
     if (algorithm_id.size() < 3 || algorithm_id.size() > 32 ||
@@ -718,71 +722,37 @@ bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifes
         return false;
     }
 
-    if (!safe_relative_path(entry_library) || !safe_relative_path(config_schema_file) ||
-        !safe_relative_path(test_image_file) || !fs::is_regular_file(root / config_schema_file) ||
-        !fs::is_regular_file(root / test_image_file)) {
-        error = "manifest entry, schema, or test image path is invalid";
-        return false;
-    }
-    try {
-        std::ifstream schema_input(root / config_schema_file);
-        const auto schema = nlohmann::json::parse(schema_input);
-        if (!schema.is_object() || schema.value("type", "") != "object" ||
-            !schema.contains("additionalProperties") || !schema.at("additionalProperties").is_boolean() ||
-            schema.at("additionalProperties") != false) {
-            error = "config schema must be an object with additionalProperties=false";
-            return false;
-        }
-    } catch (const std::exception& exception) {
-        error = std::string("config schema is invalid: ") + exception.what();
+    const fs::path test_image_path = root / "testimage.jpg";
+    if (!fs::is_regular_file(test_image_path)) {
+        error = "standard test image testimage.jpg is missing";
         return false;
     }
 
-    if (!manifest.contains("files") || !manifest.at("files").is_array() || manifest.at("files").size() < 3) {
-        error = "manifest files list is invalid";
+    aivision::utils::PackageLibraryEntry library_entry;
+    if (!aivision::utils::resolve_conventional_package_library(root, algorithm_id, library_entry, error)) {
         return false;
     }
-    std::set<std::string> paths;
-    size_t library_count = 0;
-    size_t schema_count = 0;
-    size_t test_image_count = 0;
-    std::string library_path;
-    for (const auto& file : manifest.at("files")) {
-        if (!file.is_object() || file.size() != 3 || !file.contains("path") || !file.contains("kind") ||
-            !file.contains("sha256") || !file.at("path").is_string() || !file.at("kind").is_string() ||
-            !file.at("sha256").is_string()) {
-            error = "manifest files entry is invalid";
+    library_name = library_entry.relative_path;
+
+    const fs::path config_schema_path = root / "config.schema.json";
+    if (fs::exists(config_schema_path)) {
+        if (!fs::is_regular_file(config_schema_path)) {
+            error = "config.schema.json is not a regular file";
             return false;
         }
-        const std::string path = file.at("path").get<std::string>();
-        const std::string kind = file.at("kind").get<std::string>();
-        const std::string expected = file.at("sha256").get<std::string>();
-        if (!safe_relative_path(path) || !paths.insert(path).second || !fs::is_regular_file(root / path) ||
-            (kind != "library" && kind != "config_schema" && kind != "test_image" && kind != "model") ||
-            expected.size() != 64 || lowercase(expected) != expected || sha256_file(root / path) != expected) {
-            error = "manifest file path, kind, or sha256 is invalid: " + path;
+        try {
+            std::ifstream schema_input(config_schema_path);
+            const auto schema = nlohmann::json::parse(schema_input);
+            if (!schema.is_object() || schema.value("type", "") != "object" ||
+                !schema.contains("additionalProperties") || !schema.at("additionalProperties").is_boolean() ||
+                schema.at("additionalProperties") != false) {
+                error = "config schema must be an object with additionalProperties=false";
+                return false;
+            }
+        } catch (const std::exception& exception) {
+            error = std::string("config schema is invalid: ") + exception.what();
             return false;
         }
-        if (kind == "library") {
-            ++library_count;
-            library_path = path;
-        } else if (kind == "config_schema") {
-            ++schema_count;
-            if (path != config_schema_file) {
-                error = "config_schema entry does not match config_schema_file";
-                return false;
-            }
-        } else if (kind == "test_image") {
-            ++test_image_count;
-            if (path != test_image_file) {
-                error = "test_image entry does not match test_image_file";
-                return false;
-            }
-        }
-    }
-    if (library_count != 1 || schema_count != 1 || test_image_count != 1 || library_path != entry_library) {
-        error = "manifest must contain exactly one library, schema, and test image entry";
-        return false;
     }
     return true;
 }
@@ -869,11 +839,10 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         result.manifest.algorithm_type = manifest.value("algorithm_type", "");
         result.manifest.alarm_type_id = manifest.value("alarm_type_id", "");
         result.manifest.min_engine_version = manifest.value("min_adapter_version", "1.0.0");
-        result.manifest.library_name = manifest.value("entry_library", "");
-        if (result.manifest.library_name.empty()) result.manifest.library_name = manifest.value("library_name", "");
+        result.manifest.library_name.clear();
         if (result.manifest.algorithm_id.empty() || result.manifest.version.empty() ||
             result.manifest.platform_id.empty() || result.manifest.algorithm_type.empty() ||
-            result.manifest.alarm_type_id.empty() || result.manifest.library_name.empty()) {
+            result.manifest.alarm_type_id.empty()) {
             result.error_stage = "manifest";
             result.error_message = "Required manifest fields are missing";
             return result;
@@ -883,11 +852,6 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
             result.error_message = "Only object_detection packages are supported by this engine";
             return result;
         }
-        if (!safe_relative_path(result.manifest.library_name)) {
-            result.error_stage = "manifest";
-            result.error_message = "Manifest entry library path is unsafe";
-            return result;
-        }
         if (!safe_identifier(result.manifest.algorithm_id) || !safe_identifier(result.manifest.version) ||
             !safe_identifier(result.manifest.platform_id)) {
             result.error_stage = "manifest";
@@ -895,7 +859,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
             return result;
         }
         std::string file_error;
-        if (!validate_manifest_files(working_dir, manifest, file_error)) {
+        if (!validate_manifest_files(working_dir, manifest, result.manifest.library_name, file_error)) {
             result.error_stage = "manifest";
             result.error_message = file_error;
             return result;
@@ -906,17 +870,10 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
-    fs::path test_image_path;
-    try {
-        test_image_path = manifest.value("test_image_file", std::string("testimage.jpg"));
-    } catch (const std::exception& error) {
+    const fs::path test_image_path = working_dir / "testimage.jpg";
+    if (!fs::is_regular_file(test_image_path)) {
         result.error_stage = "manifest";
-        result.error_message = std::string("Manifest test_image_file is invalid: ") + error.what();
-        return result;
-    }
-    if (!safe_relative_path(test_image_path.string()) || !fs::is_regular_file(working_dir / test_image_path)) {
-        result.error_stage = "manifest";
-        result.error_message = "Manifest test_image_file is invalid or missing";
+        result.error_message = "Standard test image testimage.jpg is invalid or missing";
         return result;
     }
 
@@ -1022,7 +979,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     test_frame.color_matrix = AV_COLOR_MAT_BT709;
     test_frame.color_range = AV_COLOR_RANGE_LIMITED;
     void* frame_owner = nullptr;
-    const std::string test_image_file = test_image_path.string();
+    const std::string test_image_file = "testimage.jpg";
     if (frame_factory && !frame_factory(working_dir.c_str(), test_image_file.c_str(), &test_frame, &frame_owner)) {
         abi->instance_destroy(instance);
         abi->library_close(library);

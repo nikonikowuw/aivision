@@ -68,9 +68,7 @@ public:
         m.cpu_usage_percent = 12.5f;
         m.memory_usage_percent = 35.0f;
         m.disk_usage_percent = 50.0f;
-        m.accelerator_usage_percent = 0.0f;
         m.accelerator_supported = false; // Mock doesn't have NPU
-        m.temperature_celsius = 0.0f;
         m.temperature_supported = false;
         return m;
     }

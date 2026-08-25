@@ -1,8 +1,8 @@
 #import <Foundation/Foundation.h>
 
 #include "manifest_loader.hpp"
+#include "aivision/utils/env.hpp"
 
-#include <algorithm>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -12,33 +12,97 @@ namespace fs = std::filesystem;
 namespace yolov8n {
 namespace {
 
-bool safe_relative_path(const fs::path& path) {
-    const std::string text = path.generic_string();
-    return !text.empty() && text != "." && !path.is_absolute() &&
-           text == path.lexically_normal().generic_string() &&
-           text.find('\\') == std::string::npos;
-}
-
-bool is_within_root(const fs::path& root, const fs::path& candidate) {
-    const std::string relative = candidate.lexically_relative(root).generic_string();
-    return !relative.empty() && relative != ".." && !relative.starts_with("../");
-}
-
 std::string foundation_error(NSError* error) {
     if (!error) return "unknown Foundation error";
     NSString* description = error.localizedDescription;
     return description.UTF8String ? description.UTF8String : "unknown Foundation error";
 }
 
-fs::path find_model_package(const fs::path& model_file) {
-    fs::path current = model_file;
-    while (!current.empty() && current != current.root_path()) {
-        if (current.extension() == ".mlpackage") return current;
-        const fs::path parent = current.parent_path();
-        if (parent == current) break;
-        current = parent;
+bool safe_relative_model_path(const std::string& value) {
+    if (value.empty() || value.find('\\') != std::string::npos || value.find('\0') != std::string::npos) return false;
+    const fs::path path(value);
+    if (path.is_absolute()) return false;
+    for (const auto& part : path) {
+        if (part == "." || part == ".." || part.empty()) return false;
     }
-    return {};
+    return true;
+}
+
+bool validate_model_path_components(const fs::path& root, const fs::path& candidate, std::string& error) {
+    const fs::path relative = candidate.lexically_relative(root);
+    if (relative.empty() || relative == "." || relative == ".." || relative.string().starts_with("../")) {
+        error = "model path is outside package root";
+        return false;
+    }
+    fs::path current = root;
+    std::error_code ec;
+    const auto root_status = fs::symlink_status(current, ec);
+    if (ec || fs::is_symlink(root_status)) {
+        error = "package root is not a regular directory";
+        return false;
+    }
+    for (const auto& component : relative) {
+        current /= component;
+        const auto status = fs::symlink_status(current, ec);
+        if (ec || fs::is_symlink(status)) {
+            error = "model path contains a symbolic link";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool validate_model_bundle(const fs::path& root, const fs::path& candidate,
+                           fs::path& canonical_candidate, std::string& error) {
+    if (!validate_model_path_components(root, candidate, error)) return false;
+    std::error_code ec;
+    const auto status = fs::symlink_status(candidate, ec);
+    if (ec || !fs::exists(status) || fs::is_symlink(status) || !fs::is_directory(status)) {
+        error = "model package is missing or not a regular directory";
+        return false;
+    }
+    canonical_candidate = fs::weakly_canonical(candidate, ec);
+    if (ec) {
+        error = "cannot canonicalize model package";
+        return false;
+    }
+    const fs::path canonical_root = fs::weakly_canonical(root, ec);
+    if (ec) {
+        error = "cannot canonicalize package root";
+        return false;
+    }
+    const std::string relative = canonical_candidate.lexically_relative(canonical_root).generic_string();
+    if (relative.empty() || relative == ".." || relative.rfind("../", 0) == 0) {
+        error = "model package escapes package root";
+        return false;
+    }
+
+    std::error_code iterator_error;
+    fs::recursive_directory_iterator it(candidate, iterator_error);
+    if (iterator_error) {
+        error = "cannot inspect model package";
+        return false;
+    }
+    for (const fs::recursive_directory_iterator end; it != end; it.increment(iterator_error)) {
+        if (iterator_error) {
+            error = "cannot inspect model package";
+            return false;
+        }
+        const auto child_status = it->symlink_status(iterator_error);
+        if (iterator_error || fs::is_symlink(child_status) ||
+            (!fs::is_directory(child_status) && !fs::is_regular_file(child_status))) {
+            error = "model package contains an unsafe entry";
+            return false;
+        }
+    }
+
+    const fs::path model_file = candidate / "Data/com.apple.CoreML/model.mlmodel";
+    const auto model_file_status = fs::symlink_status(model_file, ec);
+    if (ec || fs::is_symlink(model_file_status) || !fs::is_regular_file(model_file_status)) {
+        error = "model package is missing Data/com.apple.CoreML/model.mlmodel";
+        return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -70,61 +134,72 @@ bool resolve_manifest_model_path(const std::string& package_root,
                 error = "manifest.json must contain a JSON object: " + foundation_error(json_error);
                 return false;
             }
-            NSDictionary* manifest = static_cast<NSDictionary*>(raw_manifest);
-            id raw_files = [manifest objectForKey:@"files"];
-            if (![raw_files isKindOfClass:[NSArray class]]) {
-                error = "manifest.files must be an array";
+            const fs::path env_path = root / ".env";
+            std::error_code env_status_error;
+            const auto env_status = fs::symlink_status(env_path, env_status_error);
+            if (env_status_error != std::errc::no_such_file_or_directory && env_status_error) {
+                error = "cannot inspect package .env";
                 return false;
             }
-
-            std::vector<fs::path> candidates;
-            uint32_t model_entry_count = 0;
-            for (id raw_entry in static_cast<NSArray*>(raw_files)) {
-                if (![raw_entry isKindOfClass:[NSDictionary class]]) {
-                    error = "manifest.files contains a non-object entry";
-                    return false;
-                }
-                NSDictionary* entry = static_cast<NSDictionary*>(raw_entry);
-                NSString* kind = [entry objectForKey:@"kind"];
-                if (![kind isKindOfClass:[NSString class]] || ![kind isEqualToString:@"model"]) continue;
-
-                ++model_entry_count;
-                NSString* relative_ns_path = [entry objectForKey:@"path"];
-                if (![relative_ns_path isKindOfClass:[NSString class]] || !relative_ns_path.UTF8String) {
-                    error = "manifest model path is invalid";
-                    return false;
-                }
-                const fs::path relative_path = fs::path(relative_ns_path.UTF8String);
-                if (!safe_relative_path(relative_path)) {
-                    error = "manifest model path is unsafe";
-                    return false;
-                }
-
-                const fs::path model_file = root / relative_path;
-                if (fs::is_symlink(model_file) || !fs::is_regular_file(model_file)) {
-                    error = "manifest model file is missing or not regular: " + relative_path.generic_string();
-                    return false;
-                }
-                const fs::path model_package = find_model_package(model_file);
-                if (model_package.empty() || fs::is_symlink(model_package) || !fs::is_directory(model_package)) {
-                    error = "manifest model entry is not inside an .mlpackage directory";
-                    return false;
-                }
-                const fs::path canonical_package = fs::weakly_canonical(model_package);
-                if (!is_within_root(root, canonical_package)) {
-                    error = "manifest model package escapes package root";
-                    return false;
-                }
-                candidates.push_back(canonical_package);
-            }
-
-            if (model_entry_count != 1 || candidates.size() != 1) {
-                error = model_entry_count == 0
-                    ? "manifest must declare exactly one model file"
-                    : "manifest must declare exactly one model entry";
+            if (!env_status_error && (!fs::exists(env_status) || fs::is_symlink(env_status) ||
+                                      !fs::is_regular_file(env_status))) {
+                error = ".env is not a regular file";
                 return false;
             }
-            model_path = candidates.front().string();
+            const auto local_env = aivision::utils::EnvReader::load_file(env_path.string());
+            const auto model_path_value = local_env.find("MODEL_PATH");
+            fs::path canonical_package;
+            if (model_path_value != local_env.end() && !model_path_value->second.empty()) {
+                if (!safe_relative_model_path(model_path_value->second) ||
+                    fs::path(model_path_value->second).extension() != ".mlpackage") {
+                    error = "MODEL_PATH must identify a safe relative .mlpackage path";
+                    return false;
+                }
+                if (!validate_model_bundle(root, root / model_path_value->second,
+                                            canonical_package, error)) {
+                    return false;
+                }
+            } else {
+                const fs::path model_root = root / "model";
+                std::error_code iterator_error;
+                const auto model_root_status = fs::symlink_status(model_root, iterator_error);
+                if (iterator_error || !fs::exists(model_root_status) || fs::is_symlink(model_root_status) ||
+                    !fs::is_directory(model_root_status)) {
+                    error = "model directory is missing or not a regular directory";
+                    return false;
+                }
+
+                std::vector<fs::path> candidates;
+                fs::directory_iterator it(model_root, iterator_error);
+                if (iterator_error) {
+                    error = "cannot inspect model directory";
+                    return false;
+                }
+                const fs::directory_iterator end;
+                for (; it != end; it.increment(iterator_error)) {
+                    if (iterator_error) {
+                        error = "cannot inspect model directory";
+                        return false;
+                    }
+                    const fs::path candidate = it->path();
+                    const auto candidate_status = it->symlink_status(iterator_error);
+                    if (iterator_error || fs::is_symlink(candidate_status)) {
+                        error = "model directory contains a symbolic link";
+                        return false;
+                    }
+                    if (candidate.extension() == ".mlpackage") {
+                        candidates.push_back(candidate);
+                    }
+                }
+                if (candidates.size() != 1) {
+                    error = candidates.empty()
+                        ? "model directory must contain exactly one .mlpackage"
+                        : "model directory contains more than one .mlpackage";
+                    return false;
+                }
+                if (!validate_model_bundle(root, candidates.front(), canonical_package, error)) return false;
+            }
+            model_path = canonical_package.string();
             return true;
         } catch (const std::exception& exception) {
             error = std::string("failed to resolve manifest model: ") + exception.what();

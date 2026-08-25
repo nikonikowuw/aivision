@@ -98,6 +98,17 @@ if(BUILD_TESTING)
     )
     add_test(NAME yolov8n_preprocess_tests COMMAND yolov8n_preprocess_tests)
 
+    add_executable(yolov8n_manifest_loader_tests
+        tests/manifest_loader_tests.mm
+        src/core/manifest_loader.mm)
+    target_compile_options(yolov8n_manifest_loader_tests PRIVATE ${ALGO_WARNING_FLAGS} -fobjc-arc)
+    target_include_directories(yolov8n_manifest_loader_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/toolkit/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(yolov8n_manifest_loader_tests PRIVATE "-framework Foundation")
+    add_test(NAME yolov8n_manifest_loader_tests COMMAND yolov8n_manifest_loader_tests)
+
     add_executable(yolov8n_abi_tests tests/abi_tests.cpp)
     target_compile_options(yolov8n_abi_tests PRIVATE ${ALGO_WARNING_FLAGS})
     target_compile_definitions(yolov8n_abi_tests PRIVATE

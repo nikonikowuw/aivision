@@ -7,7 +7,7 @@ add_library(mock_algo_fixture SHARED
 )
 set_target_properties(mock_algo_fixture PROPERTIES
     PREFIX "lib"
-    OUTPUT_NAME "mock_algo"
+    OUTPUT_NAME "mock-detector"
     SUFFIX ".dylib"
     LIBRARY_OUTPUT_DIRECTORY "${MOCK_FIXTURE_LIB_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${MOCK_FIXTURE_LIB_DIR}"

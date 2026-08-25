@@ -55,9 +55,7 @@ public:
 
         update_cpu_usage(metrics);
         metrics.accelerator_supported = false;
-        metrics.accelerator_usage_percent = 0.0f;
         metrics.temperature_supported = false;
-        metrics.temperature_celsius = 0.0f;
         return metrics;
     }
 

@@ -2,6 +2,7 @@
 #include "aivision/core/algo_sandbox.hpp"
 #include "aivision/core/algo_instance.hpp"
 #include "aivision/core/frame_pool.hpp"
+#include "aivision/core/task_scheduler.hpp"
 #include "aivision/core/uds_ipc.hpp"
 #include "aivision/core/resource_ledger.hpp"
 #include "aivision/platform/mock_platform.hpp"
@@ -9,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <cmath>
 #include <filesystem>
 #include <thread>
 
@@ -40,7 +42,7 @@ public:
 };
 
 TEST(AlgorithmInstanceTest, BridgesResultCallback) {
-    const std::filesystem::path library_path = std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "lib/libmock_algo.dylib";
+    const std::filesystem::path library_path = std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib";
     void* library = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     ASSERT_NE(library, nullptr);
     auto get_abi = reinterpret_cast<av_algo_get_abi_fn>(dlsym(library, AV_ALGO_GET_ABI_SYMBOL));
@@ -135,6 +137,17 @@ TEST(UdsServerTest, AppliesInstalledPackageRevision) {
     aivision::core::UdsServer server("/tmp/aivision-test-engine.sock", adapter, nullptr);
     ASSERT_TRUE(server.start());
 
+    aivision::v1::DesiredState invalid_package;
+    invalid_package.set_revision(1);
+    auto* invalid_package_ref = invalid_package.add_active_package_versions();
+    invalid_package_ref->set_algorithm_id("..");
+    invalid_package_ref->set_version("1.0.0");
+    aivision::v1::ApplyDesiredStateResponse invalid_response;
+    ASSERT_TRUE(server.apply_desired_state(invalid_package, &invalid_response));
+    EXPECT_EQ(invalid_response.code(), "RECONCILE_FAILED");
+    ASSERT_EQ(invalid_response.results_size(), 1);
+    EXPECT_EQ(invalid_response.results(0).code(), "PACKAGE_ID_INVALID");
+
     aivision::v1::DesiredState desired;
     desired.set_revision(1);
     auto* package = desired.add_active_package_versions();
@@ -145,13 +158,61 @@ TEST(UdsServerTest, AppliesInstalledPackageRevision) {
     EXPECT_TRUE(response.code().empty()) << response.error_message();
     EXPECT_EQ(response.applied_revision(), 1);
 
-    aivision::v1::ApplyDesiredStateResponse stale_response;
-    ASSERT_TRUE(server.apply_desired_state(desired, &stale_response));
-    EXPECT_EQ(stale_response.code(), "STALE_REVISION");
+    aivision::v1::ApplyDesiredStateResponse duplicate_response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &duplicate_response));
+    EXPECT_TRUE(duplicate_response.code().empty()) << duplicate_response.error_message();
+    EXPECT_EQ(duplicate_response.applied_revision(), 1);
+
+    auto conflicting = desired;
+    conflicting.mutable_active_package_versions(0)->set_version("2.0.0");
+    aivision::v1::ApplyDesiredStateResponse conflict_response;
+    ASSERT_TRUE(server.apply_desired_state(conflicting, &conflict_response));
+    EXPECT_EQ(conflict_response.code(), "STALE_REVISION");
     server.stop();
     ::unsetenv("AIVISION_PACKAGE_DIR");
 }
 
+TEST(UdsServerTest, RollsBackRuntimeWhenDesiredStateItemFails) {
+    const std::string package_dir = "var/rollback-packages";
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::create_directories(package_dir + "/mock-detector");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        AIVISION_FIXTURE_PACKAGE_DIR,
+        package_dir + "/mock-detector/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    ASSERT_EQ(::setenv("AIVISION_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+
+    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = aivision::platform::PlatformRegistry::instance();
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    aivision::core::UdsServer server("/tmp/aivision-test-rollback.sock", adapter, backend);
+    ASSERT_TRUE(server.start());
+
+    aivision::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* task = desired.add_tasks();
+    task->set_camera_id("rollback-camera");
+    task->set_rtsp_url("rtsp://unused");
+    task->set_enabled(true);
+    auto* package = desired.add_active_package_versions();
+    package->set_algorithm_id("mock-detector");
+    package->set_version("missing");
+    aivision::v1::ApplyDesiredStateResponse response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &response));
+    EXPECT_EQ(response.code(), "RECONCILE_FAILED");
+    ASSERT_GE(response.results_size(), 2);
+    EXPECT_EQ(response.results(0).code(), "RECONCILE_ROLLED_BACK");
+    EXPECT_EQ(aivision::core::TaskScheduler::instance().get_task("rollback-camera"), nullptr);
+
+    server.stop();
+    ::unsetenv("AIVISION_PACKAGE_DIR");
+    std::filesystem::remove_all(package_dir);
+}
 #if defined(AIVISION_RUN_PACKAGE_RPC_TEST)
 TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     const std::string package_dir = "var/rpc-packages";
@@ -168,6 +229,18 @@ TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     auto channel = grpc::CreateChannel("unix:///tmp/aivision-test-package.sock",
                                        grpc::InsecureChannelCredentials());
     auto stub = aivision::v1::EngineService::NewStub(channel);
+
+    aivision::v1::QueryMetricsRequest metrics_request;
+    aivision::v1::QueryMetricsResponse metrics_response;
+    grpc::ClientContext metrics_context;
+    metrics_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    ASSERT_TRUE(stub->QueryMetrics(&metrics_context, metrics_request, &metrics_response).ok());
+    ASSERT_TRUE(metrics_response.code().empty()) << metrics_response.error_message();
+    EXPECT_FALSE(metrics_response.telemetry().accelerator_usage_supported());
+    EXPECT_TRUE(std::isnan(metrics_response.telemetry().accelerator_usage_percent()));
+    EXPECT_FALSE(metrics_response.telemetry().temperature_supported());
+    EXPECT_TRUE(std::isnan(metrics_response.telemetry().temperature_celsius()));
+
     aivision::v1::InstallPackageRequest install_request;
     install_request.set_package_path(AIVISION_FIXTURE_PACKAGE_DIR);
     aivision::v1::InstallPackageResponse install_response;
@@ -178,6 +251,36 @@ TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     EXPECT_EQ(install_response.algorithm_id(), "mock-detector");
     EXPECT_TRUE(std::filesystem::exists(package_dir + "/mock-detector/1.0.0/manifest.json"));
 
+    aivision::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* active_package = desired.add_active_package_versions();
+    active_package->set_algorithm_id("mock-detector");
+    active_package->set_version("1.0.0");
+    auto* disabled_reference = desired.add_instances();
+    disabled_reference->set_instance_id("disabled-reference");
+    disabled_reference->set_camera_id("unused-camera");
+    disabled_reference->set_algorithm_id("mock-detector");
+    disabled_reference->set_algorithm_version("1.0.0");
+    disabled_reference->set_enabled(false);
+    aivision::v1::ApplyDesiredStateResponse desired_response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &desired_response));
+    ASSERT_TRUE(desired_response.code().empty()) << desired_response.error_message();
+
+    aivision::v1::UninstallPackageRequest protected_uninstall_request;
+    protected_uninstall_request.set_algorithm_id("mock-detector");
+    protected_uninstall_request.set_version("1.0.0");
+    aivision::v1::UninstallPackageResponse protected_uninstall_response;
+    grpc::ClientContext protected_uninstall_context;
+    protected_uninstall_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    ASSERT_TRUE(stub->UninstallPackage(&protected_uninstall_context, protected_uninstall_request,
+                                       &protected_uninstall_response).ok());
+    EXPECT_EQ(protected_uninstall_response.code(), "PACKAGE_IN_USE");
+
+    aivision::v1::DesiredState clear_desired;
+    clear_desired.set_revision(2);
+    aivision::v1::ApplyDesiredStateResponse clear_response;
+    ASSERT_TRUE(server.apply_desired_state(clear_desired, &clear_response));
+    ASSERT_TRUE(clear_response.code().empty()) << clear_response.error_message();
     aivision::v1::UninstallPackageRequest uninstall_request;
     uninstall_request.set_algorithm_id("mock-detector");
     uninstall_request.set_version("1.0.0");

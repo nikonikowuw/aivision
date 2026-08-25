@@ -6,6 +6,7 @@
 #include "aivision/core/task_scheduler.hpp"
 #include "aivision/core/telemetry_collector.hpp"
 #include "aivision/platform/platform_api.hpp"
+#include "aivision/utils/package_layout.hpp"
 
 #include <cerrno>
 #include <atomic>
@@ -19,6 +20,7 @@
 #include <dlfcn.h>
 #include <fstream>
 #include <cstdlib>
+#include <limits>
 #include <mutex>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -40,7 +42,7 @@ std::string env_or_default(const char* name, const char* fallback) {
 }
 
 bool safe_package_component(const std::string& value) {
-    if (value.empty() || value.size() > 128) return false;
+    if (value.empty() || value == "." || value == ".." || value.size() > 128) return false;
     for (const unsigned char ch : value) {
         if (!(std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.')) return false;
     }
@@ -50,17 +52,6 @@ bool safe_package_component(const std::string& value) {
 fs::path package_root() {
     return fs::path(env_or_default("AIVISION_PACKAGE_DIR", "var/packages"));
 }
-
-bool safe_package_relative(const std::string& value) {
-    if (value.empty() || value.find('\\') != std::string::npos) return false;
-    const fs::path path(value);
-    if (path.is_absolute()) return false;
-    for (const auto& part : path) {
-        if (part.empty() || part == "." || part == "..") return false;
-    }
-    return true;
-}
-
 
 bool write_active_version(const std::string& algorithm_id, const std::string& version, std::string& error) {
     const fs::path active_dir = package_root() / "active";
@@ -89,6 +80,140 @@ bool write_active_version(const std::string& algorithm_id, const std::string& ve
         fs::remove(temporary, ec);
         error = "cannot activate package version: " + ec.message();
         return false;
+    }
+    return true;
+}
+
+bool read_active_version(const std::string& algorithm_id, std::string& version, bool& present, std::string& error) {
+    version.clear();
+    present = false;
+    error.clear();
+    const fs::path marker_path = package_root() / "active" / (algorithm_id + ".version");
+    std::error_code ec;
+    const auto status = fs::symlink_status(marker_path, ec);
+    if (ec == std::errc::no_such_file_or_directory) return true;
+    if (ec) {
+        error = "cannot inspect active package marker: " + ec.message();
+        return false;
+    }
+    if (!fs::exists(status)) return true;
+    if (fs::is_symlink(status) || !fs::is_regular_file(status)) {
+        error = "active package marker is not a regular file";
+        return false;
+    }
+    std::ifstream input(marker_path);
+    if (!input || !std::getline(input, version)) {
+        error = "active package marker is unreadable";
+        return false;
+    }
+    while (!version.empty() && (version.back() == '\r' || version.back() == '\n' ||
+                                version.back() == ' ' || version.back() == '\t')) {
+        version.pop_back();
+    }
+    size_t start = 0;
+    while (start < version.size() && (version[start] == ' ' || version[start] == '\t')) {
+        ++start;
+    }
+    if (start > 0) {
+        version = version.substr(start);
+    }
+    if (version.empty()) {
+        error = "active package marker is unreadable";
+        return false;
+    }
+    present = true;
+    return true;
+}
+
+bool restore_active_version(const std::string& algorithm_id, const std::string& version,
+                            bool present, std::string& error) {
+    if (present) return write_active_version(algorithm_id, version, error);
+    const fs::path marker_path = package_root() / "active" / (algorithm_id + ".version");
+    std::error_code ec;
+    fs::remove(marker_path, ec);
+    if (ec) {
+        error = "cannot remove active package marker: " + ec.message();
+        return false;
+    }
+    return true;
+}
+
+bool snapshot_active_versions(std::unordered_map<std::string, std::string>& versions, std::string& error) {
+    versions.clear();
+    const fs::path active_dir = package_root() / "active";
+    std::error_code ec;
+    const auto status = fs::symlink_status(active_dir, ec);
+    if (ec == std::errc::no_such_file_or_directory) return true;
+    if (ec) {
+        error = "cannot inspect active package directory: " + ec.message();
+        return false;
+    }
+    if (!fs::exists(status)) return true;
+    if (fs::is_symlink(status) || !fs::is_directory(status)) {
+        error = "active package directory is not a regular directory";
+        return false;
+    }
+    fs::directory_iterator it(active_dir, ec);
+    if (ec) {
+        error = "cannot inspect active package directory: " + ec.message();
+        return false;
+    }
+    const fs::directory_iterator end;
+    for (; it != end; it.increment(ec)) {
+        if (ec) {
+            error = "cannot inspect active package directory: " + ec.message();
+            return false;
+        }
+        const fs::path marker = it->path();
+        if (marker.extension() != ".version") continue;
+        const auto marker_status = it->symlink_status(ec);
+        if (ec || fs::is_symlink(marker_status) || !fs::is_regular_file(marker_status)) {
+            error = "active package marker is not a regular file";
+            return false;
+        }
+        const std::string algorithm_id = marker.stem().string();
+        if (!safe_package_component(algorithm_id)) {
+            error = "active package marker has an unsafe name";
+            return false;
+        }
+        std::string version;
+        bool present = false;
+        if (!read_active_version(algorithm_id, version, present, error)) return false;
+        if (present) versions.emplace(algorithm_id, std::move(version));
+    }
+    return true;
+}
+
+bool restore_active_versions(const std::unordered_map<std::string, std::string>& versions,
+                             std::string& error) {
+    const fs::path active_dir = package_root() / "active";
+    std::error_code ec;
+    fs::create_directories(active_dir, ec);
+    if (ec) {
+        error = "cannot create active package directory: " + ec.message();
+        return false;
+    }
+    fs::directory_iterator it(active_dir, ec);
+    if (ec) {
+        error = "cannot inspect active package directory: " + ec.message();
+        return false;
+    }
+    const fs::directory_iterator end;
+    for (; it != end; it.increment(ec)) {
+        if (ec) {
+            error = "cannot inspect active package directory: " + ec.message();
+            return false;
+        }
+        if (it->path().extension() == ".version") {
+            fs::remove(it->path(), ec);
+            if (ec) {
+                error = "cannot remove active package marker: " + ec.message();
+                return false;
+            }
+        }
+    }
+    for (const auto& [algorithm_id, version] : versions) {
+        if (!write_active_version(algorithm_id, version, error)) return false;
     }
     return true;
 }
@@ -168,10 +293,39 @@ public:
         const auto& desired = *desired_ptr;
         std::lock_guard<std::mutex> reconcile_lock(reconcile_mutex_);
         const uint64_t current_revision = applied_revision_.load(std::memory_order_acquire);
-        if (desired.revision() <= current_revision) {
+        const std::string desired_serialized = desired.SerializeAsString();
+        if (desired.revision() < current_revision ||
+            (desired.revision() == current_revision && desired_serialized != applied_desired_state_serialized_)) {
             response->set_applied_revision(current_revision);
             response->set_code("STALE_REVISION");
-            response->set_error_message("desired state revision is not newer than the applied revision");
+            response->set_error_message("desired state revision is stale or conflicts with the applied state");
+            return grpc::Status::OK;
+        }
+        if (desired.revision() == current_revision && desired_serialized == applied_desired_state_serialized_) {
+            response->set_applied_revision(current_revision);
+            if (runtime_degraded_) {
+                RuntimeSnapshot degraded_snapshot;
+                std::string degraded_snapshot_error;
+                if (!snapshot_runtime_state(degraded_snapshot, degraded_snapshot_error)) {
+                    degraded_snapshot.task_configs = task_configs_;
+                    degraded_snapshot.instance_configs = instance_configs_;
+                    degraded_snapshot.loaded_packages = loaded_packages_;
+                }
+                report_runtime_degraded(
+                    degraded_snapshot, desired,
+                    "runtime remains degraded after desired-state rollback failure", response);
+                response->set_code("RUNTIME_DEGRADED");
+                response->set_error_message("desired state is unchanged, but the runtime remains degraded");
+            }
+            return grpc::Status::OK;
+        }
+
+        RuntimeSnapshot snapshot;
+        std::string snapshot_error;
+        if (!snapshot_runtime_state(snapshot, snapshot_error)) {
+            response->set_applied_revision(current_revision);
+            response->set_code("RECONCILE_SNAPSHOT_FAILED");
+            response->set_error_message(snapshot_error);
             return grpc::Status::OK;
         }
 
@@ -195,6 +349,7 @@ public:
         for (const auto& camera_id : TaskScheduler::instance().task_ids()) {
             if (desired_task_ids.find(camera_id) != desired_task_ids.end()) continue;
             TaskScheduler::instance().stop_task(camera_id);
+            task_configs_.erase(camera_id);
             auto* item = response->add_results();
             item->set_kind(aivision::v1::RECONCILE_ITEM_KIND_TASK);
             item->set_id(camera_id);
@@ -251,18 +406,42 @@ public:
             }
         }
         if (failed) {
+            std::string rollback_error;
+            const bool rolled_back = restore_runtime_state(snapshot, rollback_error);
+            for (int index = 0; index < response->results_size(); ++index) {
+                auto* item = response->mutable_results(index);
+                if (item->status() == aivision::v1::RECONCILE_ITEM_STATUS_OK) {
+                    item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+                    item->set_code("RECONCILE_ROLLED_BACK");
+                    item->set_error_message("item was rolled back after another desired-state item failed");
+                }
+            }
             response->set_applied_revision(current_revision);
-            response->set_code("RECONCILE_FAILED");
-            response->set_error_message("one or more desired-state items failed");
+            if (rolled_back) {
+                response->set_code("RECONCILE_FAILED");
+                response->set_error_message("one or more desired-state items failed; previous state was restored");
+            } else {
+                report_runtime_degraded(
+                    snapshot, desired,
+                    "desired-state application failed and previous runtime state could not be restored", response);
+                response->set_code("RECONCILE_ROLLBACK_FAILED");
+                response->set_error_message("desired-state application failed and previous runtime state could not be restored: " +
+                                            rollback_error);
+            }
             return grpc::Status::OK;
         }
         applied_revision_.store(desired.revision(), std::memory_order_release);
+        applied_desired_state_ = desired;
+        applied_desired_state_serialized_ = desired_serialized;
+        runtime_degraded_ = false;
+        degraded_instance_ids_.clear();
         response->set_applied_revision(desired.revision());
         return grpc::Status::OK;
     }
 
     grpc::Status UpsertTask(grpc::ServerContext*, const aivision::v1::UpsertTaskRequest* request,
                             aivision::v1::UpsertTaskResponse* response) override {
+        std::lock_guard<std::mutex> reconcile_lock(reconcile_mutex_);
         if (!request || !request->has_task()) {
             response->set_code("INVALID_ARG");
             response->set_error_message("task is required");
@@ -359,6 +538,15 @@ public:
             response->set_error_message("target package version is not installed");
             return grpc::Status::OK;
         }
+        std::string previous_active_version;
+        bool had_previous_active_version = false;
+        std::string active_read_error;
+        if (!read_active_version(request->algorithm_id(), previous_active_version,
+                                 had_previous_active_version, active_read_error)) {
+            response->set_code("PACKAGE_ACTIVATION_FAILED");
+            response->set_error_message(active_read_error);
+            return grpc::Status::OK;
+        }
         std::string error;
         if (!write_active_version(request->algorithm_id(), request->target_version(), error)) {
             response->set_code("PACKAGE_ACTIVATION_FAILED");
@@ -367,8 +555,21 @@ public:
             const std::string restart_error = restart_package_instances(
                 request->algorithm_id(), request->target_version());
             if (!restart_error.empty()) {
-                response->set_code("PACKAGE_RESTART_FAILED");
-                response->set_error_message(restart_error);
+                std::string restore_error;
+                const bool restored = restore_active_version(
+                    request->algorithm_id(), previous_active_version, had_previous_active_version, restore_error);
+                if (!restored) {
+                    mark_package_degraded_for_algorithm(
+                        request->algorithm_id(), "active package marker restore failed: " + restore_error);
+                }
+                if (!restored || restart_error == "PACKAGE_ROLLBACK_FAILED") {
+                    response->set_code("PACKAGE_ROLLBACK_FAILED");
+                    response->set_error_message(restart_error +
+                                                (restored ? "" : "; active marker restore failed: " + restore_error));
+                } else {
+                    response->set_code("PACKAGE_RESTART_FAILED");
+                    response->set_error_message(restart_error);
+                }
             }
         }
         return grpc::Status::OK;
@@ -383,9 +584,10 @@ public:
             response->set_error_message("algorithm_id and version are required and must be safe");
             return grpc::Status::OK;
         }
-        if (AlgoManager::instance().has_package_reference(request->algorithm_id(), request->version())) {
+        if (AlgoManager::instance().has_package_reference(request->algorithm_id(), request->version()) ||
+            has_desired_package_reference(request->algorithm_id(), request->version())) {
             response->set_code("PACKAGE_IN_USE");
-            response->set_error_message("package version is referenced by a running instance");
+            response->set_error_message("package version is referenced by the applied desired state or a running instance");
             return grpc::Status::OK;
         }
         const fs::path target = package_root() / request->algorithm_id() / request->version();
@@ -528,13 +730,84 @@ public:
         telemetry->set_cpu_usage_percent(metrics.cpu_usage_percent);
         telemetry->set_memory_usage_percent(metrics.memory_usage_percent);
         telemetry->set_disk_usage_percent(metrics.disk_usage_percent);
-        telemetry->set_accelerator_usage_percent(metrics.accelerator_usage_percent);
+        const float unsupported_metric = std::numeric_limits<float>::quiet_NaN();
+        telemetry->set_accelerator_usage_percent(
+            metrics.accelerator_supported ? metrics.accelerator_usage_percent : unsupported_metric);
         telemetry->set_accelerator_usage_supported(metrics.accelerator_supported);
-        telemetry->set_temperature_celsius(metrics.temperature_celsius);
+        telemetry->set_temperature_celsius(
+            metrics.temperature_supported ? metrics.temperature_celsius : unsupported_metric);
         telemetry->set_temperature_supported(metrics.temperature_supported);
         return grpc::Status::OK;
     }
 private:
+    struct RuntimeSnapshot {
+        std::unordered_map<std::string, aivision::v1::CameraTaskConfig> task_configs;
+        std::unordered_map<std::string, aivision::v1::AlgorithmInstanceConfig> instance_configs;
+        std::unordered_map<std::string, std::shared_ptr<LoadedPackage>> loaded_packages;
+        std::unordered_map<std::string, std::string> active_versions;
+    };
+
+    bool snapshot_runtime_state(RuntimeSnapshot& snapshot, std::string& error) const {
+        snapshot.task_configs = task_configs_;
+        snapshot.instance_configs = instance_configs_;
+        snapshot.loaded_packages = loaded_packages_;
+        return snapshot_active_versions(snapshot.active_versions, error);
+    }
+
+    void clear_runtime_state() {
+        std::unordered_set<std::string> instance_ids;
+        for (const auto& instance_id : AlgoManager::instance().instance_ids()) {
+            instance_ids.insert(instance_id);
+        }
+        for (const auto& [instance_id, resource] : instance_resources_) {
+            (void)resource;
+            instance_ids.insert(instance_id);
+        }
+        for (const auto& instance_id : instance_ids) remove_instance(instance_id, false);
+        for (const auto& camera_id : TaskScheduler::instance().task_ids()) {
+            TaskScheduler::instance().stop_task(camera_id);
+        }
+        TaskScheduler::instance().stop_all();
+        ResourceLedger::instance().clear();
+        task_configs_.clear();
+        instance_configs_.clear();
+        instance_resources_.clear();
+        loaded_packages_.clear();
+    }
+
+    bool restore_runtime_state(const RuntimeSnapshot& snapshot, std::string& error) {
+        clear_runtime_state();
+        loaded_packages_ = snapshot.loaded_packages;
+        bool restored = true;
+        const auto remember_error = [&](const std::string& message) {
+            if (error.empty()) {
+                error = message;
+            } else {
+                error += "; " + message;
+            }
+            restored = false;
+        };
+        error.clear();
+        for (const auto& [camera_id, config] : snapshot.task_configs) {
+            (void)camera_id;
+            if (const std::string task_error = upsert_task(config); !task_error.empty()) {
+                remember_error("cannot restore task " + config.camera_id() + ": " + task_error);
+            }
+        }
+        for (const auto& [instance_id, config] : snapshot.instance_configs) {
+            (void)instance_id;
+            if (const std::string instance_error = reconcile_instance(config); !instance_error.empty()) {
+                remember_error("cannot restore instance " + config.instance_id() + ": " + instance_error);
+            }
+        }
+        std::string marker_error;
+        if (!restore_active_versions(snapshot.active_versions, marker_error)) {
+            remember_error("cannot restore active package markers: " + marker_error);
+        }
+        if (!restored) clear_runtime_state();
+        return restored;
+    }
+
     std::shared_ptr<LoadedPackage> load_package(const std::string& algorithm_id,
                                                  const std::string& version,
                                                  std::string& error) {
@@ -560,10 +833,9 @@ private:
             error = std::string("PACKAGE_MANIFEST_INVALID: ") + exception.what();
             return nullptr;
         }
-        std::string entry_library = manifest.value("entry_library", "");
-        if (entry_library.empty()) entry_library = manifest.value("library_name", "");
+        const std::string manifest_algorithm_id = manifest.value("algorithm_id", "");
         const std::string platform_id = manifest.value("platform_id", "");
-        if (!safe_package_relative(entry_library) || platform_id.empty()) {
+        if (manifest_algorithm_id != algorithm_id || !safe_package_component(manifest_algorithm_id) || platform_id.empty()) {
             error = "PACKAGE_MANIFEST_INVALID";
             return nullptr;
         }
@@ -572,7 +844,16 @@ private:
             error = "PLATFORM_MISMATCH";
             return nullptr;
         }
-        const fs::path library_path = root / entry_library;
+        aivision::utils::PackageLibraryEntry library_entry;
+        std::string library_error;
+        if (!aivision::utils::resolve_conventional_package_library(root, manifest_algorithm_id,
+                                                                   library_entry, library_error)) {
+            error = library_error == "conventional library entry is not a regular file"
+                ? "PACKAGE_LIBRARY_INVALID"
+                : "PACKAGE_LIBRARY_MISSING";
+            return nullptr;
+        }
+        const fs::path library_path = library_entry.path;
         if (!fs::is_regular_file(library_path)) {
             error = "PACKAGE_LIBRARY_MISSING";
             return nullptr;
@@ -675,9 +956,20 @@ private:
         return {};
     }
 
+    bool has_desired_package_reference(const std::string& algorithm_id, const std::string& version) const {
+        for (const auto& instance : applied_desired_state_.instances()) {
+            if (instance.algorithm_id() == algorithm_id) return true;
+        }
+        for (const auto& package : applied_desired_state_.active_package_versions()) {
+            if (package.algorithm_id() == algorithm_id && package.version() == version) return true;
+        }
+        return false;
+    }
+
     void remove_instance(const std::string& instance_id, bool forget_config = true) {
         const auto instance = AlgoManager::instance().get(instance_id);
         if (!instance) {
+            ResourceLedger::instance().release(instance_id);
             instance_resources_.erase(instance_id);
             if (forget_config) instance_configs_.erase(instance_id);
             return;
@@ -868,19 +1160,187 @@ private:
         }
     }
 
+    void mark_package_degraded(const std::vector<aivision::v1::AlgorithmInstanceConfig>& affected,
+                               const std::string& reason) {
+        runtime_degraded_ = true;
+        for (const auto& config : affected) {
+            degraded_instance_ids_.insert(config.instance_id());
+            std::string message = reason;
+            const auto failure = restart_failures_.find(config.instance_id());
+            if (failure != restart_failures_.end()) message += ": " + failure->second;
+            aivision::v1::InstanceState state;
+            state.set_instance_id(config.instance_id());
+            state.set_status(aivision::v1::INSTANCE_STATUS_DEGRADED);
+            state.set_message(message);
+            if (app_client_ && !app_client_->report_instance_state(state)) {
+                auto& report_error = restart_failures_[config.instance_id()];
+                if (!report_error.empty()) report_error += "; ";
+                report_error += "DEGRADED_STATE_REPORT_FAILED";
+            }
+        }
+    }
+
+    void mark_package_degraded_for_algorithm(const std::string& algorithm_id,
+                                              const std::string& reason) {
+        std::vector<aivision::v1::AlgorithmInstanceConfig> affected;
+        for (const auto& [instance_id, config] : instance_configs_) {
+            (void)instance_id;
+            if (config.algorithm_id() == algorithm_id) affected.push_back(config);
+        }
+        mark_package_degraded(affected, reason);
+    }
+
+    void append_degraded_results(const RuntimeSnapshot& snapshot,
+                                 const aivision::v1::DesiredState& desired,
+                                 const std::string& reason,
+                                 aivision::v1::ApplyDesiredStateResponse* response) const {
+        if (!response) return;
+        const auto item_key = [](aivision::v1::ReconcileItemKind kind, const std::string& id) {
+            return std::to_string(static_cast<int>(kind)) + ":" + id;
+        };
+        std::unordered_set<std::string> seen;
+        for (int index = 0; index < response->results_size(); ++index) {
+            auto* item = response->mutable_results(index);
+            seen.insert(item_key(item->kind(), item->id()));
+            const std::string original_code = item->code();
+            item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+            item->set_code("RECONCILE_ROLLBACK_FAILED");
+            std::string message = "runtime is degraded; desired-state item was not confirmed restored: " + reason;
+            if (!original_code.empty()) message += " (original result: " + original_code + ")";
+            item->set_error_message(message);
+        }
+        const auto add_item = [&](aivision::v1::ReconcileItemKind kind, const std::string& id,
+                                  const std::string& detail) {
+            if (!seen.insert(item_key(kind, id)).second) return;
+            auto* item = response->add_results();
+            item->set_kind(kind);
+            item->set_id(id);
+            item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+            item->set_code("RECONCILE_ROLLBACK_FAILED");
+            item->set_error_message("runtime is degraded; desired-state item was not confirmed restored: " + detail);
+        };
+        for (const auto& [camera_id, config] : snapshot.task_configs) {
+            (void)camera_id;
+            add_item(aivision::v1::RECONCILE_ITEM_KIND_TASK, config.camera_id(), reason);
+        }
+        for (const auto& [instance_id, config] : snapshot.instance_configs) {
+            (void)instance_id;
+            add_item(aivision::v1::RECONCILE_ITEM_KIND_INSTANCE, config.instance_id(), reason);
+        }
+        for (const auto& [algorithm_id, version] : snapshot.active_versions) {
+            add_item(aivision::v1::RECONCILE_ITEM_KIND_PACKAGE, algorithm_id,
+                     reason + " (previous version: " + version + ")");
+        }
+        for (const auto& config : desired.tasks()) {
+            add_item(aivision::v1::RECONCILE_ITEM_KIND_TASK, config.camera_id(), reason);
+        }
+        for (const auto& config : desired.instances()) {
+            add_item(aivision::v1::RECONCILE_ITEM_KIND_INSTANCE, config.instance_id(), reason);
+        }
+        for (const auto& package : desired.active_package_versions()) {
+            add_item(aivision::v1::RECONCILE_ITEM_KIND_PACKAGE, package.algorithm_id(), reason);
+        }
+    }
+
+    void report_runtime_degraded(const RuntimeSnapshot& snapshot,
+                                 const aivision::v1::DesiredState& desired,
+                                 const std::string& reason,
+                                 aivision::v1::ApplyDesiredStateResponse* response) {
+        std::unordered_map<std::string, aivision::v1::AlgorithmInstanceConfig> affected_instances;
+        for (const auto& [instance_id, config] : snapshot.instance_configs) {
+            affected_instances.emplace(instance_id, config);
+        }
+        for (const auto& [instance_id, config] : instance_configs_) {
+            affected_instances.emplace(instance_id, config);
+        }
+        for (const auto& config : desired.instances()) {
+            if (config.enabled()) affected_instances.emplace(config.instance_id(), config);
+        }
+        std::vector<aivision::v1::AlgorithmInstanceConfig> affected;
+        affected.reserve(affected_instances.size());
+        for (const auto& [instance_id, config] : affected_instances) {
+            (void)instance_id;
+            affected.push_back(config);
+        }
+        mark_package_degraded(affected, reason);
+
+        std::unordered_map<std::string, aivision::v1::CameraTaskConfig> affected_tasks;
+        for (const auto& [camera_id, config] : snapshot.task_configs) {
+            affected_tasks.emplace(camera_id, config);
+        }
+        for (const auto& [camera_id, config] : task_configs_) {
+            affected_tasks.emplace(camera_id, config);
+        }
+        for (const auto& config : desired.tasks()) {
+            if (config.enabled()) affected_tasks.emplace(config.camera_id(), config);
+        }
+        for (const auto& [camera_id, config] : affected_tasks) {
+            (void)config;
+            aivision::v1::TaskState state;
+            state.set_camera_id(camera_id);
+            state.set_status(aivision::v1::TASK_STATUS_DEGRADED);
+            state.set_message(reason);
+            if (app_client_ && !app_client_->report_task_state(state)) {
+                // The degraded state remains authoritative locally; the next report retries it.
+            }
+        }
+        append_degraded_results(snapshot, desired, reason, response);
+    }
+
     std::string restart_package_instances(const std::string& algorithm_id, const std::string& version) {
-        std::vector<aivision::v1::AlgorithmInstanceConfig> replacements;
-        for (auto& [instance_id, config] : instance_configs_) {
-            if (config.algorithm_id() != algorithm_id || config.algorithm_version() == version) continue;
-            config.set_algorithm_version(version);
-            replacements.push_back(config);
+        restart_failures_.clear();
+        std::vector<aivision::v1::AlgorithmInstanceConfig> previous_configs;
+        for (const auto& [instance_id, config] : instance_configs_) {
+            (void)instance_id;
+            if (config.algorithm_id() == algorithm_id && config.algorithm_version() != version) {
+                previous_configs.push_back(config);
+            }
         }
-        for (const auto& config : replacements) remove_instance(config.instance_id(), false);
-        for (const auto& config : replacements) {
-            const std::string error = reconcile_instance(config);
-            if (!error.empty()) return error;
+        if (previous_configs.empty()) return {};
+
+        const std::vector<std::string> affected_instance_ids = [&] {
+            std::vector<std::string> ids;
+            ids.reserve(previous_configs.size());
+            for (const auto& config : previous_configs) ids.push_back(config.instance_id());
+            return ids;
+        }();
+        const auto remove_affected_instances = [&] {
+            for (const auto& instance_id : affected_instance_ids) remove_instance(instance_id, false);
+        };
+
+        remove_affected_instances();
+        std::string restart_error;
+        for (const auto& previous : previous_configs) {
+            auto replacement = previous;
+            replacement.set_algorithm_version(version);
+            if (const std::string error = reconcile_instance(replacement); !error.empty()) {
+                if (restart_error.empty()) restart_error = error;
+                restart_failures_[previous.instance_id()] = error;
+            }
         }
-        return {};
+        if (restart_failures_.empty()) return {};
+
+        remove_affected_instances();
+        std::unordered_map<std::string, std::string> restore_failures;
+        for (const auto& previous : previous_configs) {
+            if (const std::string error = reconcile_instance(previous); !error.empty()) {
+                restore_failures[previous.instance_id()] = error;
+            }
+        }
+        for (const auto& [instance_id, error] : restore_failures) {
+            restart_failures_[instance_id] = error;
+        }
+        if (!restore_failures.empty()) {
+            std::vector<aivision::v1::AlgorithmInstanceConfig> degraded_configs;
+            degraded_configs.reserve(restore_failures.size());
+            for (const auto& previous : previous_configs) {
+                if (restore_failures.contains(previous.instance_id())) degraded_configs.push_back(previous);
+            }
+            mark_package_degraded(degraded_configs, "package rollback left runtime degraded");
+            return "PACKAGE_ROLLBACK_FAILED";
+        }
+        restart_failures_.clear();
+        return restart_error.empty() ? "PACKAGE_RESTART_FAILED" : restart_error;
     }
 
     template <typename Response>
@@ -905,6 +1365,16 @@ private:
             response->set_error_message("validator returned an unsafe package identity");
             return;
         }
+        const bool is_upgrade = std::string(operation) == "UpgradePackage";
+        std::string previous_active_version;
+        bool had_previous_active_version = false;
+        std::string active_read_error;
+        if (is_upgrade && !read_active_version(validation.manifest.algorithm_id, previous_active_version,
+                                               had_previous_active_version, active_read_error)) {
+            response->set_code("PACKAGE_ACTIVATION_FAILED");
+            response->set_error_message(active_read_error);
+            return;
+        }
         std::string activation_error;
         if (!write_active_version(validation.manifest.algorithm_id, validation.manifest.version, activation_error)) {
             response->set_code("PACKAGE_ACTIVATION_FAILED");
@@ -913,12 +1383,25 @@ private:
         }
         response->set_algorithm_id(validation.manifest.algorithm_id);
         response->set_version(validation.manifest.version);
-        if (std::string(operation) == "UpgradePackage") {
+        if (is_upgrade) {
             const std::string restart_error = restart_package_instances(
                 validation.manifest.algorithm_id, validation.manifest.version);
             if (!restart_error.empty()) {
-                response->set_code("PACKAGE_RESTART_FAILED");
-                response->set_error_message(restart_error);
+                std::string restore_error;
+                const bool restored = restore_active_version(
+                    validation.manifest.algorithm_id, previous_active_version, had_previous_active_version, restore_error);
+                if (!restored) {
+                    mark_package_degraded_for_algorithm(
+                        validation.manifest.algorithm_id, "active package marker restore failed: " + restore_error);
+                }
+                if (!restored || restart_error == "PACKAGE_ROLLBACK_FAILED") {
+                    response->set_code("PACKAGE_ROLLBACK_FAILED");
+                    response->set_error_message(restart_error +
+                                                (restored ? "" : "; active marker restore failed: " + restore_error));
+                } else {
+                    response->set_code("PACKAGE_RESTART_FAILED");
+                    response->set_error_message(restart_error);
+                }
             }
         }
     }
@@ -927,11 +1410,13 @@ private:
         if (config.camera_id().empty() || config.rtsp_url().empty()) return "INVALID_ARG";
         if (!config.enabled()) {
             TaskScheduler::instance().stop_task(config.camera_id());
+            task_configs_.erase(config.camera_id());
             return {};
         }
         if (!platform_adapter_ || !media_backend_) return "PLATFORM_UNAVAILABLE";
 
         TaskScheduler::instance().stop_task(config.camera_id());
+        task_configs_.erase(config.camera_id());
         auto task = std::make_shared<CameraTask>(
             config.camera_id(), config.rtsp_url(), platform_adapter_, media_backend_);
         if (!TaskScheduler::instance().add_task(task)) return "TASK_ALREADY_EXISTS";
@@ -939,6 +1424,7 @@ private:
             TaskScheduler::instance().stop_task(config.camera_id());
             return "MEDIA_START_FAILED";
         }
+        task_configs_[config.camera_id()] = config;
         return {};
     }
 
@@ -947,11 +1433,17 @@ private:
     std::shared_ptr<UdsClient> app_client_;
     std::unordered_map<std::string, std::shared_ptr<LoadedPackage>> loaded_packages_;
     std::unordered_map<std::string, ResourceRequirement> instance_resources_;
+    std::unordered_map<std::string, aivision::v1::CameraTaskConfig> task_configs_;
     std::unordered_map<std::string, aivision::v1::AlgorithmInstanceConfig> instance_configs_;
+    bool runtime_degraded_ = false;
+    std::unordered_set<std::string> degraded_instance_ids_;
+    std::unordered_map<std::string, std::string> restart_failures_;
     std::mutex result_mutex_;
     std::unordered_set<std::string> reported_events_;
     std::mutex reconcile_mutex_;
     std::atomic<uint64_t> applied_revision_{0};
+    aivision::v1::DesiredState applied_desired_state_;
+    std::string applied_desired_state_serialized_;
 };
 
 class PersonServiceImpl final : public aivision::v1::PersonService::Service {

@@ -5,6 +5,7 @@
 #include <memory>
 #include <unordered_map>
 #include <cstdint>
+#include <limits>
 #include "aivision/types.h"
 #include "aivision/result.h"
 
@@ -60,9 +61,9 @@ struct SystemMetrics {
     float cpu_usage_percent = 0.0f;
     float memory_usage_percent = 0.0f;
     float disk_usage_percent = 0.0f;
-    float accelerator_usage_percent = 0.0f;
+    float accelerator_usage_percent = std::numeric_limits<float>::quiet_NaN();
     bool accelerator_supported = false;
-    float temperature_celsius = 0.0f;
+    float temperature_celsius = std::numeric_limits<float>::quiet_NaN();
     bool temperature_supported = false;
 };
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 #include "aivision/platform/mock_platform.hpp"
 
 TEST(ContractMockTest, PlatformProfileAndImageOps) {
@@ -51,4 +52,7 @@ TEST(ContractMockTest, PlatformProfileAndImageOps) {
     auto* telemetry = mock_adapter.get_telemetry();
     auto metrics = telemetry->collect_metrics();
     EXPECT_FALSE(metrics.accelerator_supported);
+    EXPECT_TRUE(std::isnan(metrics.accelerator_usage_percent));
+    EXPECT_FALSE(metrics.temperature_supported);
+    EXPECT_TRUE(std::isnan(metrics.temperature_celsius));
 }

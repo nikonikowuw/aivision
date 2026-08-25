@@ -15,6 +15,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -137,9 +138,12 @@ int main() {
                 telemetry.set_cpu_usage_percent(metrics.cpu_usage_percent);
                 telemetry.set_memory_usage_percent(metrics.memory_usage_percent);
                 telemetry.set_disk_usage_percent(metrics.disk_usage_percent);
-                telemetry.set_accelerator_usage_percent(metrics.accelerator_usage_percent);
+                const float unsupported_metric = std::numeric_limits<float>::quiet_NaN();
+                telemetry.set_accelerator_usage_percent(
+                    metrics.accelerator_supported ? metrics.accelerator_usage_percent : unsupported_metric);
                 telemetry.set_accelerator_usage_supported(metrics.accelerator_supported);
-                telemetry.set_temperature_celsius(metrics.temperature_celsius);
+                telemetry.set_temperature_celsius(
+                    metrics.temperature_supported ? metrics.temperature_celsius : unsupported_metric);
                 telemetry.set_temperature_supported(metrics.temperature_supported);
                 client.report_telemetry(telemetry);
                 last_telemetry = now;

@@ -75,8 +75,8 @@ message DeviceTelemetry {
   float cpu_usage_percent = 2;
   float memory_usage_percent = 3;
   float disk_usage_percent = 4;
-  float accelerator_usage_percent = 5;
+  float accelerator_usage_percent = 5; // meaningful only when accelerator_usage_supported=true; otherwise NaN
   bool accelerator_usage_supported = 6;
-  float temperature_celsius = 7;
+  float temperature_celsius = 7; // meaningful only when temperature_supported=true; otherwise NaN
   bool temperature_supported = 8;
 }

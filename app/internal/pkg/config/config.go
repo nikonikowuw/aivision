@@ -1,10 +1,13 @@
 // Package config 负责加载应用配置：configs/config.yaml + APP_* 环境变量覆盖。
+// 生产 IPC 端点可由唯一的 AIVISION_ENGINE_PROFILE 版本化 Profile 提供。
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +22,7 @@ type Config struct {
 	Log     Log
 	Storage Storage `mapstructure:"storage"`
 	Network Network `mapstructure:"network"`
+	IPC     IPC     `mapstructure:"ipc"`
 }
 
 // Server HTTP 服务配置。
@@ -78,10 +82,17 @@ type MinIO struct {
 
 // Network 网络配置服务配置。
 type Network struct {
-	StateDir       string        `mapstructure:"state_dir"`        // root-only 状态存储目录
-	ProfilePath    string        `mapstructure:"profile_path"`     // Linux Profile 声明文件路径
-	ConfirmTimeout time.Duration `mapstructure:"confirm_timeout"`  // 候选确认超时时间（默认 120s）
-	FakePlatform   bool          `mapstructure:"fake_platform"`    // 是否启用测试替身平台（单元/集成测试用）
+	StateDir       string        `mapstructure:"state_dir"`       // root-only 状态存储目录
+	ProfilePath    string        `mapstructure:"profile_path"`    // Linux Profile 声明文件路径
+	ConfirmTimeout time.Duration `mapstructure:"confirm_timeout"` // 候选确认超时时间（默认 120s）
+	FakePlatform   bool          `mapstructure:"fake_platform"`   // 是否启用测试替身平台（单元/集成测试用）
+}
+
+// IPC 进程间通信（gRPC over Unix Domain Socket）配置。
+type IPC struct {
+	ProfilePath  string `mapstructure:"profile_path"`  // 生产 Profile 的唯一入口（AIVISION_ENGINE_PROFILE）
+	AppSocket    string `mapstructure:"app_socket"`    // Go 侧 app.sock：Engine 回调 ControlPlane/Report
+	EngineSocket string `mapstructure:"engine_socket"` // C++ 侧 engine.sock：Go 调用 EngineService
 }
 
 const (
@@ -118,6 +129,11 @@ const (
 	defaultNetworkProfilePath    = "/etc/aivision/network-profile.json"
 	defaultNetworkConfirmTimeout = 120 * time.Second
 	defaultNetworkFakePlatform   = false
+
+	// 开发默认与当前 C++ Engine 的 AIVISION_{APP,ENGINE}_SOCKET 默认一致；
+	// 生产部署应配置为 /var/run/aivision/{app,engine}.sock。
+	defaultIPCAPPSocket    = "/tmp/aivision-app.sock"
+	defaultIPCEngineSocket = "/tmp/aivision-engine.sock"
 )
 
 // Load 读取配置：默认路径 configs/config.yaml，可用环境变量 APP_CONFIG_PATH 覆盖，
@@ -153,6 +169,9 @@ func load(path string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	if err := applyEngineProfile(&cfg.IPC); err != nil {
+		return nil, err
 	}
 	if err := validate(&cfg); err != nil {
 		return nil, err
@@ -197,6 +216,8 @@ func defaults() []keyValue {
 		{"network.profile_path", defaultNetworkProfilePath},
 		{"network.confirm_timeout", defaultNetworkConfirmTimeout},
 		{"network.fake_platform", defaultNetworkFakePlatform},
+		{"ipc.app_socket", defaultIPCAPPSocket},
+		{"ipc.engine_socket", defaultIPCEngineSocket},
 	}
 }
 
@@ -225,7 +246,10 @@ func validate(cfg *Config) error {
 	if err := validateStorage(&cfg.Storage); err != nil {
 		return err
 	}
-	return validateNetwork(&cfg.Network)
+	if err := validateNetwork(&cfg.Network); err != nil {
+		return err
+	}
+	return validateIPC(&cfg.IPC)
 }
 
 func validateNetwork(network *Network) error {
@@ -239,6 +263,118 @@ func validateNetwork(network *Network) error {
 		return fmt.Errorf("network.confirm_timeout must be greater than zero")
 	}
 	return nil
+}
+
+// validateIPC 校验解析后的 IPC socket 路径：非空、绝对路径、无 NUL、两个路径不能相同。
+func validateIPC(ipc *IPC) error {
+	if strings.TrimSpace(ipc.AppSocket) == "" {
+		return fmt.Errorf("ipc.app_socket cannot be empty")
+	}
+	if strings.TrimSpace(ipc.EngineSocket) == "" {
+		return fmt.Errorf("ipc.engine_socket cannot be empty")
+	}
+	if !filepath.IsAbs(ipc.AppSocket) {
+		return fmt.Errorf("ipc.app_socket %q must be an absolute path", ipc.AppSocket)
+	}
+	if !filepath.IsAbs(ipc.EngineSocket) {
+		return fmt.Errorf("ipc.engine_socket %q must be an absolute path", ipc.EngineSocket)
+	}
+	if strings.ContainsRune(ipc.AppSocket, '\x00') || strings.ContainsRune(ipc.EngineSocket, '\x00') {
+		return fmt.Errorf("ipc socket paths must not contain NUL")
+	}
+	if filepath.Clean(ipc.AppSocket) == filepath.Clean(ipc.EngineSocket) {
+		return fmt.Errorf("ipc.app_socket and ipc.engine_socket must be different paths")
+	}
+	return nil
+}
+
+const engineProfileEnv = "AIVISION_ENGINE_PROFILE"
+
+// engineDeploymentProfile 是生产部署 Profile 中供 Go IPC 边界使用的字段。
+// 其他 Profile 字段由 Engine/部署工具消费，这里保留并不复制第二份配置真相。
+type engineDeploymentProfile struct {
+	SchemaVersion int `json:"schema_version"`
+	Paths         struct {
+		RuntimeDir string `json:"runtime_dir"`
+	} `json:"paths"`
+	IPC struct {
+		AppSocket    string `json:"app_socket"`
+		EngineSocket string `json:"engine_socket"`
+	} `json:"ipc"`
+}
+
+// applyEngineProfile 在设置 AIVISION_ENGINE_PROFILE 时用单一版本化 Profile 覆盖 IPC 端点。
+// 未设置 Profile 时保留 APP_IPC_* 开发兼容入口；Profile 模式禁止逐项环境变量覆盖。
+func applyEngineProfile(ipc *IPC) error {
+	profilePath, configured := os.LookupEnv(engineProfileEnv)
+	if !configured {
+		return nil
+	}
+	if profilePath == "" || strings.TrimSpace(profilePath) != profilePath {
+		return fmt.Errorf("%s cannot be empty", engineProfileEnv)
+	}
+	if strings.ContainsRune(profilePath, '\x00') || !filepath.IsAbs(profilePath) {
+		return fmt.Errorf("%s %q must be an absolute path without NUL", engineProfileEnv, profilePath)
+	}
+	if _, ok := os.LookupEnv("APP_IPC_APP_SOCKET"); ok {
+		return fmt.Errorf("APP_IPC_APP_SOCKET cannot be used with %s", engineProfileEnv)
+	}
+	if _, ok := os.LookupEnv("APP_IPC_ENGINE_SOCKET"); ok {
+		return fmt.Errorf("APP_IPC_ENGINE_SOCKET cannot be used with %s", engineProfileEnv)
+	}
+
+	data, err := os.ReadFile(profilePath)
+	if err != nil {
+		return fmt.Errorf("read engine profile %s: %w", profilePath, err)
+	}
+	var profile engineDeploymentProfile
+	if err := json.Unmarshal(data, &profile); err != nil {
+		return fmt.Errorf("decode engine profile %s: %w", profilePath, err)
+	}
+	if profile.SchemaVersion != 1 {
+		return fmt.Errorf("unsupported engine profile schema_version %d", profile.SchemaVersion)
+	}
+	runtimeDir := profile.Paths.RuntimeDir
+	if runtimeDir == "" || strings.TrimSpace(runtimeDir) != runtimeDir ||
+		!filepath.IsAbs(runtimeDir) || strings.ContainsRune(runtimeDir, '\x00') {
+		return fmt.Errorf("engine profile paths.runtime_dir must be an absolute path without NUL")
+	}
+	runtimeDir = filepath.Clean(runtimeDir)
+	appSocket, err := resolveProfileSocket(runtimeDir, profile.IPC.AppSocket)
+	if err != nil {
+		return fmt.Errorf("engine profile ipc.app_socket: %w", err)
+	}
+	engineSocket, err := resolveProfileSocket(runtimeDir, profile.IPC.EngineSocket)
+	if err != nil {
+		return fmt.Errorf("engine profile ipc.engine_socket: %w", err)
+	}
+	if appSocket == engineSocket {
+		return fmt.Errorf("engine profile app_socket and engine_socket must be different paths")
+	}
+	ipc.ProfilePath = profilePath
+	ipc.AppSocket = appSocket
+	ipc.EngineSocket = engineSocket
+	return nil
+}
+
+// resolveProfileSocket resolves a relative socket name and rejects path traversal outside runtime_dir.
+func resolveProfileSocket(runtimeDir, socketName string) (string, error) {
+	if socketName == "" || strings.TrimSpace(socketName) != socketName {
+		return "", fmt.Errorf("socket name cannot be empty or contain outer whitespace")
+	}
+	if strings.ContainsRune(socketName, '\x00') || filepath.IsAbs(socketName) {
+		return "", fmt.Errorf("socket name must be relative and contain no NUL")
+	}
+	cleanName := filepath.Clean(socketName)
+	if cleanName == "." || cleanName == ".." || cleanName != socketName {
+		return "", fmt.Errorf("socket name %q is not a normalized relative path", socketName)
+	}
+	resolved := filepath.Clean(filepath.Join(runtimeDir, cleanName))
+	rel, err := filepath.Rel(runtimeDir, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("socket name %q escapes runtime_dir", socketName)
+	}
+	return resolved, nil
 }
 
 func validateStorage(storage *Storage) error {

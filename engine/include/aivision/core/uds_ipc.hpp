@@ -9,6 +9,7 @@
  * 2. UdsServer：Engine 监听 engine.sock，处理来自 App 的 ApplyDesiredState、算法包安装/升级/回滚、图片清理等 RPC。
  */
 
+#include <cstdint>
 #include <string>
 #include <memory>
 #include <vector>
@@ -80,11 +81,13 @@ public:
      * @param engine_sock_path Engine 监听的 UDS socket 路径
      * @param platform_adapter 平台适配器
      * @param media_backend 媒体后端
+     * @param app_sock_path App 监听的 UDS socket 路径；为空时使用开发环境变量
      */
     explicit UdsServer(
         const std::string& engine_sock_path,
         std::shared_ptr<platform::IPlatformAdapter> platform_adapter = nullptr,
-        std::shared_ptr<media::IMediaBackend> media_backend = nullptr);
+        std::shared_ptr<media::IMediaBackend> media_backend = nullptr,
+        std::string app_sock_path = {});
     ~UdsServer();
 
     /**
@@ -105,12 +108,16 @@ public:
 
 private:
     std::string sock_path_;
+    std::string app_sock_path_;
     std::shared_ptr<platform::IPlatformAdapter> platform_adapter_;
     std::shared_ptr<media::IMediaBackend> media_backend_;
     std::unique_ptr<grpc::Server> server_;
     std::unique_ptr<grpc::Service> engine_service_;
     std::unique_ptr<grpc::Service> person_service_;
     bool owns_socket_ = false;
+    uint64_t socket_device_ = 0;
+    uint64_t socket_inode_ = 0;
+    bool socket_identity_valid_ = false;
 };
 
 } // namespace aivision::core

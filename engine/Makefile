@@ -1,4 +1,5 @@
-.PHONY: all configure build test lint asan tsan clean clean-zlm-archives e2e
+.PHONY: all configure build test lint asan tsan clean clean-zlm-archives e2e \
+        proto core media platform validator app
 
 BUILD_DIR ?= build
 GENERATOR ?= Ninja
@@ -13,8 +14,30 @@ clean-zlm-archives:
 configure:
 	cmake -B $(BUILD_DIR) -G $(GENERATOR) -DCMAKE_BUILD_TYPE=Debug
 
-build: clean-zlm-archives
+$(BUILD_DIR)/CMakeCache.txt:
+	@$(MAKE) configure
+
+build: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR)
+
+# Module-level targets
+proto: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) --target proto_gen
+
+core: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) --target engine_core
+
+media: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) --target media_zlm
+
+platform: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) --target platform_macos
+
+validator: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) --target package_validator
+
+app: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) --target aivision-engine
 
 test:
 	cd $(BUILD_DIR) && ctest --timeout 180 --output-on-failure -R unit_tests

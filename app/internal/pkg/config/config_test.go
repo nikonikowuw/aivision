@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,9 @@ storage:
     bucket: files
     use_ssl: true
     public_base_url: https://cdn.example.com/files
+ipc:
+  app_socket: /run/aivision/app.sock
+  engine_socket: /run/aivision/engine.sock
 `)
 	cfg, err := load(path)
 	if err != nil {
@@ -92,6 +96,9 @@ storage:
 		cfg.Storage.MinIO.Bucket != "files" || !cfg.Storage.MinIO.UseSSL ||
 		cfg.Storage.MinIO.PublicBaseURL != "https://cdn.example.com/files" {
 		t.Errorf("storage.minio = %+v", cfg.Storage.MinIO)
+	}
+	if cfg.IPC.AppSocket != "/run/aivision/app.sock" || cfg.IPC.EngineSocket != "/run/aivision/engine.sock" {
+		t.Errorf("ipc = %+v", cfg.IPC)
 	}
 }
 
@@ -135,6 +142,9 @@ func TestLoadDefaultsForMissingKeys(t *testing.T) {
 		cfg.Network.ConfirmTimeout != 120*time.Second || cfg.Network.FakePlatform {
 		t.Errorf("network defaults not applied: %+v", cfg.Network)
 	}
+	if cfg.IPC.AppSocket != "/tmp/aivision-app.sock" || cfg.IPC.EngineSocket != "/tmp/aivision-engine.sock" {
+		t.Errorf("ipc defaults not applied: %+v", cfg.IPC)
+	}
 }
 
 func TestLoadEnvOverride(t *testing.T) {
@@ -168,6 +178,8 @@ log:
 	t.Setenv("APP_NETWORK_PROFILE_PATH", "/tmp/test-profile.json")
 	t.Setenv("APP_NETWORK_CONFIRM_TIMEOUT", "60s")
 	t.Setenv("APP_NETWORK_FAKE_PLATFORM", "true")
+	t.Setenv("APP_IPC_APP_SOCKET", "/tmp/env-app.sock")
+	t.Setenv("APP_IPC_ENGINE_SOCKET", "/tmp/env-engine.sock")
 
 	cfg, err := load(path)
 	if err != nil {
@@ -201,6 +213,9 @@ log:
 	if cfg.Network.StateDir != "/tmp/test-network" || cfg.Network.ProfilePath != "/tmp/test-profile.json" ||
 		cfg.Network.ConfirmTimeout != 60*time.Second || !cfg.Network.FakePlatform {
 		t.Errorf("network env overrides not applied: %+v", cfg.Network)
+	}
+	if cfg.IPC.AppSocket != "/tmp/env-app.sock" || cfg.IPC.EngineSocket != "/tmp/env-engine.sock" {
+		t.Errorf("ipc env overrides not applied: %+v", cfg.IPC)
 	}
 }
 
@@ -345,5 +360,89 @@ func TestLoadInvalidPort(t *testing.T) {
 		if _, err := load(writeConfig(t, content)); err == nil {
 			t.Errorf("load should fail for %q", content)
 		}
+	}
+}
+
+func TestLoadInvalidIPC(t *testing.T) {
+	cases := map[string]string{
+		"empty app_socket":       "ipc:\n  app_socket: \"\"\n",
+		"empty engine_socket":    "ipc:\n  engine_socket: \"\"\n",
+		"relative app_socket":    "ipc:\n  app_socket: relative.sock\n",
+		"relative engine_socket": "ipc:\n  engine_socket: relative.sock\n",
+		"same paths":             "ipc:\n  app_socket: /tmp/x.sock\n  engine_socket: /tmp/x.sock\n",
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := load(writeConfig(t, content)); err == nil {
+				t.Fatalf("load should fail for %q", content)
+			}
+		})
+	}
+}
+
+func TestLoadEngineProfile(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	profilePath := filepath.Join(t.TempDir(), "engine-profile.json")
+	profile := fmt.Sprintf(`{
+  "schema_version": 1,
+  "platform_id": "test",
+  "paths": {"runtime_dir": %q},
+  "ipc": {"app_socket": "app.sock", "engine_socket": "engine.sock"}
+}`, runtimeDir)
+	if err := os.WriteFile(profilePath, []byte(profile), 0o600); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+	t.Setenv("AIVISION_ENGINE_PROFILE", profilePath)
+
+	cfg, err := load(writeConfig(t, `ipc:
+  app_socket: /tmp/yaml-app.sock
+  engine_socket: /tmp/yaml-engine.sock
+`))
+	if err != nil {
+		t.Fatalf("load profile: %v", err)
+	}
+	if cfg.IPC.ProfilePath != profilePath {
+		t.Errorf("profile path = %q, want %q", cfg.IPC.ProfilePath, profilePath)
+	}
+	if cfg.IPC.AppSocket != filepath.Join(runtimeDir, "app.sock") ||
+		cfg.IPC.EngineSocket != filepath.Join(runtimeDir, "engine.sock") {
+		t.Errorf("profile IPC = %+v", cfg.IPC)
+	}
+}
+
+func TestLoadEngineProfileRejectsPerSocketOverrides(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	profilePath := filepath.Join(t.TempDir(), "engine-profile.json")
+	profile := fmt.Sprintf(`{"schema_version":1,"paths":{"runtime_dir":%q},"ipc":{"app_socket":"app.sock","engine_socket":"engine.sock"}}`, runtimeDir)
+	if err := os.WriteFile(profilePath, []byte(profile), 0o600); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+	t.Setenv("AIVISION_ENGINE_PROFILE", profilePath)
+	t.Setenv("APP_IPC_APP_SOCKET", filepath.Join(runtimeDir, "override.sock"))
+
+	if _, err := load(writeConfig(t, "{}")); err == nil {
+		t.Fatal("load should reject APP_IPC_APP_SOCKET in Profile mode")
+	}
+}
+
+func TestLoadEngineProfileRejectsInvalidPaths(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	cases := map[string]string{
+		"unsupported schema": fmt.Sprintf(`{"schema_version":2,"paths":{"runtime_dir":%q},"ipc":{"app_socket":"app.sock","engine_socket":"engine.sock"}}`, runtimeDir),
+		"absolute socket":    fmt.Sprintf(`{"schema_version":1,"paths":{"runtime_dir":%q},"ipc":{"app_socket":"/tmp/app.sock","engine_socket":"engine.sock"}}`, runtimeDir),
+		"traversal socket":   fmt.Sprintf(`{"schema_version":1,"paths":{"runtime_dir":%q},"ipc":{"app_socket":"../app.sock","engine_socket":"engine.sock"}}`, runtimeDir),
+		"same socket":        fmt.Sprintf(`{"schema_version":1,"paths":{"runtime_dir":%q},"ipc":{"app_socket":"app.sock","engine_socket":"app.sock"}}`, runtimeDir),
+	}
+	for name, profile := range cases {
+		t.Run(name, func(t *testing.T) {
+			profilePath := filepath.Join(t.TempDir(), "engine-profile.json")
+			if err := os.WriteFile(profilePath, []byte(profile), 0o600); err != nil {
+				t.Fatalf("write profile: %v", err)
+			}
+			t.Setenv("AIVISION_ENGINE_PROFILE", profilePath)
+			if _, err := load(writeConfig(t, "{}")); err == nil {
+				t.Fatal("load should reject invalid engine profile")
+			}
+		})
 	}
 }

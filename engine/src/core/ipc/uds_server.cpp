@@ -273,16 +273,25 @@ bool prepare_socket_path(const std::string& path) {
     ::close(fd);
     if (connect_result == 0) return false;
     if (connect_errno != ECONNREFUSED && connect_errno != ENOENT && connect_errno != ENOTCONN) return false;
+    // 探测期间路径可能被替换；只在 inode/device 仍与首次 lstat 一致时清理。
+    struct stat current{};
+    if (::lstat(path.c_str(), &current) != 0) {
+        return errno == ENOENT;
+    }
+    if (current.st_dev != st.st_dev || current.st_ino != st.st_ino) return false;
     return ::unlink(path.c_str()) == 0 || errno == ENOENT;
 }
 
 class EngineServiceImpl final : public aivision::v1::EngineService::Service {
 public:
     EngineServiceImpl(std::shared_ptr<platform::IPlatformAdapter> platform_adapter,
-                      std::shared_ptr<media::IMediaBackend> media_backend)
+                      std::shared_ptr<media::IMediaBackend> media_backend,
+                      const std::string& app_socket_path)
         : platform_adapter_(std::move(platform_adapter)),
           media_backend_(std::move(media_backend)),
-          app_client_(std::make_shared<UdsClient>(env_or_default("AIVISION_APP_SOCKET", "/tmp/aivision-app.sock"))) {}
+          app_client_(std::make_shared<UdsClient>(
+              app_socket_path.empty() ? env_or_default("AIVISION_APP_SOCKET", "/tmp/aivision-app.sock")
+                                      : app_socket_path)) {}
 
     ~EngineServiceImpl() override {
         TaskScheduler::instance().stop_all();
@@ -1485,8 +1494,10 @@ public:
 
 UdsServer::UdsServer(const std::string& sock_path,
                      std::shared_ptr<platform::IPlatformAdapter> platform_adapter,
-                     std::shared_ptr<media::IMediaBackend> media_backend)
+                     std::shared_ptr<media::IMediaBackend> media_backend,
+                     std::string app_sock_path)
     : sock_path_(sock_path),
+      app_sock_path_(std::move(app_sock_path)),
       platform_adapter_(std::move(platform_adapter)),
       media_backend_(std::move(media_backend)) {}
 
@@ -1508,7 +1519,7 @@ bool UdsServer::start() {
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort("unix://" + sock_path_, grpc::InsecureServerCredentials());
-    engine_service_ = std::make_unique<EngineServiceImpl>(platform_adapter_, media_backend_);
+    engine_service_ = std::make_unique<EngineServiceImpl>(platform_adapter_, media_backend_, app_sock_path_);
     person_service_ = std::make_unique<PersonServiceImpl>();
     builder.RegisterService(engine_service_.get());
     builder.RegisterService(person_service_.get());
@@ -1518,6 +1529,18 @@ bool UdsServer::start() {
         person_service_.reset();
         return false;
     }
+    struct stat socket_stat{};
+    if (::lstat(sock_path_.c_str(), &socket_stat) != 0 || !S_ISSOCK(socket_stat.st_mode)) {
+        server_->Shutdown();
+        server_->Wait();
+        server_.reset();
+        engine_service_.reset();
+        person_service_.reset();
+        return false;
+    }
+    socket_device_ = static_cast<uint64_t>(socket_stat.st_dev);
+    socket_inode_ = static_cast<uint64_t>(socket_stat.st_ino);
+    socket_identity_valid_ = true;
     owns_socket_ = true;
     return true;
 }
@@ -1531,8 +1554,14 @@ void UdsServer::stop() {
     person_service_.reset();
     engine_service_.reset();
     if (owns_socket_) {
-        ::unlink(sock_path_.c_str());
+        struct stat socket_stat{};
+        if (socket_identity_valid_ && ::lstat(sock_path_.c_str(), &socket_stat) == 0 &&
+            S_ISSOCK(socket_stat.st_mode) && static_cast<uint64_t>(socket_stat.st_dev) == socket_device_ &&
+            static_cast<uint64_t>(socket_stat.st_ino) == socket_inode_) {
+            ::unlink(sock_path_.c_str());
+        }
         owns_socket_ = false;
+        socket_identity_valid_ = false;
     }
 }
 

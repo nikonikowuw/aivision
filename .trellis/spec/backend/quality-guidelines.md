@@ -8,7 +8,8 @@
 
 - 格式与静态检查：`gofmt` + `go vet ./...`（`make vet`）。当前代码树上两者均
   通过。
-- 测试：`go test ./...`（`make test`）必须保持通过。
+- 测试：`go test ./...`（`make test`）必须保持通过；`make proto-check` 必须无漂移；
+  `make grpc-e2e`（跨语言 Go<->C++ engine 冒烟）在改动 engineipc/proto 后应运行。
 - 项目遵循骨架设计（`.trellis/tasks/08-16-backend-skeleton/design.md`）确立的
   约定及其引用的决策（决策 17 i18n key、决策 18 mysql/postgres）。
 
@@ -56,7 +57,38 @@
   `newSmokeDB` —— 通过 `t.Name()` 每个测试一个内存库），无需外部服务器。
 - 响应契约由 JSON 测试钉死（`response_test.go` 断言精确的 `{code,data,message}`
   JSON）——契约变更时保持同步。
+- **proto 生成代码只由 `scripts/generate-proto.sh` 产出**：修改
+  `engine/proto/aivision/v1/*.proto` 后运行 `make proto` 重新生成并提交；
+  `make proto-check` 通过 `diff` 校验提交目录与新鲜生成一致（排除 `*_test.go`）。
+  生成文件包含 descriptor 冒烟测试（`descriptor_smoke_test.go`）钉住 RPC 面。
+- **依赖真实 C++ engine 的测试**放 `tests/integration`（`//go:build integration`），
+  只由 `make grpc-e2e` 运行；普通 `go test ./...` 不依赖 C++ 构建。
+- **UDS socket 生命周期**（`engineipc/socket.go`）：绑定前探测并清理
+  `ECONNREFUSED` 的陈旧 socket；关闭时仅删除经 identity 复核仍属于本进程的
+  socket 文件；engine 缺席时 Go 侧仍可独立监听。
 - 优先表驱动/小而聚焦的测试，而非笨重的 mock；目前尚未引入 mock 框架。
+
+---
+
+## gRPC over UDS（engineipc）契约
+
+`internal/pkg/engineipc` 是 Go 与 C++ engine 的 gRPC-over-UDS 通信层，遵循以下
+稳定契约（MVP 错误矩阵钉死在 `server_test.go` / `client_test.go`）：
+
+- **成功 = 响应 `code` 为空串**；只有业务 adapter 真实接受了数据才返回空 `code`。
+  未注入 adapter 时 fail closed，返回稳定 `IPC_UNAVAILABLE`，禁止对未持久化的
+  告警/状态/遥测/孤儿图片上报 ACK。
+- **业务失败 ≠ 传输失败**：业务失败返回 gRPC OK + 非空响应 `code`（稳定码，如
+  `IPC_UNAVAILABLE` / `INTERNAL_ERROR`）；传输失败（连接、超时）才用 gRPC status。
+  普通 Go error 统一归一化为 `INTERNAL_ERROR`，只暴露受控诊断文本，不泄露内部 cause。
+- **调用方只判断稳定 `Code`**（`*RemoteError` / `AdapterError`），绝不解析
+  `error_message` 文本；context cancel/deadline 与显式 gRPC status 保持 transport
+  status，不降级为响应内业务码。
+- **adapter 成功但返回 nil DesiredState 视为内部错误**（归一化 `INTERNAL_ERROR`），
+  绝不伪装成功。
+- **停机**：`Runtime.Shutdown` 先 `GracefulStop`，超时强制 `Stop`，等待 Serve 退出
+  后按 identity 删除自有 `app.sock`；HTTP 与 gRPC 在同一超时窗口内并发停止，
+  EngineClient 关闭后 Network 再关。
 
 ---
 
@@ -66,5 +98,11 @@
 - 业务失败使用 `errno` 错误码 + `response.Fail`；无内部细节/密钥泄露。
 - 模型遵循命名/索引/软删除约定（特别是必须使用 `gorm.io/plugin/soft_delete`，且 `deleted_at = 0` 表示活跃）；无新增外键。
 - `wire_gen.go` 是最新的（重新生成，而非手工编辑）。
+- `internal/proto/aivision/v1` 生成代码与 proto 权威源无漂移（`make proto-check`）；
+  `wire_gen.go` 已用 `make wire` 重新生成。
+- engineipc 改动后 `make grpc-e2e` 通过（Go<->真实 C++ engine 双向通信）。
+- engineipc 错误契约：adapter 未接受数据不返回空 `code`；业务失败用稳定响应
+  `code`（`IPC_UNAVAILABLE`/`INTERNAL_ERROR`），传输失败才用 gRPC status；
+  调用方不解析 `error_message` 文本。
 - 新增配置键同时在 `defaults()` 和 `validate()` 中注册。
 - 无裸魔数——业务数字均使用命名常量（错误码、枚举/状态值、超时、重试次数）。

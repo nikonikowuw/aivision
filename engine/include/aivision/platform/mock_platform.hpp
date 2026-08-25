@@ -63,7 +63,7 @@ public:
         return AV_OK;
     }
 
-    av_status encode_jpeg(const av_frame_desc* src, const av_rect* crop_roi, int quality, std::vector<uint8_t>& out_jpeg) override {
+    av_status encode_jpeg(const av_frame_desc* /*src*/, const av_rect* /*crop_roi*/, int /*quality*/, std::vector<uint8_t>& out_jpeg) override {
         // 生成合法的最小虚拟 JPEG 头字节流
         out_jpeg = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x60, 0x00, 0x60, 0x00, 0x00, 0xFF, 0xD9};
         return AV_OK;

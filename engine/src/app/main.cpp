@@ -27,10 +27,16 @@
 
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <csignal>
 #include <cstdlib>
+#include <exception>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -45,6 +51,99 @@ void request_stop(int) {
 const char* env_or_default(const char* name, const char* fallback) {
     const char* value = std::getenv(name);
     return value && *value ? value : fallback;
+}
+
+struct IpcEndpoints {
+    std::string engine_socket;
+    std::string app_socket;
+};
+
+// load_ipc_endpoints 从唯一的部署 Profile 解析两个 UDS；未配置 Profile 时保留开发环境变量。
+std::optional<IpcEndpoints> load_ipc_endpoints() {
+    const char* profile_env = std::getenv("AIVISION_ENGINE_PROFILE");
+    if (!profile_env) {
+        return IpcEndpoints{
+            env_or_default("AIVISION_ENGINE_SOCKET", "/tmp/aivision-engine.sock"),
+            env_or_default("AIVISION_APP_SOCKET", "/tmp/aivision-app.sock"),
+        };
+    }
+
+    const auto has_outer_whitespace = [](const std::string& value) {
+        return !value.empty() &&
+               (std::isspace(static_cast<unsigned char>(value.front())) ||
+                std::isspace(static_cast<unsigned char>(value.back())));
+    };
+    const std::string profile_path = profile_env;
+    if (profile_path.empty() || has_outer_whitespace(profile_path) ||
+        !std::filesystem::path(profile_path).is_absolute()) {
+        LOG_ERROR("engine.app", "engine.profile_invalid", "AIVISION_ENGINE_PROFILE must be an absolute path",
+                  "ENGINE_PROFILE_INVALID");
+        return std::nullopt;
+    }
+    if (std::getenv("AIVISION_ENGINE_SOCKET") || std::getenv("AIVISION_APP_SOCKET")) {
+        LOG_ERROR("engine.app", "engine.profile_env_conflict",
+                  "AIVISION_ENGINE_PROFILE cannot be combined with per-socket environment variables",
+                  "ENGINE_PROFILE_ENV_CONFLICT");
+        return std::nullopt;
+    }
+
+    try {
+        std::ifstream input(profile_path);
+        if (!input) {
+            LOG_ERROR("engine.app", "engine.profile_read_failed", "cannot read AIVISION_ENGINE_PROFILE",
+                      "ENGINE_PROFILE_READ_FAILED");
+            return std::nullopt;
+        }
+        const auto profile = nlohmann::json::parse(input);
+        if (profile.value("schema_version", 0) != 1) {
+            LOG_ERROR("engine.app", "engine.profile_schema_unsupported", "unsupported engine profile schema",
+                      "ENGINE_PROFILE_SCHEMA_UNSUPPORTED");
+            return std::nullopt;
+        }
+
+        const std::string runtime_dir_value = profile.at("paths").at("runtime_dir").get<std::string>();
+        if (runtime_dir_value.empty() || has_outer_whitespace(runtime_dir_value)) {
+            LOG_ERROR("engine.app", "engine.profile_runtime_invalid", "profile runtime_dir is invalid",
+                      "ENGINE_PROFILE_RUNTIME_INVALID");
+            return std::nullopt;
+        }
+        const std::filesystem::path runtime_dir =
+            std::filesystem::path(runtime_dir_value).lexically_normal();
+        if (!runtime_dir.is_absolute()) {
+            LOG_ERROR("engine.app", "engine.profile_runtime_invalid", "profile runtime_dir must be absolute",
+                      "ENGINE_PROFILE_RUNTIME_INVALID");
+            return std::nullopt;
+        }
+
+        const auto resolve = [&runtime_dir, &has_outer_whitespace](const std::string& socket_name) -> std::optional<std::string> {
+            const std::filesystem::path relative = socket_name;
+            if (socket_name.empty() || has_outer_whitespace(socket_name) ||
+                socket_name.find('\0') != std::string::npos || relative.is_absolute() ||
+                relative == "." || relative == ".." || relative.lexically_normal() != relative) {
+                return std::nullopt;
+            }
+            const auto resolved = (runtime_dir / relative).lexically_normal();
+            const auto relative_to_runtime = resolved.lexically_relative(runtime_dir);
+            if (relative_to_runtime.empty() || relative_to_runtime == ".." ||
+                relative_to_runtime.string().starts_with("../")) {
+                return std::nullopt;
+            }
+            return resolved.string();
+        };
+
+        const auto app_socket = resolve(profile.at("ipc").at("app_socket").get<std::string>());
+        const auto engine_socket = resolve(profile.at("ipc").at("engine_socket").get<std::string>());
+        if (!app_socket || !engine_socket || *app_socket == *engine_socket) {
+            LOG_ERROR("engine.app", "engine.profile_ipc_invalid", "profile IPC sockets are invalid",
+                      "ENGINE_PROFILE_IPC_INVALID");
+            return std::nullopt;
+        }
+        return IpcEndpoints{*engine_socket, *app_socket};
+    } catch (const std::exception&) {
+        LOG_ERROR("engine.app", "engine.profile_parse_failed", "cannot parse engine profile",
+                  "ENGINE_PROFILE_PARSE_FAILED");
+        return std::nullopt;
+    }
 }
 } // namespace
 
@@ -114,9 +213,14 @@ int main() {
         return 1;
     }
 
-    // 4. 启动 Unix Domain Socket (UDS) gRPC 服务端监听
-    const std::string engine_socket = env_or_default("AIVISION_ENGINE_SOCKET", "/tmp/aivision-engine.sock");
-    aivision::core::UdsServer server(engine_socket, platform_adapter, media_backend);
+    // 4. 解析统一的 UDS Profile（未配置 Profile 时保留开发环境变量兼容）
+    const auto ipc_endpoints = load_ipc_endpoints();
+    if (!ipc_endpoints) {
+        aivision::logging::Logger::shutdown();
+        return 1;
+    }
+    aivision::core::UdsServer server(ipc_endpoints->engine_socket, platform_adapter, media_backend,
+                                     ipc_endpoints->app_socket);
     if (!server.start()) {
         LOG_ERROR("engine.app", "engine.uds_start_failed",
                   "failed to start engine UDS server", "ENGINE_UDS_START_FAILED",
@@ -126,7 +230,7 @@ int main() {
     }
 
     // 5. 启动控制面心跳、期望状态同步与遥测指标上报后台线程
-    const std::string app_socket = env_or_default("AIVISION_APP_SOCKET", "/tmp/aivision-app.sock");
+    const std::string app_socket = ipc_endpoints->app_socket;
     std::thread control_plane_thread([&server, platform_adapter, app_socket] {
         aivision::core::UdsClient client(app_socket);
         uint64_t applied_revision = 0;

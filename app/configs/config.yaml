@@ -37,3 +37,8 @@ network:
   profile_path: /etc/aivision/network-profile.json
   confirm_timeout: 120s
   fake_platform: true
+# gRPC over Unix Domain Socket：app.sock 由本进程监听（Engine 回调），engine.sock 供本进程调用 C++ Engine
+# 开发默认可用 APP_IPC_APP_SOCKET/APP_IPC_ENGINE_SOCKET 覆盖；生产使用唯一的 AIVISION_ENGINE_PROFILE。
+ipc:
+  app_socket: /tmp/aivision-app.sock
+  engine_socket: /tmp/aivision-engine.sock

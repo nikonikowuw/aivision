@@ -12,6 +12,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Compiler launcher cache (ccache) support
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    set(CMAKE_OBJCXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+endif()
+
 # Options
 option(ENGINE_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ENGINE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
@@ -53,8 +62,6 @@ if(ENGINE_BUILD_TESTS)
     enable_testing()
 endif()
 
-# Platform detection
-
 # ZLMediaKit configuration
 set(AIVISION_USE_ZLM OFF)
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
@@ -71,10 +78,22 @@ if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
     set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
     set(AIVISION_ZLM_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/zlm_release" CACHE PATH "ZLMediaKit output directory")
 
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/ZLMediaKit/3rdpart/media-server/libflv/include)
+    include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ZLMediaKit/3rdpart/media-server/libflv/include)
     add_subdirectory(third_party/ZLMediaKit zlm_build EXCLUDE_FROM_ALL)
+
+    # ZLMediaKit vendored headers are compiled under our strict -Werror flags on
+    # consuming targets, so re-export their include dirs as SYSTEM to silence
+    # warnings from third-party code.
+    foreach(_zlm_target IN ITEMS zlmediakit ZLToolKit ext-codec jsoncpp flv mov mpeg)
+        get_target_property(_zlm_incs ${_zlm_target} INTERFACE_INCLUDE_DIRECTORIES)
+        if(_zlm_incs)
+            set_target_properties(${_zlm_target} PROPERTIES
+                INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_zlm_incs}")
+        endif()
+    endforeach()
 endif()
 
+# Public API interfaces
 # 1. sdk_abi_headers
 add_library(sdk_abi_headers INTERFACE)
 target_include_directories(sdk_abi_headers INTERFACE
@@ -96,216 +115,9 @@ target_include_directories(media_api INTERFACE
 )
 target_link_libraries(media_api INTERFACE sdk_abi_headers)
 
-# 4. Protobuf & gRPC codegen
-set(PROTO_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proto)
-set(PROTO_FILES
-    ${PROTO_SRC_DIR}/aivision/v1/common.proto
-    ${PROTO_SRC_DIR}/aivision/v1/engine.proto
-    ${PROTO_SRC_DIR}/aivision/v1/app.proto
-    ${PROTO_SRC_DIR}/aivision/v1/person.proto
-)
-set(PROTO_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
-file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
-
-set(PROTO_SRCS
-    ${PROTO_GEN_DIR}/aivision/v1/common.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/common.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/engine.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/engine.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/engine.grpc.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/engine.grpc.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/app.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/app.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/app.grpc.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/app.grpc.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/person.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/person.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/person.grpc.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/person.grpc.pb.h
-)
-
-find_program(GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin REQUIRED)
-
-add_custom_command(
-    OUTPUT ${PROTO_SRCS}
-    COMMAND protobuf::protoc
-        --proto_path=${PROTO_SRC_DIR}
-        --cpp_out=${PROTO_GEN_DIR}
-        --grpc_out=${PROTO_GEN_DIR}
-        --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN_EXECUTABLE}
-        ${PROTO_FILES}
-    DEPENDS ${PROTO_FILES}
-    COMMENT "Generating gRPC/Protobuf C++ files"
-)
-
-add_library(proto_gen STATIC ${PROTO_SRCS})
-target_include_directories(proto_gen PUBLIC
-    $<BUILD_INTERFACE:${PROTO_GEN_DIR}>
-)
-target_link_libraries(proto_gen PUBLIC
-    protobuf::libprotobuf
-    gRPC::grpc++
-)
-
-# 5. engine_logging
-add_library(engine_logging STATIC
-    src/core/logging/log_record.cpp
-    src/core/logging/log_sanitizer.cpp
-    src/core/logging/log_sink.cpp
-    src/core/logging/log_writer.cpp
-    src/core/logging/log_context.cpp
-    src/core/logging/logger.cpp
-)
-target_include_directories(engine_logging PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
-target_link_libraries(engine_logging PUBLIC Threads::Threads)
-aivision_enable_strict_warnings(engine_logging)
-
-# 6. engine_core
-add_library(engine_core STATIC
-    src/core/frame/frame_pool.cpp
-    src/core/frame/color_vui.cpp
-    src/core/task/camera_task.cpp
-    src/core/task/task_scheduler.cpp
-    src/core/algo/algo_manager.cpp
-    src/core/algo/algo_instance.cpp
-    src/core/algo/algo_sandbox.cpp
-    src/core/image/image_manager.cpp
-    src/core/resource/resource_ledger.cpp
-    src/core/telemetry/telemetry_collector.cpp
-    src/core/ipc/uds_client.cpp
-    src/core/ipc/uds_server.cpp
-    src/platform/platform_registry.cpp
-)
-target_include_directories(engine_core PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${PROTO_GEN_DIR}>
-)
-target_link_libraries(engine_core PUBLIC
-    engine_logging
-    platform_api
-    media_api
-    proto_gen
-    nlohmann_json::nlohmann_json
-    ${CMAKE_DL_LIBS}
-)
-aivision_enable_strict_warnings(engine_core)
-
-# 6. media backend
-if(AIVISION_USE_ZLM)
-    add_library(media_zlm STATIC
-        src/media/zlm/zlm_source.cpp
-    )
-    target_include_directories(media_zlm PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/ZLMediaKit/src>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/ZLMediaKit/3rdpart/ZLToolKit/src>
-    )
-    target_link_libraries(media_zlm PUBLIC
-        media_api
-        zlmediakit
-        ZLToolKit
-        ext-codec
-    )
-    aivision_enable_strict_warnings(media_zlm)
-else()
-    add_library(media_mock STATIC
-        src/media/mock/mock_source.cpp
-    )
-    target_include_directories(media_mock PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    )
-    target_link_libraries(media_mock PUBLIC media_api)
-    aivision_enable_strict_warnings(media_mock)
-endif()
-
-# 7. platform_mock
-add_library(platform_mock STATIC
-    src/platform/mock/mock_platform.cpp
-)
-target_include_directories(platform_mock PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
-target_link_libraries(platform_mock PUBLIC platform_api)
-aivision_enable_strict_warnings(platform_mock)
-
-# 8. platform_macos
-if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
-    add_library(platform_macos STATIC
-        src/platform/macos/macos_platform.mm
-        src/platform/macos/macos_decoder.mm
-        src/platform/macos/macos_image_ops.mm
-        src/platform/macos/macos_telemetry.cpp
-    )
-    target_include_directories(platform_macos PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    )
-    target_link_libraries(platform_macos PUBLIC
-        platform_api
-        "-framework VideoToolbox"
-        "-framework CoreVideo"
-        "-framework CoreMedia"
-        "-framework Accelerate"
-        "-framework ImageIO"
-        "-framework CoreGraphics"
-        "-framework CoreImage"
-        "-framework Foundation"
-        "-framework IOKit"
-    )
-    aivision_enable_strict_warnings(platform_macos)
-endif()
-
-# 9. package_validator
-add_executable(package_validator
-    src/validator/validator_main.cpp
-    src/core/algo/algo_sandbox.cpp
-)
-if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
-    target_sources(package_validator PRIVATE src/validator/macos_test_frame.mm)
-    target_compile_definitions(package_validator PRIVATE AIVISION_PLATFORM_MACOS=1)
-endif()
-target_include_directories(package_validator PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sdk/include>
-)
-target_link_libraries(package_validator PRIVATE
-    engine_logging
-    nlohmann_json::nlohmann_json
-    ${CMAKE_DL_LIBS}
-)
-aivision_enable_strict_warnings(package_validator)
-if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
-    target_link_libraries(package_validator PRIVATE
-        "-framework CoreVideo"
-        "-framework CoreGraphics"
-        "-framework ImageIO"
-        "-framework Foundation"
-    )
-endif()
-
-# 10. engine_app
-add_executable(aivision-engine
-    src/app/main.cpp
-)
-target_include_directories(aivision-engine PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
-target_link_libraries(aivision-engine PRIVATE
-    engine_core
-)
-aivision_enable_strict_warnings(aivision-engine)
-if(AIVISION_USE_ZLM)
-    target_link_libraries(aivision-engine PRIVATE media_zlm)
-else()
-    target_link_libraries(aivision-engine PRIVATE media_mock)
-endif()
-if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
-    target_compile_definitions(aivision-engine PRIVATE AIVISION_PLATFORM_MACOS=1)
-    target_link_libraries(aivision-engine PRIVATE platform_macos)
-else()
-    target_link_libraries(aivision-engine PRIVATE platform_mock)
-endif()
+# Subdirectories
+add_subdirectory(proto)
+add_subdirectory(src)
 
 # Tests
 if(ENGINE_BUILD_TESTS)

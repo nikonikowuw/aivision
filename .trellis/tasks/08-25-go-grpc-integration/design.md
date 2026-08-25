@@ -135,7 +135,7 @@ ipc:
 - 路径中不能包含 NUL；
 - 父目录由部署 Profile/systemd/launchd 或测试显式创建，App 不擅自创建安全关键运行目录。
 
-生产部署仍应把两端配置为 `/var/run/aivision/{app,engine}.sock`。当前 C++ 仍使用 `AIVISION_*_SOCKET` 开发兼容入口；把两端统一切换到同一版本化 Deployment Profile 属于后续部署任务，本 MVP 不宣称已解决该迁移。
+生产部署使用版本化 `AIVISION_ENGINE_PROFILE` JSON：`paths.runtime_dir` 必须为绝对路径，`ipc.app_socket` 与 `ipc.engine_socket` 只能是 runtime 目录内的相对 socket 名；Profile 模式禁止 `APP_IPC_*`/`AIVISION_*_SOCKET` 逐项覆盖。Go API 与 C++ Engine 都读取同一份 Profile，保证 IPC 端点作为一个部署单元可审计。未设置 Profile 时两端保留各自开发环境变量兼容入口。
 
 ### 3.2 安全绑定
 

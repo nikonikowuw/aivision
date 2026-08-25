@@ -1,4 +1,16 @@
-.PHONY: wire dev dev-raw build test vet swagger air migrate-up migrate-down migrate-version bootstrap-admin
+.PHONY: wire dev dev-raw build test vet swagger air migrate-up migrate-down migrate-version bootstrap-admin proto proto-check grpc-e2e
+
+# 从 engine/proto/aivision/v1 权威 proto 重新生成 Go protobuf/gRPC 代码（提交目录）
+proto:
+	bash scripts/generate-proto.sh
+
+# 生成到临时目录并与提交的生成文件逐文件比较，不污染工作树
+proto-check:
+	@tmp=$$(mktemp -d); \
+	bash scripts/generate-proto.sh "$$tmp" && \
+	diff -r --exclude='*_test.go' "$$tmp/internal/proto/aivision/v1" internal/proto/aivision/v1 && \
+	echo "proto-check: no drift" && \
+	rm -rf "$$tmp"
 
 wire:
 	cd cmd/api && wire
@@ -37,4 +49,8 @@ test:
 
 vet:
 	go vet ./...
+
+# 跨语言 E2E：构建 mock aivision-engine 并验证 Go <-> C++ 双向 gRPC 通信（独立于普通 test）
+grpc-e2e:
+	bash scripts/test-grpc-engine-smoke.sh
 

@@ -11,6 +11,7 @@ import (
 	"niko-vue-admin/app/internal/middleware"
 	"niko-vue-admin/app/internal/pkg/config"
 	"niko-vue-admin/app/internal/pkg/db"
+	"niko-vue-admin/app/internal/pkg/engineipc"
 	"niko-vue-admin/app/internal/pkg/logger"
 	"niko-vue-admin/app/internal/pkg/ntp"
 	"niko-vue-admin/app/internal/pkg/storage"
@@ -84,12 +85,21 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		NetworkHandler:      networkHandler,
 	}
 	engine := router.New(cfg, deps)
+	desiredStateAdapter := engineipc.UnavailableDesiredStateAdapter()
+	reportAdapter := engineipc.UnavailableReportAdapter()
+	runtime := engineipc.NewRuntime(zapLogger, desiredStateAdapter, reportAdapter)
+	engineClient, err := engineipc.NewEngineClient(cfg)
+	if err != nil {
+		return nil, err
+	}
 	app := &App{
-		DB:         gormDB,
-		Logger:     zapLogger,
-		Engine:     engine,
-		NTPService: ntpService,
-		Network:    networkService,
+		DB:           gormDB,
+		Logger:       zapLogger,
+		Engine:       engine,
+		NTPService:   ntpService,
+		Network:      networkService,
+		IPCRuntime:   runtime,
+		EngineClient: engineClient,
 	}
 	return app, nil
 }

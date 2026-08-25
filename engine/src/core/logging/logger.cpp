@@ -11,13 +11,13 @@ namespace aivision::logging {
 std::atomic<Level> Logger::min_level_{Level::Info};
 std::atomic<uint64_t> Logger::global_seq_{1};
 std::shared_ptr<LoggerStats> Logger::stats_ = std::make_shared<LoggerStats>();
-std::atomic<std::shared_ptr<AsyncLogWriter>> Logger::writer_;
+std::shared_ptr<AsyncLogWriter> Logger::writer_;
 std::mutex Logger::init_mutex_;
 std::atomic<bool> Logger::initialized_{false};
 
 void Logger::initialize(Level min_level, std::shared_ptr<LogSink> sink) noexcept {
     std::lock_guard<std::mutex> lock(init_mutex_);
-    if (writer_.load(std::memory_order_acquire)) {
+    if (std::atomic_load_explicit(&writer_, std::memory_order_acquire)) {
         return;
     }
 
@@ -27,10 +27,10 @@ void Logger::initialize(Level min_level, std::shared_ptr<LogSink> sink) noexcept
         if (!sink) sink = std::make_shared<StderrSink>();
         auto writer = std::make_shared<AsyncLogWriter>(std::move(sink), stats_, &global_seq_);
         writer->start();
-        writer_.store(std::move(writer), std::memory_order_release);
+        std::atomic_store_explicit(&writer_, std::move(writer), std::memory_order_release);
         initialized_.store(true, std::memory_order_release);
     } catch (...) {
-        writer_.store(std::shared_ptr<AsyncLogWriter>{}, std::memory_order_release);
+        std::atomic_store_explicit(&writer_, std::shared_ptr<AsyncLogWriter>{}, std::memory_order_release);
         initialized_.store(false, std::memory_order_release);
         // 保持降级路径也是结构化 JSONL，且不在异常处理路径再次分配内存。
         StderrSink fallback_sink;
@@ -44,7 +44,7 @@ void Logger::shutdown() noexcept {
     {
         std::lock_guard<std::mutex> lock(init_mutex_);
         initialized_.store(false, std::memory_order_release);
-        writer = writer_.exchange(std::shared_ptr<AsyncLogWriter>{}, std::memory_order_acq_rel);
+        writer = std::atomic_exchange_explicit(&writer_, std::shared_ptr<AsyncLogWriter>{}, std::memory_order_acq_rel);
     }
     if (writer) writer->stop(2000);
 }
@@ -56,7 +56,7 @@ Level Logger::get_level() noexcept {
 LoggerStatsSnapshot Logger::stats() noexcept {
     const auto stats = stats_;
     if (!stats) return {};
-    const auto writer = writer_.load(std::memory_order_acquire);
+    const auto writer = std::atomic_load_explicit(&writer_, std::memory_order_acquire);
     if (writer) {
         const auto [normal, high] = writer->queue_depths();
         return stats->snapshot(normal, high);
@@ -130,7 +130,7 @@ void Logger::log(Level lvl,
             record.extra_fields.emplace(key, std::move(*accepted));
         }
 
-        const auto writer = writer_.load(std::memory_order_acquire);
+        const auto writer = std::atomic_load_explicit(&writer_, std::memory_order_acquire);
         if (initialized_.load(std::memory_order_acquire) && writer) {
             writer->enqueue(std::move(record));
         } else {

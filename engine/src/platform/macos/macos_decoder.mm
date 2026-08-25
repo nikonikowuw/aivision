@@ -279,7 +279,7 @@ private:
     }
 
     bool create_session_locked() {
-        if (sps_.empty() || pps_.empty() || (codec_ == "H265" || codec_ == "HEVC") && vps_.empty()) return false;
+        if (sps_.empty() || pps_.empty() || ((codec_ == "H265" || codec_ == "HEVC") && vps_.empty())) return false;
         release_format_locked();
         const uint8_t* parameter_sets[3] = {vps_.data(), sps_.data(), pps_.data()};
         size_t parameter_sizes[3] = {vps_.size(), sps_.size(), pps_.size()};

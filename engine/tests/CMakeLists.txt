@@ -91,7 +91,7 @@ elseif(PLATFORM_TARGET STREQUAL "mock")
         AIVISION_RUN_PACKAGE_RPC_TEST=1
     )
 endif()
-add_dependencies(unit_tests mock_algo_fixture mock_algo_fixture_assets)
+add_dependencies(unit_tests mock_algo_fixture)
 add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 if(ENGINE_ENABLE_TSAN)
     # Keep real-media coverage; suppress only known ZLToolKit initialization races.
@@ -115,13 +115,15 @@ target_link_libraries(contract_tests PRIVATE
     GTest::gtest_main
 )
 aivision_enable_strict_warnings(contract_tests)
-add_dependencies(contract_tests mock_algo_fixture mock_algo_fixture_assets)
+add_dependencies(contract_tests mock_algo_fixture)
 add_test(NAME contract_tests COMMAND contract_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 if(AIVISION_USE_ZLM)
     add_executable(test_rtsp_server media/rtsp_server.cpp)
     target_include_directories(test_rtsp_server PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+    )
+    target_include_directories(test_rtsp_server SYSTEM PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ZLMediaKit/src>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ZLMediaKit/3rdpart/ZLToolKit/src>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ZLMediaKit/3rdpart/media-server/libmov/include>

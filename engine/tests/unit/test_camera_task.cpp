@@ -10,7 +10,7 @@
 
 class DummyMediaSource : public aivision::media::IMediaSource {
 public:
-    av_status start(const std::string& url, aivision::media::PacketCallback on_packet, aivision::media::StatusCallback on_status) override {
+    av_status start(const std::string&, aivision::media::PacketCallback on_packet, aivision::media::StatusCallback on_status) override {
         on_packet_ = std::move(on_packet);
         on_status_ = std::move(on_status);
         ++start_count_;
@@ -52,7 +52,7 @@ private:
 
 class DummyMediaBackend : public aivision::media::IMediaBackend {
 public:
-    std::unique_ptr<aivision::media::IMediaSource> create_source(const std::string& id) override {
+    std::unique_ptr<aivision::media::IMediaSource> create_source(const std::string&) override {
         auto src = std::make_unique<DummyMediaSource>();
         last_source_ = src.get();
         return src;
@@ -93,7 +93,7 @@ public:
     explicit WatchdogPlatformAdapter(std::shared_ptr<std::atomic<int>> reset_count)
         : reset_count_(std::move(reset_count)) {}
 
-    std::unique_ptr<aivision::platform::IDecoder> create_decoder(const std::string& codec_type) override {
+    std::unique_ptr<aivision::platform::IDecoder> create_decoder(const std::string&) override {
         return std::make_unique<WatchdogDecoder>(reset_count_);
     }
 

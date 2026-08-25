@@ -139,7 +139,9 @@ private:
     static std::atomic<Level> min_level_;
     static std::atomic<uint64_t> global_seq_;
     static std::shared_ptr<LoggerStats> stats_;
-    static std::atomic<std::shared_ptr<AsyncLogWriter>> writer_;
+    // Apple libc++ 未提供 C++20 的 std::atomic<std::shared_ptr<T>> 特化，
+    // 改用 C++11 的 atomic_load/store/exchange 自由函数保持相同语义。
+    static std::shared_ptr<AsyncLogWriter> writer_;
     static std::mutex init_mutex_;
     static std::atomic<bool> initialized_;
 };

@@ -598,3 +598,24 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 21: C++ Engine structured logging (JSONL)
+
+**Date**: 2026-08-25
+**Task**: C++ Engine structured logging (JSONL)
+**Branch**: `dev`
+
+### Summary
+
+实现 C++ Engine 结构化异步 JSONL 日志系统：统一 logger（级别过滤、稳定字段、URL/凭据脱敏、异步非阻塞 writer、本地统计），接入 SDK av_log_fn 桥接；validator 与 algo_sandbox 的机器协议不再依赖可变日志文本；配套系统日志/systemd journald 部署说明、确定性单测与 sanitizer 覆盖；同步更新 engine 规范。任务 08-25-cpp-engine-logging 已归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e165e8d` | (see git log) |
+
+### Status
+
+[OK] **Completed**

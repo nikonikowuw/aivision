@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
-- **Last Active**: 2026-08-24
+- **Total Sessions**: 21
+- **Last Active**: 2026-08-25
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~567 | Active |
+| `journal-1.md` | ~621 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-08-25 | C++ Engine structured logging (JSONL) | `e165e8d` | `dev` |
 | 20 | 2026-08-24 | 完成 RK3576 YOLOv8n RKNN 算法包验证与归档 | `9fada7c` | `dev` |
 | 19 | 2026-08-23 | 完成边缘网关模式与内置DHCP服务开发 | `2df5ae8`, `c5d4d17`, `dc0c125` | `feat/08-23-edge-gateway-dhcp` |
 | 18 | 2026-08-23 | 简化 LACP 802.3ad 聚合实现 | `c6b1bef` | `feat/lacp-aggregation` |

@@ -1,3 +1,4 @@
+// Package main 实现 Stub gRPC 控制面与数据上报服务处理逻辑
 package main
 
 import (
@@ -6,6 +7,7 @@ import (
 
 	pb "stub_server/gen/aivision/v1"
 )
+
 
 type ControlPlaneServiceImpl struct {
 	pb.UnimplementedControlPlaneServiceServer

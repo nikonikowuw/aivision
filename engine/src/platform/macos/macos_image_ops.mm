@@ -1,9 +1,21 @@
+/**
+ * @file macos_image_ops.mm
+ * @brief macOS 图像原语处理器实现
+ * 
+ * 基于 Apple Accelerate 框架（vImage）与 CoreImage/ImageIO：
+ * 1. 内存管理：CVPixelBuffer 分配与释放；
+ * 2. 图像转换：NV12 / BGRA 颜色空间转换、ROI 裁剪、高质量缩放（vImageScale）；
+ * 3. 模型预处理：保持宽高比 Letterbox 填充；
+ * 4. 告警抓拍：ROI 裁剪并高质量编码为 JPEG 字节流（CGImageDestination）。
+ */
+
 #import "aivision/platform/macos_platform.hpp"
 
 #import <Accelerate/Accelerate.h>
 #import <CoreImage/CoreImage.h>
 #import <CoreVideo/CoreVideo.h>
 #import <ImageIO/ImageIO.h>
+
 
 #include <algorithm>
 #include <cmath>
@@ -76,6 +88,7 @@ int macos_free(void*, av_image_view* image) {
     return AV_OK;
 }
 
+// 基于 Apple vImage 库执行 NV12/BGRA 转换、ROI 裁剪与高质量重采样缩放
 int macos_convert(void*, const av_frame_desc* src, const av_rect* src_roi,
                   const av_image_view* dst, uint32_t) {
     if (!src || !src->opaque || !dst || !dst->opaque) return AV_ERR_INVALID_ARG;
@@ -109,6 +122,7 @@ int macos_convert(void*, const av_frame_desc* src, const av_rect* src_roi,
         CVPixelBufferGetBaseAddress(target), dst_height, dst_width, CVPixelBufferGetBytesPerRow(target)
     };
     if (src->pixel_format == AV_PIX_BGRA) {
+        // BGRA 直接裁剪并缩放
         const auto* base = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddress(source));
         vImage_Buffer cropped{
             const_cast<uint8_t*>(base) + crop_y * CVPixelBufferGetBytesPerRow(source) + crop_x * 4,
@@ -116,6 +130,7 @@ int macos_convert(void*, const av_frame_desc* src, const av_rect* src_roi,
         };
         error = vImageScale_ARGB8888(&cropped, &destination, nullptr, kvImageHighQualityResampling);
     } else if (src->pixel_format == AV_PIX_NV12) {
+        // NV12 双平面转 ARGB/BGRA（根据色彩矩阵设置 BT.709 或 BT.2020 转换参数）
         vImage_Buffer y_buffer{
             CVPixelBufferGetBaseAddressOfPlane(source, 0),
             CVPixelBufferGetHeightOfPlane(source, 0),

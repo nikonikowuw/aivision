@@ -1,3 +1,8 @@
+/**
+ * @file platform_registry.cpp
+ * @brief 平台适配器注册表实现
+ */
+
 #include "aivision/platform/platform_api.hpp"
 
 namespace aivision::platform {
@@ -27,3 +32,4 @@ std::shared_ptr<IPlatformAdapter> PlatformRegistry::get_active_adapter() {
 }
 
 } // namespace aivision::platform
+

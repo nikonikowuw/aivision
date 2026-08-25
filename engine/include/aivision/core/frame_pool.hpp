@@ -1,5 +1,13 @@
 #pragma once
 
+/**
+ * @file frame_pool.hpp
+ * @brief 152B av_frame_desc 帧描述符对象池与引用计数生命周期管理
+ * 
+ * 维护 frame_token 与内部真实帧结构体的映射，提供纯 C ABI 的 av_frame_ops 函数表；
+ * 实现对平台底层原生 surface 句柄（opaque）的引用与级联析构释放。
+ */
+
 #include <vector>
 #include <mutex>
 #include <atomic>
@@ -10,6 +18,9 @@
 
 namespace aivision::core {
 
+/**
+ * @brief 帧对象池与生命周期管理器（单例）
+ */
 class FramePool {
 public:
     static FramePool& instance();
@@ -17,20 +28,43 @@ public:
     FramePool();
     ~FramePool();
 
-    // Allocate / borrow frame handle
+    /**
+     * @brief 从对象池中借出或分配一个空的帧描述符
+     */
     av_frame_desc* acquire_frame();
+
+    /**
+     * @brief 增加帧引用计数（对应 C ABI retain）
+     * @param frame_token 帧唯一令牌
+     */
     av_status retain_frame(void* frame_token);
+
+    /**
+     * @brief 减少帧引用计数，归零时回收回对象池并释放关联的 opaque 句柄（对应 C ABI release）
+     * @param frame_token 帧唯一令牌
+     */
     av_status release_frame(void* frame_token);
 
-    // Get ops function table
+    /**
+     * @brief 获取导出给 C ABI 的 av_frame_ops 函数指针表
+     */
     const av_frame_ops* get_frame_ops() const;
 
-    // Associates platform opaque ownership with the token's final release.
+    /**
+     * @brief 为指定帧令牌绑定平台底层 opaque 句柄的释放回调
+     * @param frame_token 帧唯一令牌
+     * @param release_fn 析构释放回调
+     */
     av_status set_opaque_release(void* frame_token, void (*release_fn)(void*));
 
-    // Poison / sanity check
+    /**
+     * @brief 获取当前正处于借出/活跃状态的帧总数
+     */
     uint32_t active_frame_count() const;
-    // Only clears fully released frames; active tokens are preserved.
+
+    /**
+     * @brief 重置并清理已完全归还的空闲池节点（保留活跃帧）
+     */
     av_status reset();
 
 private:
@@ -50,3 +84,4 @@ private:
 };
 
 } // namespace aivision::core
+

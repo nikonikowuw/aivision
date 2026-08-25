@@ -1,6 +1,12 @@
+/**
+ * @file test_camera_task.cpp
+ * @brief 摄像头拉流、NALU 解析、解码分发与看门狗重连单元测试
+ */
+
 #include <gtest/gtest.h>
 #include "aivision/core/camera_task.hpp"
 #include "aivision/platform/mock_platform.hpp"
+
 
 class DummyMediaSource : public aivision::media::IMediaSource {
 public:

@@ -1,3 +1,8 @@
+/**
+ * @file test_real_media.cpp
+ * @brief 真实流媒体端到端集成测试（拉起 rtsp_server 测试 RTSP 拉流、VideoToolbox 解码与算法推理）
+ */
+
 #include <cerrno>
 #include <chrono>
 #include <csignal>
@@ -14,6 +19,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
 
 #include "aivision/core/algo_instance.hpp"
 #include "aivision/core/camera_task.hpp"

@@ -1,3 +1,13 @@
+/**
+ * @file uds_server.cpp
+ * @brief UDS gRPC 服务端实现（处理来自 Go 控制面的 RPC 期望与管理指令）
+ * 
+ * 核心功能：
+ * 1. EngineServiceImpl：处理 ApplyDesiredState、算法包安装/升级/回滚/卸载、图片删除与对账、Profile/Metrics 查询；
+ * 2. PersonServiceImpl：处理人脸库与特征检索相关契约；
+ * 3. 算法库动态装载管理（LibraryContext）与 C ABI 句柄持有。
+ */
+
 #include "aivision/core/uds_ipc.hpp"
 #include "aivision/core/image_manager.hpp"
 #include "aivision/core/algo_manager.hpp"
@@ -7,6 +17,7 @@
 #include "aivision/core/telemetry_collector.hpp"
 #include "aivision/platform/platform_api.hpp"
 #include "aivision/utils/package_layout.hpp"
+
 
 #include <cerrno>
 #include <atomic>
@@ -287,6 +298,12 @@ public:
         return apply_desired_state(&request->desired_state(), response);
     }
 
+    // 执行期望状态应用（Desired State Reconcile 状态机）：
+    // 1. 检查版本号（revision）防止旧版本乱序覆盖；
+    // 2. 创建当前运行时快照（RuntimeSnapshot）用于失败回滚；
+    // 3. 逐项应用任务（Task）与算法实例（Instance）配置；
+    // 4. 若出现失败，执行事务性回滚（rollback_runtime_state），回滚失败则标记降级（RUNTIME_DEGRADED）；
+    // 5. 成功后原子更新应用版本号与期望状态缓存。
     grpc::Status apply_desired_state(const aivision::v1::DesiredState* desired_ptr,
                                      aivision::v1::ApplyDesiredStateResponse* response) {
         if (!desired_ptr || !response) return grpc::Status::OK;
@@ -320,6 +337,7 @@ public:
             return grpc::Status::OK;
         }
 
+        // 保存对齐前的运行时快照
         RuntimeSnapshot snapshot;
         std::string snapshot_error;
         if (!snapshot_runtime_state(snapshot, snapshot_error)) {
@@ -330,6 +348,7 @@ public:
         }
 
         bool failed = false;
+        // 增量更新或新建摄像头任务
         for (const auto& task_config : desired.tasks()) {
             auto* item = response->add_results();
             item->set_kind(aivision::v1::RECONCILE_ITEM_KIND_TASK);

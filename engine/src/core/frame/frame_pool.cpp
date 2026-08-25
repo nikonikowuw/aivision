@@ -1,5 +1,11 @@
+/**
+ * @file frame_pool.cpp
+ * @brief 帧对象池（FramePool）与引用计数管理实现
+ */
+
 #include "aivision/core/frame_pool.hpp"
 #include <limits>
+
 
 namespace aivision::core {
 
@@ -32,6 +38,7 @@ FramePool::~FramePool() = default;
 
 av_frame_desc* FramePool::acquire_frame() {
     std::lock_guard<std::mutex> lock(mutex_);
+    // 1. 优先从对象池复用闲置的帧描述符
     for (auto& item : pool_) {
         if (!item->in_use && item->ref_count.load() == 0) {
             item->in_use = true;
@@ -46,6 +53,7 @@ av_frame_desc* FramePool::acquire_frame() {
         }
     }
 
+    // 2. 若无空闲对象则新建并扩容对象池
     auto item = std::make_unique<InternalFrame>();
     item->in_use = true;
     item->ref_count.store(1);
@@ -62,6 +70,7 @@ av_frame_desc* FramePool::acquire_frame() {
 av_status FramePool::retain_frame(void* frame_token) {
     if (!frame_token) return AV_ERR_INVALID_ARG;
     std::lock_guard<std::mutex> lock(mutex_);
+    // 查找并递增 frame_token 对应的内部引用计数
     auto it = token_map_.find(frame_token);
     if (it == token_map_.end()) return AV_ERR_INVALID_ARG;
     auto* frame = it->second;
@@ -83,6 +92,7 @@ av_status FramePool::release_frame(void* frame_token) {
         const int32_t refs = frame->ref_count.load();
         if (!frame->in_use || refs <= 0) return AV_ERR_INVALID_ARG;
         if (refs == 1) {
+            // 引用归零：归还对象池并准备释放底层原生 surface / DMA-BUF 句柄
             frame->ref_count.store(0);
             frame->in_use = false;
             if (!frame->buffer.empty()) {
@@ -98,6 +108,7 @@ av_status FramePool::release_frame(void* frame_token) {
             frame->ref_count.store(refs - 1);
         }
     }
+    // 在锁外调用平台析构函数释放硬件 surface，防止阻塞帧池并发
     if (opaque_release && opaque) opaque_release(opaque);
     return AV_OK;
 }

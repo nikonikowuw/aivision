@@ -1,9 +1,21 @@
+/**
+ * @file camera_task.cpp
+ * @brief 摄像头拉流、解码分发与看门狗任务实现
+ * 
+ * 核心逻辑：
+ * 1. canonical_codec 归一化编码名称与 NALU 参数集（VPS/SPS/PPS）状态机跟踪；
+ * 2. 只有在集齐参数集并遇到第一个关键帧（IDR / IRAP）后才开始向解码器喂入数据；
+ * 3. 解码工作线程（decode_loop）从队列取包解码并借出 av_frame_desc 扇出给下游实例；
+ * 4. 看门狗巡检（watchdog_loop）监控拉流断流与解码卡死，执行指数退避重连。
+ */
+
 #include "aivision/core/camera_task.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <iostream>
 #include <utility>
+
 
 namespace aivision::core {
 namespace {
@@ -32,29 +44,33 @@ struct PacketNalFlags {
     bool has_random_access = false;
 };
 
+// 检查并提取 H.264 / H.265 NALU 单元的参数集和关键帧类型标志
 void inspect_nal(PacketNalFlags& flags, const uint8_t* nal, size_t size, bool hevc) {
     if (!nal || size == 0) return;
     flags.parseable = true;
+    // HEVC: nal[0] 右移 1 位取低 6 位作为 nal_unit_type；H.264: nal[0] 取低 5 位
     const uint8_t type = hevc ? static_cast<uint8_t>((nal[0] >> 1) & 0x3F)
                               : static_cast<uint8_t>(nal[0] & 0x1F);
     if (hevc) {
-        flags.has_vps = flags.has_vps || type == 32;
-        flags.has_sps = flags.has_sps || type == 33;
-        flags.has_pps = flags.has_pps || type == 34;
-        flags.has_random_access = flags.has_random_access || (type >= 16 && type <= 23);
+        flags.has_vps = flags.has_vps || type == 32;               // VPS (Video Parameter Set)
+        flags.has_sps = flags.has_sps || type == 33;               // SPS (Sequence Parameter Set)
+        flags.has_pps = flags.has_pps || type == 34;               // PPS (Picture Parameter Set)
+        flags.has_random_access = flags.has_random_access || (type >= 16 && type <= 23); // IRAP 关键帧 (IDR/CRA/BLA)
     } else {
-        flags.has_sps = flags.has_sps || type == 7;
-        flags.has_pps = flags.has_pps || type == 8;
-        flags.has_random_access = flags.has_random_access || type == 5;
+        flags.has_sps = flags.has_sps || type == 7;                // SPS (Sequence Parameter Set)
+        flags.has_pps = flags.has_pps || type == 8;                // PPS (Picture Parameter Set)
+        flags.has_random_access = flags.has_random_access || type == 5; // IDR 关键帧
     }
 }
 
+// 深度解析编码数据包（同时支持 Annex-B 00 00 00 01 起始码模式与 AVCC/HVCC 4字节长度前缀模式）
 PacketNalFlags inspect_packet(const media::EncodedPacket& packet, const std::string& codec) {
     PacketNalFlags flags;
     if (!packet.data || packet.size == 0) return flags;
     const bool hevc = codec == "H265";
     const bool annex_b = nal_start_code_size(packet.data, packet.size, 0) != 0;
     if (annex_b) {
+        // Annex-B 模式：按 0x000001 / 0x00000001 起始码逐段切分 NALU 单元
         size_t offset = 0;
         while (offset < packet.size) {
             const size_t prefix = nal_start_code_size(packet.data, packet.size, offset);
@@ -71,6 +87,7 @@ PacketNalFlags inspect_packet(const media::EncodedPacket& packet, const std::str
         return flags;
     }
 
+    // AVCC / HVCC 模式：按大端 4 字节 NALU 长度前缀解析
     size_t offset = 0;
     while (offset + 4 <= packet.size) {
         const uint32_t nal_size = (static_cast<uint32_t>(packet.data[offset]) << 24) |
@@ -79,7 +96,7 @@ PacketNalFlags inspect_packet(const media::EncodedPacket& packet, const std::str
                                   packet.data[offset + 3];
         offset += 4;
         if (nal_size == 0 || nal_size > packet.size - offset) {
-            // If length prefix is not valid AVCC 4-byte length, treat the entire payload as a single NAL
+            // 若长度前缀非法，降级为将整个 payload 作为单一 NALU 处理
             flags = PacketNalFlags{};
             inspect_nal(flags, packet.data, packet.size, hevc);
             return flags;
@@ -304,6 +321,7 @@ void CameraTask::on_encoded_packet(const media::EncodedPacket& packet) {
 }
 
 void CameraTask::decode_loop() {
+    // 重置解码器内部状态与关键帧同步标志
     const auto reset_decoder_state = [this] {
         if (decoder_) decoder_->reset();
         saw_idr_keyframe_.store(false, std::memory_order_release);
@@ -318,11 +336,14 @@ void CameraTask::decode_loop() {
         media::EncodedPacket packet;
         {
             std::unique_lock<std::mutex> lock(encoded_mutex_);
+            // 等待待解码的视频包、重连通知或重置请求
             encoded_cv_.wait(lock, [this] {
                 return !running_.load(std::memory_order_acquire) || reconnect_requested_.load(std::memory_order_acquire) ||
                        decoder_reset_requested_.load(std::memory_order_acquire) || !encoded_queue_.empty();
             });
             if (!running_.load(std::memory_order_acquire)) break;
+
+            // 处理重连请求：执行媒体拉流重启，并在失败时以指数退避延迟重试
             if (reconnect_requested_.exchange(false, std::memory_order_acq_rel)) {
                 lock.unlock();
                 restart_media_source();
@@ -334,6 +355,8 @@ void CameraTask::decode_loop() {
                 }
                 continue;
             }
+
+            // 处理解码器重置请求
             if (decoder_reset_requested_.exchange(false, std::memory_order_acq_rel)) {
                 lock.unlock();
                 reset_decoder_state();
@@ -345,6 +368,7 @@ void CameraTask::decode_loop() {
             encoded_queue_.pop_front();
         }
 
+        // 动态检测编码格式切换（如 H.264 切换到 H.265）并重新初始化匹配的解码器
         const std::string packet_codec = canonical_codec(packet.codec_name);
         if (!packet_codec.empty() && packet_codec != decoder_codec_) {
             auto replacement = platform_adapter_->create_decoder(packet_codec);
@@ -364,6 +388,7 @@ void CameraTask::decode_loop() {
         }
         if (!decoder_) continue;
 
+        // 参数集状态机与首个关键帧过滤：必须在集齐 SPS/PPS 并在首个 IDR 关键帧到来后才开始向解码器送帧，防止花屏或崩溃
         const auto nal_flags = inspect_packet(packet, decoder_codec_);
         if (!nal_flags.parseable) continue;
         saw_vps_ = saw_vps_ || nal_flags.has_vps;
@@ -384,6 +409,7 @@ void CameraTask::decode_loop() {
             continue;
         }
 
+        // 向硬件/软件解码器喂入压缩数据包
         const av_status send_st = decoder_->send_packet(packet.data, packet.size, packet.pts_us, packet.is_keyframe);
         if (send_st != AV_OK) continue;
         last_decoder_input_time_ms_.store(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -393,6 +419,7 @@ void CameraTask::decode_loop() {
             saw_idr_keyframe_.store(true, std::memory_order_release);
         }
 
+        // 循环读取解码器输出的原始帧，并扇出分发给绑定的所有算法实例
         for (;;) {
             av_frame_desc* frame = FramePool::instance().acquire_frame();
             if (!frame) break;
@@ -403,6 +430,7 @@ void CameraTask::decode_loop() {
                 decoder_waiting_for_output_.store(false, std::memory_order_release);
                 decoded_frames_.fetch_add(1);
 
+                // 注册底层硬件 surface 的级联析构释放回调
                 if (frame->opaque && platform_adapter_) {
                     const auto release_opaque = platform_adapter_->get_opaque_release();
                     if (release_opaque && FramePool::instance().set_opaque_release(frame->frame_token, release_opaque) != AV_OK) {
@@ -411,6 +439,7 @@ void CameraTask::decode_loop() {
                     }
                 }
 
+                // 扇出分发视频帧给所有运行中的算法实例
                 std::vector<std::shared_ptr<AlgorithmInstance>> instances;
                 {
                     std::lock_guard<std::mutex> lock(instances_mutex_);
@@ -419,9 +448,11 @@ void CameraTask::decode_loop() {
                 for (const auto& instance : instances) {
                     if (instance) instance->push_frame(*frame);
                 }
+                // 释放当前线程在帧池中的借出引用（若下游实例保留了该帧，帧池的内部 refcount 会维护其生命周期）
                 FramePool::instance().release_frame(frame->frame_token);
                 continue;
             }
+            // 无更多输出帧，归还未使用的描述符并退出循环
             FramePool::instance().release_frame(const_cast<void*>(pool_token));
             break;
         }

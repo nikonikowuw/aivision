@@ -1,3 +1,8 @@
+/**
+ * @file test_toolkit.cpp
+ * @brief SDK Toolkit 图像几何变换、NMS、配置解析与性能分析器单元测试
+ */
+
 #include <cstdio>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -10,6 +15,7 @@
 #include "aivision/utils/json.hpp"
 #include "aivision/utils/event_id.hpp"
 #include "aivision/utils/profiler.hpp"
+
 
 TEST(CVToolkitTest, LetterboxMapping) {
     auto lb = aivision::cv::compute_letterbox(1920, 1080, 640, 640);

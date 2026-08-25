@@ -1,6 +1,12 @@
+/**
+ * @file mock_algo.c
+ * @brief C ABI 规范 Mock 算法插件动态库实现（供自检与单测使用）
+ */
+
 #include "aivision/algo.h"
 #include <stdlib.h>
 #include <string.h>
+
 
 /* Instance state: validator self-test needs process() to emit exactly one
  * AV_RESULT_SELF_TEST callback (algo-package-spec.md §4.2). */

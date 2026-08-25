@@ -1,3 +1,5 @@
+// Package main 实现端到端集成测试用的 Go Stub 控制面服务
+// 提供 HTTP REST 接口供测试脚本下发指令，提供 gRPC UDS 服务（ReportService / ControlPlaneService）供 Engine 连接
 package main
 
 import (
@@ -11,6 +13,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"

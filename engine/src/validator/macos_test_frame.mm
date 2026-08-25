@@ -1,6 +1,12 @@
+/**
+ * @file macos_test_frame.mm
+ * @brief macOS 算法包自检测试帧生成实现（通过 ImageIO 加载 testimage.jpg 渲染为 CVPixelBuffer）
+ */
+
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreVideo/CoreVideo.h>
 #import <ImageIO/ImageIO.h>
+
 
 #include "aivision/types.h"
 

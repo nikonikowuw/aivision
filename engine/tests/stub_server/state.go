@@ -1,3 +1,4 @@
+// Package main 维护 Stub 服务的内存状态与测试钩子
 package main
 
 import (
@@ -5,6 +6,7 @@ import (
 
 	pb "stub_server/gen/aivision/v1"
 )
+
 
 type ServerState struct {
 	mu sync.RWMutex

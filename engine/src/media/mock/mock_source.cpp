@@ -1,7 +1,13 @@
+/**
+ * @file mock_source.cpp
+ * @brief 单元测试专用的 Mock 流媒体源与后端实现
+ */
+
 #include "aivision/media/media_api.hpp"
 
 #include <atomic>
 #include <utility>
+
 
 namespace aivision::media {
 namespace {

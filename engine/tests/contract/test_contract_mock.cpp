@@ -1,6 +1,12 @@
+/**
+ * @file test_contract_mock.cpp
+ * @brief 契约测试：验证 Mock 平台适配器、解码器、图像处理与 C ABI 规范对齐
+ */
+
 #include <gtest/gtest.h>
 #include <cmath>
 #include "aivision/platform/mock_platform.hpp"
+
 
 TEST(ContractMockTest, PlatformProfileAndImageOps) {
     static_assert(static_cast<int>(aivision::platform::CapabilityStatus::UNSPECIFIED) == 0);

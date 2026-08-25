@@ -1,8 +1,14 @@
+/**
+ * @file task_scheduler.cpp
+ * @brief 摄像头任务调度器单例实现
+ */
+
 #include "aivision/core/task_scheduler.hpp"
 
 namespace aivision::core {
 
 TaskScheduler& TaskScheduler::instance() {
+    // 线程安全的 Meyers 单例
     static TaskScheduler scheduler;
     return scheduler;
 }
@@ -10,6 +16,7 @@ TaskScheduler& TaskScheduler::instance() {
 bool TaskScheduler::add_task(const std::shared_ptr<CameraTask>& task) {
     if (!task) return false;
     std::lock_guard<std::mutex> lock(mutex_);
+    // emplace 插入，若 camera_id 已存在则返回 false，保证单个摄像头任务的唯一性
     return tasks_.emplace(task->get_camera_id(), task).second;
 }
 
@@ -20,6 +27,7 @@ std::shared_ptr<CameraTask> TaskScheduler::get_task(const std::string& camera_id
 }
 
 av_status TaskScheduler::start_task(const std::string& camera_id) {
+    // 查找并启动指定摄像头的拉流与解码任务
     const auto task = get_task(camera_id);
     return task ? task->start() : AV_ERR_INVALID_ARG;
 }
@@ -30,9 +38,11 @@ bool TaskScheduler::stop_task(const std::string& camera_id) {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto it = tasks_.find(camera_id);
         if (it == tasks_.end()) return false;
+        // 先从哈希表中移除以缩小临界区
         task = std::move(it->second);
         tasks_.erase(it);
     }
+    // 在锁外调用 stop()，停止工作线程与资源释放
     task->stop();
     return true;
 }
@@ -43,6 +53,7 @@ void TaskScheduler::stop_all() {
         std::lock_guard<std::mutex> lock(mutex_);
         tasks.swap(tasks_);
     }
+    // 停止调度器管理的所有摄像头任务
     for (auto& [id, task] : tasks) {
         if (task) task->stop();
     }

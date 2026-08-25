@@ -1,5 +1,11 @@
+/**
+ * @file test_color_vui.cpp
+ * @brief H.264 / H.265 SPS VUI 色彩空间解析器单元测试
+ */
+
 #include <gtest/gtest.h>
 #include "aivision/core/color_vui.hpp"
+
 
 TEST(ColorVUITest, FallbackBT709) {
     auto info = aivision::core::ColorVUIParser::parse_h264_sps(nullptr, 0);

@@ -1,5 +1,12 @@
 #pragma once
 
+/**
+ * @file mock_platform.hpp
+ * @brief 单元测试与无硬件环境使用的 Mock 平台适配器
+ * 
+ * 提供不依赖真实解码器或硬件图像加速的桩实现（MockDecoder, MockImageProcessor, MockTelemetry, MockPlatformAdapter）。
+ */
+
 #include "aivision/platform/platform_api.hpp"
 #include <string>
 #include <cstring>
@@ -9,6 +16,9 @@
 
 namespace aivision::platform {
 
+/**
+ * @brief 模拟解码器，按时间戳递增直接生成测试帧
+ */
 class MockDecoder : public IDecoder {
 public:
     explicit MockDecoder(std::string codec = "H264");
@@ -27,6 +37,9 @@ private:
     bool has_packet_ = false;
 };
 
+/**
+ * @brief 模拟图像处理器，支持空转缩放与基础伪 JPEG 头生成
+ */
 class MockImageProcessor : public IImageProcessor {
 public:
     MockImageProcessor() = default;
@@ -51,12 +64,15 @@ public:
     }
 
     av_status encode_jpeg(const av_frame_desc* src, const av_rect* crop_roi, int quality, std::vector<uint8_t>& out_jpeg) override {
-        // Minimal fake JPEG header
+        // 生成合法的最小虚拟 JPEG 头字节流
         out_jpeg = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x60, 0x00, 0x60, 0x00, 0x00, 0xFF, 0xD9};
         return AV_OK;
     }
 };
 
+/**
+ * @brief 模拟系统遥测指标采集器
+ */
 class MockTelemetry : public ITelemetry {
 public:
     MockTelemetry() = default;
@@ -68,12 +84,15 @@ public:
         m.cpu_usage_percent = 12.5f;
         m.memory_usage_percent = 35.0f;
         m.disk_usage_percent = 50.0f;
-        m.accelerator_supported = false; // Mock doesn't have NPU
+        m.accelerator_supported = false; // Mock 环境不挂载实际 NPU
         m.temperature_supported = false;
         return m;
     }
 };
 
+/**
+ * @brief 模拟平台适配器，聚合 Mock 子系统
+ */
 class MockPlatformAdapter : public IPlatformAdapter {
 public:
     MockPlatformAdapter();
@@ -96,3 +115,4 @@ private:
 };
 
 } // namespace aivision::platform
+

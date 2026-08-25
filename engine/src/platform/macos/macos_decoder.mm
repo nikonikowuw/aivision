@@ -1,3 +1,11 @@
+/**
+ * @file macos_decoder.mm
+ * @brief macOS VideoToolbox 硬件视频解码器实现 (H.264 / H.265)
+ * 
+ * 包含 NALU 分割与 AVCC 封装、SPS/PPS/VPS 动态解析与 VTDecompressionSession 建立、
+ * CVPixelBuffer 异步接收与 av_frame_desc 结构体组装。
+ */
+
 #import "aivision/platform/macos_platform.hpp"
 
 #include "aivision/core/color_vui.hpp"
@@ -5,6 +13,7 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <VideoToolbox/VideoToolbox.h>
+
 
 #include <algorithm>
 #include <chrono>
@@ -86,6 +95,7 @@ public:
         release_format_locked();
     }
 
+    // 向 VideoToolbox 解码会话发送压缩数据包（将 NALU 封装为 AVCC 格式并构建 CMSampleBuffer）
     av_status send_packet(const uint8_t* data, size_t size, int64_t pts_us, bool) override {
         if (!data || size == 0) return AV_ERR_INVALID_ARG;
 
@@ -95,9 +105,11 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             const auto nals = split_nals(data, size);
             if (nals.empty()) return AV_ERR_INVALID_ARG;
+            // 提取 SPS/PPS/VPS 并更新 CMVideoFormatDescription
             update_parameter_sets_locked(nals);
             if (!session_ && !create_session_locked()) return AV_ERR_RETRY;
 
+            // 组装 AVCC 大端 4 字节长度前缀格式
             std::vector<uint8_t> avcc;
             for (const auto& nal : nals) {
                 const uint32_t length = static_cast<uint32_t>(nal.bytes.size());
@@ -127,6 +139,7 @@ public:
             CFRetain(session);
         }
 
+        // 调用 VTDecompressionSessionDecodeFrame 异步硬解
         VTDecodeInfoFlags flags = 0;
         const OSStatus status = VTDecompressionSessionDecodeFrame(session, sample,
                                                                    kVTDecodeFrame_EnableAsynchronousDecompression,

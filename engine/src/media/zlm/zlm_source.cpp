@@ -1,3 +1,12 @@
+/**
+ * @file zlm_source.cpp
+ * @brief 基于 ZLMediaKit 的 RTSP 流客户端媒体源实现
+ * 
+ * 管理 MediaPlayer 实例与 EventPoller 线程同步，
+ * 实现 TCP 模式拉流、视频 Track 委托监听（FrameWriterInterface）、
+ * 原始帧包（EncodedPacket）组装与连接中断/恢复事件广播。
+ */
+
 #include "aivision/media/media_api.hpp"
 
 #include <atomic>
@@ -10,6 +19,7 @@
 #include "Extension/Frame.h"
 #include "Player/MediaPlayer.h"
 #include "Rtsp/Rtsp.h"
+
 
 namespace aivision::media {
 namespace {
@@ -68,8 +78,11 @@ public:
         const std::weak_ptr<ZlmSourceState> weak_state = state;
         player_poller->sync([&] {
             if (!state->active.load(std::memory_order_acquire)) return;
+            // 强制等待音视频 Track 准备就绪并强制使用 TCP 传输（规避 UDP 丢包导致花屏）
             (*player)[mediakit::Client::kWaitTrackReady] = true;
             (*player)[mediakit::Client::kRtpType] = mediakit::Rtsp::RTP_TCP;
+
+            // 监听播放开始事件
             player->setOnPlayResult([weak_state](const toolkit::SockException& error) {
                 auto state = weak_state.lock();
                 if (!state || !state->active.load()) return;
@@ -93,6 +106,8 @@ public:
                     report_status(state, "video track is unavailable", true);
                     return;
                 }
+
+                // 注册视频帧回调委托，将 ZLM Frame 结构体转换封装为 aivision EncodedPacket
                 auto delegate = video_track->addDelegate([weak_state](const mediakit::Frame::Ptr& frame) {
                     if (!frame) return false;
                     auto state = weak_state.lock();
@@ -140,6 +155,8 @@ public:
                 report_status(state, state->connected.load() ? "connected" : "video delegate registration failed",
                               !state->connected.load());
             });
+
+            // 监听网络连接断开事件
             player->setOnShutdown([weak_state](const toolkit::SockException& error) {
                 if (auto state = weak_state.lock()) {
                     state->connected.store(false);

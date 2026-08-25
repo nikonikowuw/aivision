@@ -1,3 +1,8 @@
+/**
+ * @file test_algo_sandbox.cpp
+ * @brief 算法包沙箱校验、动态库加载、参数热更新及多实例并发单元测试
+ */
+
 #include <gtest/gtest.h>
 #include "aivision/core/algo_sandbox.hpp"
 #include "aivision/core/algo_instance.hpp"
@@ -6,6 +11,7 @@
 #include "aivision/core/uds_ipc.hpp"
 #include "aivision/core/resource_ledger.hpp"
 #include "aivision/platform/mock_platform.hpp"
+
 #include <dlfcn.h>
 #include <atomic>
 #include <chrono>

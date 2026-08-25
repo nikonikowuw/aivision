@@ -1,10 +1,17 @@
+/**
+ * @file uds_client.cpp
+ * @brief UDS gRPC 客户端实现（Engine 主动向 Go 后端上报数据）
+ */
+
 #include "aivision/core/uds_ipc.hpp"
 
 #include <chrono>
 
+
 namespace aivision::core {
 
 UdsClient::UdsClient(const std::string& app_sock_path) {
+    // 创建 Unix Domain Socket (UDS) gRPC 传输通道并实例化客户端 Stub
     channel_ = grpc::CreateChannel("unix://" + app_sock_path, grpc::InsecureChannelCredentials());
     report_stub_ = aivision::v1::ReportService::NewStub(channel_);
     control_plane_stub_ = aivision::v1::ControlPlaneService::NewStub(channel_);
@@ -16,6 +23,7 @@ bool UdsClient::report_alarm(const aivision::v1::AlarmEvent& alarm) {
     *req.mutable_alarm() = alarm;
     aivision::v1::ReportAlarmResponse resp;
     grpc::ClientContext ctx;
+    // 设置 2 秒硬超时，防止网络或进程阻塞影响推理主流程
     ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
 
     grpc::Status status = report_stub_->ReportAlarm(&ctx, req, &resp);

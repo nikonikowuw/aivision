@@ -1,3 +1,8 @@
+/**
+ * @file telemetry_collector.cpp
+ * @brief 遥测指标收集器实现
+ */
+
 #include "aivision/core/telemetry_collector.hpp"
 
 #include <utility>
@@ -17,3 +22,4 @@ bool TelemetryCollector::available() const {
 }
 
 } // namespace aivision::core
+

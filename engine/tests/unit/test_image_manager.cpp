@@ -1,7 +1,13 @@
+/**
+ * @file test_image_manager.cpp
+ * @brief 图片管理器原子保存、Catalog 同步、目录安全检查与对账删除单元测试
+ */
+
 #include <gtest/gtest.h>
 #include <filesystem>
 #include "aivision/core/image_manager.hpp"
 #include "aivision/platform/mock_platform.hpp"
+
 
 TEST(ImageManagerTest, AtomicSaveCatalogAndBatchDelete) {
     auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();

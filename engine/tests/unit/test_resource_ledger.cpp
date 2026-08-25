@@ -1,5 +1,11 @@
+/**
+ * @file test_resource_ledger.cpp
+ * @brief 边缘资源账本算力点数与内存准入控制单元测试
+ */
+
 #include <gtest/gtest.h>
 #include "aivision/core/resource_ledger.hpp"
+
 
 TEST(ResourceLedgerTest, QuotaExceeded) {
     auto& ledger = aivision::core::ResourceLedger::instance();

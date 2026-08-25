@@ -1,9 +1,19 @@
 #pragma once
 
+/**
+ * @file macos_platform.hpp
+ * @brief macOS (Apple Silicon / Intel) 平台适配器实现
+ * 
+ * 整合 VideoToolbox 硬件解码、vImage/CoreGraphics 图像处理、sysctl/IOKit 遥测监控。
+ */
+
 #include "aivision/platform/platform_api.hpp"
 
 namespace aivision::platform {
 
+/**
+ * @brief macOS 专用平台适配器
+ */
 class MacosPlatformAdapter : public IPlatformAdapter {
 public:
     MacosPlatformAdapter();
@@ -21,3 +31,4 @@ private:
 };
 
 } // namespace aivision::platform
+

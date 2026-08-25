@@ -1,3 +1,12 @@
+/**
+ * @file algo_sandbox.cpp
+ * @brief 算法包沙箱校验与解压安装器实现
+ * 
+ * 包含：
+ * 1. 七步沙箱校验（路径安全性、SHA256哈希、Manifest格式与算力点数、Schema合法性、dlopen符号查找、自检推理测试、原子迁移）；
+ * 2. posix_spawn 进程隔离的沙箱子进程拉起与超时熔断控制。
+ */
+
 #include "aivision/core/algo_sandbox.hpp"
 #include "aivision/algo.h"
 #include "aivision/utils/package_layout.hpp"
@@ -29,6 +38,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <signal.h>
+
 
 extern char** environ;
 
@@ -116,6 +126,7 @@ bool run_command(const std::vector<std::string>& args, const fs::path* stdout_pa
     return WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0;
 }
 
+// 运行外部命令并通过管道捕获其 stdout/stderr 输出（支持限制最大输出字节数和 30s 硬超时截断）
 bool capture_command(const std::vector<std::string>& args, std::string& output,
                      size_t max_output = 1024 * 1024, bool merge_stderr = false) {
     if (args.empty()) return false;
@@ -176,6 +187,7 @@ bool capture_command(const std::vector<std::string>& args, std::string& output,
                     pipe_open = false;
                     break;
                 }
+                // 防止输出过大撑爆内存（如恶意大量日志输出）
                 if (output.size() + static_cast<size_t>(count) > max_output) {
                     valid = false;
                     pipe_open = false;
@@ -186,6 +198,7 @@ bool capture_command(const std::vector<std::string>& args, std::string& output,
                 output.append(buffer.data(), static_cast<size_t>(count));
             }
         }
+        // 超时熔断
         if (std::chrono::steady_clock::now() >= deadline) {
             valid = false;
             ::kill(-pid, SIGKILL);
@@ -199,7 +212,7 @@ bool capture_command(const std::vector<std::string>& args, std::string& output,
     return valid && WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0;
 }
 
-
+// 符号审计：通过 nm 检查动态库是否严格且仅导出了 av_algo_get_abi 单一 C ABI 符号（防止全局符号污染与隐式依赖）
 bool validate_exported_symbols(const fs::path& library_path, std::string& error) {
     std::string output;
 #if defined(__APPLE__)
@@ -817,11 +830,17 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // -------------------------------------------------------------
+    // 步骤 1 & 2: 校验解压后目录树安全性（防路径穿越、防软链接攻击）
+    // -------------------------------------------------------------
     if (!validate_package_tree(working_dir, result.error_message)) {
         result.error_stage = "structure";
         return result;
     }
 
+    // -------------------------------------------------------------
+    // 步骤 3: 校验 manifest.json 元数据格式、版本号与资源配置
+    // -------------------------------------------------------------
     const fs::path manifest_path = working_dir / "manifest.json";
     if (!fs::is_regular_file(manifest_path)) {
         result.error_stage = "manifest";
@@ -884,11 +903,17 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // -------------------------------------------------------------
+    // 步骤 4: 动态库符号纯洁性检查（nm 静态符号审计）
+    // -------------------------------------------------------------
     if (!validate_exported_symbols(library_path, result.error_message)) {
         result.error_stage = "symbol_audit";
         return result;
     }
 
+    // -------------------------------------------------------------
+    // 步骤 5: 动态库加载与 C ABI 函数表完整性检查
+    // -------------------------------------------------------------
     void* handle = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!handle) {
         const char* error = dlerror();
@@ -898,6 +923,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     }
     auto close_library = [&] { dlclose(handle); };
 
+    // 获取并校验 av_algo_get_abi 入口函数
     auto get_abi = reinterpret_cast<av_algo_get_abi_fn>(dlsym(handle, AV_ALGO_GET_ABI_SYMBOL));
     if (!get_abi) {
         close_library();
@@ -916,6 +942,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // 打开算法库上下文并加载模型
     av_algo_library_args library_args{};
     library_args.size = sizeof(library_args);
     library_args.api_version = AV_ALGO_API_VERSION;
@@ -929,6 +956,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // 校验动态库元数据与 manifest.json 声明的一致性
     av_algo_library_info info{};
     info.size = sizeof(info);
     info.api_version = AV_ALGO_API_VERSION;
@@ -942,6 +970,9 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // -------------------------------------------------------------
+    // 步骤 6: 自检推理执行（创建自检模式实例并处理标准测试帧）
+    // -------------------------------------------------------------
     SelfTestCapture capture;
     av_algo_instance_args instance_args{};
     instance_args.size = sizeof(instance_args);
@@ -960,6 +991,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // 构造自检所需的标准测试帧描述符
     av_frame_desc test_frame{};
     test_frame.size = sizeof(test_frame);
     test_frame.api_version = AV_ALGO_API_VERSION;
@@ -989,6 +1021,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // 执行帧协商与推理
     av_frame_caps offered{};
     offered.size = sizeof(offered);
     offered.api_version = AV_ALGO_API_VERSION;
@@ -1011,6 +1044,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     const int close_status = abi->library_close(library);
     close_library();
 
+    // 校验自检输出结构（必须且仅触发 1 次有效自检结果）
     if (negotiate_status != AV_OK || process_status != AV_OK || destroy_status != AV_OK || close_status != AV_OK ||
         capture.callback_count != 1 || !capture.valid || !validate_self_test_json(capture.json)) {
         result.error_stage = "self_test";
@@ -1018,6 +1052,9 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         return result;
     }
 
+    // -------------------------------------------------------------
+    // 步骤 7: 原子落地安装（临时目录 staging -> 备份旧版本 -> rename 原子覆盖）
+    // -------------------------------------------------------------
     if (!install_base_dir.empty()) {
         const fs::path target = fs::path(install_base_dir) / result.manifest.algorithm_id / result.manifest.version;
         const fs::path parent = target.parent_path();
@@ -1067,6 +1104,21 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         }
         fs::rename(temporary, target, install_error);
         if (install_error) {
+            if (had_previous) {
+                std::error_code restore_error;
+                fs::rename(backup, target, restore_error);
+            }
+            fs::remove_all(temporary, install_error);
+            result.error_stage = "install";
+            result.error_message = "Cannot activate validated package";
+            return result;
+        }
+        if (had_previous) fs::remove_all(backup, install_error);
+    }
+
+    result.success = true;
+    return result;
+}
             if (had_previous) {
                 std::error_code restore_error;
                 fs::rename(backup, target, restore_error);

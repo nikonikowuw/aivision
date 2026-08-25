@@ -1,3 +1,13 @@
+/**
+ * @file image_manager.cpp
+ * @brief 告警抓拍图片 Catalog 记录管理与原子持久化实现
+ *
+ * 包含：
+ * 1. write_atomic_file：临时文件写入 + fsync + 原子 rename 落盘；
+ * 2. load_catalog_locked / persist_catalog_locked：catalog.json 解析与同步；
+ * 3. 对账与安全路径检查（防止目录穿越）。
+ */
+
 #include "aivision/core/image_manager.hpp"
 
 #include <chrono>
@@ -12,6 +22,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <unordered_set>
+
 
 namespace fs = std::filesystem;
 
@@ -204,11 +215,13 @@ av_status ImageManager::save_detection_image(
     std::lock_guard<std::mutex> lock(mutex_);
     if (!processor_) return AV_ERR_INVALID_ARG;
 
+    // 1. 调用平台图像处理器完成 ROI 裁剪与 JPEG 硬件/硬件加速压缩编码
     std::vector<uint8_t> jpeg_data;
     const av_status encode_status = processor_->encode_jpeg(frame, crop_roi, 80, jpeg_data);
     if (encode_status != AV_OK) return encode_status;
     if (jpeg_data.empty()) return AV_ERR_INTERNAL;
 
+    // 2. 生成安全 image_id 并按 UTC 日期构建存储子目录（如 2025-05-18/img-xxx.jpg）
     const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     const std::string image_id = make_image_id(event_id, now_ns);
@@ -216,17 +229,20 @@ av_status ImageManager::save_detection_image(
     const fs::path final_path = fs::path(base_dir_) / relative_path;
     const fs::path temporary = fs::path(base_dir_) / ".tmp" / (image_id + ".jpg.part");
 
+    // 3. 校验路径安全性，防止目录穿越
     std::error_code ec;
     fs::create_directories(final_path.parent_path(), ec);
     if (ec || !is_path_within_base(final_path)) return AV_ERR_INVALID_ARG;
     fs::create_directories(temporary.parent_path(), ec);
     if (ec) return AV_ERR_INTERNAL;
 
+    // 4. 原子持久化 JPEG 文件（临时文件写入 + fsync + rename）
     if (!write_atomic_file(temporary, final_path,
                            std::string(reinterpret_cast<const char*>(jpeg_data.data()), jpeg_data.size()), true)) {
         return AV_ERR_INTERNAL;
     }
 
+    // 5. 更新本地内存 Catalog 记录并原子刷盘 catalog.json
     ImageRecord record{
         .image_id = image_id,
         .event_id = event_id,

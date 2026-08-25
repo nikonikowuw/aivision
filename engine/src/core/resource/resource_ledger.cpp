@@ -1,3 +1,11 @@
+/**
+ * @file resource_ledger.cpp
+ * @brief 边缘资源账本与准入控制实现
+ * 
+ * 依据平台（Mach API 或 sysconf）动态监测可用物理内存，
+ * 跟踪算力单元分配与超限判断。
+ */
+
 #include "aivision/core/resource_ledger.hpp"
 
 #include <limits>
@@ -7,6 +15,7 @@
 #else
 #include <unistd.h>
 #endif
+
 
 namespace aivision::core {
 
@@ -57,10 +66,13 @@ uint64_t ResourceLedger::free_memory_bytes_locked() const {
 
 av_status ResourceLedger::check_allocation_locked(const ResourceRequirement& req,
                                                    std::string* out_reason) const {
+    // 校验请求参数有效性
     if (req.instance_id.empty() || req.target_fps < 0) {
         if (out_reason) *out_reason = "INVALID_ARG: instance_id and target_fps are invalid";
         return AV_ERR_INVALID_ARG;
     }
+
+    // 1. 算力点数（CU）准入校验：累加其他实例已占用的算力单元并检查是否发生整数溢出
     uint64_t current_units = 0;
     for (const auto& [id, item] : allocations_) {
         if (id != req.instance_id) {
@@ -72,6 +84,7 @@ av_status ResourceLedger::check_allocation_locked(const ResourceRequirement& req
         }
     }
 
+    // 计算系统最大可分配算力（总算力 - 系统保底预留算力）
     const uint64_t max_allocatable = total_units_ > reserved_units_
         ? static_cast<uint64_t>(total_units_ - reserved_units_) : 0;
     if (req.compute_units > max_allocatable || current_units > max_allocatable - req.compute_units) {
@@ -84,6 +97,7 @@ av_status ResourceLedger::check_allocation_locked(const ResourceRequirement& req
         return AV_ERR_OUT_OF_MEMORY;
     }
 
+    // 2. 内存容量准入校验：统计其他实例已占用内存并获取当前系统可用物理内存
     uint64_t current_memory = 0;
     for (const auto& [id, item] : allocations_) {
         if (id != req.instance_id) {
@@ -98,6 +112,7 @@ av_status ResourceLedger::check_allocation_locked(const ResourceRequirement& req
     const bool allocation_overflow = current_memory > std::numeric_limits<uint64_t>::max() - req.memory_bytes;
     const uint64_t requested_total = allocation_overflow
         ? std::numeric_limits<uint64_t>::max() : current_memory + req.memory_bytes;
+    // 确保分配后系统剩余可用内存不低于安全水位线 min_free_mem_
     const bool memory_exceeded = free_memory < min_free_mem_ ||
         requested_total > free_memory - min_free_mem_;
     if (allocation_overflow || memory_exceeded) {

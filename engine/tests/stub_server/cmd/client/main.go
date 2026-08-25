@@ -1,3 +1,4 @@
+// Package main 实现用于端到端测试直接调用 Engine UDS gRPC 接口的命令行客户端工具
 package main
 
 import (
@@ -7,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

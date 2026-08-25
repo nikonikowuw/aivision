@@ -1,3 +1,11 @@
+/**
+ * @file macos_telemetry.cpp
+ * @brief macOS 系统性能与硬件指标监控实现
+ * 
+ * 基于 Mach 内核接口（host_processor_info / host_statistics64）与 sysctl / statfs
+ * 采集 CPU 使用率、内存占用、磁盘空间及系统运行时长。
+ */
+
 #include "aivision/platform/macos_platform.hpp"
 
 #include <mach/mach.h>
@@ -10,6 +18,7 @@
 #include <chrono>
 #include <mutex>
 
+
 namespace aivision::platform {
 namespace {
 
@@ -21,10 +30,12 @@ uint64_t sysctl_u64(const char* name) {
 
 class MacosTelemetry final : public ITelemetry {
 public:
+    // 采集 macOS 系统性能指标（Uptime, Memory, Disk, CPU Load）
     SystemMetrics collect_metrics() override {
         SystemMetrics metrics;
         const auto now = std::chrono::system_clock::now();
 
+        // 1. 获取系统启动时间计算 Uptime
         timeval boot_time{};
         size_t boot_size = sizeof(boot_time);
         if (sysctlbyname("kern.boottime", &boot_time, &boot_size, nullptr, 0) == 0) {
@@ -32,6 +43,7 @@ public:
             metrics.uptime_seconds = std::chrono::duration_cast<std::chrono::seconds>(now - boot).count();
         }
 
+        // 2. 通过 Mach VM Statistics 统计物理内存使用率
         vm_statistics64_data_t vm_statistics{};
         mach_msg_type_number_t vm_count = HOST_VM_INFO64_COUNT;
         if (host_statistics64(mach_host_self(), HOST_VM_INFO64,
@@ -45,6 +57,7 @@ public:
             }
         }
 
+        // 3. 通过 statfs 查询根分区磁盘使用率
         struct statfs disk{};
         if (::statfs("/", &disk) == 0 && disk.f_blocks > 0) {
             const uint64_t total_blocks = static_cast<uint64_t>(disk.f_blocks);
@@ -53,6 +66,7 @@ public:
                                          static_cast<float>(total_blocks);
         }
 
+        // 4. 计算前后两次采集的 CPU 滴答差值得出总体 CPU 占用率
         update_cpu_usage(metrics);
         metrics.accelerator_supported = false;
         metrics.temperature_supported = false;

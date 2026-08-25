@@ -1,7 +1,18 @@
+/**
+ * @file color_vui.cpp
+ * @brief H.264 / H.265 SPS VUI 色彩元数据位流解析器实现
+ * 
+ * 包含：
+ * 1. BitReader：按位读取（ue(v)指数哥伦布编码、se(v)带符号指数哥伦布编码）；
+ * 2. parse_h264_sps：解析 H.264 profile/level 及 vui_parameters；
+ * 3. parse_h265_sps：解析 HEVC profile_tier_level 及 vui_parameters。
+ */
+
 #include "aivision/core/color_vui.hpp"
 
 #include <optional>
 #include <vector>
+
 
 namespace aivision::core {
 namespace {
@@ -56,16 +67,19 @@ private:
     size_t bit_offset_ = 0;
 };
 
+// 提取并去除 0x000003 防竞争字节（Emulation Prevention Byte），生成原始字节序列载荷（RBSP）
 std::vector<uint8_t> to_rbsp(const uint8_t* data, size_t size, size_t nal_header_bytes) {
     std::vector<uint8_t> rbsp;
     if (!data || size == 0) return rbsp;
     size_t offset = 0;
+    // 跳过 Annex-B 起始码 (00 00 00 01 或 00 00 01)
     if (offset + 4 <= size && data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 1) offset = 4;
     else if (offset + 3 <= size && data[0] == 0 && data[1] == 0 && data[2] == 1) offset = 3;
     if (offset + nal_header_bytes > size) return {};
     offset += nal_header_bytes;
     rbsp.reserve(size - offset);
     unsigned zero_count = 0;
+    // 遍历并过滤 0x000003
     for (; offset < size; ++offset) {
         const uint8_t byte = data[offset];
         if (zero_count >= 2 && byte == 3) {
@@ -78,6 +92,7 @@ std::vector<uint8_t> to_rbsp(const uint8_t* data, size_t size, size_t nal_header
     return rbsp;
 }
 
+// 映射 H.264/H.265 标准色彩描述枚举到 aivision C ABI 色彩空间常量（BT.709 / BT.2020 / sRGB 等）
 void apply_colour_description(ColorVUIInfo& info, uint32_t primaries, uint32_t transfer,
                               uint32_t matrix, bool full_range) {
     if (primaries == 9) info.primaries = AV_COLOR_PRIM_BT2020;

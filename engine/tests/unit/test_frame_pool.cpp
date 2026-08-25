@@ -1,5 +1,11 @@
+/**
+ * @file test_frame_pool.cpp
+ * @brief 帧对象池（FramePool）分配、引用计数、重置与生命周期单元测试
+ */
+
 #include <gtest/gtest.h>
 #include "aivision/core/frame_pool.hpp"
+
 
 TEST(FramePoolTest, AcquireRetainRelease) {
     auto& pool = aivision::core::FramePool::instance();

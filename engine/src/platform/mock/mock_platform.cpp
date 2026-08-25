@@ -1,3 +1,11 @@
+/**
+ * @file mock_platform.cpp
+ * @brief 单元测试专用的 Mock 平台适配器实现
+ * 
+ * 包含 CPU 软件模拟的图像格式转换（BGRA/RGB24/NV12 互转与 ROI 裁剪采样）、
+ * 内存分配释放、模拟视频帧生成及引用计数生命周期。
+ */
+
 #include "aivision/platform/mock_platform.hpp"
 
 #include <algorithm>
@@ -8,6 +16,7 @@
 #include <mutex>
 #include <new>
 #include <unordered_map>
+
 
 namespace aivision::platform {
 namespace {

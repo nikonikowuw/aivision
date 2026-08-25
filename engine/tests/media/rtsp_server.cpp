@@ -1,3 +1,8 @@
+/**
+ * @file rtsp_server.cpp
+ * @brief 测试用 RTSP 循环推流服务器（基于 ZLMediaKit MP4Reader 实现本地视频循环推流）
+ */
+
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -7,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+
 
 #include "Common/config.h"
 #include "Network/TcpServer.h"

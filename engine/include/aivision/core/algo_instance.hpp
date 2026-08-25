@@ -1,5 +1,13 @@
 #pragma once
 
+/**
+ * @file algo_instance.hpp
+ * @brief 单算法推理实例生命周期与工作线程管理
+ * 
+ * 封装与具体算法 C ABI 实例的交互、输入帧队列流控（丢帧策略）、
+ * FPS 采样控制、检测规则下发、参数热更新以及推理结果桥接与回调。
+ */
+
 #include <string>
 #include <vector>
 #include <memory>
@@ -18,8 +26,22 @@
 
 namespace aivision::core {
 
+/**
+ * @brief 运行中的算法实例控制器
+ */
 class AlgorithmInstance {
 public:
+    /**
+     * @brief 构造算法实例
+     * @param instance_id 实例唯一标识
+     * @param camera_id 所属摄像头任务标识
+     * @param algorithm_id 算法包标识
+     * @param version 算法版本号
+     * @param target_fps 目标分析抽帧 FPS
+     * @param params_json 实例初始化 JSON 参数
+     * @param abi 算法包 C ABI 导出函数表
+     * @param lib_handle 动态库句柄
+     */
     AlgorithmInstance(
         const std::string& instance_id,
         const std::string& camera_id,
@@ -32,10 +54,35 @@ public:
     );
     ~AlgorithmInstance();
 
+    /**
+     * @brief 初始化算法实例上下文并启动内部处理线程
+     * @param frame_ops 帧操作接口表（retain/release）
+     * @param image_ops 图像处理接口表
+     * @return av_status 操作状态码
+     */
     av_status init(const av_frame_ops* frame_ops, const av_image_ops* image_ops);
+
+    /**
+     * @brief 压入待处理的视频帧（内部进行 FPS 节流与满队列丢弃处理）
+     * @param frame 视频帧描述符
+     */
     void push_frame(const av_frame_desc& frame);
+
+    /**
+     * @brief 热更新实例自有算法参数
+     * @param new_params 新参数 JSON 串
+     */
     av_status update_params(const std::string& new_params);
+
+    /**
+     * @brief 设置布防区域/屏蔽区/分界线等检测规则
+     * @param rules 规则列表
+     */
     av_status set_rules(const std::vector<av_rule>& rules);
+
+    /**
+     * @brief 停止实例工作线程并释放底层 ABI 实例句柄
+     */
     void stop();
 
     [[nodiscard]] std::string get_instance_id() const { return instance_id_; }
@@ -49,13 +96,18 @@ public:
     [[nodiscard]] uint64_t get_processed_frames() const { return processed_frames_.load(); }
     [[nodiscard]] uint64_t get_dropped_frames() const { return dropped_frames_.load(); }
 
+    /**
+     * @brief 设置推理结果到达时的外部处理回调
+     */
     void set_result_callback(std::function<void(const av_algo_result&, const av_frame_desc&)> cb) {
         std::lock_guard<std::mutex> lock(callback_mutex_);
         result_cb_ = std::move(cb);
     }
 
 private:
+    /// C ABI 静态结果回调桥接函数
     static void result_bridge(const av_algo_result* res, void* user_data);
+    /// 工作线程主循环
     void worker_loop();
 
     std::string instance_id_;
@@ -92,3 +144,4 @@ private:
 };
 
 } // namespace aivision::core
+

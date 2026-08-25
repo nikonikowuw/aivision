@@ -17,6 +17,19 @@ option(ENGINE_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ENGINE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(ENGINE_BUILD_TESTS "Build test suite" ON)
 
+function(aivision_enable_strict_warnings target)
+    target_compile_options(${target} PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>
+        $<$<COMPILE_LANGUAGE:CXX>:-Werror>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-Wall>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-Wextra>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-Wpedantic>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-Werror>
+    )
+endfunction()
+
 if(ENGINE_ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address)
@@ -29,6 +42,7 @@ endif()
 
 # Dependencies
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
@@ -133,14 +147,23 @@ target_link_libraries(proto_gen PUBLIC
     gRPC::grpc++
 )
 
-# 5. engine_core
-add_library(engine_core STATIC
+# 5. engine_logging
+add_library(engine_logging STATIC
     src/core/logging/log_record.cpp
     src/core/logging/log_sanitizer.cpp
     src/core/logging/log_sink.cpp
     src/core/logging/log_writer.cpp
     src/core/logging/log_context.cpp
     src/core/logging/logger.cpp
+)
+target_include_directories(engine_logging PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+target_link_libraries(engine_logging PUBLIC Threads::Threads)
+aivision_enable_strict_warnings(engine_logging)
+
+# 6. engine_core
+add_library(engine_core STATIC
     src/core/frame/frame_pool.cpp
     src/core/frame/color_vui.cpp
     src/core/task/camera_task.cpp
@@ -160,11 +183,14 @@ target_include_directories(engine_core PUBLIC
     $<BUILD_INTERFACE:${PROTO_GEN_DIR}>
 )
 target_link_libraries(engine_core PUBLIC
+    engine_logging
     platform_api
     media_api
     proto_gen
     nlohmann_json::nlohmann_json
+    ${CMAKE_DL_LIBS}
 )
+aivision_enable_strict_warnings(engine_core)
 
 # 6. media backend
 if(AIVISION_USE_ZLM)
@@ -182,6 +208,7 @@ if(AIVISION_USE_ZLM)
         ZLToolKit
         ext-codec
     )
+    aivision_enable_strict_warnings(media_zlm)
 else()
     add_library(media_mock STATIC
         src/media/mock/mock_source.cpp
@@ -190,6 +217,7 @@ else()
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     )
     target_link_libraries(media_mock PUBLIC media_api)
+    aivision_enable_strict_warnings(media_mock)
 endif()
 
 # 7. platform_mock
@@ -200,6 +228,7 @@ target_include_directories(platform_mock PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 target_link_libraries(platform_mock PUBLIC platform_api)
+aivision_enable_strict_warnings(platform_mock)
 
 # 8. platform_macos
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
@@ -224,6 +253,7 @@ if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
         "-framework Foundation"
         "-framework IOKit"
     )
+    aivision_enable_strict_warnings(platform_macos)
 endif()
 
 # 9. package_validator
@@ -240,9 +270,11 @@ target_include_directories(package_validator PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sdk/include>
 )
 target_link_libraries(package_validator PRIVATE
+    engine_logging
     nlohmann_json::nlohmann_json
     ${CMAKE_DL_LIBS}
 )
+aivision_enable_strict_warnings(package_validator)
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
     target_link_libraries(package_validator PRIVATE
         "-framework CoreVideo"
@@ -262,6 +294,7 @@ target_include_directories(aivision-engine PRIVATE
 target_link_libraries(aivision-engine PRIVATE
     engine_core
 )
+aivision_enable_strict_warnings(aivision-engine)
 if(AIVISION_USE_ZLM)
     target_link_libraries(aivision-engine PRIVATE media_zlm)
 else()

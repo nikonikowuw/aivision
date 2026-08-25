@@ -74,6 +74,9 @@ struct SourceLocation {
     const char* function{nullptr};
 };
 
+using LogFieldValue = std::variant<std::string, bool, int64_t, double>;
+using LogFields = std::map<std::string, LogFieldValue>;
+
 struct LogRecord {
     uint64_t seq{0};                         // 进程内单调递增序号
     std::chrono::system_clock::time_point ts;// 记录生成 UTC 时间戳
@@ -86,7 +89,7 @@ struct LogRecord {
     size_t raw_message_bytes{0};
     LogContextSnapshot context;
     SourceLocation loc;
-    std::map<std::string, std::string> extra_fields; // 受控白名单标量字段
+    LogFields extra_fields; // 受控白名单标量字段
 };
 
 } // namespace aivision::logging
@@ -113,8 +116,10 @@ struct LogRecord {
 ### 3.1 容量与淘汰策略
 - **Normal Queue**：容量固定为 `2048`，承载 `Debug` 与 `Info`。
   - 队列满时：立即递增 `dropped_normal` 原子计数，非阻塞丢弃，绝不阻塞生产线程。
+  - 丢弃计数由 Writer 线程按固定 5 秒频率输出结构化摘要，摘要绕过普通 Logger 入队路径。
 - **High Queue**：容量固定为 `256`，承载 `Warn`、`Error`、`Fatal`。
   - 队列满时：立即递增 `dropped_high` 原子计数，非阻塞丢弃，保证极端雪崩情况下服务不卡死。
+  - sink 写入失败与丢弃共用限频诊断摘要，禁止递归调用 Logger。
 
 ### 3.2 Writer 线程调度与防饥饿策略
 - Writer 线程等待条件变量通知（或固定 10ms 超时轮询）。

@@ -61,11 +61,13 @@ struct LogContextSnapshot {
     double duration_ms{-1.0};
 };
 
+using LogFieldValue = std::variant<std::string, bool, int64_t, double>;
+using LogFields = std::map<std::string, LogFieldValue>;
+
 class Logger {
 public:
     static void initialize(Level min_level = Level::Info, std::shared_ptr<LogSink> sink = nullptr) noexcept;
     static void shutdown() noexcept;
-    static void set_level(Level lvl) noexcept;
     static Level get_level() noexcept;
     static LoggerStatsSnapshot stats() noexcept;
 
@@ -74,7 +76,7 @@ public:
                     std::string_view event,
                     std::string_view message,
                     std::string_view code = "",
-                    const std::map<std::string, std::string>& extra_fields = {},
+                    const LogFields& extra_fields = {},
                     const SourceLocation& loc = {}) noexcept;
 };
 
@@ -106,6 +108,11 @@ PACKAGE_INCOMPATIBLE / PACKAGE_IN_USE / VALIDATOR_CRASHED / VALIDATOR_RESULT_INV
 IMAGE_WRITE_FAILED / IMAGE_PATH_INVALID
 RESOURCE_LIMIT_EXCEEDED / MEMORY_LIMIT_EXCEEDED
 IPC_UNAVAILABLE / INTERNAL_ERROR
+ALGO_LOG_ERROR / ALGO_LOG_FATAL / ALGO_LOG_LEVEL_UNKNOWN
+LOGGER_QUEUE_DROPPED / LOGGER_SINK_WRITE_FAILED
+ENGINE_IMAGE_PROCESSOR_INIT_FAILED / MEDIA_BACKEND_INIT_FAILED / ENGINE_UDS_START_FAILED
+ENGINE_LOG_LEVEL_INVALID / VALIDATOR_LOG_LEVEL_INVALID
+VALIDATOR_ARGS_INVALID / VALIDATOR_INTERNAL_ERROR
 ```
 
 ### 3.2 结构化日志行格式 (JSONL Schema)
@@ -138,16 +145,17 @@ IPC_UNAVAILABLE / INTERNAL_ERROR
 ```
 
 - **必填字段**：`seq`、`ts`（UTC RFC 3339 纳秒）、`level`（五级小写）、`component`、`event`（小写点号分层）、`message`。
-- **选填字段**：`code`、`camera_id`、`task_id`、`instance_id`、`instance_run_id`、`algorithm_id`、`package_version`、`frame_id`、`revision`、`retry_count`、`duration_ms`、`file`、`line`、`function`。
+- **选填字段**：`code`、`camera_id`、`task_id`、`instance_id`、`instance_run_id`、`algorithm_id`、`package_version`、`frame_id`、`revision`、`retry_count`、`duration_ms`、`file`、`line`、`function`、`width`、`height`、`fps`、`drop_count`、`enabled`。
 - **受控标量**：禁止在日志中直接打印嵌套的大 JSON 对象或二进制 payload。
 
 ### 3.3 异步双队列与非阻塞原则 (Queue & Reliability Contract)
 1. **双有界队列隔离**：
    - **Normal Queue**：容量固定为 `2048`，承载 `DEBUG` 与 `INFO`；
    - **High Queue**：容量固定为 `256`，承载 `WARN`、`ERROR`、`FATAL`。
-2. **零阻塞原则（Fail-Open）**：入队操作必须是**非阻塞的（Non-blocking Try Push）**。当队列满或下游 I/O 拥塞时，立即丢弃日志并递增 `dropped_normal` 或 `dropped_high` 原子计数器，**绝对不允许反向阻塞音视频解码、推理与 IPC 业务线程**。
+2. **零阻塞原则（Fail-Open）**：入队操作必须是**非阻塞的（Non-blocking Try Push）**。当队列满或下游 I/O 拥塞时，立即丢弃日志并递增 `dropped_normal` 或 `dropped_high` 原子计数器，**绝对不允许反向阻塞音视频解码、推理与 IPC 业务线程**。丢弃和 sink 写入失败必须由后台线程以固定频率（至少 5 秒间隔）输出结构化诊断摘要；摘要不得递归调用 Logger。
 3. **公平调度与防饥饿**：独立后台 Writer 线程优先消费 High Queue，但处理 Normal Queue 时每次最多批量处理 64 条即重新轮询 High Queue，避免普通日志饥饿或高级别告警积压。
-4. **优雅停机**：Logger 关闭时最多等待 `2000ms` 排空在途日志，超时即强制退出，防止进程挂死。
+4. **额外字段类型**：受控扩展字段只能是字符串、布尔值、有界 `int64` 或有限 `double`；序列化必须保留 JSON 原生标量类型，禁止将数值或布尔值统一写成字符串。
+5. **优雅停机**：Logger 关闭时最多等待 `2000ms` 排空在途日志，超时即强制退出，防止进程挂死。
 
 ### 3.4 字段安全白名单与脱敏清洗规则 (Security & Sanitization)
 1. **大小硬限制**：单条 JSONL 上限 `16 KiB`；`message` 上限 `8 KiB`；单个标量字段上限 `1 KiB`。超长自动截断并标记 `message_truncated: true`。

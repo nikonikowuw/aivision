@@ -29,9 +29,9 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
-#include <iostream>
 #include <limits>
 #include <memory>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -51,17 +51,21 @@ const char* env_or_default(const char* name, const char* fallback) {
 int main() {
     // 0. 初始化结构化日志系统并读取环境变量配置
     aivision::logging::Level log_lvl = aivision::logging::Level::Info;
+    bool invalid_log_level = false;
     const char* env_log_level = std::getenv("AIVISION_LOG_LEVEL");
     if (env_log_level) {
         auto parsed = aivision::logging::parse_level(env_log_level);
         if (parsed.has_value()) {
             log_lvl = *parsed;
         } else {
-            std::cerr << "[WARN] Invalid AIVISION_LOG_LEVEL '" << env_log_level
-                      << "', fallback to INFO" << std::endl;
+            invalid_log_level = true;
         }
     }
     aivision::logging::Logger::initialize(log_lvl);
+    if (invalid_log_level) {
+        LOG_WARN("engine.app", "engine.log_level_invalid", "Invalid AIVISION_LOG_LEVEL; falling back to INFO",
+                 "ENGINE_LOG_LEVEL_INVALID");
+    }
 
     // 注册系统退出信号监听（SIGINT / SIGTERM），触发原子停止标志
     std::signal(SIGINT, request_stop);
@@ -86,7 +90,9 @@ int main() {
     // 2. 初始化抓拍图片管理器
     auto* image_processor = platform_adapter->get_image_processor();
     if (!image_processor) {
-        std::cerr << "failed to create image processor" << std::endl;
+        LOG_ERROR("engine.app", "engine.image_processor_init_failed",
+                  "failed to create image processor", "ENGINE_IMAGE_PROCESSOR_INIT_FAILED");
+        aivision::logging::Logger::shutdown();
         return 1;
     }
     std::shared_ptr<aivision::platform::IImageProcessor> image_processor_owner(
@@ -102,7 +108,9 @@ int main() {
         aivision::media::create_mock_backend();
 #endif
     if (!media_backend) {
-        std::cerr << "failed to create media backend" << std::endl;
+        LOG_ERROR("engine.app", "engine.media_backend_init_failed",
+                  "failed to create media backend", "MEDIA_BACKEND_INIT_FAILED");
+        aivision::logging::Logger::shutdown();
         return 1;
     }
 
@@ -110,7 +118,10 @@ int main() {
     const std::string engine_socket = env_or_default("AIVISION_ENGINE_SOCKET", "/tmp/aivision-engine.sock");
     aivision::core::UdsServer server(engine_socket, platform_adapter, media_backend);
     if (!server.start()) {
-        std::cerr << "failed to start engine UDS server at " << engine_socket << std::endl;
+        LOG_ERROR("engine.app", "engine.uds_start_failed",
+                  "failed to start engine UDS server", "ENGINE_UDS_START_FAILED",
+                  {{"platform_id", platform_id}});
+        aivision::logging::Logger::shutdown();
         return 1;
     }
 
@@ -194,7 +205,7 @@ int main() {
     });
 
     LOG_INFO("engine.app", "engine.started", "aivision-engine started successfully", "",
-             {{"platform_id", platform_id}, {"socket", engine_socket}});
+             {{"platform_id", platform_id}});
     // 主线程等待退出信号
     while (!g_stop_requested.load(std::memory_order_acquire)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));

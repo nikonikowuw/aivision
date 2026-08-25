@@ -73,6 +73,7 @@ target_link_libraries(unit_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
 )
+aivision_enable_strict_warnings(unit_tests)
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
     target_compile_definitions(unit_tests PRIVATE AIVISION_PLATFORM_MACOS=1)
     target_link_libraries(unit_tests PRIVATE platform_macos)
@@ -113,6 +114,7 @@ target_link_libraries(contract_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
 )
+aivision_enable_strict_warnings(contract_tests)
 add_dependencies(contract_tests mock_algo_fixture mock_algo_fixture_assets)
 add_test(NAME contract_tests COMMAND contract_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -129,5 +131,6 @@ if(AIVISION_USE_ZLM)
     target_link_libraries(test_rtsp_server PRIVATE
         ext-codec
     )
+    aivision_enable_strict_warnings(test_rtsp_server)
     add_dependencies(unit_tests test_rtsp_server)
 endif()

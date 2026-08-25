@@ -1,3 +1,7 @@
+/**
+ * @file log_context.cpp
+ * @brief 线程局部日志上下文栈的实现
+ */
 #include "aivision/core/logging/log_context.hpp"
 
 namespace aivision::logging {
@@ -24,11 +28,13 @@ void merge_snapshot(LogContextSnapshot& target, const LogContextSnapshot& src) {
 
 } // namespace
 
-void LogContext::push(const LogContextSnapshot& snapshot) noexcept {
+bool LogContext::push(const LogContextSnapshot& snapshot) noexcept {
     try {
         tl_context_stack.push_back(snapshot);
+        return true;
     } catch (...) {
         // 异常安全保护
+        return false;
     }
 }
 

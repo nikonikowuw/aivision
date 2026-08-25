@@ -1,3 +1,7 @@
+/**
+ * @file log_stats.hpp
+ * @brief 结构化日志线程安全统计计数器与快照接口
+ */
 #pragma once
 
 #include <atomic>

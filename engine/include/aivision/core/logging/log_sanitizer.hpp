@@ -1,5 +1,10 @@
+/**
+ * @file log_sanitizer.hpp
+ * @brief 日志字段白名单、脱敏、编码清洗与大小限制接口
+ */
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>

@@ -1,9 +1,15 @@
+/**
+ * @file log_sink.hpp
+ * @brief 结构化日志 stderr 与线程安全内存输出 sink
+ */
 #pragma once
 
 #include "aivision/core/logging/log_record.hpp"
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace aivision::logging {

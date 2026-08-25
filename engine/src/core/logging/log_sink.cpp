@@ -1,4 +1,9 @@
+/**
+ * @file log_sink.cpp
+ * @brief stderr 与内存日志 sink 的线程安全实现
+ */
 #include "aivision/core/logging/log_sink.hpp"
+#include <cerrno>
 #include <cstdio>
 #include <unistd.h>
 
@@ -19,6 +24,9 @@ bool StderrSink::write_line(std::string_view line) noexcept {
             }
             return false;
         }
+        if (written == 0) {
+            return false;
+        }
         ptr += written;
         remaining -= static_cast<size_t>(written);
     }
@@ -26,13 +34,17 @@ bool StderrSink::write_line(std::string_view line) noexcept {
 }
 
 void StderrSink::flush() noexcept {
-    ::fsync(STDERR_FILENO);
+    // write(2) 已直接提交到 journald/pipe；对 stderr 调用 fsync 可能阻塞或返回 EINVAL。
 }
 
 bool MemorySink::write_line(std::string_view line) noexcept {
-    std::lock_guard<std::mutex> lock(mutex_);
-    lines_.emplace_back(line);
-    return true;
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        lines_.emplace_back(line);
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 void MemorySink::flush() noexcept {

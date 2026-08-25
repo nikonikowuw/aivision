@@ -12,6 +12,7 @@
 #include "aivision/core/image_manager.hpp"
 #include "aivision/core/algo_manager.hpp"
 #include "aivision/core/algo_sandbox.hpp"
+#include "aivision/core/logging/log_adapter.hpp"
 #include "aivision/core/resource_ledger.hpp"
 #include "aivision/core/task_scheduler.hpp"
 #include "aivision/core/telemetry_collector.hpp"
@@ -238,6 +239,7 @@ void set_package_validation_failure(const ValidationResult& result, const char* 
 struct LoadedPackage {
     std::string package_root;
     std::string platform_id;
+    aivision::logging::AlgoLogContext log_context;
     void* dynamic_library = nullptr;
     const av_algo_abi* abi = nullptr;
     av_algo_library library = nullptr;
@@ -896,6 +898,9 @@ private:
             std::sort(package->fps_tiers.begin(), package->fps_tiers.end());
         }
         package->platform_id = platform_id;
+        package->log_context.algorithm_id = algorithm_id;
+        package->log_context.package_version = version;
+        package->log_context.platform_id = platform_id;
         package->dynamic_library = ::dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!package->dynamic_library) {
             error = "PACKAGE_DLOPEN_FAILED";
@@ -924,6 +929,8 @@ private:
         args.package_root = package->package_root.c_str();
         args.platform_id = package->platform_id.c_str();
         args.platform_tag = adapter->get_profile().platform_tag;
+        args.log = aivision::logging::sdk_algo_log_bridge;
+        args.log_user = &package->log_context;
         if (package->abi->library_open(&args, &package->library) != AV_OK || !package->library) {
             error = "PACKAGE_LIBRARY_OPEN_FAILED";
             return nullptr;

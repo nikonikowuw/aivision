@@ -9,6 +9,7 @@
 
 #include "aivision/core/algo_sandbox.hpp"
 #include "aivision/algo.h"
+#include "aivision/core/logging/log_adapter.hpp"
 #include "aivision/utils/package_layout.hpp"
 
 #include <algorithm>
@@ -147,7 +148,8 @@ bool capture_command(const std::vector<std::string>& args, std::string& output,
     }
     if (posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO) != 0 ||
         (merge_stderr && posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO) != 0) ||
-        posix_spawn_file_actions_addclose(&actions, pipe_fds[0]) != 0) {
+        posix_spawn_file_actions_addclose(&actions, pipe_fds[0]) != 0 ||
+        posix_spawn_file_actions_addclose(&actions, pipe_fds[1]) != 0) {
         posix_spawn_file_actions_destroy(&actions);
         ::close(pipe_fds[0]);
         ::close(pipe_fds[1]);
@@ -382,6 +384,76 @@ bool is_sha256(const std::string& value) {
            std::all_of(value.begin(), value.end(), [](unsigned char ch) {
                return std::isxdigit(ch) != 0;
            });
+}
+
+bool parse_validator_result(const std::string& output, bool executed,
+                            ValidationResult& result, std::string& error) {
+    constexpr size_t MAX_VALIDATOR_OUTPUT = 64 * 1024;
+    if (output.empty() || output.size() > MAX_VALIDATOR_OUTPUT || output.back() != '\n' ||
+        std::count(output.begin(), output.end(), '\n') != 1) {
+        error = "validator stdout must contain exactly one JSONL result";
+        return false;
+    }
+
+    try {
+        const auto payload = output.substr(0, output.size() - 1);
+        const auto json_obj = nlohmann::json::parse(payload);
+        if (!json_obj.is_object() || !json_obj.contains("success") ||
+            !json_obj.at("success").is_boolean() ||
+            !json_obj.contains("error_code") || !json_obj.at("error_code").is_string() ||
+            !json_obj.contains("error_stage") || !json_obj.at("error_stage").is_string() ||
+            !json_obj.contains("error_message") || !json_obj.at("error_message").is_string()) {
+            error = "validator result has missing or invalid required fields";
+            return false;
+        }
+        static const std::set<std::string> allowed_fields = {
+            "success", "error_code", "error_stage", "error_message", "package_sha256", "manifest"
+        };
+        for (const auto& item : json_obj.items()) {
+            if (!allowed_fields.contains(item.key())) {
+                error = "validator result contains an unknown field: " + item.key();
+                return false;
+            }
+        }
+
+        result.success = json_obj.at("success").get<bool>();
+        result.error_code = json_obj.at("error_code").get<std::string>();
+        result.error_stage = json_obj.at("error_stage").get<std::string>();
+        result.error_message = json_obj.at("error_message").get<std::string>();
+        if (!result.success) {
+            if (result.error_code.empty() || result.error_stage.empty() || result.error_message.empty()) {
+                error = "validator failure result is missing diagnostics";
+                return false;
+            }
+            return true;
+        }
+        if (!executed || !result.error_code.empty() || !result.error_stage.empty() ||
+            !result.error_message.empty() || !json_obj.contains("manifest") ||
+            !json_obj.at("manifest").is_object() || !json_obj.contains("package_sha256") ||
+            !json_obj.at("package_sha256").is_string()) {
+            error = "validator success result is incomplete or process failed";
+            return false;
+        }
+
+        const auto& manifest = json_obj.at("manifest");
+        if (!manifest.contains("algorithm_id") || !manifest.at("algorithm_id").is_string() ||
+            !manifest.contains("version") || !manifest.at("version").is_string()) {
+            error = "validator success result is missing algorithm identity";
+            return false;
+        }
+        result.manifest.algorithm_id = manifest.at("algorithm_id").get<std::string>();
+        result.manifest.version = manifest.at("version").get<std::string>();
+        result.package_sha256 = json_obj.at("package_sha256").get<std::string>();
+        if (!safe_identifier(result.manifest.algorithm_id) || !safe_identifier(result.manifest.version) ||
+            (!result.package_sha256.empty() && !is_sha256(result.package_sha256))) {
+            error = "validator success result contains unsafe identity or checksum";
+            return false;
+        }
+        return true;
+    } catch (const std::exception& exception) {
+        error = std::string("validator result JSON is invalid: ") + exception.what();
+        return false;
+    }
 }
 
 bool read_external_package_sha256(const fs::path& package_path, std::string& expected, std::string& error) {
@@ -943,11 +1015,18 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     }
 
     // 打开算法库上下文并加载模型
+    aivision::logging::AlgoLogContext log_context{
+        result.manifest.algorithm_id,
+        result.manifest.version,
+        result.manifest.platform_id
+    };
     av_algo_library_args library_args{};
     library_args.size = sizeof(library_args);
     library_args.api_version = AV_ALGO_API_VERSION;
     library_args.package_root = working_dir.c_str();
     library_args.platform_id = result.manifest.platform_id.c_str();
+    library_args.log = aivision::logging::sdk_algo_log_bridge;
+    library_args.log_user = &log_context;
     av_algo_library library = nullptr;
     if (abi->library_open(&library_args, &library) != AV_OK || !library) {
         close_library();
@@ -1119,21 +1198,6 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     result.success = true;
     return result;
 }
-            if (had_previous) {
-                std::error_code restore_error;
-                fs::rename(backup, target, restore_error);
-            }
-            fs::remove_all(temporary, install_error);
-            result.error_stage = "install";
-            result.error_message = "Cannot activate validated package";
-            return result;
-        }
-        if (had_previous) fs::remove_all(backup, install_error);
-    }
-
-    result.success = true;
-    return result;
-}
 
 ValidationResult PackageValidator::run_sandbox_validator(const std::string& validator_bin_path,
                                                          const std::string& package_path,
@@ -1148,61 +1212,17 @@ ValidationResult PackageValidator::run_sandbox_validator(const std::string& vali
 
     std::string output;
     // merge_stderr = false: 只捕获 stdout 的机器 JSON 契约，子进程 stderr 日志直通宿主
-    const bool executed = capture_command({validator_bin_path, package_path, install_base_dir}, output, 1024 * 1024, false);
+    const bool executed = capture_command(
+        {validator_bin_path, package_path, install_base_dir}, output, 64 * 1024, false);
 
-    if (output.empty()) {
-        ValidationResult result;
+    ValidationResult result;
+    std::string parse_error;
+    if (!parse_validator_result(output, executed, result, parse_error)) {
         result.error_stage = "sandbox_output";
         result.error_code = "VALIDATOR_RESULT_INVALID";
-        result.error_message = executed ? "Validator produced empty output" : "Validator process failed or timed out";
-        return result;
+        result.error_message = parse_error;
     }
-
-    try {
-        const auto json_obj = nlohmann::json::parse(output);
-        if (!json_obj.is_object() || !json_obj.contains("success")) {
-            ValidationResult result;
-            result.error_stage = "sandbox_output";
-            result.error_code = "VALIDATOR_RESULT_INVALID";
-            result.error_message = "Validator output is not a valid result object";
-            return result;
-        }
-
-        ValidationResult result;
-        result.success = json_obj.value("success", false);
-        result.error_code = json_obj.value("error_code", "");
-        result.error_stage = json_obj.value("error_stage", "");
-        result.error_message = json_obj.value("error_message", "");
-
-        if (!result.success) {
-            if (result.error_code.empty()) {
-                result.error_code = "PACKAGE_VALIDATION_FAILED";
-            }
-            return result;
-        }
-
-        if (json_obj.contains("manifest") && json_obj["manifest"].is_object()) {
-            result.manifest.algorithm_id = json_obj["manifest"].value("algorithm_id", "");
-            result.manifest.version = json_obj["manifest"].value("version", "");
-        }
-        result.package_sha256 = json_obj.value("package_sha256", "");
-
-        if (result.manifest.algorithm_id.empty() || result.manifest.version.empty()) {
-            result.success = false;
-            result.error_stage = "sandbox_output";
-            result.error_code = "VALIDATOR_RESULT_INVALID";
-            result.error_message = "Validator result is missing algorithm identity";
-            return result;
-        }
-
-        return result;
-    } catch (const std::exception& e) {
-        ValidationResult result;
-        result.error_stage = "sandbox_output";
-        result.error_code = "VALIDATOR_RESULT_INVALID";
-        result.error_message = std::string("Failed to parse validator JSON: ") + e.what();
-        return result;
-    }
+    return result;
 }
 
 } // namespace aivision::core

@@ -1,10 +1,17 @@
+/**
+ * @file log_record.hpp
+ * @brief 结构化日志级别、上下文和记录数据模型
+ */
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <variant>
 
 namespace aivision::logging {
 
@@ -66,6 +73,16 @@ struct LogContextSnapshot {
 };
 
 /**
+ * @brief 额外结构化字段允许的 JSON 标量类型
+ */
+using LogFieldValue = std::variant<std::string, bool, int64_t, double>;
+
+/**
+ * @brief 结构化日志扩展字段集合
+ */
+using LogFields = std::map<std::string, LogFieldValue>;
+
+/**
  * @brief 结构化日志记录核心结构
  */
 struct LogRecord {
@@ -80,7 +97,7 @@ struct LogRecord {
     size_t raw_message_bytes{0};              ///< 截断前的原始字节大小
     LogContextSnapshot context;               ///< 上下文快照
     SourceLocation loc;                       ///< 源码位置
-    std::map<std::string, std::string> extra_fields; ///< 受控白名单额外标量字段
+    LogFields extra_fields; ///< 受控白名单额外标量字段
 };
 
 } // namespace aivision::logging

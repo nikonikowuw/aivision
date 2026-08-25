@@ -1,3 +1,7 @@
+/**
+ * @file log_context.hpp
+ * @brief 结构化日志线程局部上下文与 RAII 作用域管理
+ */
 #pragma once
 
 #include "aivision/core/logging/log_record.hpp"
@@ -14,7 +18,7 @@ public:
     /**
      * @brief 推入新作用域上下文
      */
-    static void push(const LogContextSnapshot& snapshot) noexcept;
+    [[nodiscard]] static bool push(const LogContextSnapshot& snapshot) noexcept;
 
     /**
      * @brief 弹出当前作用域上下文
@@ -37,16 +41,18 @@ public:
  */
 class ScopedLogContext {
 public:
-    explicit ScopedLogContext(const LogContextSnapshot& snapshot) noexcept {
-        LogContext::push(snapshot);
-    }
+    explicit ScopedLogContext(const LogContextSnapshot& snapshot) noexcept
+        : active_(LogContext::push(snapshot)) {}
     ~ScopedLogContext() noexcept {
-        LogContext::pop();
+        if (active_) LogContext::pop();
     }
 
     // 禁用拷贝与移动
     ScopedLogContext(const ScopedLogContext&) = delete;
     ScopedLogContext& operator=(const ScopedLogContext&) = delete;
+
+private:
+    bool active_{false};
 };
 
 } // namespace aivision::logging

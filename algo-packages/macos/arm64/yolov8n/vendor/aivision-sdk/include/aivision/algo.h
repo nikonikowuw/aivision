@@ -10,6 +10,18 @@ extern "C" {
 typedef void* av_algo_library;
 typedef void* av_algo_instance;
 
+/**
+ * @brief SDK 日志级别常量 (兼容 av_log_fn 的 int level 传参)
+ */
+typedef enum av_algo_log_level {
+    AV_ALGO_LOG_TRACE = 0,
+    AV_ALGO_LOG_DEBUG = 1,
+    AV_ALGO_LOG_INFO  = 2,
+    AV_ALGO_LOG_WARN  = 3,
+    AV_ALGO_LOG_ERROR = 4,
+    AV_ALGO_LOG_FATAL = 5
+} av_algo_log_level;
+
 typedef void (*av_log_fn)(void* user, int level, const char* msg, uint32_t len);
 
 typedef struct av_algo_library_args {

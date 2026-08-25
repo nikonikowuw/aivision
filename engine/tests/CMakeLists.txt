@@ -45,6 +45,7 @@ target_include_directories(mock_algo_fixture PRIVATE
 # Unit tests
 add_executable(unit_tests
     unit/test_main.cpp
+    unit/test_logging.cpp
     unit/test_frame_pool.cpp
     unit/test_color_vui.cpp
     unit/test_resource_ledger.cpp

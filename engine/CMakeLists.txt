@@ -135,6 +135,12 @@ target_link_libraries(proto_gen PUBLIC
 
 # 5. engine_core
 add_library(engine_core STATIC
+    src/core/logging/log_record.cpp
+    src/core/logging/log_sanitizer.cpp
+    src/core/logging/log_sink.cpp
+    src/core/logging/log_writer.cpp
+    src/core/logging/log_context.cpp
+    src/core/logging/logger.cpp
     src/core/frame/frame_pool.cpp
     src/core/frame/color_vui.cpp
     src/core/task/camera_task.cpp

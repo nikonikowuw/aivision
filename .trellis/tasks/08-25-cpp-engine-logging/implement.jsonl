@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "Engine 错误域、稳定错误码与结构化日志字段规范"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "C++ 线程安全、内存管理与 sanitizer 测试质量要求"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "C ABI 状态码与 av_log_fn 跨边界契约规范"}

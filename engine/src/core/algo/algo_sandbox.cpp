@@ -1147,67 +1147,62 @@ ValidationResult PackageValidator::run_sandbox_validator(const std::string& vali
     }
 
     std::string output;
-    if (!capture_command({validator_bin_path, package_path, install_base_dir}, output, 1024 * 1024, true)) {
+    // merge_stderr = false: 只捕获 stdout 的机器 JSON 契约，子进程 stderr 日志直通宿主
+    const bool executed = capture_command({validator_bin_path, package_path, install_base_dir}, output, 1024 * 1024, false);
+
+    if (output.empty()) {
         ValidationResult result;
-        const std::string error_prefix = "Error code: ";
-        const size_t error_marker = output.find(error_prefix);
-        if (error_marker != std::string::npos) {
-            const size_t error_start = error_marker + error_prefix.size();
-            const size_t error_end = output.find_first_of("\r\n", error_start);
-            result.error_code = output.substr(
-                error_start, error_end == std::string::npos ? std::string::npos : error_end - error_start);
-        }
-        result.error_stage = "sandbox_process";
-        result.error_message = "Validator process exited with failure or exceeded its deadline";
+        result.error_stage = "sandbox_output";
+        result.error_code = "VALIDATOR_RESULT_INVALID";
+        result.error_message = executed ? "Validator produced empty output" : "Validator process failed or timed out";
         return result;
     }
 
-    constexpr std::string_view prefix = "Successfully validated package: ";
-    const size_t marker = output.find(prefix);
-    if (marker == std::string::npos) {
-        ValidationResult result;
-        result.error_stage = "sandbox_output";
-        result.error_message = "Validator output did not contain a validated package identity";
-        return result;
-    }
-    const size_t start = marker + prefix.size();
-    const size_t end = output.find_first_of("\r\n", start);
-    const std::string identity = output.substr(start, end == std::string::npos ? std::string::npos : end - start);
-    const size_t separator = identity.rfind('@');
-    if (separator == std::string::npos || separator == 0 || separator + 1 >= identity.size()) {
-        ValidationResult result;
-        result.error_stage = "sandbox_output";
-        result.error_message = "Validator output contained an invalid package identity";
-        return result;
-    }
-
-    std::string package_sha256;
-    constexpr std::string_view checksum_prefix = "Package SHA-256: ";
-    const size_t checksum_marker = output.find(checksum_prefix);
-    if (checksum_marker != std::string::npos) {
-        const size_t checksum_start = checksum_marker + checksum_prefix.size();
-        const size_t checksum_end = output.find_first_of("\r\n", checksum_start);
-        package_sha256 = output.substr(
-            checksum_start, checksum_end == std::string::npos ? std::string::npos : checksum_end - checksum_start);
-        if (!is_sha256(package_sha256)) {
+    try {
+        const auto json_obj = nlohmann::json::parse(output);
+        if (!json_obj.is_object() || !json_obj.contains("success")) {
             ValidationResult result;
             result.error_stage = "sandbox_output";
-            result.error_message = "Validator output contained an invalid package SHA-256";
+            result.error_code = "VALIDATOR_RESULT_INVALID";
+            result.error_message = "Validator output is not a valid result object";
             return result;
         }
-    } else if (is_zip_path(fs::path(package_path))) {
+
+        ValidationResult result;
+        result.success = json_obj.value("success", false);
+        result.error_code = json_obj.value("error_code", "");
+        result.error_stage = json_obj.value("error_stage", "");
+        result.error_message = json_obj.value("error_message", "");
+
+        if (!result.success) {
+            if (result.error_code.empty()) {
+                result.error_code = "PACKAGE_VALIDATION_FAILED";
+            }
+            return result;
+        }
+
+        if (json_obj.contains("manifest") && json_obj["manifest"].is_object()) {
+            result.manifest.algorithm_id = json_obj["manifest"].value("algorithm_id", "");
+            result.manifest.version = json_obj["manifest"].value("version", "");
+        }
+        result.package_sha256 = json_obj.value("package_sha256", "");
+
+        if (result.manifest.algorithm_id.empty() || result.manifest.version.empty()) {
+            result.success = false;
+            result.error_stage = "sandbox_output";
+            result.error_code = "VALIDATOR_RESULT_INVALID";
+            result.error_message = "Validator result is missing algorithm identity";
+            return result;
+        }
+
+        return result;
+    } catch (const std::exception& e) {
         ValidationResult result;
         result.error_stage = "sandbox_output";
-        result.error_message = "Validator output did not contain the package SHA-256";
+        result.error_code = "VALIDATOR_RESULT_INVALID";
+        result.error_message = std::string("Failed to parse validator JSON: ") + e.what();
         return result;
     }
-
-    ValidationResult result;
-    result.success = true;
-    result.package_sha256 = std::move(package_sha256);
-    result.manifest.algorithm_id = identity.substr(0, separator);
-    result.manifest.version = identity.substr(separator + 1);
-    return result;
 }
 
 } // namespace aivision::core

@@ -14,6 +14,7 @@
 #include "aivision/core/uds_ipc.hpp"
 #include "aivision/core/algo_manager.hpp"
 #include "aivision/core/image_manager.hpp"
+#include "aivision/core/logging/logger.hpp"
 #include "aivision/core/resource_ledger.hpp"
 #include "aivision/core/task_scheduler.hpp"
 #include "aivision/core/telemetry_collector.hpp"
@@ -48,6 +49,20 @@ const char* env_or_default(const char* name, const char* fallback) {
 } // namespace
 
 int main() {
+    // 0. 初始化结构化日志系统并读取环境变量配置
+    aivision::logging::Level log_lvl = aivision::logging::Level::Info;
+    const char* env_log_level = std::getenv("AIVISION_LOG_LEVEL");
+    if (env_log_level) {
+        auto parsed = aivision::logging::parse_level(env_log_level);
+        if (parsed.has_value()) {
+            log_lvl = *parsed;
+        } else {
+            std::cerr << "[WARN] Invalid AIVISION_LOG_LEVEL '" << env_log_level
+                      << "', fallback to INFO" << std::endl;
+        }
+    }
+    aivision::logging::Logger::initialize(log_lvl);
+
     // 注册系统退出信号监听（SIGINT / SIGTERM），触发原子停止标志
     std::signal(SIGINT, request_stop);
     std::signal(SIGTERM, request_stop);
@@ -178,17 +193,21 @@ int main() {
         }
     });
 
-    std::cout << "aivision-engine started platform=" << platform_id
-              << " socket=" << engine_socket << std::endl;
+    LOG_INFO("engine.app", "engine.started", "aivision-engine started successfully", "",
+             {{"platform_id", platform_id}, {"socket", engine_socket}});
     // 主线程等待退出信号
     while (!g_stop_requested.load(std::memory_order_acquire)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    LOG_INFO("engine.app", "engine.stopping", "Shutting down aivision-engine");
 
     // 优雅停机并清理资源
     if (control_plane_thread.joinable()) control_plane_thread.join();
     aivision::core::TaskScheduler::instance().stop_all();
     aivision::core::AlgoManager::instance().stop_all();
     server.stop();
+
+    aivision::logging::Logger::shutdown();
     return 0;
 }

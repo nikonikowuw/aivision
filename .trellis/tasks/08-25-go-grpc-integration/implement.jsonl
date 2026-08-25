@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/index.md","reason":"Go backend development gates and package ownership"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Place IPC infrastructure and Wire lifecycle changes consistently"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Keep transport, business code, and internal error disclosure boundaries distinct"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Use injected zap logger without payload or secret leakage"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Follow constructor, Wire, formatting, vet, and test requirements"}
+{"file":".trellis/spec/engine/runtime-guidelines.md","reason":"Authoritative dual-UDS, revision, ACK, and reconnect contract"}
+{"file":".trellis/spec/engine/deployment-profile.md","reason":"Socket location, ownership, permissions, and process lifecycle constraints"}
+{"file":".trellis/spec/engine/error-observability-guidelines.md","reason":"Stable cross-process code and structured diagnostics contract"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace Proto payloads and failures across Go/C++ boundaries"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse generated interfaces and avoid duplicated RPC wrappers/contracts"}
+{"file":".trellis/tasks/08-25-go-grpc-integration/research/existing-grpc-boundary.md","reason":"Existing implementation map, codegen gap, and E2E evidence"}

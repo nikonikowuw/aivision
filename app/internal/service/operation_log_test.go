@@ -35,9 +35,11 @@ func TestOperationLogService(t *testing.T) {
 	now := time.Now()
 
 	// 1. 插入多条测试记录
+	// 确保测试记录时间处于“今天”且具有时间间隔，避免跨午夜执行测试时 now.Add(-2*time.Hour) 落在昨天
+	todayBase := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
 	logs := []model.OperationLog{
 		{
-			CreatedAt:  now.Add(-2 * time.Hour),
+			CreatedAt:  todayBase.Add(-2 * time.Hour),
 			UserID:     1,
 			Username:   "admin",
 			Module:     "auth",
@@ -50,7 +52,7 @@ func TestOperationLogService(t *testing.T) {
 			UserAgent:  "curl/7.0",
 		},
 		{
-			CreatedAt:  now.Add(-1 * time.Hour),
+			CreatedAt:  todayBase.Add(-1 * time.Hour),
 			UserID:     1,
 			Username:   "admin",
 			Module:     "menu",
@@ -63,7 +65,7 @@ func TestOperationLogService(t *testing.T) {
 			UserAgent:  "curl/7.0",
 		},
 		{
-			CreatedAt:  now,
+			CreatedAt:  todayBase,
 			UserID:     2,
 			Username:   "testuser",
 			Module:     "auth",

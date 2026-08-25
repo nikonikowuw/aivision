@@ -28,6 +28,7 @@
 /var/
 *.tmp
 *.temp
+engine/tests/fixtures/media/
 
 # Root build artifacts
 build/

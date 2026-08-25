@@ -90,7 +90,7 @@ elseif(PLATFORM_TARGET STREQUAL "mock")
     )
 endif()
 add_dependencies(unit_tests mock_algo_fixture mock_algo_fixture_assets)
-add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 if(ENGINE_ENABLE_TSAN)
     # Keep real-media coverage; suppress only known ZLToolKit initialization races.
     set_tests_properties(unit_tests PROPERTIES
@@ -113,7 +113,7 @@ target_link_libraries(contract_tests PRIVATE
     GTest::gtest_main
 )
 add_dependencies(contract_tests mock_algo_fixture mock_algo_fixture_assets)
-add_test(NAME contract_tests COMMAND contract_tests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME contract_tests COMMAND contract_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 if(AIVISION_USE_ZLM)
     add_executable(test_rtsp_server media/rtsp_server.cpp)

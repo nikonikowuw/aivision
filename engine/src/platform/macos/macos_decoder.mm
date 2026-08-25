@@ -230,25 +230,38 @@ private:
     }
 
     void update_parameter_sets_locked(const std::vector<NalUnit>& nals) {
+        bool params_changed = false;
         for (const auto& nal : nals) {
             if (nal.bytes.empty()) continue;
             const uint8_t type = codec_ == "H265" || codec_ == "HEVC"
                 ? static_cast<uint8_t>((nal.bytes[0] >> 1) & 0x3F)
                 : static_cast<uint8_t>(nal.bytes[0] & 0x1F);
             if (codec_ == "H265" || codec_ == "HEVC") {
-                if (type == 32) vps_ = nal.bytes;
-                else if (type == 33) {
+                if (type == 32 && vps_ != nal.bytes) {
+                    vps_ = nal.bytes;
+                    params_changed = true;
+                } else if (type == 33 && sps_ != nal.bytes) {
                     sps_ = nal.bytes;
                     color_info_ = core::ColorVUIParser::parse_h265_sps(sps_.data(), sps_.size());
-                } else if (type == 34) pps_ = nal.bytes;
+                    params_changed = true;
+                } else if (type == 34 && pps_ != nal.bytes) {
+                    pps_ = nal.bytes;
+                    params_changed = true;
+                }
             } else {
-                if (type == 7) {
+                if (type == 7 && sps_ != nal.bytes) {
                     sps_ = nal.bytes;
                     color_info_ = core::ColorVUIParser::parse_h264_sps(sps_.data(), sps_.size());
-                } else if (type == 8) {
+                    params_changed = true;
+                } else if (type == 8 && pps_ != nal.bytes) {
                     pps_ = nal.bytes;
+                    params_changed = true;
                 }
             }
+        }
+        if (params_changed && session_) {
+            destroy_session_locked();
+            release_format_locked();
         }
     }
 

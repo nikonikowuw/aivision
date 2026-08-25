@@ -7,6 +7,7 @@ mkdir -p "${FIXTURE_DIR}"
 
 H264_MP4="${FIXTURE_DIR}/test_1080p_h264.mp4"
 H265_MP4="${FIXTURE_DIR}/test_1080p_h265.mp4"
+H264_720P_MP4="${FIXTURE_DIR}/test_720p_h264.mp4"
 
 # Generate deterministic 5-second 1080p 25fps H.264 video with color bars and timecode
 if [[ ! -f "${H264_MP4}" ]]; then
@@ -15,6 +16,15 @@ if [[ ! -f "${H264_MP4}" ]]; then
     -c:v libx264 -profile:v high -level:v 4.1 -pix_fmt yuv420p \
     -g 25 -keyint_min 25 -x264-params "colorprim=bt709:transfer=bt709:colormatrix=bt709" \
     "${H264_MP4}" >/dev/null 2>&1
+fi
+
+# Generate deterministic 5-second 720p 25fps H.264 video for track replacement / resolution change
+if [[ ! -f "${H264_720P_MP4}" ]]; then
+  echo "Generating 720p H.264 test video..."
+  ffmpeg -y -f lavfi -i testsrc=duration=5:size=1280x720:rate=25 \
+    -c:v libx264 -profile:v high -level:v 4.1 -pix_fmt yuv420p \
+    -g 25 -keyint_min 25 -x264-params "colorprim=bt709:transfer=bt709:colormatrix=bt709" \
+    "${H264_720P_MP4}" >/dev/null 2>&1
 fi
 
 # Generate deterministic 5-second 1080p 25fps H.265 (HEVC) video

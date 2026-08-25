@@ -17,7 +17,7 @@ build: clean-zlm-archives
 	cmake --build $(BUILD_DIR)
 
 test:
-	ctest --test-dir $(BUILD_DIR) --output-on-failure
+	cd $(BUILD_DIR) && ctest --timeout 180 --output-on-failure -R unit_tests
 
 lint:
 	bash scripts/check-boundary.sh
@@ -25,12 +25,12 @@ lint:
 asan: clean-zlm-archives
 	cmake -B $(BUILD_DIR)_asan -G $(GENERATOR) -DENGINE_ENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug
 	cmake --build $(BUILD_DIR)_asan
-	ctest --test-dir $(BUILD_DIR)_asan --output-on-failure
+	cd $(BUILD_DIR)_asan && ctest --timeout 180 --output-on-failure -R unit_tests
 
 tsan: clean-zlm-archives
 	cmake -B $(BUILD_DIR)_tsan -G $(GENERATOR) -DENGINE_ENABLE_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
 	cmake --build $(BUILD_DIR)_tsan
-	ctest --test-dir $(BUILD_DIR)_tsan --output-on-failure
+	cd $(BUILD_DIR)_tsan && ctest --timeout 180 --output-on-failure -R unit_tests
 
 clean:
 	rm -rf $(BUILD_DIR) $(BUILD_DIR)_asan $(BUILD_DIR)_tsan

@@ -619,3 +619,25 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
+
+
+## Session 22: Go gRPC integration
+
+**Date**: 2026-08-26
+**Task**: Go gRPC integration
+**Branch**: `dev`
+
+### Summary
+
+Add Go gRPC IPC between app and engine: engineipc package provides inbound gRPC server (Runtime on app.sock, business side connects via DesiredStateAdapter/ReportAdapter ports) and outbound EngineClient (engine.sock, 12 EngineService RPCs). Protocol authoritative source in engine/proto/aivision/v1, generated to app/internal/proto/aivision/v1 via scripts/generate-proto.sh (committed, make proto-check prevents drift). Cross-language E2E via make -C app grpc-e2e (mock engine + tests/integration behind integration build tag). Also stabilized operation log test across midnight.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6952640` | (see git log) |
+| `37f589c` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -7,7 +7,7 @@ db:
   port: 5432
   user: postgres
   password: "postgres" # 开发默认；生产用 APP_DB_PASSWORD 覆盖
-  name: niko_vue_admin_go
+  name: aivision
   time_zone: Asia/Shanghai
   max_open: 100
   max_idle: 10

@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "cameras 表迁移与 BaseModel 软删除约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "errno 错误码与 code=0 响应契约"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端测试与质量关卡"}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "ZLM 媒体后端与 EventPoller 生命周期"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "EngineError 稳定错误码与日志脱敏"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "API 命名空间类型组织"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "三语 i18n 对齐"}

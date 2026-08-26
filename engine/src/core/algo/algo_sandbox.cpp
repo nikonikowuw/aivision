@@ -736,25 +736,40 @@ bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifes
     std::string algorithm_id;
     std::string version;
     std::string name;
-    std::string algorithm_type;
+    std::string algorithm_type_raw;
     std::string alarm_type_id;
     std::string platform_id;
     std::string min_adapter_version;
     if (!required_string("algorithm_id", algorithm_id) || !required_string("version", version) ||
-        !required_string("name", name) || !required_string("algorithm_type", algorithm_type) ||
-        !required_string("alarm_type_id", alarm_type_id) || !required_string("platform_id", platform_id) ||
-        !required_string("min_adapter_version", min_adapter_version)) {
+        !required_string("name", name) || !required_string("algorithm_type", algorithm_type_raw) ||
+        !required_string("platform_id", platform_id) || !required_string("min_adapter_version", min_adapter_version)) {
+        return false;
+    }
+    const AlgorithmType algorithm_type = parse_algorithm_type(algorithm_type_raw);
+    if (algorithm_type == AlgorithmType::Unknown) {
+        error = "manifest algorithm type is unsupported: " + algorithm_type_raw;
+        return false;
+    }
+    if (algorithm_type == AlgorithmType::ObjectDetection && !required_string("alarm_type_id", alarm_type_id)) {
+        return false;
+    }
+    if (algorithm_type == AlgorithmType::FaceRecognition && manifest.contains("alarm_type_id")) {
+        error = "face_recognition manifests must not declare alarm_type_id";
         return false;
     }
     if (algorithm_id.size() < 3 || algorithm_id.size() > 32 ||
         !std::regex_match(algorithm_id, std::regex(R"(^[a-z0-9_-]+$)")) || !is_semver(version) ||
-        name.empty() || name.size() > 64 || algorithm_type != "object_detection" ||
-        alarm_type_id.size() < 3 || alarm_type_id.size() > 32 ||
-        !std::regex_match(alarm_type_id, std::regex(R"(^[a-z0-9_]+$)")) ||
+        name.empty() || name.size() > 64 ||
         (platform_id != "mock" &&
          !std::regex_match(platform_id, std::regex(R"(^[a-z0-9]+(?:-[a-z0-9]+)+$)"))) ||
         !is_semver(min_adapter_version)) {
         error = "manifest identifier, version, or algorithm type is invalid";
+        return false;
+    }
+    if (algorithm_type == AlgorithmType::ObjectDetection &&
+        (alarm_type_id.size() < 3 || alarm_type_id.size() > 32 ||
+         !std::regex_match(alarm_type_id, std::regex(R"(^[a-z0-9_]+$)")))) {
+        error = "manifest alarm_type_id is invalid";
         return false;
     }
     if (manifest.contains("description") &&
@@ -927,20 +942,25 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
         result.manifest.algorithm_id = manifest.value("algorithm_id", "");
         result.manifest.version = manifest.value("version", "");
         result.manifest.platform_id = manifest.value("platform_id", "");
-        result.manifest.algorithm_type = manifest.value("algorithm_type", "");
+        const std::string raw_algorithm_type = manifest.value("algorithm_type", "");
+        result.manifest.algorithm_type = parse_algorithm_type(raw_algorithm_type);
         result.manifest.alarm_type_id = manifest.value("alarm_type_id", "");
         result.manifest.min_engine_version = manifest.value("min_adapter_version", "1.0.0");
         result.manifest.library_name.clear();
         if (result.manifest.algorithm_id.empty() || result.manifest.version.empty() ||
-            result.manifest.platform_id.empty() || result.manifest.algorithm_type.empty() ||
-            result.manifest.alarm_type_id.empty()) {
+            result.manifest.platform_id.empty() || raw_algorithm_type.empty()) {
             result.error_stage = "manifest";
             result.error_message = "Required manifest fields are missing";
             return result;
         }
-        if (result.manifest.algorithm_type != "object_detection") {
+        if (result.manifest.algorithm_type == AlgorithmType::Unknown) {
             result.error_stage = "manifest";
-            result.error_message = "Only object_detection packages are supported by this engine";
+            result.error_message = "Unsupported algorithm type: " + raw_algorithm_type;
+            return result;
+        }
+        if (result.manifest.algorithm_type == AlgorithmType::ObjectDetection && result.manifest.alarm_type_id.empty()) {
+            result.error_stage = "manifest";
+            result.error_message = "object_detection manifests require alarm_type_id";
             return result;
         }
         if (!safe_identifier(result.manifest.algorithm_id) || !safe_identifier(result.manifest.version) ||
@@ -1040,7 +1060,8 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     info.size = sizeof(info);
     info.api_version = AV_ALGO_API_VERSION;
     if (abi->library_query(library, &info) != AV_OK || std::string(info.algorithm_id) != result.manifest.algorithm_id ||
-        std::string(info.version) != result.manifest.version || std::string(info.algorithm_type) != "object_detection" ||
+        std::string(info.version) != result.manifest.version ||
+        !is_supported_algorithm_type(std::string(info.algorithm_type)) ||
         std::string(info.alarm_type_id) != result.manifest.alarm_type_id) {
         abi->library_close(library);
         close_library();

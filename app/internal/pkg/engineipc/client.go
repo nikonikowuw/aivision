@@ -143,3 +143,8 @@ func (c *EngineClient) QueryProfile(ctx context.Context, req *aivisionv1.QueryPr
 func (c *EngineClient) QueryMetrics(ctx context.Context, req *aivisionv1.QueryMetricsRequest, opts ...grpc.CallOption) (*aivisionv1.QueryMetricsResponse, error) {
 	return call(c.raw.QueryMetrics, ctx, req, opts...)
 }
+
+// ProbeCamera 摄像头测活；RPC code 仅表示处理成功，测活结果在 status/failure_code 中。
+func (c *EngineClient) ProbeCamera(ctx context.Context, req *aivisionv1.ProbeCameraRequest, opts ...grpc.CallOption) (*aivisionv1.ProbeCameraResponse, error) {
+	return call(c.raw.ProbeCamera, ctx, req, opts...)
+}

@@ -138,6 +138,350 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/camera": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "新增 RTSP 视频源；保存只做字段与 URL 校验，不强制测活成功",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "新增摄像头",
+                "parameters": [
+                    {
+                        "description": "创建摄像头参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_service.SaveCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功的摄像头",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.CameraResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/batch": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "批量软删除指定 ID 列表的摄像头",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "批量删除摄像头",
+                "parameters": [
+                    {
+                        "description": "批量删除参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.BatchDeleteCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/page": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询摄像头数据，支持名称模糊筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "分页获取摄像头列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "名称模糊查询",
+                        "name": "name",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "摄像头分页数据",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.CameraPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/probe": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "摄像头测活",
+                "parameters": [
+                    {
+                        "description": "测活参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ProbeCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "测活结构化结果",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ProbeResultResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 修改摄像头名称、RTSP URL 与备注；配置变更后旧测活结果视为不适用于当前配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "更新摄像头",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新摄像头参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_service.SaveCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的摄像头",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.CameraResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "软删除指定 ID 的摄像头；camera_id 永不复用",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "删除摄像头",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/dept": {
             "post": {
                 "security": [
@@ -1968,6 +2312,21 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_api.BatchDeleteCameraInput": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "internal_api.BatchDeleteRoleRequest": {
             "type": "object",
             "required": [
@@ -2014,6 +2373,34 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_api.CameraPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/niko-vue-admin_app_internal_service.CameraPageResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.CameraResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/niko-vue-admin_app_internal_model.Camera"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2179,6 +2566,39 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_api.ProbeCameraInput": {
+            "type": "object",
+            "required": [
+                "rtspUrl"
+            ],
+            "properties": {
+                "id": {
+                    "description": "可选：已保存摄像头的数值 id；省略表示未保存表单",
+                    "type": "integer"
+                },
+                "protocol": {
+                    "description": "当前固定 rtsp；省略默认 rtsp",
+                    "type": "string"
+                },
+                "rtspUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.ProbeResultResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/niko-vue-admin_app_internal_service.ProbeCameraResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_api.RoleIDsResponse": {
             "type": "object",
             "properties": {
@@ -2291,6 +2711,68 @@ const docTemplate = `{
                     "$ref": "#/definitions/niko-vue-admin_app_internal_model.User"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "niko-vue-admin_app_internal_model.Camera": {
+            "type": "object",
+            "properties": {
+                "cameraId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "lastCodec": {
+                    "type": "string"
+                },
+                "lastFps": {
+                    "type": "number"
+                },
+                "lastHeight": {
+                    "type": "integer"
+                },
+                "lastProbeAt": {
+                    "type": "string"
+                },
+                "lastProbeErrorCode": {
+                    "type": "string"
+                },
+                "lastProbeStatus": {
+                    "description": "最近一次测活结果（成功/失败均更新）。",
+                    "type": "string"
+                },
+                "lastSuccessAt": {
+                    "description": "最后已知成功媒体信息：失败测活更新当前失败状态但保留该历史；配置变更后旧结果标记为不适用于当前配置。",
+                    "type": "string"
+                },
+                "lastSuccessTransport": {
+                    "type": "string"
+                },
+                "lastWidth": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "rtspUrl": {
+                    "type": "string"
+                },
+                "transportPolicy": {
+                    "description": "传输策略（当前固定 auto）。Go/C++ 通过协议/策略适配选择实现，前端不可编辑。",
+                    "type": "string"
+                },
+                "updatedAt": {
                     "type": "string"
                 }
             }
@@ -2629,6 +3111,20 @@ const docTemplate = `{
                 }
             }
         },
+        "niko-vue-admin_app_internal_service.CameraPageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/niko-vue-admin_app_internal_model.Camera"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "niko-vue-admin_app_internal_service.ChangeCurrentPasswordInput": {
             "type": "object",
             "required": [
@@ -2716,6 +3212,71 @@ const docTemplate = `{
                 }
             }
         },
+        "niko-vue-admin_app_internal_service.ProbeAttempt": {
+            "type": "object",
+            "properties": {
+                "elapsedMs": {
+                    "description": "该次尝试耗时",
+                    "type": "integer"
+                },
+                "failureCode": {
+                    "description": "空串表示该次成功",
+                    "type": "string"
+                },
+                "transport": {
+                    "description": "tcp | udp",
+                    "type": "string"
+                }
+            }
+        },
+        "niko-vue-admin_app_internal_service.ProbeCameraResult": {
+            "type": "object",
+            "properties": {
+                "attempts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/niko-vue-admin_app_internal_service.ProbeAttempt"
+                    }
+                },
+                "codec": {
+                    "type": "string"
+                },
+                "elapsedMs": {
+                    "type": "integer"
+                },
+                "failureCode": {
+                    "type": "string"
+                },
+                "failureMessage": {
+                    "type": "string"
+                },
+                "fps": {
+                    "type": "number"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "persisted": {
+                    "description": "是否已写入测活元数据",
+                    "type": "boolean"
+                },
+                "selectedTransport": {
+                    "description": "实际成功传输方式（成功时有值）",
+                    "type": "string"
+                },
+                "stale": {
+                    "description": "配置指纹不一致，结果不适用于当前配置",
+                    "type": "boolean"
+                },
+                "status": {
+                    "description": "success | failed",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "integer"
+                }
+            }
+        },
         "niko-vue-admin_app_internal_service.RolePageResult": {
             "type": "object",
             "properties": {
@@ -2727,6 +3288,27 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "niko-vue-admin_app_internal_service.SaveCameraInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "rtspUrl"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "remark": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "rtspUrl": {
+                    "type": "string",
+                    "maxLength": 2048
                 }
             }
         },

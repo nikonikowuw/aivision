@@ -50,7 +50,7 @@ func clientCtx(t *testing.T) context.Context {
 	return ctx
 }
 
-// TestEngineClientAllRPCs 通过真实 UDS 覆盖全部 12 个 EngineService RPC 的请求映射与响应。
+// TestEngineClientAllRPCs 通过真实 UDS 覆盖全部 13 个 EngineService RPC 的请求映射与响应。
 func TestEngineClientAllRPCs(t *testing.T) {
 	fake := &fakeEngineServiceServer{}
 	path := startFakeEngine(t, fake)
@@ -139,6 +139,24 @@ func TestEngineClientAllRPCs(t *testing.T) {
 		t.Fatalf("QueryMetrics: %v resp=%+v", err, resp12)
 	}
 
+	// 13. ProbeCamera
+	fake.probe = &aivisionv1.ProbeCameraResponse{
+		Status:            "success",
+		SelectedTransport: "tcp",
+		Codec:             "H264",
+		Width:             1920,
+		Height:            1080,
+		Fps:               25,
+		ElapsedMs:         850,
+		Attempts: []*aivisionv1.ProbeAttempt{
+			{Transport: "tcp", ElapsedMs: 850},
+		},
+	}
+	resp13, err := client.ProbeCamera(ctx, &aivisionv1.ProbeCameraRequest{Protocol: "rtsp", Url: "rtsp://192.168.1.10/live"})
+	if err != nil || resp13.GetCode() != CodeOK || resp13.GetStatus() != "success" || resp13.GetSelectedTransport() != "tcp" {
+		t.Fatalf("ProbeCamera: %v resp=%+v", err, resp13)
+	}
+
 	// 请求映射断言（通过 fake 记录）。
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
@@ -178,6 +196,10 @@ func TestEngineClientAllRPCs(t *testing.T) {
 	if len(fake.metricsQueries) != 1 {
 		t.Errorf("metricsQueries = %+v", fake.metricsQueries)
 	}
+	if len(fake.probeCameraCalls) != 1 || fake.probeCameraCalls[0].GetProtocol() != "rtsp" ||
+		fake.probeCameraCalls[0].GetUrl() != "rtsp://192.168.1.10/live" {
+		t.Errorf("probeCameraCalls = %+v", fake.probeCameraCalls)
+	}
 }
 
 // TestEngineClientRemoteError 非空响应 code 转成可 errors.As 判断的 *RemoteError。
@@ -204,6 +226,54 @@ func TestEngineClientRemoteError(t *testing.T) {
 	// 响应仍保留供诊断。
 	if resp == nil || resp.GetCode() != "STALE_REVISION" {
 		t.Errorf("response should be retained for diagnostics, got %+v", resp)
+	}
+}
+
+// TestEngineClientProbeFailureIsNotRemoteError 测活失败（status=failed、code 为空）不是错误：
+// RPC code 仅表示处理成功，失败细节放在结构化 status/failure_code 中。
+func TestEngineClientProbeFailureIsNotRemoteError(t *testing.T) {
+	fake := &fakeEngineServiceServer{}
+	fake.probe = &aivisionv1.ProbeCameraResponse{
+		Status:      "failed",
+		FailureCode: "RTSP_CONNECT_FAILED",
+		ElapsedMs:   5000,
+		Attempts: []*aivisionv1.ProbeAttempt{
+			{Transport: "tcp", ElapsedMs: 5000, FailureCode: "RTSP_CONNECT_FAILED"},
+			{Transport: "udp", ElapsedMs: 100, FailureCode: "RTSP_CONNECT_FAILED"},
+		},
+	}
+	path := startFakeEngine(t, fake)
+	client := newTestEngineClient(t, path)
+
+	resp, err := client.ProbeCamera(clientCtx(t), &aivisionv1.ProbeCameraRequest{Protocol: "rtsp", Url: "rtsp://x/live"})
+	if err != nil {
+		t.Fatalf("probe failure should not be an error, got %v", err)
+	}
+	if resp.GetStatus() != "failed" || resp.GetFailureCode() != "RTSP_CONNECT_FAILED" {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if resp.GetCode() != CodeOK {
+		t.Errorf("RPC code = %q, want empty (OK)", resp.GetCode())
+	}
+}
+
+// TestEngineClientProbeRemoteError RPC 处理失败（非空 code）转成 *RemoteError。
+func TestEngineClientProbeRemoteError(t *testing.T) {
+	fake := &fakeEngineServiceServer{}
+	path := startFakeEngine(t, fake)
+	client := newTestEngineClient(t, path)
+
+	fake.mu.Lock()
+	fake.code = "INVALID_ARG"
+	fake.mu.Unlock()
+
+	_, err := client.ProbeCamera(clientCtx(t), &aivisionv1.ProbeCameraRequest{Protocol: "", Url: ""})
+	if err == nil {
+		t.Fatal("expected RemoteError for INVALID_ARG")
+	}
+	var re *RemoteError
+	if !errors.As(err, &re) || re.Code != "INVALID_ARG" {
+		t.Fatalf("err = %v, want *RemoteError{INVALID_ARG}", err)
 	}
 }
 

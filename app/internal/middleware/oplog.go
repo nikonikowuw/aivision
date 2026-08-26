@@ -213,6 +213,13 @@ var actionI18nMap = map[string]string{
 	"POST /api/ntp/sync":     "ops.time.sync",
 	"POST /api/ntp/set-time": "ops.time.setTime",
 
+	// Camera
+	"POST /api/camera":         "resource.camera.add",
+	"PUT /api/camera/:id":      "resource.camera.edit",
+	"DELETE /api/camera/:id":   "resource.camera.delete",
+	"DELETE /api/camera/batch": "system.common.batchDelete",
+	"POST /api/camera/probe":   "resource.camera.probe",
+
 	// Network
 	"PUT /api/network/interfaces/:interfaceId":                "system.log.actionNetworkApply",
 	"PUT /api/network/mode":                                   "system.log.actionNetworkModeSwitch",

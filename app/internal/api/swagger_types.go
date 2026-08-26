@@ -121,3 +121,21 @@ type LogResponse struct {
 	response.Result
 	Data model.OperationLog `json:"data"`
 }
+
+// CameraPageResponse 摄像头分页响应
+type CameraPageResponse struct {
+	response.Result
+	Data service.CameraPageResult `json:"data"`
+}
+
+// CameraResponse 单个摄像头响应
+type CameraResponse struct {
+	response.Result
+	Data model.Camera `json:"data"`
+}
+
+// ProbeResultResponse 摄像头测活结果响应
+type ProbeResultResponse struct {
+	response.Result
+	Data service.ProbeCameraResult `json:"data"`
+}

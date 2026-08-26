@@ -49,6 +49,8 @@ const (
 	syncRoutePath        = "/sync"
 	setTimeRoutePath     = "/set-time"
 	syncedRoutePath      = "/synced"
+	cameraRoutePath      = "/camera"
+	probeRoutePath       = "/probe"
 )
 
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
@@ -67,6 +69,7 @@ type Deps struct {
 	FileHandler         *api.FileHandler
 	NTPHandler          *api.NTPHandler
 	NetworkHandler      *api.NetworkHandler
+	CameraHandler       *api.CameraHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -233,6 +236,22 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/transactions/:transactionId/confirm", "ops:network:confirm")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/transactions/:transactionId/cancel", "ops:network:cancel")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/interfaces/:interfaceId/factory-reset", "ops:network:reset")
+
+		cameraGroup := apiGroup.Group(cameraRoutePath)
+		{
+			cameraGroup.GET(pageRoutePath, deps.CameraHandler.GetPage)
+			cameraGroup.POST("", deps.CameraHandler.CreateCamera)
+			cameraGroup.DELETE(batchRoutePath, deps.CameraHandler.BatchDeleteCamera)
+			cameraGroup.PUT(idRoutePath, deps.CameraHandler.UpdateCamera)
+			cameraGroup.DELETE(idRoutePath, deps.CameraHandler.DeleteCamera)
+			cameraGroup.POST(probeRoutePath, deps.CameraHandler.ProbeCamera)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+cameraRoutePath+pageRoutePath, "resource:camera")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+cameraRoutePath, "resource:camera:add")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+cameraRoutePath+batchRoutePath, "resource:camera:delete")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+cameraRoutePath+idRoutePath, "resource:camera:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+cameraRoutePath+idRoutePath, "resource:camera:delete")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+cameraRoutePath+probeRoutePath, "resource:camera:probe")
 	}
 
 	return engine

@@ -28,10 +28,12 @@ type fakeEngineServiceServer struct {
 	reconciledImages []*aivisionv1.ReconcileImagesRequest
 	profileQueries   []*aivisionv1.QueryProfileRequest
 	metricsQueries   []*aivisionv1.QueryMetricsRequest
+	probeCameraCalls []*aivisionv1.ProbeCameraRequest
 
 	// 可配置返回体。
 	profile   *aivisionv1.PlatformProfileInfo
 	telemetry *aivisionv1.DeviceTelemetry
+	probe     *aivisionv1.ProbeCameraResponse
 }
 
 func (f *fakeEngineServiceServer) errResp(method string) (code, msg string) {
@@ -152,4 +154,36 @@ func (f *fakeEngineServiceServer) QueryMetrics(_ context.Context, req *aivisionv
 		tel = &aivisionv1.DeviceTelemetry{UptimeSeconds: 7}
 	}
 	return &aivisionv1.QueryMetricsResponse{Telemetry: tel, Code: code, ErrorMessage: msg}, nil
+}
+
+func (f *fakeEngineServiceServer) ProbeCamera(_ context.Context, req *aivisionv1.ProbeCameraRequest) (*aivisionv1.ProbeCameraResponse, error) {
+	f.mu.Lock()
+	f.probeCameraCalls = append(f.probeCameraCalls, req)
+	probe := f.probe
+	f.mu.Unlock()
+	code, msg := f.errResp("ProbeCamera")
+	if probe == nil {
+		probe = &aivisionv1.ProbeCameraResponse{Status: "failed", FailureCode: "RTSP_MEDIA_ERROR"}
+	}
+	// 新建响应并填充业务码/诊断，避免复制 proto 消息（含内部锁）。
+	response := &aivisionv1.ProbeCameraResponse{
+		Status:            probe.GetStatus(),
+		FailureCode:       probe.GetFailureCode(),
+		SelectedTransport: probe.GetSelectedTransport(),
+		Codec:             probe.GetCodec(),
+		Width:             probe.GetWidth(),
+		Height:            probe.GetHeight(),
+		Fps:               probe.GetFps(),
+		ElapsedMs:         probe.GetElapsedMs(),
+		Code:              code,
+		ErrorMessage:      msg,
+	}
+	for _, attempt := range probe.GetAttempts() {
+		response.Attempts = append(response.Attempts, &aivisionv1.ProbeAttempt{
+			Transport:   attempt.GetTransport(),
+			FailureCode: attempt.GetFailureCode(),
+			ElapsedMs:   attempt.GetElapsedMs(),
+		})
+	}
+	return response, nil
 }

@@ -55,6 +55,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		api.NewNTPHandler,
 		service.NewNetworkService,
 		api.NewNetworkHandler,
+		repository.NewCameraRepository,
+		service.NewCameraService,
+		api.NewCameraHandler,
 		router.New,
 		wire.Struct(new(router.Deps), "*"),
 		// gRPC over UDS：生产注入 fail-closed 的 unavailable adapters、Runtime 与 EngineClient。
@@ -63,6 +66,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		engineipc.NewRuntime,
 		engineipc.NewEngineClient,
 		wire.Bind(new(ipcRuntime), new(*engineipc.Runtime)),
+		wire.Bind(new(service.CameraProbeClient), new(*engineipc.EngineClient)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

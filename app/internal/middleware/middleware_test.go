@@ -153,6 +153,33 @@ func setupMiddlewareTestApp(t *testing.T) (*gin.Engine, *gorm.DB, service.Operat
 	adminToken := signTestToken(cfg.JWT.Secret, adminUser.ID)
 	normalToken := signTestToken(cfg.JWT.Secret, normalUser.ID)
 
+	// Camera
+	cameraGroup := apiGroup.Group("/camera")
+	cameraGroup.Use(authMid.Handler)
+	cameraGroup.Use(permMid.Handler)
+	{
+		cameraGroup.POST("", func(c *gin.Context) {
+			response.Success(c, "camera created")
+		})
+		cameraGroup.PUT("/:id", func(c *gin.Context) {
+			response.Success(c, "camera updated")
+		})
+		cameraGroup.DELETE("/:id", func(c *gin.Context) {
+			response.Success(c, "camera deleted")
+		})
+		cameraGroup.DELETE("/batch", func(c *gin.Context) {
+			response.Success(c, "camera batch deleted")
+		})
+		cameraGroup.POST("/probe", func(c *gin.Context) {
+			response.Success(c, "camera probed")
+		})
+	}
+	permMid.Register(http.MethodPost, "/api/camera", "resource:camera:add")
+	permMid.Register(http.MethodPut, "/api/camera/:id", "resource:camera:edit")
+	permMid.Register(http.MethodDelete, "/api/camera/:id", "resource:camera:delete")
+	permMid.Register(http.MethodDelete, "/api/camera/batch", "resource:camera:delete")
+	permMid.Register(http.MethodPost, "/api/camera/probe", "resource:camera:probe")
+
 	return engine, db, oplogSrv, adminToken, normalToken
 }
 
@@ -456,5 +483,45 @@ func TestOplogActionInference(t *testing.T) {
 	}
 	if profileLog.Action != "system.log.actionUpdateProfile" {
 		t.Fatalf("profile action = %q, want %q", profileLog.Action, "system.log.actionUpdateProfile")
+	}
+
+	// 摄像头路由动作映射
+	cameraCases := []struct {
+		method     string
+		path       string
+		wantAction string
+	}{
+		{http.MethodPost, "/api/camera", "resource.camera.add"},
+		{http.MethodPut, "/api/camera/1", "resource.camera.edit"},
+		{http.MethodDelete, "/api/camera/1", "resource.camera.delete"},
+		{http.MethodDelete, "/api/camera/batch", "system.common.batchDelete"},
+		{http.MethodPost, "/api/camera/probe", "resource.camera.probe"},
+	}
+
+	for _, tc := range cameraCases {
+		rec = httptest.NewRecorder()
+		req = httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		engine.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s %s status = %d, want 200", tc.method, tc.path, rec.Code)
+		}
+	}
+
+	page = waitForPage(t, oplogSrv, &service.LogPageQuery{Module: "camera"}, int64(len(cameraCases)))
+	for _, tc := range cameraCases {
+		found := false
+		for _, item := range page.Items {
+			if item.Path == tc.path && item.Method == tc.method {
+				found = true
+				if item.Action != tc.wantAction {
+					t.Errorf("%s %s action = %q, want %q", tc.method, tc.path, item.Action, tc.wantAction)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("log item not found for %s %s", tc.method, tc.path)
+		}
 	}
 }

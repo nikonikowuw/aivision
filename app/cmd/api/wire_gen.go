@@ -69,6 +69,13 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 	networkHandler := api.NewNetworkHandler(networkService)
+	cameraRepository := repository.NewCameraRepository(gormDB)
+	engineClient, err := engineipc.NewEngineClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	cameraService := service.NewCameraService(cameraRepository, engineClient)
+	cameraHandler := api.NewCameraHandler(cameraService)
 	deps := router.Deps{
 		ErrorHandler:        handlerFunc,
 		AuthMiddleware:      authMiddleware,
@@ -83,15 +90,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		FileHandler:         fileHandler,
 		NTPHandler:          ntpHandler,
 		NetworkHandler:      networkHandler,
+		CameraHandler:       cameraHandler,
 	}
 	engine := router.New(cfg, deps)
 	desiredStateAdapter := engineipc.UnavailableDesiredStateAdapter()
 	reportAdapter := engineipc.UnavailableReportAdapter()
 	runtime := engineipc.NewRuntime(zapLogger, desiredStateAdapter, reportAdapter)
-	engineClient, err := engineipc.NewEngineClient(cfg)
-	if err != nil {
-		return nil, err
-	}
 	app := &App{
 		DB:           gormDB,
 		Logger:       zapLogger,

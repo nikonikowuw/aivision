@@ -19,6 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
+	EngineService_ProbeCamera_FullMethodName          = "/aivision.v1.EngineService/ProbeCamera"
 	EngineService_ApplyDesiredState_FullMethodName    = "/aivision.v1.EngineService/ApplyDesiredState"
 	EngineService_UpsertTask_FullMethodName           = "/aivision.v1.EngineService/UpsertTask"
 	EngineService_SetInstanceState_FullMethodName     = "/aivision.v1.EngineService/SetInstanceState"
@@ -37,6 +38,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type EngineServiceClient interface {
+	ProbeCamera(ctx context.Context, in *ProbeCameraRequest, opts ...grpc.CallOption) (*ProbeCameraResponse, error)
 	ApplyDesiredState(ctx context.Context, in *ApplyDesiredStateRequest, opts ...grpc.CallOption) (*ApplyDesiredStateResponse, error)
 	UpsertTask(ctx context.Context, in *UpsertTaskRequest, opts ...grpc.CallOption) (*UpsertTaskResponse, error)
 	SetInstanceState(ctx context.Context, in *SetInstanceStateRequest, opts ...grpc.CallOption) (*SetInstanceStateResponse, error)
@@ -57,6 +59,15 @@ type engineServiceClient struct {
 
 func NewEngineServiceClient(cc grpc.ClientConnInterface) EngineServiceClient {
 	return &engineServiceClient{cc}
+}
+
+func (c *engineServiceClient) ProbeCamera(ctx context.Context, in *ProbeCameraRequest, opts ...grpc.CallOption) (*ProbeCameraResponse, error) {
+	out := new(ProbeCameraResponse)
+	err := c.cc.Invoke(ctx, EngineService_ProbeCamera_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *engineServiceClient) ApplyDesiredState(ctx context.Context, in *ApplyDesiredStateRequest, opts ...grpc.CallOption) (*ApplyDesiredStateResponse, error) {
@@ -171,6 +182,7 @@ func (c *engineServiceClient) QueryMetrics(ctx context.Context, in *QueryMetrics
 // All implementations must embed UnimplementedEngineServiceServer
 // for forward compatibility
 type EngineServiceServer interface {
+	ProbeCamera(context.Context, *ProbeCameraRequest) (*ProbeCameraResponse, error)
 	ApplyDesiredState(context.Context, *ApplyDesiredStateRequest) (*ApplyDesiredStateResponse, error)
 	UpsertTask(context.Context, *UpsertTaskRequest) (*UpsertTaskResponse, error)
 	SetInstanceState(context.Context, *SetInstanceStateRequest) (*SetInstanceStateResponse, error)
@@ -190,6 +202,9 @@ type EngineServiceServer interface {
 type UnimplementedEngineServiceServer struct {
 }
 
+func (UnimplementedEngineServiceServer) ProbeCamera(context.Context, *ProbeCameraRequest) (*ProbeCameraResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProbeCamera not implemented")
+}
 func (UnimplementedEngineServiceServer) ApplyDesiredState(context.Context, *ApplyDesiredStateRequest) (*ApplyDesiredStateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ApplyDesiredState not implemented")
 }
@@ -237,6 +252,24 @@ type UnsafeEngineServiceServer interface {
 
 func RegisterEngineServiceServer(s grpc.ServiceRegistrar, srv EngineServiceServer) {
 	s.RegisterService(&EngineService_ServiceDesc, srv)
+}
+
+func _EngineService_ProbeCamera_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProbeCameraRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).ProbeCamera(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_ProbeCamera_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).ProbeCamera(ctx, req.(*ProbeCameraRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _EngineService_ApplyDesiredState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -462,6 +495,10 @@ var EngineService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "aivision.v1.EngineService",
 	HandlerType: (*EngineServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ProbeCamera",
+			Handler:    _EngineService_ProbeCamera_Handler,
+		},
 		{
 			MethodName: "ApplyDesiredState",
 			Handler:    _EngineService_ApplyDesiredState_Handler,

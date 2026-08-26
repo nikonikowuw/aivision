@@ -544,9 +544,9 @@ type DeviceTelemetry struct {
 	CpuUsagePercent           float32 `protobuf:"fixed32,2,opt,name=cpu_usage_percent,json=cpuUsagePercent,proto3" json:"cpu_usage_percent,omitempty"`
 	MemoryUsagePercent        float32 `protobuf:"fixed32,3,opt,name=memory_usage_percent,json=memoryUsagePercent,proto3" json:"memory_usage_percent,omitempty"`
 	DiskUsagePercent          float32 `protobuf:"fixed32,4,opt,name=disk_usage_percent,json=diskUsagePercent,proto3" json:"disk_usage_percent,omitempty"`
-	AcceleratorUsagePercent   float32 `protobuf:"fixed32,5,opt,name=accelerator_usage_percent,json=acceleratorUsagePercent,proto3" json:"accelerator_usage_percent,omitempty"`
+	AcceleratorUsagePercent   float32 `protobuf:"fixed32,5,opt,name=accelerator_usage_percent,json=acceleratorUsagePercent,proto3" json:"accelerator_usage_percent,omitempty"` // meaningful only when accelerator_usage_supported=true; otherwise NaN
 	AcceleratorUsageSupported bool    `protobuf:"varint,6,opt,name=accelerator_usage_supported,json=acceleratorUsageSupported,proto3" json:"accelerator_usage_supported,omitempty"`
-	TemperatureCelsius        float32 `protobuf:"fixed32,7,opt,name=temperature_celsius,json=temperatureCelsius,proto3" json:"temperature_celsius,omitempty"`
+	TemperatureCelsius        float32 `protobuf:"fixed32,7,opt,name=temperature_celsius,json=temperatureCelsius,proto3" json:"temperature_celsius,omitempty"` // meaningful only when temperature_supported=true; otherwise NaN
 	TemperatureSupported      bool    `protobuf:"varint,8,opt,name=temperature_supported,json=temperatureSupported,proto3" json:"temperature_supported,omitempty"`
 }
 

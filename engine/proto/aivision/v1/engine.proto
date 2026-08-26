@@ -254,8 +254,36 @@ message QueryMetricsResponse {
   string error_message = 3; // 诊断信息，客户端不得解析其文本
 }
 
+// 摄像头测活请求（RTSP MVP；protocol 当前固定为 "rtsp"）
+message ProbeCameraRequest {
+  string protocol = 1; // 当前固定 "rtsp"
+  string url = 2;      // 完整 RTSP URL（可含百分号编码 userinfo）
+}
+
+// 单次传输尝试（TCP/UDP）
+message ProbeAttempt {
+  string transport = 1;    // tcp | udp
+  string failure_code = 2; // 空串表示该次成功
+  uint64 elapsed_ms = 3;
+}
+
+message ProbeCameraResponse {
+  string code = 1;               // 空串表示 RPC 处理成功（非测活结果）
+  string error_message = 2;      // 仅诊断，客户端不得解析其文本
+  string status = 3;             // success | failed
+  string failure_code = 4;       // RTSP_* 稳定码（status=failed 时有值）
+  repeated ProbeAttempt attempts = 5; // 每次尝试（tcp/udp）
+  string selected_transport = 6; // 实际成功传输方式
+  string codec = 7;              // H264/H265/...（可获得时）
+  uint32 width = 8;
+  uint32 height = 9;
+  double fps = 10;
+  uint64 elapsed_ms = 11;
+}
+
 // EngineService: 运行在 C++ 引擎（绑定 engine.sock），供 Go 控制面调用
 service EngineService {
+  rpc ProbeCamera(ProbeCameraRequest) returns (ProbeCameraResponse);
   rpc ApplyDesiredState(ApplyDesiredStateRequest) returns (ApplyDesiredStateResponse);
   rpc UpsertTask(UpsertTaskRequest) returns (UpsertTaskResponse);
   rpc SetInstanceState(SetInstanceStateRequest) returns (SetInstanceStateResponse);

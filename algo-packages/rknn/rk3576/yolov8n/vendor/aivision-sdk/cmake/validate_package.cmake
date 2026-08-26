@@ -28,7 +28,7 @@ if(top_level_count GREATER 0)
     endforeach()
 endif()
 
-foreach(required_field IN ITEMS manifest_version algorithm_id version name algorithm_type alarm_type_id
+foreach(required_field IN ITEMS manifest_version algorithm_id version name algorithm_type
                               platform_id min_adapter_version runtime_constraints resource_profile self_test)
     string(JSON field_type ERROR_VARIABLE field_error TYPE "${manifest}" "${required_field}")
     if(field_error)
@@ -71,14 +71,27 @@ if(NOT description_error STREQUAL "NOTFOUND")
 endif()
 
 string(JSON algorithm_type GET "${manifest}" algorithm_type)
-if(NOT algorithm_type STREQUAL "object_detection")
-    message(FATAL_ERROR "Only object_detection packages are supported")
+set(allowed_algorithm_types object_detection face_recognition)
+list(FIND allowed_algorithm_types "${algorithm_type}" algorithm_type_index)
+if(algorithm_type_index EQUAL -1)
+    message(FATAL_ERROR "Unsupported algorithm_type: ${algorithm_type} (allowed: object_detection, face_recognition)")
 endif()
-string(JSON alarm_type_id GET "${manifest}" alarm_type_id)
-string(LENGTH "${alarm_type_id}" alarm_type_id_length)
-if(alarm_type_id_length LESS 3 OR alarm_type_id_length GREATER 32 OR
-   NOT alarm_type_id MATCHES "^[a-z0-9_]+$")
-    message(FATAL_ERROR "Manifest alarm_type_id is invalid")
+string(JSON alarm_type_id ERROR_VARIABLE alarm_type_id_error GET "${manifest}" alarm_type_id)
+if(algorithm_type STREQUAL "object_detection")
+    if(alarm_type_id_error STREQUAL "NOTFOUND")
+        message(FATAL_ERROR "object_detection manifests require alarm_type_id")
+    endif()
+    string(LENGTH "${alarm_type_id}" alarm_type_id_length)
+    if(alarm_type_id_length LESS 3 OR alarm_type_id_length GREATER 32 OR
+       NOT alarm_type_id MATCHES "^[a-z0-9_]+$")
+        message(FATAL_ERROR "Manifest alarm_type_id is invalid")
+    endif()
+else()
+    # face_recognition：首版 manifest 不声明 alarm_type_id；若声明必须明确拒绝，
+    # 避免产生隐式告警语义（见 face_recognition design.md §3.3）。
+    if(NOT alarm_type_id_error STREQUAL "NOTFOUND")
+        message(FATAL_ERROR "face_recognition manifests must not declare alarm_type_id")
+    endif()
 endif()
 
 string(JSON platform_id GET "${manifest}" platform_id)

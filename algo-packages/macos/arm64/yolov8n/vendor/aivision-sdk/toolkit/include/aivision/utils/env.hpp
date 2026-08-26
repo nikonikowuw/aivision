@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -35,8 +34,8 @@ public:
 
     static std::string get(const std::string& key, const std::string& default_val = "",
                            const std::unordered_map<std::string, std::string>& local_env = {}) {
-        const char* sys = std::getenv(key.c_str());
-        if (sys && *sys != '\0') return std::string(sys);
+        // 只从调用方显式传入的 local_env（通常为 <package_root>/.env 解析结果）读取，
+        // 不查询进程环境变量，确保算法包运行时配置与宿主环境隔离。
         const auto it = local_env.find(key);
         return it != local_env.end() ? it->second : default_val;
     }

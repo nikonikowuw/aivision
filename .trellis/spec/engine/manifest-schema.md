@@ -17,7 +17,7 @@
 | `version` | string | SemVer，不允许 `v` 前缀 |
 | `name` | string | 1-64 字符 |
 | `description` | string | 可选，最多 256 字符 |
-| `algorithm_type` | string | `object_detection`；`face_recognition` 仅保留枚举，当前返回未实现 |
+| `algorithm_type` | string | `object_detection` 或 `face_recognition`（识别类，无告警语义） |
 | `alarm_type_id` | string | 单一告警类型 id，前端据此 i18n 显示告警 |
 | `platform_id` | string | `^[a-z0-9]+(?:-[a-z0-9]+)+$`，唯一确定平台与架构 |
 | `min_adapter_version` | string | SemVer，SDK/适配层 ABI 最低版本 |
@@ -29,7 +29,7 @@
 
 ### 2.2 告警类型 id
 
-一个算法包恰好声明**一个**告警类型 id，表示它产出的业务告警（如安全帽告警、反光衣检测）。`algorithm_type` 决定处理管线，`alarm_type_id` 决定业务告警语义与前端展示。
+`object_detection` 算法包恰好声明**一个**告警类型 id，表示它产出的业务告警（如安全帽告警、反光衣检测）。`algorithm_type` 决定处理管线，`alarm_type_id` 决定业务告警语义与前端展示；`face_recognition` 包不声明 `alarm_type_id`（ABI 中写入空字符串），若声明则安装校验必须明确拒绝，避免产生隐式告警语义。
 
 ```json
 "alarm_type_id": "helmet_warning"

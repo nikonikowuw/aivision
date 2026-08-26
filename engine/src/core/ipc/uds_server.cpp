@@ -988,7 +988,7 @@ private:
         info.api_version = AV_ALGO_API_VERSION;
         if (package->abi->library_query(package->library, &info) != AV_OK ||
             std::string(info.algorithm_id) != algorithm_id || std::string(info.version) != version ||
-            std::string(info.algorithm_type) != "object_detection") {
+            !is_supported_algorithm_type(std::string(info.algorithm_type))) {
             error = "PACKAGE_METADATA_MISMATCH";
             return nullptr;
         }

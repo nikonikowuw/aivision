@@ -19,8 +19,9 @@ import (
 
 func main() {
 	engineSock := flag.String("engine-sock", "/tmp/aivision_engine_test.sock", "Engine UDS socket path")
-	cmd := flag.String("cmd", "", "Command to execute: query_profile, apply_desired_state, install_package, query_metrics, delete_images")
+	cmd := flag.String("cmd", "", "Command to execute: query_profile, apply_desired_state, install_package, query_metrics, delete_images, probe_camera")
 	payloadFile := flag.String("payload", "", "JSON payload file path")
+	timeoutSec := flag.Int("timeout", 5, "RPC deadline in seconds")
 	flag.Parse()
 
 	if *cmd == "" {
@@ -36,7 +37,7 @@ func main() {
 	defer conn.Close()
 
 	client := pb.NewEngineServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutSec)*time.Second)
 	defer cancel()
 
 	switch *cmd {
@@ -120,6 +121,29 @@ func main() {
 			os.Exit(1)
 		}
 		resp, err := client.DeleteImages(ctx, &req)
+		if err != nil {
+			fmt.Printf("RPC error: %v\n", err)
+			os.Exit(1)
+		}
+		out, _ := protojson.Marshal(resp)
+		fmt.Println(string(out))
+
+	case "probe_camera":
+		if *payloadFile == "" {
+			fmt.Println("-payload required for probe_camera")
+			os.Exit(1)
+		}
+		data, err := os.ReadFile(*payloadFile)
+		if err != nil {
+			fmt.Printf("Failed to read payload: %v\n", err)
+			os.Exit(1)
+		}
+		var req pb.ProbeCameraRequest
+		if err := protojson.Unmarshal(data, &req); err != nil {
+			fmt.Printf("Failed to unmarshal probe_camera: %v\n", err)
+			os.Exit(1)
+		}
+		resp, err := client.ProbeCamera(ctx, &req)
 		if err != nil {
 			fmt.Printf("RPC error: %v\n", err)
 			os.Exit(1)

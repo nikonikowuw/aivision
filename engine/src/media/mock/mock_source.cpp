@@ -32,6 +32,17 @@ public:
         return connected_.load(std::memory_order_acquire);
     }
 
+    ProbeOutcome probe(const std::string&, Transport, std::chrono::milliseconds) override {
+        // Mock 源恒为连接成功：直接返回首个视频帧成功与固定媒体元数据。
+        ProbeOutcome outcome;
+        outcome.success = true;
+        outcome.codec = "H264";
+        outcome.width = 1920;
+        outcome.height = 1080;
+        outcome.fps = 25.0;
+        return outcome;
+    }
+
 private:
     PacketCallback on_packet_;
     StatusCallback on_status_;

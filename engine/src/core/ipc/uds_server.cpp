@@ -13,6 +13,7 @@
 #include "aivision/core/algo_manager.hpp"
 #include "aivision/core/algo_sandbox.hpp"
 #include "aivision/core/logging/log_adapter.hpp"
+#include "aivision/core/probe_rtsp.hpp"
 #include "aivision/core/resource_ledger.hpp"
 #include "aivision/core/task_scheduler.hpp"
 #include "aivision/core/telemetry_collector.hpp"
@@ -767,6 +768,44 @@ public:
         telemetry->set_temperature_celsius(
             metrics.temperature_supported ? metrics.temperature_celsius : unsupported_metric);
         telemetry->set_temperature_supported(metrics.temperature_supported);
+        return grpc::Status::OK;
+    }
+
+    grpc::Status ProbeCamera(grpc::ServerContext* context,
+                             const aivision::v1::ProbeCameraRequest* request,
+                             aivision::v1::ProbeCameraResponse* response) override {
+        if (!request || request->protocol().empty() || request->url().empty()) {
+            response->set_code("INVALID_ARG");
+            response->set_error_message("protocol and url are required");
+            return grpc::Status::OK;
+        }
+        if (!media_backend_) {
+            response->set_code("PLATFORM_UNAVAILABLE");
+            response->set_error_message("media backend is unavailable");
+            return grpc::Status::OK;
+        }
+        const ProbeCancelFn is_cancelled = context
+            ? [context] { return context->IsCancelled(); }
+            : ProbeCancelFn{};
+        // 每种传输方式 5 秒，TCP 优先失败后回退 UDP（总请求约 10 秒）。
+        const CameraProbeResult result = probe_camera(
+            media_backend_, request->protocol(), request->url(),
+            std::chrono::seconds(5), is_cancelled);
+        // RPC code 仅表示处理成功；测活失败放在结构化 status/failure_code 中。
+        response->set_status(result.status);
+        response->set_failure_code(result.failure_code);
+        response->set_selected_transport(result.selected_transport);
+        response->set_codec(result.codec);
+        response->set_width(result.width);
+        response->set_height(result.height);
+        response->set_fps(result.fps);
+        response->set_elapsed_ms(result.elapsed_ms);
+        for (const auto& attempt : result.attempts) {
+            auto* proto_attempt = response->add_attempts();
+            proto_attempt->set_transport(attempt.transport);
+            proto_attempt->set_failure_code(attempt.failure_code);
+            proto_attempt->set_elapsed_ms(attempt.elapsed_ms);
+        }
         return grpc::Status::OK;
     }
 private:

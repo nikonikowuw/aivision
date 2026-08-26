@@ -93,6 +93,7 @@ TEST_F(LoggingTest, BasicFormattingAndJsonFields) {
 
 TEST_F(LoggingTest, LevelFiltering) {
     Logger::shutdown();
+    sink_ = std::make_shared<MemorySink>();
     Logger::initialize(Level::Warn, sink_);
 
     LOG_DEBUG("comp", "event.debug", "Should be filtered");

@@ -19,6 +19,7 @@ add_library(engine_core STATIC
     frame/color_vui.cpp
     task/camera_task.cpp
     task/task_scheduler.cpp
+    camera/probe_rtsp.cpp
     algo/algo_manager.cpp
     algo/algo_instance.cpp
     algo/algo_sandbox.cpp

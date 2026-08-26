@@ -11,7 +11,7 @@ clean-zlm-archives:
 	rm -f $(ZLM_RELEASE_DIR)/lib*.a
 	rm -f third_party/ZLMediaKit/release/*/*/lib*.a
 
-configure:
+configure: clean-zlm-archives
 	cmake -B $(BUILD_DIR) -G $(GENERATOR) -DCMAKE_BUILD_TYPE=Debug
 
 $(BUILD_DIR)/CMakeCache.txt:

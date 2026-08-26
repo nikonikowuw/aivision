@@ -4,6 +4,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <chrono>
 #include "aivision/core/camera_task.hpp"
 #include "aivision/platform/mock_platform.hpp"
 
@@ -18,6 +19,17 @@ public:
     }
     void stop() override {}
     bool is_connected() const override { return true; }
+
+    aivision::media::ProbeOutcome probe(const std::string&, aivision::media::Transport,
+                                        std::chrono::milliseconds) override {
+        aivision::media::ProbeOutcome outcome;
+        outcome.success = true;
+        outcome.codec = "H264";
+        outcome.width = 1920;
+        outcome.height = 1080;
+        outcome.fps = 25.0;
+        return outcome;
+    }
 
     void emit_packet(bool is_keyframe, int64_t pts, const std::string& codec = "H264") {
         emit_nal(codec == "H265" ? (is_keyframe ? 0x26 : 0x02) : (is_keyframe ? 0x65 : 0x41),

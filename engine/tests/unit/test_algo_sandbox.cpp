@@ -35,6 +35,13 @@ public:
     void stop() override {}
     bool is_connected() const override { return false; }
 
+    aivision::media::ProbeOutcome probe(const std::string&, aivision::media::Transport,
+                                        std::chrono::milliseconds) override {
+        aivision::media::ProbeOutcome outcome;
+        outcome.failure_code = "RTSP_MEDIA_ERROR";
+        return outcome;
+    }
+
 private:
     aivision::media::PacketCallback on_packet_;
     aivision::media::StatusCallback on_status_;

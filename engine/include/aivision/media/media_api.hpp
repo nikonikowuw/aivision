@@ -14,6 +14,7 @@
 #include <vector>
 #include <cstdint>
 #include <atomic>
+#include <chrono>
 #include "aivision/types.h"
 
 namespace aivision::media {
@@ -50,6 +51,22 @@ using PacketCallback = std::function<void(const EncodedPacket& packet)>;
 /// 媒体源连接状态变化回调函数类型 (status_msg: 状态信息, is_error: 是否错误)
 using StatusCallback = std::function<void(const std::string& status_msg, bool is_error)>;
 
+/// 测活传输方式（RTSP 传输策略；正式运行固定 TCP 优先）
+enum class Transport : uint8_t {
+    TCP = 0, ///< RTP over TCP
+    UDP = 1, ///< RTP over UDP
+};
+
+/// 单次测活尝试结果（由媒体后端填充稳定失败码与可获得时的媒体元数据）
+struct ProbeOutcome {
+    bool success = false;         ///< 是否收到首个有效编码视频帧
+    std::string failure_code;     ///< 失败时的稳定机器码（如 RTSP_CONNECT_FAILED）；成功时为空
+    std::string codec;            ///< 编码格式（如 "H264" / "H265"，可获得时）
+    uint32_t width = 0;           ///< 视频宽度（可获得时）
+    uint32_t height = 0;          ///< 视频高度（可获得时）
+    double fps = 0.0;             ///< 视频帧率（可获得时）
+};
+
 /**
  * @brief 媒体拉流源抽象接口
  */
@@ -75,6 +92,18 @@ public:
      * @brief 检查当前是否处于连接状态
      */
     virtual bool is_connected() const = 0;
+
+    /**
+     * @brief 一次性同步测活：按指定传输方式拉流并等待首个有效编码视频帧
+     * @param url 完整 RTSP URL（可含百分号编码 userinfo）
+     * @param transport 本次尝试的传输方式（TCP / UDP）
+     * @param timeout 等待首个视频帧/失败的有界超时
+     * @return 测活结果（成功时含编码格式与媒体元数据；失败时含稳定失败码）
+     * @note 无论成功失败，实现必须在本方法返回前释放底层临时媒体源，
+     *       不得在 EventPoller 线程上执行阻塞等待
+     */
+    virtual ProbeOutcome probe(const std::string& url, Transport transport,
+                               std::chrono::milliseconds timeout) = 0;
 };
 
 /**

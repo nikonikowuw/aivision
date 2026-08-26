@@ -281,9 +281,45 @@ message ProbeCameraResponse {
   uint64 elapsed_ms = 11;
 }
 
+// 视频流类型枚举（主码流/子码流）
+enum StreamType {
+  STREAM_TYPE_UNSPECIFIED = 0;
+  STREAM_TYPE_MAIN = 1; // 主码流（高清/原画，单分屏与详情预览）
+  STREAM_TYPE_SUB = 2;  // 子码流（标清/H.264，4/9多分屏预览）
+}
+
+// 启动摄像头预览请求
+message StartCameraPreviewRequest {
+  string camera_id = 1;   // 摄像头唯一业务 ID (UUID)
+  StreamType stream_type = 2; // 主码流 / 子码流
+  string url = 3;         // 对应的完整 RTSP URL（可含百分号编码 userinfo）
+}
+
+// 启动摄像头预览响应
+message StartCameraPreviewResponse {
+  string code = 1;          // 空串表示成功，失败时为稳定错误码
+  string error_message = 2; // 诊断信息
+  string stream_path = 3;   // 流路径，如 "/live/<camera_id>_main.live.flv"
+  int32 http_port = 4;      // HTTP 服务端口（如 8080）
+  int32 ws_port = 5;        // WebSocket 服务端口（如 8080）
+}
+
+// 停止摄像头预览请求
+message StopCameraPreviewRequest {
+  string camera_id = 1;
+  StreamType stream_type = 2;
+}
+
+message StopCameraPreviewResponse {
+  string code = 1;
+  string error_message = 2;
+}
+
 // EngineService: 运行在 C++ 引擎（绑定 engine.sock），供 Go 控制面调用
 service EngineService {
   rpc ProbeCamera(ProbeCameraRequest) returns (ProbeCameraResponse);
+  rpc StartCameraPreview(StartCameraPreviewRequest) returns (StartCameraPreviewResponse);
+  rpc StopCameraPreview(StopCameraPreviewRequest) returns (StopCameraPreviewResponse);
   rpc ApplyDesiredState(ApplyDesiredStateRequest) returns (ApplyDesiredStateResponse);
   rpc UpsertTask(UpsertTaskRequest) returns (UpsertTaskResponse);
   rpc SetInstanceState(SetInstanceStateRequest) returns (SetInstanceStateResponse);

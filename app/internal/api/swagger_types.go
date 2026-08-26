@@ -139,3 +139,9 @@ type ProbeResultResponse struct {
 	response.Result
 	Data service.ProbeCameraResult `json:"data"`
 }
+
+// LiveStreamResponse 实时拉流地址响应
+type LiveStreamResponse struct {
+	response.Result
+	Data service.CameraLiveStreamResult `json:"data"`
+}

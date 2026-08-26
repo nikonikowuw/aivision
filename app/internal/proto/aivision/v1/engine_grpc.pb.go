@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	EngineService_ProbeCamera_FullMethodName          = "/aivision.v1.EngineService/ProbeCamera"
+	EngineService_StartCameraPreview_FullMethodName   = "/aivision.v1.EngineService/StartCameraPreview"
+	EngineService_StopCameraPreview_FullMethodName    = "/aivision.v1.EngineService/StopCameraPreview"
 	EngineService_ApplyDesiredState_FullMethodName    = "/aivision.v1.EngineService/ApplyDesiredState"
 	EngineService_UpsertTask_FullMethodName           = "/aivision.v1.EngineService/UpsertTask"
 	EngineService_SetInstanceState_FullMethodName     = "/aivision.v1.EngineService/SetInstanceState"
@@ -41,6 +43,8 @@ const (
 // EngineService: 运行在 C++ 引擎（绑定 engine.sock），供 Go 控制面调用
 type EngineServiceClient interface {
 	ProbeCamera(ctx context.Context, in *ProbeCameraRequest, opts ...grpc.CallOption) (*ProbeCameraResponse, error)
+	StartCameraPreview(ctx context.Context, in *StartCameraPreviewRequest, opts ...grpc.CallOption) (*StartCameraPreviewResponse, error)
+	StopCameraPreview(ctx context.Context, in *StopCameraPreviewRequest, opts ...grpc.CallOption) (*StopCameraPreviewResponse, error)
 	ApplyDesiredState(ctx context.Context, in *ApplyDesiredStateRequest, opts ...grpc.CallOption) (*ApplyDesiredStateResponse, error)
 	UpsertTask(ctx context.Context, in *UpsertTaskRequest, opts ...grpc.CallOption) (*UpsertTaskResponse, error)
 	SetInstanceState(ctx context.Context, in *SetInstanceStateRequest, opts ...grpc.CallOption) (*SetInstanceStateResponse, error)
@@ -67,6 +71,26 @@ func (c *engineServiceClient) ProbeCamera(ctx context.Context, in *ProbeCameraRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProbeCameraResponse)
 	err := c.cc.Invoke(ctx, EngineService_ProbeCamera_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) StartCameraPreview(ctx context.Context, in *StartCameraPreviewRequest, opts ...grpc.CallOption) (*StartCameraPreviewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartCameraPreviewResponse)
+	err := c.cc.Invoke(ctx, EngineService_StartCameraPreview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *engineServiceClient) StopCameraPreview(ctx context.Context, in *StopCameraPreviewRequest, opts ...grpc.CallOption) (*StopCameraPreviewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StopCameraPreviewResponse)
+	err := c.cc.Invoke(ctx, EngineService_StopCameraPreview_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +224,8 @@ func (c *engineServiceClient) QueryMetrics(ctx context.Context, in *QueryMetrics
 // EngineService: 运行在 C++ 引擎（绑定 engine.sock），供 Go 控制面调用
 type EngineServiceServer interface {
 	ProbeCamera(context.Context, *ProbeCameraRequest) (*ProbeCameraResponse, error)
+	StartCameraPreview(context.Context, *StartCameraPreviewRequest) (*StartCameraPreviewResponse, error)
+	StopCameraPreview(context.Context, *StopCameraPreviewRequest) (*StopCameraPreviewResponse, error)
 	ApplyDesiredState(context.Context, *ApplyDesiredStateRequest) (*ApplyDesiredStateResponse, error)
 	UpsertTask(context.Context, *UpsertTaskRequest) (*UpsertTaskResponse, error)
 	SetInstanceState(context.Context, *SetInstanceStateRequest) (*SetInstanceStateResponse, error)
@@ -224,6 +250,12 @@ type UnimplementedEngineServiceServer struct{}
 
 func (UnimplementedEngineServiceServer) ProbeCamera(context.Context, *ProbeCameraRequest) (*ProbeCameraResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProbeCamera not implemented")
+}
+func (UnimplementedEngineServiceServer) StartCameraPreview(context.Context, *StartCameraPreviewRequest) (*StartCameraPreviewResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartCameraPreview not implemented")
+}
+func (UnimplementedEngineServiceServer) StopCameraPreview(context.Context, *StopCameraPreviewRequest) (*StopCameraPreviewResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StopCameraPreview not implemented")
 }
 func (UnimplementedEngineServiceServer) ApplyDesiredState(context.Context, *ApplyDesiredStateRequest) (*ApplyDesiredStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ApplyDesiredState not implemented")
@@ -296,6 +328,42 @@ func _EngineService_ProbeCamera_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(EngineServiceServer).ProbeCamera(ctx, req.(*ProbeCameraRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_StartCameraPreview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartCameraPreviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).StartCameraPreview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_StartCameraPreview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).StartCameraPreview(ctx, req.(*StartCameraPreviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EngineService_StopCameraPreview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopCameraPreviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServiceServer).StopCameraPreview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EngineService_StopCameraPreview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServiceServer).StopCameraPreview(ctx, req.(*StopCameraPreviewRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -526,6 +594,14 @@ var EngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProbeCamera",
 			Handler:    _EngineService_ProbeCamera_Handler,
+		},
+		{
+			MethodName: "StartCameraPreview",
+			Handler:    _EngineService_StartCameraPreview_Handler,
+		},
+		{
+			MethodName: "StopCameraPreview",
+			Handler:    _EngineService_StopCameraPreview_Handler,
 		},
 		{
 			MethodName: "ApplyDesiredState",

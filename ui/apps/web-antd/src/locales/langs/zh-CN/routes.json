@@ -8,6 +8,9 @@
     "resource": "资源管理",
     "camera": "摄像头"
   },
+  "live": {
+    "live": "实时预览"
+  },
   "system": {
     "dept": "部门管理",
     "log": "操作日志",

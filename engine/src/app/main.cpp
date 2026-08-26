@@ -14,6 +14,7 @@
 #include "aivision/core/uds_ipc.hpp"
 #include "aivision/core/algo_manager.hpp"
 #include "aivision/core/image_manager.hpp"
+#include "aivision/core/live_stream_manager.hpp"
 #include "aivision/core/logging/logger.hpp"
 #include "aivision/core/resource_ledger.hpp"
 #include "aivision/core/task_scheduler.hpp"
@@ -212,6 +213,11 @@ int main() {
         aivision::logging::Logger::shutdown();
         return 1;
     }
+
+    // 3.5 启动流媒体 HTTP/WebSocket 服务（默认 8080）
+    const auto live_http_port = static_cast<uint16_t>(
+        std::strtoul(env_or_default("AIVISION_LIVE_HTTP_PORT", "8080"), nullptr, 10));
+    aivision::core::LiveStreamManager::instance().start_server(live_http_port);
 
     // 4. 解析统一的 UDS Profile（未配置 Profile 时保留开发环境变量兼容）
     const auto ipc_endpoints = load_ipc_endpoints();

@@ -24,9 +24,10 @@ const CameraProbeTimeout = 12 * time.Second
 
 // SaveCameraInput 新增/修改摄像头入参。
 type SaveCameraInput struct {
-	Name    string `json:"name" binding:"required,max=128"`
-	RtspURL string `json:"rtspUrl" binding:"required,max=2048"`
-	Remark  string `json:"remark" binding:"omitempty,max=255"`
+	Name       string `json:"name" binding:"required,max=128"`
+	RtspURL    string `json:"rtspUrl" binding:"required,max=2048"`
+	SubRtspURL string `json:"subRtspUrl" binding:"omitempty,max=2048"`
+	Remark     string `json:"remark" binding:"omitempty,max=255"`
 }
 
 // CameraPageQuery 摄像头分页查询参数。
@@ -72,9 +73,21 @@ type ProbeCameraResult struct {
 	Stale             bool           `json:"stale"`     // 配置指纹不一致，结果不适用于当前配置
 }
 
-// CameraProbeClient 摄像头测活所需的 Engine 客户端窄接口（便于测试注入替身）。
+// CameraLiveStreamResult 实时取流结果
+type CameraLiveStreamResult struct {
+	StreamPath string `json:"streamPath"`
+	HTTPPort   int32  `json:"httpPort"`
+	WSPort     int32  `json:"wsPort"`
+	HTTPURL    string `json:"httpUrl"`
+	WSURL      string `json:"wsUrl"`
+	StreamType string `json:"streamType"`
+}
+
+// CameraProbeClient 摄像头测活与预览所需的 Engine 客户端窄接口（便于测试注入替身）。
 type CameraProbeClient interface {
 	ProbeCamera(ctx context.Context, req *aivisionv1.ProbeCameraRequest, opts ...grpc.CallOption) (*aivisionv1.ProbeCameraResponse, error)
+	StartCameraPreview(ctx context.Context, req *aivisionv1.StartCameraPreviewRequest, opts ...grpc.CallOption) (*aivisionv1.StartCameraPreviewResponse, error)
+	StopCameraPreview(ctx context.Context, req *aivisionv1.StopCameraPreviewRequest, opts ...grpc.CallOption) (*aivisionv1.StopCameraPreviewResponse, error)
 }
 
 // CameraService 摄像头视频源管理业务接口。
@@ -85,6 +98,8 @@ type CameraService interface {
 	DeleteCamera(ctx context.Context, id uint64) error
 	BatchDeleteCamera(ctx context.Context, ids []uint64) error
 	ProbeCamera(ctx context.Context, req *ProbeCameraRequest) (*ProbeCameraResult, error)
+	StartLivePreview(ctx context.Context, id uint64, streamType string) (*CameraLiveStreamResult, error)
+	StopLivePreview(ctx context.Context, id uint64, streamType string) error
 }
 
 type cameraService struct {
@@ -127,6 +142,7 @@ func (s *cameraService) CreateCamera(ctx context.Context, input *SaveCameraInput
 		Protocol:        model.CameraProtocolRTSP,
 		Name:            input.Name,
 		RtspURL:         input.RtspURL,
+		SubRtspURL:      input.SubRtspURL,
 		Remark:          input.Remark,
 		TransportPolicy: model.CameraTransportAuto,
 		LastProbeStatus: model.CameraProbeNever,
@@ -148,6 +164,7 @@ func (s *cameraService) UpdateCamera(ctx context.Context, id uint64, input *Save
 	}
 	camera.Name = input.Name
 	camera.RtspURL = input.RtspURL
+	camera.SubRtspURL = input.SubRtspURL
 	camera.Remark = input.Remark
 	// 配置变更后重新计算指纹；旧测活元数据保留但通过指纹比对视为不适用于当前配置。
 	camera.ConfigHash = cameraConfigHash(camera.Protocol, camera.RtspURL, camera.TransportPolicy)
@@ -244,6 +261,71 @@ func (s *cameraService) persistProbeResult(ctx context.Context, camera *model.Ca
 		// 保留最后成功媒体信息。
 	}
 	return s.repo.Update(ctx, camera)
+}
+
+// StartLivePreview 请求开启实时预览拉流并返回播放流地址
+func (s *cameraService) StartLivePreview(ctx context.Context, id uint64, reqStreamType string) (*CameraLiveStreamResult, error) {
+	camera, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, mapRepoError(err)
+	}
+
+	st := aivisionv1.StreamType_STREAM_TYPE_MAIN
+	urlToPlay := camera.RtspURL
+	finalTypeStr := "main"
+
+	if strings.ToLower(reqStreamType) == "sub" {
+		if strings.TrimSpace(camera.SubRtspURL) != "" {
+			st = aivisionv1.StreamType_STREAM_TYPE_SUB
+			urlToPlay = camera.SubRtspURL
+			finalTypeStr = "sub"
+		}
+	}
+
+	req := &aivisionv1.StartCameraPreviewRequest{
+		CameraId:   camera.CameraID,
+		StreamType: st,
+		Url:        urlToPlay,
+	}
+
+	resp, err := s.engine.StartCameraPreview(ctx, req)
+	if err != nil {
+		return nil, mapProbeEngineError(err)
+	}
+	if resp.GetCode() != "" {
+		return nil, errno.NewError(errno.CodeInvalidParam)
+	}
+
+	return &CameraLiveStreamResult{
+		StreamPath: resp.GetStreamPath(),
+		HTTPPort:   resp.GetHttpPort(),
+		WSPort:     resp.GetWsPort(),
+		StreamType: finalTypeStr,
+	}, nil
+}
+
+// StopLivePreview 停止指定摄像头的预览拉流
+func (s *cameraService) StopLivePreview(ctx context.Context, id uint64, reqStreamType string) error {
+	camera, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return mapRepoError(err)
+	}
+
+	st := aivisionv1.StreamType_STREAM_TYPE_MAIN
+	if strings.ToLower(reqStreamType) == "sub" {
+		st = aivisionv1.StreamType_STREAM_TYPE_SUB
+	}
+
+	req := &aivisionv1.StopCameraPreviewRequest{
+		CameraId:   camera.CameraID,
+		StreamType: st,
+	}
+
+	_, err = s.engine.StopCameraPreview(ctx, req)
+	if err != nil {
+		return mapProbeEngineError(err)
+	}
+	return nil
 }
 
 // buildProbeResult 将 Engine 测活响应转换为结构化结果。

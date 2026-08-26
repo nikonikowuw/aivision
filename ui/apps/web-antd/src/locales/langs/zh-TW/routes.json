@@ -8,6 +8,9 @@
     "resource": "資源管理",
     "camera": "攝影機"
   },
+  "live": {
+    "live": "即時預覽"
+  },
   "system": {
     "dept": "部門管理",
     "log": "操作日誌",

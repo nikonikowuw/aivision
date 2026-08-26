@@ -8,6 +8,9 @@
     "resource": "Resources",
     "camera": "Cameras"
   },
+  "live": {
+    "live": "Live Preview"
+  },
   "system": {
     "dept": "Department Management",
     "log": "Operation Log",

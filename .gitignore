@@ -68,7 +68,8 @@ cmake_install.cmake
 Makefile.old
 
 # Node / Frontend (ui/)
-ui/node_modules/
+node_modules/
+**/node_modules/
 ui/dist/
 ui/dist-ssr/
 ui/.nitro/

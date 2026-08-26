@@ -1,6 +1,9 @@
 package api
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"niko-vue-admin/app/internal/model"
@@ -182,6 +185,19 @@ func (h *CameraHandler) BatchDeleteCamera(c *gin.Context) {
 // @Failure 401 {object} response.Result "未授权"
 // @Failure 403 {object} response.Result "无权限"
 // @Router /api/camera/probe [post]
+// ProbeCamera 摄像头测活 (POST /api/camera/probe)。
+// @Summary 摄像头测活
+// @Description 对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中
+// @Tags 摄像头管理
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body ProbeCameraInput true "测活参数"
+// @Success 200 {object} ProbeResultResponse "测活结构化结果"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Failure 403 {object} response.Result "无权限"
+// @Router /api/camera/probe [post]
 func (h *CameraHandler) ProbeCamera(c *gin.Context) {
 	var input ProbeCameraInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -206,4 +222,91 @@ func (h *CameraHandler) ProbeCamera(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+// LiveStreamInput 预览流请求参数
+type LiveStreamInput struct {
+	StreamType string `form:"streamType"` // main | sub，默认 main
+}
+
+func parseStreamType(c *gin.Context) (string, error) {
+	var input LiveStreamInput
+	if err := c.ShouldBindQuery(&input); err != nil {
+		return "", err
+	}
+	if input.StreamType == "" {
+		return "main", nil
+	}
+	return input.StreamType, nil
+}
+
+// StartLivePreview 请求开启实时预览拉流 (POST /api/camera/:id/preview/start)。
+// @Summary 开启摄像头实时预览
+// @Description 启动或复用 ZLMediaKit 实时预览拉流通道（支持 main/sub 码流自适应）
+// @Tags 摄像头管理
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "摄像头ID"
+// @Param streamType query string false "码流类型 (main/sub)" default(main)
+// @Success 200 {object} LiveStreamResponse "实时拉流地址"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Failure 403 {object} response.Result "无权限"
+// @Router /api/camera/{id}/preview/start [post]
+func (h *CameraHandler) StartLivePreview(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		c.Error(errno.NewError(errno.CodeInvalidParam))
+		return
+	}
+	streamType, err := parseStreamType(c)
+	if err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam))
+		return
+	}
+	res, err := h.svc.StartLivePreview(c.Request.Context(), id, streamType)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	// 动态拼接客户端可达的 Host
+	host := c.Request.Host
+	if colonIdx := strings.Index(host, ":"); colonIdx != -1 {
+		host = host[:colonIdx]
+	}
+	res.HTTPURL = fmt.Sprintf("http://%s:%d%s", host, res.HTTPPort, res.StreamPath)
+	res.WSURL = fmt.Sprintf("ws://%s:%d%s", host, res.WSPort, res.StreamPath)
+
+	response.Success(c, res)
+}
+
+// StopLivePreview 停止摄像头实时预览 (POST /api/camera/:id/preview/stop)。
+// @Summary 停止摄像头实时预览
+// @Description 显式停止指定摄像头的实时拉流通道
+// @Tags 摄像头管理
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "摄像头ID"
+// @Param streamType query string false "码流类型 (main/sub)" default(main)
+// @Success 200 {object} NilResponse "停止成功"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未授权"
+// @Failure 403 {object} response.Result "无权限"
+// @Router /api/camera/{id}/preview/stop [post]
+func (h *CameraHandler) StopLivePreview(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		c.Error(errno.NewError(errno.CodeInvalidParam))
+		return
+	}
+	streamType, err := parseStreamType(c)
+	if err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam))
+		return
+	}
+	if err := h.svc.StopLivePreview(c.Request.Context(), id, streamType); err != nil {
+		c.Error(err)
+		return
+	}
+	response.Success(c, nil)
 }

@@ -32,6 +32,18 @@ func (f *fakeProbeClient) ProbeCamera(ctx context.Context, req *aivisionv1.Probe
 	return &aivisionv1.ProbeCameraResponse{}, nil
 }
 
+func (f *fakeProbeClient) StartCameraPreview(ctx context.Context, req *aivisionv1.StartCameraPreviewRequest, _ ...grpc.CallOption) (*aivisionv1.StartCameraPreviewResponse, error) {
+	return &aivisionv1.StartCameraPreviewResponse{
+		StreamPath: "/live/" + req.CameraId + "_main.live.flv",
+		HttpPort:   8080,
+		WsPort:     8080,
+	}, nil
+}
+
+func (f *fakeProbeClient) StopCameraPreview(ctx context.Context, req *aivisionv1.StopCameraPreviewRequest, _ ...grpc.CallOption) (*aivisionv1.StopCameraPreviewResponse, error) {
+	return &aivisionv1.StopCameraPreviewResponse{}, nil
+}
+
 func newCameraServiceTestEnv(t *testing.T) (CameraService, *fakeProbeClient, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
@@ -292,6 +304,24 @@ func TestCameraServiceProbeEngineErrorMapping(t *testing.T) {
 	_, err = svc.ProbeCamera(ctx, &ProbeCameraRequest{Protocol: "rtsp", RtspURL: "rtsp://192.168.1.10/live"})
 	if !errno.Is(err, errno.CodeInternal) {
 		t.Fatalf("transport error = %v, want CodeInternal", err)
+	}
+}
+
+func TestCameraServiceLivePreview(t *testing.T) {
+	svc, _, _ := newCameraServiceTestEnv(t)
+	ctx := context.Background()
+
+	cam := createFixtureCamera(t, svc, "门口", "rtsp://192.168.1.10/live")
+	res, err := svc.StartLivePreview(ctx, cam.ID, "main")
+	if err != nil {
+		t.Fatalf("start live preview: %v", err)
+	}
+	if res.StreamPath == "" || res.HTTPPort != 8080 {
+		t.Fatalf("unexpected res: %+v", res)
+	}
+
+	if err := svc.StopLivePreview(ctx, cam.ID, "main"); err != nil {
+		t.Fatalf("stop live preview: %v", err)
 	}
 }
 

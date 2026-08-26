@@ -280,6 +280,56 @@ func (CapabilityStatus) EnumDescriptor() ([]byte, []int) {
 	return file_aivision_v1_engine_proto_rawDescGZIP(), []int{4}
 }
 
+// 视频流类型枚举（主码流/子码流）
+type StreamType int32
+
+const (
+	StreamType_STREAM_TYPE_UNSPECIFIED StreamType = 0
+	StreamType_STREAM_TYPE_MAIN        StreamType = 1 // 主码流（高清/原画，单分屏与详情预览）
+	StreamType_STREAM_TYPE_SUB         StreamType = 2 // 子码流（标清/H.264，4/9多分屏预览）
+)
+
+// Enum value maps for StreamType.
+var (
+	StreamType_name = map[int32]string{
+		0: "STREAM_TYPE_UNSPECIFIED",
+		1: "STREAM_TYPE_MAIN",
+		2: "STREAM_TYPE_SUB",
+	}
+	StreamType_value = map[string]int32{
+		"STREAM_TYPE_UNSPECIFIED": 0,
+		"STREAM_TYPE_MAIN":        1,
+		"STREAM_TYPE_SUB":         2,
+	}
+)
+
+func (x StreamType) Enum() *StreamType {
+	p := new(StreamType)
+	*p = x
+	return p
+}
+
+func (x StreamType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (StreamType) Descriptor() protoreflect.EnumDescriptor {
+	return file_aivision_v1_engine_proto_enumTypes[5].Descriptor()
+}
+
+func (StreamType) Type() protoreflect.EnumType {
+	return &file_aivision_v1_engine_proto_enumTypes[5]
+}
+
+func (x StreamType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use StreamType.Descriptor instead.
+func (StreamType) EnumDescriptor() ([]byte, []int) {
+	return file_aivision_v1_engine_proto_rawDescGZIP(), []int{5}
+}
+
 // 摄像头拉流任务配置
 type CameraTaskConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -2449,6 +2499,249 @@ func (x *ProbeCameraResponse) GetElapsedMs() uint64 {
 	return 0
 }
 
+// 启动摄像头预览请求
+type StartCameraPreviewRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CameraId      string                 `protobuf:"bytes,1,opt,name=camera_id,json=cameraId,proto3" json:"camera_id,omitempty"`                                    // 摄像头唯一业务 ID (UUID)
+	StreamType    StreamType             `protobuf:"varint,2,opt,name=stream_type,json=streamType,proto3,enum=aivision.v1.StreamType" json:"stream_type,omitempty"` // 主码流 / 子码流
+	Url           string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`                                                              // 对应的完整 RTSP URL（可含百分号编码 userinfo）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartCameraPreviewRequest) Reset() {
+	*x = StartCameraPreviewRequest{}
+	mi := &file_aivision_v1_engine_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartCameraPreviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartCameraPreviewRequest) ProtoMessage() {}
+
+func (x *StartCameraPreviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aivision_v1_engine_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartCameraPreviewRequest.ProtoReflect.Descriptor instead.
+func (*StartCameraPreviewRequest) Descriptor() ([]byte, []int) {
+	return file_aivision_v1_engine_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *StartCameraPreviewRequest) GetCameraId() string {
+	if x != nil {
+		return x.CameraId
+	}
+	return ""
+}
+
+func (x *StartCameraPreviewRequest) GetStreamType() StreamType {
+	if x != nil {
+		return x.StreamType
+	}
+	return StreamType_STREAM_TYPE_UNSPECIFIED
+}
+
+func (x *StartCameraPreviewRequest) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+// 启动摄像头预览响应
+type StartCameraPreviewResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`                                     // 空串表示成功，失败时为稳定错误码
+	ErrorMessage  string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"` // 诊断信息
+	StreamPath    string                 `protobuf:"bytes,3,opt,name=stream_path,json=streamPath,proto3" json:"stream_path,omitempty"`       // 流路径，如 "/live/<camera_id>_main.live.flv"
+	HttpPort      int32                  `protobuf:"varint,4,opt,name=http_port,json=httpPort,proto3" json:"http_port,omitempty"`            // HTTP 服务端口（如 8080）
+	WsPort        int32                  `protobuf:"varint,5,opt,name=ws_port,json=wsPort,proto3" json:"ws_port,omitempty"`                  // WebSocket 服务端口（如 8080）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartCameraPreviewResponse) Reset() {
+	*x = StartCameraPreviewResponse{}
+	mi := &file_aivision_v1_engine_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartCameraPreviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartCameraPreviewResponse) ProtoMessage() {}
+
+func (x *StartCameraPreviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aivision_v1_engine_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartCameraPreviewResponse.ProtoReflect.Descriptor instead.
+func (*StartCameraPreviewResponse) Descriptor() ([]byte, []int) {
+	return file_aivision_v1_engine_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *StartCameraPreviewResponse) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *StartCameraPreviewResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *StartCameraPreviewResponse) GetStreamPath() string {
+	if x != nil {
+		return x.StreamPath
+	}
+	return ""
+}
+
+func (x *StartCameraPreviewResponse) GetHttpPort() int32 {
+	if x != nil {
+		return x.HttpPort
+	}
+	return 0
+}
+
+func (x *StartCameraPreviewResponse) GetWsPort() int32 {
+	if x != nil {
+		return x.WsPort
+	}
+	return 0
+}
+
+// 停止摄像头预览请求
+type StopCameraPreviewRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CameraId      string                 `protobuf:"bytes,1,opt,name=camera_id,json=cameraId,proto3" json:"camera_id,omitempty"`
+	StreamType    StreamType             `protobuf:"varint,2,opt,name=stream_type,json=streamType,proto3,enum=aivision.v1.StreamType" json:"stream_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopCameraPreviewRequest) Reset() {
+	*x = StopCameraPreviewRequest{}
+	mi := &file_aivision_v1_engine_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopCameraPreviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopCameraPreviewRequest) ProtoMessage() {}
+
+func (x *StopCameraPreviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aivision_v1_engine_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopCameraPreviewRequest.ProtoReflect.Descriptor instead.
+func (*StopCameraPreviewRequest) Descriptor() ([]byte, []int) {
+	return file_aivision_v1_engine_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *StopCameraPreviewRequest) GetCameraId() string {
+	if x != nil {
+		return x.CameraId
+	}
+	return ""
+}
+
+func (x *StopCameraPreviewRequest) GetStreamType() StreamType {
+	if x != nil {
+		return x.StreamType
+	}
+	return StreamType_STREAM_TYPE_UNSPECIFIED
+}
+
+type StopCameraPreviewResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopCameraPreviewResponse) Reset() {
+	*x = StopCameraPreviewResponse{}
+	mi := &file_aivision_v1_engine_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopCameraPreviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopCameraPreviewResponse) ProtoMessage() {}
+
+func (x *StopCameraPreviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aivision_v1_engine_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopCameraPreviewResponse.ProtoReflect.Descriptor instead.
+func (*StopCameraPreviewResponse) Descriptor() ([]byte, []int) {
+	return file_aivision_v1_engine_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *StopCameraPreviewResponse) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *StopCameraPreviewResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
 var File_aivision_v1_engine_proto protoreflect.FileDescriptor
 
 const file_aivision_v1_engine_proto_rawDesc = "" +
@@ -2607,7 +2900,26 @@ const file_aivision_v1_engine_proto_rawDesc = "" +
 	"\x03fps\x18\n" +
 	" \x01(\x01R\x03fps\x12\x1d\n" +
 	"\n" +
-	"elapsed_ms\x18\v \x01(\x04R\telapsedMs*\x91\x01\n" +
+	"elapsed_ms\x18\v \x01(\x04R\telapsedMs\"\x84\x01\n" +
+	"\x19StartCameraPreviewRequest\x12\x1b\n" +
+	"\tcamera_id\x18\x01 \x01(\tR\bcameraId\x128\n" +
+	"\vstream_type\x18\x02 \x01(\x0e2\x17.aivision.v1.StreamTypeR\n" +
+	"streamType\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\"\xac\x01\n" +
+	"\x1aStartCameraPreviewResponse\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12#\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x1f\n" +
+	"\vstream_path\x18\x03 \x01(\tR\n" +
+	"streamPath\x12\x1b\n" +
+	"\thttp_port\x18\x04 \x01(\x05R\bhttpPort\x12\x17\n" +
+	"\aws_port\x18\x05 \x01(\x05R\x06wsPort\"q\n" +
+	"\x18StopCameraPreviewRequest\x12\x1b\n" +
+	"\tcamera_id\x18\x01 \x01(\tR\bcameraId\x128\n" +
+	"\vstream_type\x18\x02 \x01(\x0e2\x17.aivision.v1.StreamTypeR\n" +
+	"streamType\"T\n" +
+	"\x19StopCameraPreviewResponse\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12#\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage*\x91\x01\n" +
 	"\x11DetectionRuleRole\x12#\n" +
 	"\x1fDETECTION_RULE_ROLE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17DETECTION_RULE_ROLE_ROI\x10\x01\x12\x1c\n" +
@@ -2630,9 +2942,17 @@ const file_aivision_v1_engine_proto_rawDesc = "" +
 	"\x1dCAPABILITY_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bCAPABILITY_STATUS_AVAILABLE\x10\x01\x12\x1e\n" +
 	"\x1aCAPABILITY_STATUS_DEGRADED\x10\x02\x12!\n" +
-	"\x1dCAPABILITY_STATUS_UNSUPPORTED\x10\x032\xb4\t\n" +
+	"\x1dCAPABILITY_STATUS_UNSUPPORTED\x10\x03*T\n" +
+	"\n" +
+	"StreamType\x12\x1b\n" +
+	"\x17STREAM_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10STREAM_TYPE_MAIN\x10\x01\x12\x13\n" +
+	"\x0fSTREAM_TYPE_SUB\x10\x022\xff\n" +
+	"\n" +
 	"\rEngineService\x12P\n" +
-	"\vProbeCamera\x12\x1f.aivision.v1.ProbeCameraRequest\x1a .aivision.v1.ProbeCameraResponse\x12b\n" +
+	"\vProbeCamera\x12\x1f.aivision.v1.ProbeCameraRequest\x1a .aivision.v1.ProbeCameraResponse\x12e\n" +
+	"\x12StartCameraPreview\x12&.aivision.v1.StartCameraPreviewRequest\x1a'.aivision.v1.StartCameraPreviewResponse\x12b\n" +
+	"\x11StopCameraPreview\x12%.aivision.v1.StopCameraPreviewRequest\x1a&.aivision.v1.StopCameraPreviewResponse\x12b\n" +
 	"\x11ApplyDesiredState\x12%.aivision.v1.ApplyDesiredStateRequest\x1a&.aivision.v1.ApplyDesiredStateResponse\x12M\n" +
 	"\n" +
 	"UpsertTask\x12\x1e.aivision.v1.UpsertTaskRequest\x1a\x1f.aivision.v1.UpsertTaskResponse\x12_\n" +
@@ -2659,106 +2979,117 @@ func file_aivision_v1_engine_proto_rawDescGZIP() []byte {
 	return file_aivision_v1_engine_proto_rawDescData
 }
 
-var file_aivision_v1_engine_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_aivision_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_aivision_v1_engine_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_aivision_v1_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_aivision_v1_engine_proto_goTypes = []any{
 	(DetectionRuleRole)(0),               // 0: aivision.v1.DetectionRuleRole
 	(DetectionLineDirection)(0),          // 1: aivision.v1.DetectionLineDirection
 	(ReconcileItemKind)(0),               // 2: aivision.v1.ReconcileItemKind
 	(ReconcileItemStatus)(0),             // 3: aivision.v1.ReconcileItemStatus
 	(CapabilityStatus)(0),                // 4: aivision.v1.CapabilityStatus
-	(*CameraTaskConfig)(nil),             // 5: aivision.v1.CameraTaskConfig
-	(*DetectionPoint)(nil),               // 6: aivision.v1.DetectionPoint
-	(*DetectionRule)(nil),                // 7: aivision.v1.DetectionRule
-	(*AlgorithmInstanceConfig)(nil),      // 8: aivision.v1.AlgorithmInstanceConfig
-	(*ActivePackageVersion)(nil),         // 9: aivision.v1.ActivePackageVersion
-	(*DesiredState)(nil),                 // 10: aivision.v1.DesiredState
-	(*ApplyDesiredStateRequest)(nil),     // 11: aivision.v1.ApplyDesiredStateRequest
-	(*ReconcileItemResult)(nil),          // 12: aivision.v1.ReconcileItemResult
-	(*ApplyDesiredStateResponse)(nil),    // 13: aivision.v1.ApplyDesiredStateResponse
-	(*UpsertTaskRequest)(nil),            // 14: aivision.v1.UpsertTaskRequest
-	(*UpsertTaskResponse)(nil),           // 15: aivision.v1.UpsertTaskResponse
-	(*SetInstanceStateRequest)(nil),      // 16: aivision.v1.SetInstanceStateRequest
-	(*SetInstanceStateResponse)(nil),     // 17: aivision.v1.SetInstanceStateResponse
-	(*UpdateInstanceConfigRequest)(nil),  // 18: aivision.v1.UpdateInstanceConfigRequest
-	(*UpdateInstanceConfigResponse)(nil), // 19: aivision.v1.UpdateInstanceConfigResponse
-	(*InstallPackageRequest)(nil),        // 20: aivision.v1.InstallPackageRequest
-	(*InstallPackageResponse)(nil),       // 21: aivision.v1.InstallPackageResponse
-	(*UpgradePackageRequest)(nil),        // 22: aivision.v1.UpgradePackageRequest
-	(*UpgradePackageResponse)(nil),       // 23: aivision.v1.UpgradePackageResponse
-	(*RollbackPackageRequest)(nil),       // 24: aivision.v1.RollbackPackageRequest
-	(*RollbackPackageResponse)(nil),      // 25: aivision.v1.RollbackPackageResponse
-	(*UninstallPackageRequest)(nil),      // 26: aivision.v1.UninstallPackageRequest
-	(*UninstallPackageResponse)(nil),     // 27: aivision.v1.UninstallPackageResponse
-	(*DeleteImagesRequest)(nil),          // 28: aivision.v1.DeleteImagesRequest
-	(*DeleteImagesResponse)(nil),         // 29: aivision.v1.DeleteImagesResponse
-	(*ReconcileImagesRequest)(nil),       // 30: aivision.v1.ReconcileImagesRequest
-	(*ReconcileImagesResponse)(nil),      // 31: aivision.v1.ReconcileImagesResponse
-	(*QueryProfileRequest)(nil),          // 32: aivision.v1.QueryProfileRequest
-	(*CapabilityState)(nil),              // 33: aivision.v1.CapabilityState
-	(*PlatformProfileInfo)(nil),          // 34: aivision.v1.PlatformProfileInfo
-	(*QueryProfileResponse)(nil),         // 35: aivision.v1.QueryProfileResponse
-	(*QueryMetricsRequest)(nil),          // 36: aivision.v1.QueryMetricsRequest
-	(*QueryMetricsResponse)(nil),         // 37: aivision.v1.QueryMetricsResponse
-	(*ProbeCameraRequest)(nil),           // 38: aivision.v1.ProbeCameraRequest
-	(*ProbeAttempt)(nil),                 // 39: aivision.v1.ProbeAttempt
-	(*ProbeCameraResponse)(nil),          // 40: aivision.v1.ProbeCameraResponse
-	(*DeleteImageResult)(nil),            // 41: aivision.v1.DeleteImageResult
-	(FramePixelFormat)(0),                // 42: aivision.v1.FramePixelFormat
-	(*DeviceTelemetry)(nil),              // 43: aivision.v1.DeviceTelemetry
+	(StreamType)(0),                      // 5: aivision.v1.StreamType
+	(*CameraTaskConfig)(nil),             // 6: aivision.v1.CameraTaskConfig
+	(*DetectionPoint)(nil),               // 7: aivision.v1.DetectionPoint
+	(*DetectionRule)(nil),                // 8: aivision.v1.DetectionRule
+	(*AlgorithmInstanceConfig)(nil),      // 9: aivision.v1.AlgorithmInstanceConfig
+	(*ActivePackageVersion)(nil),         // 10: aivision.v1.ActivePackageVersion
+	(*DesiredState)(nil),                 // 11: aivision.v1.DesiredState
+	(*ApplyDesiredStateRequest)(nil),     // 12: aivision.v1.ApplyDesiredStateRequest
+	(*ReconcileItemResult)(nil),          // 13: aivision.v1.ReconcileItemResult
+	(*ApplyDesiredStateResponse)(nil),    // 14: aivision.v1.ApplyDesiredStateResponse
+	(*UpsertTaskRequest)(nil),            // 15: aivision.v1.UpsertTaskRequest
+	(*UpsertTaskResponse)(nil),           // 16: aivision.v1.UpsertTaskResponse
+	(*SetInstanceStateRequest)(nil),      // 17: aivision.v1.SetInstanceStateRequest
+	(*SetInstanceStateResponse)(nil),     // 18: aivision.v1.SetInstanceStateResponse
+	(*UpdateInstanceConfigRequest)(nil),  // 19: aivision.v1.UpdateInstanceConfigRequest
+	(*UpdateInstanceConfigResponse)(nil), // 20: aivision.v1.UpdateInstanceConfigResponse
+	(*InstallPackageRequest)(nil),        // 21: aivision.v1.InstallPackageRequest
+	(*InstallPackageResponse)(nil),       // 22: aivision.v1.InstallPackageResponse
+	(*UpgradePackageRequest)(nil),        // 23: aivision.v1.UpgradePackageRequest
+	(*UpgradePackageResponse)(nil),       // 24: aivision.v1.UpgradePackageResponse
+	(*RollbackPackageRequest)(nil),       // 25: aivision.v1.RollbackPackageRequest
+	(*RollbackPackageResponse)(nil),      // 26: aivision.v1.RollbackPackageResponse
+	(*UninstallPackageRequest)(nil),      // 27: aivision.v1.UninstallPackageRequest
+	(*UninstallPackageResponse)(nil),     // 28: aivision.v1.UninstallPackageResponse
+	(*DeleteImagesRequest)(nil),          // 29: aivision.v1.DeleteImagesRequest
+	(*DeleteImagesResponse)(nil),         // 30: aivision.v1.DeleteImagesResponse
+	(*ReconcileImagesRequest)(nil),       // 31: aivision.v1.ReconcileImagesRequest
+	(*ReconcileImagesResponse)(nil),      // 32: aivision.v1.ReconcileImagesResponse
+	(*QueryProfileRequest)(nil),          // 33: aivision.v1.QueryProfileRequest
+	(*CapabilityState)(nil),              // 34: aivision.v1.CapabilityState
+	(*PlatformProfileInfo)(nil),          // 35: aivision.v1.PlatformProfileInfo
+	(*QueryProfileResponse)(nil),         // 36: aivision.v1.QueryProfileResponse
+	(*QueryMetricsRequest)(nil),          // 37: aivision.v1.QueryMetricsRequest
+	(*QueryMetricsResponse)(nil),         // 38: aivision.v1.QueryMetricsResponse
+	(*ProbeCameraRequest)(nil),           // 39: aivision.v1.ProbeCameraRequest
+	(*ProbeAttempt)(nil),                 // 40: aivision.v1.ProbeAttempt
+	(*ProbeCameraResponse)(nil),          // 41: aivision.v1.ProbeCameraResponse
+	(*StartCameraPreviewRequest)(nil),    // 42: aivision.v1.StartCameraPreviewRequest
+	(*StartCameraPreviewResponse)(nil),   // 43: aivision.v1.StartCameraPreviewResponse
+	(*StopCameraPreviewRequest)(nil),     // 44: aivision.v1.StopCameraPreviewRequest
+	(*StopCameraPreviewResponse)(nil),    // 45: aivision.v1.StopCameraPreviewResponse
+	(*DeleteImageResult)(nil),            // 46: aivision.v1.DeleteImageResult
+	(FramePixelFormat)(0),                // 47: aivision.v1.FramePixelFormat
+	(*DeviceTelemetry)(nil),              // 48: aivision.v1.DeviceTelemetry
 }
 var file_aivision_v1_engine_proto_depIdxs = []int32{
 	0,  // 0: aivision.v1.DetectionRule.role:type_name -> aivision.v1.DetectionRuleRole
 	1,  // 1: aivision.v1.DetectionRule.line_direction:type_name -> aivision.v1.DetectionLineDirection
-	6,  // 2: aivision.v1.DetectionRule.points:type_name -> aivision.v1.DetectionPoint
-	7,  // 3: aivision.v1.AlgorithmInstanceConfig.rules:type_name -> aivision.v1.DetectionRule
-	5,  // 4: aivision.v1.DesiredState.tasks:type_name -> aivision.v1.CameraTaskConfig
-	8,  // 5: aivision.v1.DesiredState.instances:type_name -> aivision.v1.AlgorithmInstanceConfig
-	9,  // 6: aivision.v1.DesiredState.active_package_versions:type_name -> aivision.v1.ActivePackageVersion
-	10, // 7: aivision.v1.ApplyDesiredStateRequest.desired_state:type_name -> aivision.v1.DesiredState
+	7,  // 2: aivision.v1.DetectionRule.points:type_name -> aivision.v1.DetectionPoint
+	8,  // 3: aivision.v1.AlgorithmInstanceConfig.rules:type_name -> aivision.v1.DetectionRule
+	6,  // 4: aivision.v1.DesiredState.tasks:type_name -> aivision.v1.CameraTaskConfig
+	9,  // 5: aivision.v1.DesiredState.instances:type_name -> aivision.v1.AlgorithmInstanceConfig
+	10, // 6: aivision.v1.DesiredState.active_package_versions:type_name -> aivision.v1.ActivePackageVersion
+	11, // 7: aivision.v1.ApplyDesiredStateRequest.desired_state:type_name -> aivision.v1.DesiredState
 	2,  // 8: aivision.v1.ReconcileItemResult.kind:type_name -> aivision.v1.ReconcileItemKind
 	3,  // 9: aivision.v1.ReconcileItemResult.status:type_name -> aivision.v1.ReconcileItemStatus
-	12, // 10: aivision.v1.ApplyDesiredStateResponse.results:type_name -> aivision.v1.ReconcileItemResult
-	5,  // 11: aivision.v1.UpsertTaskRequest.task:type_name -> aivision.v1.CameraTaskConfig
-	41, // 12: aivision.v1.DeleteImagesResponse.results:type_name -> aivision.v1.DeleteImageResult
-	41, // 13: aivision.v1.ReconcileImagesResponse.results:type_name -> aivision.v1.DeleteImageResult
+	13, // 10: aivision.v1.ApplyDesiredStateResponse.results:type_name -> aivision.v1.ReconcileItemResult
+	6,  // 11: aivision.v1.UpsertTaskRequest.task:type_name -> aivision.v1.CameraTaskConfig
+	46, // 12: aivision.v1.DeleteImagesResponse.results:type_name -> aivision.v1.DeleteImageResult
+	46, // 13: aivision.v1.ReconcileImagesResponse.results:type_name -> aivision.v1.DeleteImageResult
 	4,  // 14: aivision.v1.CapabilityState.status:type_name -> aivision.v1.CapabilityStatus
-	42, // 15: aivision.v1.PlatformProfileInfo.frame_caps:type_name -> aivision.v1.FramePixelFormat
-	33, // 16: aivision.v1.PlatformProfileInfo.capabilities:type_name -> aivision.v1.CapabilityState
-	34, // 17: aivision.v1.QueryProfileResponse.profile:type_name -> aivision.v1.PlatformProfileInfo
-	43, // 18: aivision.v1.QueryMetricsResponse.telemetry:type_name -> aivision.v1.DeviceTelemetry
-	39, // 19: aivision.v1.ProbeCameraResponse.attempts:type_name -> aivision.v1.ProbeAttempt
-	38, // 20: aivision.v1.EngineService.ProbeCamera:input_type -> aivision.v1.ProbeCameraRequest
-	11, // 21: aivision.v1.EngineService.ApplyDesiredState:input_type -> aivision.v1.ApplyDesiredStateRequest
-	14, // 22: aivision.v1.EngineService.UpsertTask:input_type -> aivision.v1.UpsertTaskRequest
-	16, // 23: aivision.v1.EngineService.SetInstanceState:input_type -> aivision.v1.SetInstanceStateRequest
-	18, // 24: aivision.v1.EngineService.UpdateInstanceConfig:input_type -> aivision.v1.UpdateInstanceConfigRequest
-	20, // 25: aivision.v1.EngineService.InstallPackage:input_type -> aivision.v1.InstallPackageRequest
-	22, // 26: aivision.v1.EngineService.UpgradePackage:input_type -> aivision.v1.UpgradePackageRequest
-	24, // 27: aivision.v1.EngineService.RollbackPackage:input_type -> aivision.v1.RollbackPackageRequest
-	26, // 28: aivision.v1.EngineService.UninstallPackage:input_type -> aivision.v1.UninstallPackageRequest
-	28, // 29: aivision.v1.EngineService.DeleteImages:input_type -> aivision.v1.DeleteImagesRequest
-	30, // 30: aivision.v1.EngineService.ReconcileImages:input_type -> aivision.v1.ReconcileImagesRequest
-	32, // 31: aivision.v1.EngineService.QueryProfile:input_type -> aivision.v1.QueryProfileRequest
-	36, // 32: aivision.v1.EngineService.QueryMetrics:input_type -> aivision.v1.QueryMetricsRequest
-	40, // 33: aivision.v1.EngineService.ProbeCamera:output_type -> aivision.v1.ProbeCameraResponse
-	13, // 34: aivision.v1.EngineService.ApplyDesiredState:output_type -> aivision.v1.ApplyDesiredStateResponse
-	15, // 35: aivision.v1.EngineService.UpsertTask:output_type -> aivision.v1.UpsertTaskResponse
-	17, // 36: aivision.v1.EngineService.SetInstanceState:output_type -> aivision.v1.SetInstanceStateResponse
-	19, // 37: aivision.v1.EngineService.UpdateInstanceConfig:output_type -> aivision.v1.UpdateInstanceConfigResponse
-	21, // 38: aivision.v1.EngineService.InstallPackage:output_type -> aivision.v1.InstallPackageResponse
-	23, // 39: aivision.v1.EngineService.UpgradePackage:output_type -> aivision.v1.UpgradePackageResponse
-	25, // 40: aivision.v1.EngineService.RollbackPackage:output_type -> aivision.v1.RollbackPackageResponse
-	27, // 41: aivision.v1.EngineService.UninstallPackage:output_type -> aivision.v1.UninstallPackageResponse
-	29, // 42: aivision.v1.EngineService.DeleteImages:output_type -> aivision.v1.DeleteImagesResponse
-	31, // 43: aivision.v1.EngineService.ReconcileImages:output_type -> aivision.v1.ReconcileImagesResponse
-	35, // 44: aivision.v1.EngineService.QueryProfile:output_type -> aivision.v1.QueryProfileResponse
-	37, // 45: aivision.v1.EngineService.QueryMetrics:output_type -> aivision.v1.QueryMetricsResponse
-	33, // [33:46] is the sub-list for method output_type
-	20, // [20:33] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	47, // 15: aivision.v1.PlatformProfileInfo.frame_caps:type_name -> aivision.v1.FramePixelFormat
+	34, // 16: aivision.v1.PlatformProfileInfo.capabilities:type_name -> aivision.v1.CapabilityState
+	35, // 17: aivision.v1.QueryProfileResponse.profile:type_name -> aivision.v1.PlatformProfileInfo
+	48, // 18: aivision.v1.QueryMetricsResponse.telemetry:type_name -> aivision.v1.DeviceTelemetry
+	40, // 19: aivision.v1.ProbeCameraResponse.attempts:type_name -> aivision.v1.ProbeAttempt
+	5,  // 20: aivision.v1.StartCameraPreviewRequest.stream_type:type_name -> aivision.v1.StreamType
+	5,  // 21: aivision.v1.StopCameraPreviewRequest.stream_type:type_name -> aivision.v1.StreamType
+	39, // 22: aivision.v1.EngineService.ProbeCamera:input_type -> aivision.v1.ProbeCameraRequest
+	42, // 23: aivision.v1.EngineService.StartCameraPreview:input_type -> aivision.v1.StartCameraPreviewRequest
+	44, // 24: aivision.v1.EngineService.StopCameraPreview:input_type -> aivision.v1.StopCameraPreviewRequest
+	12, // 25: aivision.v1.EngineService.ApplyDesiredState:input_type -> aivision.v1.ApplyDesiredStateRequest
+	15, // 26: aivision.v1.EngineService.UpsertTask:input_type -> aivision.v1.UpsertTaskRequest
+	17, // 27: aivision.v1.EngineService.SetInstanceState:input_type -> aivision.v1.SetInstanceStateRequest
+	19, // 28: aivision.v1.EngineService.UpdateInstanceConfig:input_type -> aivision.v1.UpdateInstanceConfigRequest
+	21, // 29: aivision.v1.EngineService.InstallPackage:input_type -> aivision.v1.InstallPackageRequest
+	23, // 30: aivision.v1.EngineService.UpgradePackage:input_type -> aivision.v1.UpgradePackageRequest
+	25, // 31: aivision.v1.EngineService.RollbackPackage:input_type -> aivision.v1.RollbackPackageRequest
+	27, // 32: aivision.v1.EngineService.UninstallPackage:input_type -> aivision.v1.UninstallPackageRequest
+	29, // 33: aivision.v1.EngineService.DeleteImages:input_type -> aivision.v1.DeleteImagesRequest
+	31, // 34: aivision.v1.EngineService.ReconcileImages:input_type -> aivision.v1.ReconcileImagesRequest
+	33, // 35: aivision.v1.EngineService.QueryProfile:input_type -> aivision.v1.QueryProfileRequest
+	37, // 36: aivision.v1.EngineService.QueryMetrics:input_type -> aivision.v1.QueryMetricsRequest
+	41, // 37: aivision.v1.EngineService.ProbeCamera:output_type -> aivision.v1.ProbeCameraResponse
+	43, // 38: aivision.v1.EngineService.StartCameraPreview:output_type -> aivision.v1.StartCameraPreviewResponse
+	45, // 39: aivision.v1.EngineService.StopCameraPreview:output_type -> aivision.v1.StopCameraPreviewResponse
+	14, // 40: aivision.v1.EngineService.ApplyDesiredState:output_type -> aivision.v1.ApplyDesiredStateResponse
+	16, // 41: aivision.v1.EngineService.UpsertTask:output_type -> aivision.v1.UpsertTaskResponse
+	18, // 42: aivision.v1.EngineService.SetInstanceState:output_type -> aivision.v1.SetInstanceStateResponse
+	20, // 43: aivision.v1.EngineService.UpdateInstanceConfig:output_type -> aivision.v1.UpdateInstanceConfigResponse
+	22, // 44: aivision.v1.EngineService.InstallPackage:output_type -> aivision.v1.InstallPackageResponse
+	24, // 45: aivision.v1.EngineService.UpgradePackage:output_type -> aivision.v1.UpgradePackageResponse
+	26, // 46: aivision.v1.EngineService.RollbackPackage:output_type -> aivision.v1.RollbackPackageResponse
+	28, // 47: aivision.v1.EngineService.UninstallPackage:output_type -> aivision.v1.UninstallPackageResponse
+	30, // 48: aivision.v1.EngineService.DeleteImages:output_type -> aivision.v1.DeleteImagesResponse
+	32, // 49: aivision.v1.EngineService.ReconcileImages:output_type -> aivision.v1.ReconcileImagesResponse
+	36, // 50: aivision.v1.EngineService.QueryProfile:output_type -> aivision.v1.QueryProfileResponse
+	38, // 51: aivision.v1.EngineService.QueryMetrics:output_type -> aivision.v1.QueryMetricsResponse
+	37, // [37:52] is the sub-list for method output_type
+	22, // [22:37] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_aivision_v1_engine_proto_init() }
@@ -2772,8 +3103,8 @@ func file_aivision_v1_engine_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aivision_v1_engine_proto_rawDesc), len(file_aivision_v1_engine_proto_rawDesc)),
-			NumEnums:      5,
-			NumMessages:   36,
+			NumEnums:      6,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

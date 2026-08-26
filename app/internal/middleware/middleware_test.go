@@ -173,12 +173,20 @@ func setupMiddlewareTestApp(t *testing.T) (*gin.Engine, *gorm.DB, service.Operat
 		cameraGroup.POST("/probe", func(c *gin.Context) {
 			response.Success(c, "camera probed")
 		})
+		cameraGroup.POST("/:id/preview/start", func(c *gin.Context) {
+			response.Success(c, "preview started")
+		})
+		cameraGroup.POST("/:id/preview/stop", func(c *gin.Context) {
+			response.Success(c, "preview stopped")
+		})
 	}
 	permMid.Register(http.MethodPost, "/api/camera", "resource:camera:add")
 	permMid.Register(http.MethodPut, "/api/camera/:id", "resource:camera:edit")
 	permMid.Register(http.MethodDelete, "/api/camera/:id", "resource:camera:delete")
 	permMid.Register(http.MethodDelete, "/api/camera/batch", "resource:camera:delete")
 	permMid.Register(http.MethodPost, "/api/camera/probe", "resource:camera:probe")
+	permMid.Register(http.MethodPost, "/api/camera/:id/preview/start", "live:preview:stream")
+	permMid.Register(http.MethodPost, "/api/camera/:id/preview/stop", "live:preview:stream")
 
 	return engine, db, oplogSrv, adminToken, normalToken
 }
@@ -496,6 +504,8 @@ func TestOplogActionInference(t *testing.T) {
 		{http.MethodDelete, "/api/camera/1", "resource.camera.delete"},
 		{http.MethodDelete, "/api/camera/batch", "system.common.batchDelete"},
 		{http.MethodPost, "/api/camera/probe", "resource.camera.probe"},
+		{http.MethodPost, "/api/camera/1/preview/start", "live.preview.start"},
+		{http.MethodPost, "/api/camera/1/preview/stop", "live.preview.stop"},
 	}
 
 	for _, tc := range cameraCases {

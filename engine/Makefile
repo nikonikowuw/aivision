@@ -9,6 +9,8 @@ all: build
 
 clean-zlm-archives:
 	rm -f $(ZLM_RELEASE_DIR)/lib*.a
+	rm -f $(BUILD_DIR)_asan/zlm_release/lib*.a
+	rm -f $(BUILD_DIR)_tsan/zlm_release/lib*.a
 	rm -f third_party/ZLMediaKit/release/*/*/lib*.a
 
 configure: clean-zlm-archives
@@ -40,20 +42,22 @@ app: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR) --target aivision-engine
 
 test:
-	cd $(BUILD_DIR) && ctest --timeout 180 --output-on-failure -R unit_tests
+	cd $(BUILD_DIR) && ./tests/unit_tests
 
 lint:
 	bash scripts/check-boundary.sh
 
 asan: clean-zlm-archives
-	cmake -B $(BUILD_DIR)_asan -G $(GENERATOR) -DENGINE_ENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug
-	cmake --build $(BUILD_DIR)_asan
-	cd $(BUILD_DIR)_asan && ctest --timeout 180 --output-on-failure -R unit_tests
+	@trap '$(MAKE) clean-zlm-archives' EXIT INT TERM; \
+	cmake -B $(BUILD_DIR)_asan -G $(GENERATOR) -DENGINE_ENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug && \
+	cmake --build $(BUILD_DIR)_asan && \
+	(cd $(BUILD_DIR)_asan && ./tests/unit_tests)
 
 tsan: clean-zlm-archives
-	cmake -B $(BUILD_DIR)_tsan -G $(GENERATOR) -DENGINE_ENABLE_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
-	cmake --build $(BUILD_DIR)_tsan
-	cd $(BUILD_DIR)_tsan && ctest --timeout 180 --output-on-failure -R unit_tests
+	@trap '$(MAKE) clean-zlm-archives' EXIT INT TERM; \
+	cmake -B $(BUILD_DIR)_tsan -G $(GENERATOR) -DENGINE_ENABLE_TSAN=ON -DCMAKE_BUILD_TYPE=Debug && \
+	cmake --build $(BUILD_DIR)_tsan && \
+	(cd $(BUILD_DIR)_tsan && ./tests/unit_tests)
 
 clean:
 	rm -rf $(BUILD_DIR) $(BUILD_DIR)_asan $(BUILD_DIR)_tsan

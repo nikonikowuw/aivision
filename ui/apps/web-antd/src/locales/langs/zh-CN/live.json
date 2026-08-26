@@ -1,0 +1,27 @@
+{
+  "title": "实时预览",
+  "split1": "单画面",
+  "split4": "四分屏",
+  "split9": "九分屏",
+  "selectCamera": "选择摄像头",
+  "noSignal": "暂无信号",
+  "playing": "正在播放",
+  "buffering": "加载中...",
+  "reconnecting": "正在重新连接...",
+  "offline": "设备离线",
+  "mainStream": "主码流",
+  "subStream": "子码流",
+  "streamType": "码流",
+  "fullScreen": "全屏",
+  "exitFullScreen": "退出全屏",
+  "closeStream": "关闭",
+  "refresh": "刷新",
+  "screenshot": "截图",
+  "searchCamera": "搜索摄像头",
+  "noCameras": "暂无可用摄像头",
+  "preview": {
+    "start": "开始预览",
+    "stop": "停止预览",
+    "failed": "无法开启实时预览"
+  }
+}

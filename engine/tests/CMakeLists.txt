@@ -53,6 +53,7 @@ add_executable(unit_tests
     unit/test_algo_sandbox.cpp
     unit/test_camera_task.cpp
     unit/test_probe_rtsp.cpp
+    unit/test_live_stream_manager.cpp
     unit/test_image_manager.cpp
     unit/test_real_media.cpp
 )

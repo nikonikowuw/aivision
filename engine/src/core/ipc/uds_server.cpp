@@ -12,6 +12,7 @@
 #include "aivision/core/image_manager.hpp"
 #include "aivision/core/algo_manager.hpp"
 #include "aivision/core/algo_sandbox.hpp"
+#include "aivision/core/live_stream_manager.hpp"
 #include "aivision/core/logging/log_adapter.hpp"
 #include "aivision/core/probe_rtsp.hpp"
 #include "aivision/core/resource_ledger.hpp"
@@ -806,6 +807,44 @@ public:
             proto_attempt->set_failure_code(attempt.failure_code);
             proto_attempt->set_elapsed_ms(attempt.elapsed_ms);
         }
+        return grpc::Status::OK;
+    }
+
+    grpc::Status StartCameraPreview(grpc::ServerContext*,
+                                   const aivision::v1::StartCameraPreviewRequest* request,
+                                   aivision::v1::StartCameraPreviewResponse* response) override {
+        if (!request || request->camera_id().empty() || request->url().empty()) {
+            response->set_code("INVALID_ARGUMENT");
+            response->set_error_message("camera_id and url must not be empty");
+            return grpc::Status::OK;
+        }
+
+        std::string stream_path;
+        std::string error_message;
+        const std::string code = LiveStreamManager::instance().start_preview(
+            request->camera_id(), request->stream_type(), request->url(),
+            &stream_path, &error_message);
+
+        response->set_code(code);
+        response->set_error_message(error_message);
+        response->set_stream_path(stream_path);
+        const int32_t port = static_cast<int32_t>(LiveStreamManager::instance().get_http_port());
+        response->set_http_port(port);
+        response->set_ws_port(port);
+        return grpc::Status::OK;
+    }
+
+    grpc::Status StopCameraPreview(grpc::ServerContext*,
+                                  const aivision::v1::StopCameraPreviewRequest* request,
+                                  aivision::v1::StopCameraPreviewResponse* response) override {
+        if (!request || request->camera_id().empty()) {
+            response->set_code("INVALID_ARGUMENT");
+            response->set_error_message("camera_id must not be empty");
+            return grpc::Status::OK;
+        }
+
+        LiveStreamManager::instance().stop_preview(request->camera_id(), request->stream_type());
+        response->set_code("");
         return grpc::Status::OK;
     }
 private:

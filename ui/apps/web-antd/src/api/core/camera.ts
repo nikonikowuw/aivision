@@ -11,6 +11,7 @@ export namespace CameraApi {
     protocol: string;
     name: string;
     rtspUrl: string;
+    subRtspUrl: string;
     remark: string;
     transportPolicy: string;
     lastProbeStatus: ProbeStatus;
@@ -40,7 +41,17 @@ export namespace CameraApi {
   export interface SaveCameraInput {
     name: string;
     rtspUrl: string;
+    subRtspUrl?: string;
     remark?: string;
+  }
+
+  export interface LiveStreamResult {
+    streamPath: string;
+    httpPort: number;
+    wsPort: number;
+    httpUrl: string;
+    wsUrl: string;
+    streamType: string;
   }
 
   /** 单次传输方式尝试结果 */
@@ -118,4 +129,32 @@ export async function batchDeleteCameraApi(ids: number[]) {
  */
 export async function probeCameraApi(data: CameraApi.ProbeCameraInput) {
   return requestClient.post<CameraApi.ProbeResult>('/camera/probe', data);
+}
+
+/**
+ * 开启实时预览取流
+ */
+export async function startLivePreviewApi(
+  id: number,
+  streamType: 'main' | 'sub' = 'main',
+) {
+  return requestClient.post<CameraApi.LiveStreamResult>(
+    `/camera/${id}/preview/start`,
+    undefined,
+    {
+      params: { streamType },
+    },
+  );
+}
+
+/**
+ * 停止实时预览取流
+ */
+export async function stopLivePreviewApi(
+  id: number,
+  streamType: 'main' | 'sub' = 'main',
+) {
+  return requestClient.post<null>(`/camera/${id}/preview/stop`, undefined, {
+    params: { streamType },
+  });
 }

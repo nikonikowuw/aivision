@@ -116,6 +116,15 @@ definitions:
       message:
         type: string
     type: object
+  internal_api.LiveStreamResponse:
+    properties:
+      code:
+        type: integer
+      data:
+        $ref: '#/definitions/niko-vue-admin_app_internal_service.CameraLiveStreamResult'
+      message:
+        type: string
+    type: object
   internal_api.LogPageResponse:
     properties:
       code:
@@ -324,6 +333,8 @@ definitions:
       remark:
         type: string
       rtspUrl:
+        type: string
+      subRtspUrl:
         type: string
       transportPolicy:
         description: 传输策略（当前固定 auto）。Go/C++ 通过协议/策略适配选择实现，前端不可编辑。
@@ -559,6 +570,21 @@ definitions:
       message:
         type: string
     type: object
+  niko-vue-admin_app_internal_service.CameraLiveStreamResult:
+    properties:
+      httpPort:
+        type: integer
+      httpUrl:
+        type: string
+      streamPath:
+        type: string
+      streamType:
+        type: string
+      wsPort:
+        type: integer
+      wsUrl:
+        type: string
+    type: object
   niko-vue-admin_app_internal_service.CameraPageResult:
     properties:
       items:
@@ -689,6 +715,9 @@ definitions:
         maxLength: 255
         type: string
       rtspUrl:
+        maxLength: 2048
+        type: string
+      subRtspUrl:
         maxLength: 2048
         type: string
     required:
@@ -1115,6 +1144,82 @@ paths:
       summary: 更新摄像头
       tags:
       - 摄像头管理
+  /api/camera/{id}/preview/start:
+    post:
+      description: 启动或复用 ZLMediaKit 实时预览拉流通道（支持 main/sub 码流自适应）
+      parameters:
+      - description: 摄像头ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: main
+        description: 码流类型 (main/sub)
+        in: query
+        name: streamType
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 实时拉流地址
+          schema:
+            $ref: '#/definitions/internal_api.LiveStreamResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 开启摄像头实时预览
+      tags:
+      - 摄像头管理
+  /api/camera/{id}/preview/stop:
+    post:
+      description: 显式停止指定摄像头的实时拉流通道
+      parameters:
+      - description: 摄像头ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: main
+        description: 码流类型 (main/sub)
+        in: query
+        name: streamType
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 停止成功
+          schema:
+            $ref: '#/definitions/internal_api.NilResponse'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 停止摄像头实时预览
+      tags:
+      - 摄像头管理
   /api/camera/batch:
     delete:
       consumes:
@@ -1193,8 +1298,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: 对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status
-        中
+      - application/json
+      description: |-
+        对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中
+        对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中
       parameters:
       - description: 测活参数
         in: body
@@ -1202,7 +1309,14 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/internal_api.ProbeCameraInput'
+      - description: 测活参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.ProbeCameraInput'
       produces:
+      - application/json
       - application/json
       responses:
         "200":
@@ -1223,8 +1337,10 @@ paths:
             $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
       security:
       - BearerAuth: []
+      - BearerAuth: []
       summary: 摄像头测活
       tags:
+      - 摄像头管理
       - 摄像头管理
   /api/dept:
     post:

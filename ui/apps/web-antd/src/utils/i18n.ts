@@ -1,7 +1,14 @@
 import { $t } from '@vben/locales';
 
-// 后端存入的 i18n key 前缀（与各 locale 的 namespace 对齐：system / routes / auth / ops / resource）。
-const I18N_KEY_PREFIXES = ['system.', 'routes.', 'auth.', 'ops.', 'resource.'];
+// 后端存入的 i18n key 前缀（与各 locale 的 namespace 对齐：system / routes / auth / ops / resource / live）。
+const I18N_KEY_PREFIXES = [
+  'system.',
+  'routes.',
+  'auth.',
+  'ops.',
+  'resource.',
+  'live.',
+];
 
 /**
  * translateI18nKey 若 value 是已知前缀的 i18n key 则尝试翻译，否则原样返回。

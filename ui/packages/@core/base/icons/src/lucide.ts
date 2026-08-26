@@ -12,6 +12,7 @@ export {
   Bell,
   Bold,
   BookOpenText,
+  Camera,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -91,5 +92,6 @@ export {
   Undo2,
   Unlink2,
   UserRoundPen,
+  Video,
   X,
 } from '@lucide/vue';

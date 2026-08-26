@@ -641,3 +641,30 @@ Add Go gRPC IPC between app and engine: engineipc package provides inbound gRPC 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 23: RTSP 摄像头视频源管理 MVP 全链路实现与分批提交
+
+**Date**: 2026-08-26
+**Task**: RTSP 摄像头视频源管理 MVP 全链路实现与分批提交
+**Branch**: `dev`
+
+### Summary
+
+完成了 RTSP 摄像头管理 MVP：包括 gRPC ProbeCamera RPC、C++ 引擎测活与 TCP/UDP 降级回退、Go 数据库模型与迁移、CRUD 仓储与服务、操作日志 i18n 闭环、Vue3 资源管理前端及 RTSP 工具函数，并通过了所有单测与质量门禁。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f000819` | (see git log) |
+| `cee5031` | (see git log) |
+| `86ac888` | (see git log) |
+| `e2a1c8b` | (see git log) |
+| `f74b914` | (see git log) |
+| `89c28f8` | (see git log) |
+| `1f7fbca` | (see git log) |
+
+### Status
+
+[OK] **Completed**

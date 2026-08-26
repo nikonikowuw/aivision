@@ -279,7 +279,7 @@ const [Grid, gridApi] = useVbenVxeGrid({ gridOptions });
 
 function handleAdd(parentId = 0) {
   currentEditId.value = null;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     parentId,
     sort: 0,
@@ -292,7 +292,7 @@ function handleAdd(parentId = 0) {
 
 function handleEdit(row: MenuApi.MenuItem) {
   currentEditId.value = row.id;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     affix: row.affix,
     component: row.component,

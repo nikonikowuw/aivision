@@ -259,7 +259,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
 
 function handleAdd() {
   currentEditId.value = null;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     sort: 0,
     status: SYSTEM_STATUS.ENABLED,
@@ -270,7 +270,7 @@ function handleAdd() {
 
 function handleEdit(row: RoleApi.RoleItem) {
   currentEditId.value = row.id;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     code: row.code,
     name: row.name,

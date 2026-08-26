@@ -189,7 +189,7 @@ const [Grid, gridApi] = useVbenVxeGrid({ gridOptions });
 
 function handleAdd(parentId = 0) {
   currentEditId.value = null;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     parentId,
     sort: 0,
@@ -201,7 +201,7 @@ function handleAdd(parentId = 0) {
 
 function handleEdit(row: DeptApi.DeptItem) {
   currentEditId.value = row.id;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     leader: row.leader,
     name: row.name,

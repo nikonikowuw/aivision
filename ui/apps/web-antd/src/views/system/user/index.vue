@@ -314,7 +314,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
 
 function handleAdd() {
   currentEditId.value = null;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     status: SYSTEM_STATUS.ENABLED,
   });
@@ -324,7 +324,7 @@ function handleAdd() {
 
 function handleEdit(row: UserApi.UserItem) {
   currentEditId.value = row.id;
-  formApi.resetForm();
+  formApi.reset();
   formApi.setValues({
     deptId: row.deptId,
     email: row.email,

@@ -4,6 +4,10 @@
     "network": "網路設定",
     "time": "時間管理"
   },
+  "resource": {
+    "resource": "資源管理",
+    "camera": "攝影機"
+  },
   "system": {
     "dept": "部門管理",
     "log": "操作日誌",

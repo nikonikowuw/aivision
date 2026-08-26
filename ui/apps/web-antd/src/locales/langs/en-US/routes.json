@@ -4,6 +4,10 @@
     "network": "Network Configuration",
     "time": "Time Management"
   },
+  "resource": {
+    "resource": "Resources",
+    "camera": "Cameras"
+  },
   "system": {
     "dept": "Department Management",
     "log": "Operation Log",

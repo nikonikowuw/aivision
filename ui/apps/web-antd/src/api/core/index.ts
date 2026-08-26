@@ -1,4 +1,5 @@
 export * from './auth';
+export * from './camera';
 export * from './dept';
 export * from './file';
 export * from './log';

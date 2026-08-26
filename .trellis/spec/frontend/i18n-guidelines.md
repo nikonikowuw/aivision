@@ -60,19 +60,20 @@ UI 基于 `@vben/locales`（vue-i18n 封装）+ Ant Design Vue 国际化 + Day.j
   const title = item.title?.startsWith('routes.') ? $t(item.title) : item.title;
   ```
 
-### 4. 操作日志语义与国际化契约
+### 4. 操作日志语义与国际化契约 (Operation Log Action i18n)
 
-- 后端 `operation_logs.action` 存储标准 i18n key（如 `system.user.addUser`、`system.log.actionLogin`）。
-- 日志列表与详情页中渲染 `action` 时，必须使用 i18n 转换并提供优雅降级：
+- 后端 `operation_logs.action` 存储标准 i18n key（如 `system.user.addUser`、`system.log.actionLogin`、`resource.camera.probe`）。
+- **写接口新增时的国际化闭环**：
+  1. `apps/web-antd/src/utils/i18n.ts` 的 `I18N_KEY_PREFIXES` 必须包含对应的命名空间（如 `system.`、`routes.`、`auth.`、`ops.`、`resource.`）。
+  2. `apps/web-antd/src/locales/langs/{zh-CN,en-US,zh-TW}/` 必须同时维护对应动作的中/英/繁三语翻译。
+- 日志列表与详情页中渲染 `action` 时，必须使用 `translateI18nKey` 转换并提供优雅降级：
 
   ```ts
+  import { translateI18nKey } from '#/utils/i18n';
+
   function formatAction(action?: string) {
     if (!action) return '-';
-    if (action.startsWith('system.') || action.startsWith('routes.') || action.startsWith('auth.')) {
-      const translated = $t(action);
-      if (translated && translated !== action) return translated;
-    }
-    return action;
+    return translateI18nKey(action);
   }
   ```
 

@@ -58,9 +58,13 @@
 ### 1. 核心原则
 - **不可变性（Append-Only）**：操作审计日志严禁提供任何前端可调用的单条删除或批量删除接口（`DELETE /api/oplog/*` 禁止提供）。审计日志必须保证不可抵赖性与合规性（遵循《网络安全法》与等保 2.0 规定）。
 - **语义化与国际化（Human-Readable & i18n）**：
-  - `action` 字段存储语义化的 i18n key（如 `system.user.addUser`、`system.role.assignMenu` 等），前端配合 `$t()` 本地化渲染。
-  - `path` 字段存储 HTTP 技术路径（如 `/api/user`），供开发与运维排错溯源。
+  - `action` 字段存储语义化的 i18n key（如 `system.user.addUser`、`system.role.assignMenu`、`resource.camera.probe` 等），前端配合 `$t()` 本地化渲染。
+  - `path` 字段存储 HTTP 技术路径（如 `/api/user`、`/api/camera/probe`），供开发与运维排错溯源。
   - 两者不可混用或机械拼接（严禁将 `POST /api/user` 直接作为 `action`）。
 
-### 2. 路由到 Action 的语义映射
-所有新增的写操作接口（`POST`、`PUT`、`DELETE`），必须在 `internal/middleware/oplog.go` 的 `actionI18nMap` 中注册对应的 i18n key，并在前端各语言包中维护对应翻译。
+### 2. 路由到 Action 的语义映射闭环（开发必须执行）
+所有新增写操作接口（`POST`、`PUT`、`DELETE`），必须完成以下**四位一体闭环**，禁止遗漏：
+1. **后端注册路由映射**：在 `internal/middleware/oplog.go` 的 `actionI18nMap` 中为每一个路由注册语义化 i18n key；
+2. **前端前缀白名单**：在 `apps/web-antd/src/utils/i18n.ts` 的 `I18N_KEY_PREFIXES` 中确保包含了该 key 的顶级命名空间（如 `resource.`、`system.`、`ops.` 等）；
+3. **前端多语言翻译**：在 `apps/web-antd/src/locales/langs/{zh-CN,en-US,zh-TW}/` 对应 JSON 文件中补齐三语动作文案；
+4. **单测覆盖**：在 `internal/middleware/middleware_test.go` 中断言写请求触发后生成的 `OperationLog.Action` 字段精确匹配期望的 i18n key，避免 fallback 到 `"Method Path"`。

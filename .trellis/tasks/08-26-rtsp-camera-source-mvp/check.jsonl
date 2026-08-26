@@ -1,3 +1,4 @@
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端完成前质量检查"}
 {"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "引擎 sanitizer/质量门禁"}
 {"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端 pnpm check 检查清单"}
+{"event": "check_completed", "scope": "all_layers", "engine_unit_tests": "passed", "engine_asan": "passed", "engine_tsan": "passed", "engine_lint": "passed", "algo_consistency": "passed", "backend_tests": "passed", "backend_vet": "passed", "frontend_check": "passed", "frontend_unit_tests": "passed", "frontend_build": "passed"}

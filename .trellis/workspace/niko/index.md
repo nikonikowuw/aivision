@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
-- **Last Active**: 2026-08-26
+- **Total Sessions**: 23
+- **Last Active**: 2026-08-27
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~643 | Active |
+| `journal-1.md` | ~668 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-08-27 | RTSP Camera Source MVP | `cee5031`, `f000819`, `86ac888`, `e2a1c8b`, `f74b914` | `dev` |
 | 22 | 2026-08-26 | Go gRPC integration | `6952640`, `37f589c` | `dev` |
 | 21 | 2026-08-25 | C++ Engine structured logging (JSONL) | `e165e8d` | `dev` |
 | 20 | 2026-08-24 | 完成 RK3576 YOLOv8n RKNN 算法包验证与归档 | `9fada7c` | `dev` |

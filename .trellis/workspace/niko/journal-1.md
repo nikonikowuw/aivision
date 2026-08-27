@@ -641,3 +641,28 @@ Add Go gRPC IPC between app and engine: engineipc package provides inbound gRPC 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 23: RTSP Camera Source MVP
+
+**Date**: 2026-08-27
+**Task**: RTSP Camera Source MVP
+**Branch**: `dev`
+
+### Summary
+
+Completed the RTSP camera source MVP across the engine, app, and web UI: RTSP probing over IPC, camera persistence and REST APIs, frontend management and parsing utilities, and aligned tests/i18n. Archived task 08-26-rtsp-camera-source-mvp.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cee5031` | (see git log) |
+| `f000819` | (see git log) |
+| `86ac888` | (see git log) |
+| `e2a1c8b` | (see git log) |
+| `f74b914` | (see git log) |
+
+### Status
+
+[OK] **Completed**

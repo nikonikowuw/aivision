@@ -231,6 +231,50 @@ InstanceDesiredConfig {
 - `object_count >= 0`，不作为安装成败或精度判断依据；
 - self-test result 不得包含图片请求。
 
+### 4.3 人脸识别结果（`AV_RESULT_RECOGNITION`）
+
+识别类结果顶层固定包含 `schema_version: 1` 和 `persons`。每个人体最多一个 `face`，没有有效人脸时为 `null`。坐标全部是原图归一化坐标：bbox 为 `[x, y, w, h]`，landmark 为 `[x, y]`。
+
+```json
+{
+  "schema_version": 1,
+  "persons": [
+    {
+      "track_id": 1,
+      "bbox": [0.0626, 0.3695, 0.2315, 0.4672],
+      "confidence": 0.8462,
+      "face": {
+        "bbox": [0.1419, 0.3880, 0.0492, 0.0469],
+        "confidence": 0.8535,
+        "landmarks": [
+          [0.1667, 0.4125],
+          [0.1667, 0.4125],
+          [0.1667, 0.4125],
+          [0.1645, 0.4100],
+          [0.1708, 0.4099]
+        ],
+        "embedding": {
+          "model": "glintr100",
+          "dimension": 512,
+          "dtype": "float32",
+          "normalized": true,
+          "encoding": "base64",
+          "byte_order": "little_endian",
+          "data": "HYQFvcTvNryC8Ko8..."
+        }
+      }
+    }
+  ]
+}
+```
+
+约束：
+- 顶层 `schema_version` 固定为 `1`；
+- `persons` 数组按 `track_id` 升序排列；
+- `embedding`：满足通用嵌入表示规范。在开启轨迹抓拍优选时，非关键帧或质量未达标的人脸 `embedding` 可为 `null`；
+- `embedding.data`：当存在时为 512 个 IEEE 754 little-endian `float32` 原始字节的 Base64 字符串，已做 L2 归一化；
+- 只有在至少关联并成功提取一张人脸 embedding 时触发 `AV_RESULT_RECOGNITION` 结果回调。
+
 ## 5. Validation & Error Matrix
 
 | 条件 | 结果 |

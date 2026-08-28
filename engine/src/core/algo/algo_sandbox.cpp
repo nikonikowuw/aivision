@@ -1061,7 +1061,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     info.api_version = AV_ALGO_API_VERSION;
     if (abi->library_query(library, &info) != AV_OK || std::string(info.algorithm_id) != result.manifest.algorithm_id ||
         std::string(info.version) != result.manifest.version ||
-        !is_supported_algorithm_type(std::string(info.algorithm_type)) ||
+        parse_algorithm_type(info.algorithm_type) != result.manifest.algorithm_type ||
         std::string(info.alarm_type_id) != result.manifest.alarm_type_id) {
         abi->library_close(library);
         close_library();

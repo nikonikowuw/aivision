@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cmath>
+#include <fstream>
 #include <filesystem>
 #include <thread>
 
@@ -120,6 +121,62 @@ TEST(SandboxValidatorTest, ValidMockPackage) {
     EXPECT_EQ(res.manifest.version, "1.0.0");
     EXPECT_EQ(res.manifest.platform_id, "mock");
     EXPECT_TRUE(std::filesystem::exists("var/packages/mock-detector/1.0.0/manifest.json"));
+}
+
+TEST(SandboxValidatorTest, FaceRecognitionManifestWithoutAlarmTypeIdValidates) {
+    const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "test_fr_manifest";
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir / "lib");
+
+    // Copy mock lib and testimage
+    std::filesystem::copy_file(std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "testimage.jpg",
+                               temp_dir / "testimage.jpg");
+    std::filesystem::copy_file(std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib",
+                               temp_dir / "lib/libmock-face.dylib");
+
+    nlohmann::json manifest = {
+        {"manifest_version", 1},
+        {"algorithm_id", "mock-face"},
+        {"version", "1.0.0"},
+        {"name", "Mock Face Recognizer"},
+        {"description", "Face recognition test package"},
+        {"algorithm_type", "face_recognition"},
+        {"platform_id", "mock"},
+        {"min_adapter_version", "1.0.0"},
+        {"runtime_constraints", {{"min_os_version", "0.0"}}},
+        {"resource_profile", {
+            {"min_free_memory_mb", 1},
+            {"fps_tiers", {{{"fps", 1}, {"units", 1}}}}
+        }},
+        {"self_test", {
+            {"timeout_ms", 10000},
+            {"input_mode", "test_image"}
+        }}
+    };
+
+    std::ofstream ofs(temp_dir / "manifest.json");
+    ofs << manifest.dump(2);
+    ofs.close();
+
+    const std::string install_base = "var/packages_fr";
+    std::filesystem::remove_all(install_base);
+    auto res = aivision::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
+    // Since mock library_query returns mock-detector & mock_alarm, it must pass manifest stage and fail at library_query stage
+    EXPECT_FALSE(res.success);
+    EXPECT_EQ(res.error_stage, "library_query");
+
+    // With alarm_type_id declared, face_recognition manifest must be rejected at manifest stage
+    manifest["alarm_type_id"] = "face_alarm";
+    std::ofstream ofs_invalid(temp_dir / "manifest.json");
+    ofs_invalid << manifest.dump(2);
+    ofs_invalid.close();
+
+    auto res_invalid = aivision::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
+    EXPECT_FALSE(res_invalid.success);
+    EXPECT_EQ(res_invalid.error_stage, "manifest");
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::remove_all(install_base);
 }
 
 #if !defined(AIVISION_SKIP_IPC_TESTS)

@@ -12,7 +12,8 @@ extern "C" {
 
 typedef enum av_result_kind {
     AV_RESULT_ALARM = 1,
-    AV_RESULT_SELF_TEST = 2
+    AV_RESULT_SELF_TEST = 2,
+    AV_RESULT_RECOGNITION = 3
 } av_result_kind;
 
 typedef struct av_algo_image_req {

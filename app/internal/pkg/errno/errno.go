@@ -81,6 +81,17 @@ const (
 	CodeNTPSyncFailed                 = 1206 // NTP 同步失败
 	CodeNTPExecutorUnavailable        = 1207 // 底层对时执行器不可用
 
+	// 任务配置业务错误码 1300 ~ 1308
+	CodeCameraInUse       = 1300 // 摄像头已关联分析任务，禁止删除
+	CodeResourceExceeded  = 1301 // 计算资源超出可分配上限
+	CodeFPSTierExceeded   = 1302 // 请求 FPS 超过算法包声明的最高档位
+	CodeRuleOutOfBounds   = 1303 // 检测规则坐标超出 [0,1] 归一化范围
+	CodeRuleTooFewPoints  = 1304 // 检测规则顶点数量不足
+	CodeRuleSelfIntersect = 1305 // 检测区域多边形自交
+	CodeTaskNotFound      = 1306 // 分析任务不存在
+	CodeTaskAlreadyExists = 1307 // 摄像头已存在分析任务
+	CodeInstanceNotFound  = 1308 // 算法实例不存在
+
 	// CodeInternal 服务器内部错误（非业务失败，仅作统一响应码）。
 	CodeInternal = 1500
 )
@@ -141,6 +152,15 @@ var messages = map[string]map[int]string{
 		CodeNTPSetTimeFailed:              "系统时间设置失败",
 		CodeNTPSyncFailed:                 "NTP 同步失败",
 		CodeNTPExecutorUnavailable:        "底层对时执行器不可用",
+		CodeCameraInUse:                   "摄像头已关联分析任务，禁止删除",
+		CodeResourceExceeded:              "计算资源超出可分配上限",
+		CodeFPSTierExceeded:               "请求的采样帧率超过算法包支持的最高档位",
+		CodeRuleOutOfBounds:               "检测规则坐标超出有效画面范围",
+		CodeRuleTooFewPoints:              "检测规则顶点数量不足",
+		CodeRuleSelfIntersect:             "检测区域多边形存在自交",
+		CodeTaskNotFound:                  "分析任务不存在",
+		CodeTaskAlreadyExists:             "该摄像头已关联分析任务",
+		CodeInstanceNotFound:              "算法实例不存在",
 		CodeInternal:                      "服务器内部错误",
 	},
 	"en-US": {
@@ -194,6 +214,15 @@ var messages = map[string]map[int]string{
 		CodeNTPSetTimeFailed:              "Failed to set system time",
 		CodeNTPSyncFailed:                 "Failed to synchronize NTP",
 		CodeNTPExecutorUnavailable:        "NTP executor is unavailable",
+		CodeCameraInUse:                   "Camera is associated with an analysis task and cannot be deleted",
+		CodeResourceExceeded:              "Compute resource request exceeds the allocatable limit",
+		CodeFPSTierExceeded:               "Requested analysis FPS exceeds the highest declared tier",
+		CodeRuleOutOfBounds:               "Detection rule coordinates are out of the normalized frame bounds",
+		CodeRuleTooFewPoints:              "Detection rule has too few points",
+		CodeRuleSelfIntersect:             "Detection region polygon is self-intersecting",
+		CodeTaskNotFound:                  "Analysis task not found",
+		CodeTaskAlreadyExists:             "An analysis task already exists for this camera",
+		CodeInstanceNotFound:              "Algorithm instance not found",
 		CodeInternal:                      "Internal server error",
 	},
 	"zh-TW": {
@@ -247,6 +276,15 @@ var messages = map[string]map[int]string{
 		CodeNTPSetTimeFailed:              "系統時間設定失敗",
 		CodeNTPSyncFailed:                 "NTP 同步失敗",
 		CodeNTPExecutorUnavailable:        "底層對時執行器不可用",
+		CodeCameraInUse:                   "攝影機已關聯分析任務，禁止刪除",
+		CodeResourceExceeded:              "計算資源超出可分配上限",
+		CodeFPSTierExceeded:               "請求的取樣幀率超過演算法包支援的最高檔位",
+		CodeRuleOutOfBounds:               "偵測規則座標超出有效畫面範圍",
+		CodeRuleTooFewPoints:              "偵測規則頂點數量不足",
+		CodeRuleSelfIntersect:             "偵測區域多邊形存在自交",
+		CodeTaskNotFound:                  "分析任務不存在",
+		CodeTaskAlreadyExists:             "該攝影機已關聯分析任務",
+		CodeInstanceNotFound:              "演算法實例不存在",
 		CodeInternal:                      "伺服器內部錯誤",
 	},
 }

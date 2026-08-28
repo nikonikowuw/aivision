@@ -48,6 +48,10 @@ const (
 	CodeFileTooLarge       = 1016 // 文件超过大小限制
 	CodeFileTypeNotAllowed = 1017 // 文件类型不允许
 	CodePersonIDTaken      = 1018 // 人员标识已存在
+	CodeAlgoPackageInvalid = 1019 // 算法包格式非法或解析失败
+	CodeAlgoInstallFailed  = 1020 // 算法包安装或自测失败
+	CodeAlgoInUse          = 1021 // 算法包正在被任务使用，禁止卸载
+	CodeEngineUnavailable  = 1022 // 推理引擎服务不可用
 
 	// 网络配置业务错误码 1100 ~ 1113
 	CodeNetworkInvalidConfig         = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
@@ -109,6 +113,10 @@ var messages = map[string]map[int]string{
 		CodeFileTooLarge:                  "文件大小超出限制",
 		CodeFileTypeNotAllowed:            "不支持的文件类型",
 		CodePersonIDTaken:                 "人员标识已存在",
+		CodeAlgoPackageInvalid:            "算法包格式非法或解析失败",
+		CodeAlgoInstallFailed:             "算法包安装或自测失败",
+		CodeAlgoInUse:                     "算法包正在被任务使用，禁止卸载",
+		CodeEngineUnavailable:             "推理引擎服务不可用",
 		CodeNetworkInvalidConfig:          "网络配置参数非法或冲突",
 		CodeNetworkTransactionPending:     "已有待确认的网络配置事务，请先确认或取消",
 		CodeNetworkTransactionNotFound:    "网络事务不存在或已处理",
@@ -158,6 +166,10 @@ var messages = map[string]map[int]string{
 		CodeFileTooLarge:                  "File size exceeds the limit",
 		CodeFileTypeNotAllowed:            "File type is not allowed",
 		CodePersonIDTaken:                 "Person ID already exists",
+		CodeAlgoPackageInvalid:            "Algorithm package is invalid or malformed",
+		CodeAlgoInstallFailed:             "Algorithm package installation or self-test failed",
+		CodeAlgoInUse:                     "Algorithm package is currently in use and cannot be uninstalled",
+		CodeEngineUnavailable:             "Inference engine service unavailable",
 		CodeNetworkInvalidConfig:          "Invalid or conflicting network configuration",
 		CodeNetworkTransactionPending:     "A network transaction is already pending confirmation",
 		CodeNetworkTransactionNotFound:    "Network transaction not found or already completed",
@@ -207,6 +219,10 @@ var messages = map[string]map[int]string{
 		CodeFileTooLarge:                  "檔案大小超出限制",
 		CodeFileTypeNotAllowed:            "不支援的檔案類型",
 		CodePersonIDTaken:                 "人員標識已存在",
+		CodeAlgoPackageInvalid:            "演算法包格式非法或解析失敗",
+		CodeAlgoInstallFailed:             "演算法包安裝或自我檢測失敗",
+		CodeAlgoInUse:                     "演算法包正在被任務使用，禁止解除安裝",
+		CodeEngineUnavailable:             "推論引擎服務不可用",
 		CodeNetworkInvalidConfig:          "網路設定參數非法或衝突",
 		CodeNetworkTransactionPending:     "已有待確認的網路設定事務，請先確認或取消",
 		CodeNetworkTransactionNotFound:    "網路事務不存在或已處理",

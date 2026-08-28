@@ -1,4 +1,4 @@
--- 000014_seed_resource_person_menu.down.sql
+-- 000016_seed_resource_person_menu.down.sql
 -- 回滚：删除人员管理(Person)菜单及按钮与角色关联
 
 DO $$

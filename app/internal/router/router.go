@@ -53,6 +53,7 @@ const (
 	probeRoutePath       = "/probe"
 	personRoutePath      = "/person"
 	personIDRoutePath    = "/:personId"
+	algorithmRoutePath   = "/algorithm"
 	openV1RoutePath      = "/v1/open"
 )
 
@@ -75,6 +76,7 @@ type Deps struct {
 	NetworkHandler         *api.NetworkHandler
 	CameraHandler          *api.CameraHandler
 	PersonHandler          *api.PersonHandler
+	AlgorithmHandler       *api.AlgorithmHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -273,6 +275,22 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+batchRoutePath, "resource:person:delete")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+personRoutePath+personIDRoutePath, "resource:person:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+personIDRoutePath, "resource:person:delete")
+
+		algoGroup := apiGroup.Group(algorithmRoutePath)
+		{
+			algoGroup.GET("", deps.AlgorithmHandler.ListAlgorithms)
+			algoGroup.GET(idRoutePath, deps.AlgorithmHandler.GetAlgorithm)
+			algoGroup.GET(idRoutePath+"/versions", deps.AlgorithmHandler.ListVersions)
+			algoGroup.POST("/upload", deps.AlgorithmHandler.UploadAndInstall)
+			algoGroup.PUT(idRoutePath+"/versions/:version/activate", deps.AlgorithmHandler.ActivateVersion)
+			algoGroup.DELETE(idRoutePath+"/versions/:version", deps.AlgorithmHandler.UninstallVersion)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+algorithmRoutePath, "ai:algorithm")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+algorithmRoutePath+idRoutePath, "ai:algorithm")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+algorithmRoutePath+idRoutePath+"/versions", "ai:algorithm")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+algorithmRoutePath+"/upload", "ai:algorithm:upload")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+algorithmRoutePath+idRoutePath+"/versions/:version/activate", "ai:algorithm:activate")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+algorithmRoutePath+idRoutePath+"/versions/:version", "ai:algorithm:uninstall")
 	}
 
 	// 外部开放同步 API：位于认证与权限中间件之外，使用受控 IP 白名单保护

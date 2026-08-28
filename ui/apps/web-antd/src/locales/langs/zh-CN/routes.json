@@ -1,16 +1,24 @@
 {
-  "ops": {
-    "ops": "运维管理",
-    "network": "网络配置",
-    "time": "时间管理"
-  },
-  "resource": {
-    "resource": "资源管理",
-    "camera": "摄像头",
-    "person": "人员管理"
+  "dashboard": {
+    "analytics": "分析页",
+    "workspace": "工作台"
   },
   "live": {
     "live": "实时预览"
+  },
+  "ops": {
+    "network": "网络配置",
+    "ops": "运维管理",
+    "time": "时间管理"
+  },
+  "resource": {
+    "camera": "摄像头",
+    "person": "人员管理",
+    "resource": "资源管理"
+  },
+  "ai": {
+    "ai": "AI 算法",
+    "algorithm": "算法包管理"
   },
   "system": {
     "dept": "部门管理",
@@ -19,10 +27,5 @@
     "role": "角色管理",
     "system": "系统管理",
     "user": "用户管理"
-  },
-  "dashboard": {
-    "analytics": "分析页",
-    "workspace": "工作台",
-    "title": "概览"
   }
 }

@@ -1,16 +1,24 @@
 {
-  "ops": {
-    "ops": "運維管理",
-    "network": "網路設定",
-    "time": "時間管理"
-  },
-  "resource": {
-    "resource": "資源管理",
-    "camera": "攝影機",
-    "person": "人員管理"
+  "dashboard": {
+    "analytics": "分析頁",
+    "workspace": "工作台"
   },
   "live": {
     "live": "即時預覽"
+  },
+  "ops": {
+    "network": "網路配置",
+    "ops": "維運管理",
+    "time": "時間管理"
+  },
+  "resource": {
+    "camera": "攝影機",
+    "person": "人員管理",
+    "resource": "資源管理"
+  },
+  "ai": {
+    "ai": "AI 演算法",
+    "algorithm": "演算法包管理"
   },
   "system": {
     "dept": "部門管理",
@@ -19,10 +27,5 @@
     "role": "角色管理",
     "system": "系統管理",
     "user": "使用者管理"
-  },
-  "dashboard": {
-    "analytics": "分析頁",
-    "workspace": "工作台",
-    "title": "概覽"
   }
 }

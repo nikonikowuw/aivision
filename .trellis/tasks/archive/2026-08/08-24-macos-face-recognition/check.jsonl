@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "算法包工程化质量、单测、sanitizer 与 benchmark 验证门禁"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "Manifest 校验与结果 JSON 契约校验"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "C ABI 兼容性与结构体布局检查"}

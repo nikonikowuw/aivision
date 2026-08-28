@@ -699,3 +699,68 @@ Implement person management MVP with backend CRUD, sync APIs, and frontend pages
 ### Status
 
 [OK] **Completed**
+
+
+## Session 25: macOS Face Recognition Algorithm Package & Best-Shot Selection
+
+**Date**: 2026-08-28
+**Task**: macOS Face Recognition Package (`08-24-macos-face-recognition`)
+**Branch**: `dev`
+
+### Summary
+
+实现了 Apple Silicon macOS 人脸识别算法包 (`algo-packages/macos/arm64/face_recognition`)，包括完整的 Core ML FP16 推理加速（SCRFD 10G + GLINTR100 + YOLOv8n）、双模型 Fork-Join 异步并发、vImage ARGB 高质量重采样仿射对齐截脸、基于 5 点人脸关键点的多维度几何质量评分、以及连续命中防抖（`track_confirm_frames`）与轨迹抓拍优选（Best-Shot Selection）。完善了 SDK 与 Engine 对 `AV_RESULT_RECOGNITION` 的协议支持与校验规则。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a2cdd2d` | feat(project): support face_recognition algo type and result contract |
+| `7c3123a` | feat(project): add self-contained macos face_recognition package with best-shot selection |
+
+### Testing
+
+- `face_recognition_tests` (100% Passed)
+- `face_recognition_preprocess_tests` (100% Passed)
+- `face_recognition_abi_tests` (100% Passed)
+- `CameraTaskTest.DecoderWatchdogResetsSilentDecoder` (Passed)
+- AddressSanitizer (ASan) 零泄漏测试通过
+- 压测基准（50 轮）：单帧平均延迟 5.76 ms，吞吐率 173.6 FPS
+
+### Status
+
+[OK] **Completed**
+
+
+
+## Session 25: 完成摄像头实时预览功能
+
+**Date**: 2026-08-28
+**Task**: 完成摄像头实时预览功能
+**Branch**: `dev`
+
+### Summary
+
+实现摄像头实时多画格预览功能，支持主/子码流推导及自适应分屏拉流、ZLMediaKit 按需转流与前端多屏播放
+
+### Main Changes
+
+- 后端：扩展 Camera 模型与 DB migration 添加 sub_rtsp_url 字段，实现厂商子码流自动推导与预览 API、IPC 控制
+- 引擎：实现 LiveStreamManager，接入 ZLMediaKit 提供 HTTP/WS-FLV 流分发与拉流按需管理
+- 前端：实现 /live 多画格预览页面及通用 VideoPlayer 组件，支持 1/4/9 分屏自适应码流切换与全屏预览
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `afaf135` | (see git log) |
+
+### Testing
+
+- [OK] go test ./... 后端单测通过
+- [OK] make -C engine test 引擎单测通过
+- [OK] pnpm check 前端类型与静态检查通过
+
+### Status
+
+[OK] **Completed**

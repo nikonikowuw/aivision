@@ -85,3 +85,17 @@ ui/coverage/
 .trellis/workspace/
 .worktrees/
 
+# Model weights & packages (Download from Google Drive)
+*.pt
+*.pth
+*.onnx
+*.rknn
+*.om
+*.mlpackage/
+*.mlmodel
+*.engine
+*.plan
+*.weights
+weight.bin
+
+

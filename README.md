@@ -14,6 +14,7 @@
 - **自动化操作日志**：全自动中间件拦截写操作，敏感字段脱敏，请求耗时与操作明细追溯。
 - **个人中心与国际化**：支持用户修改个人资料与密码、全站中/繁/英三语切换。
 - **轻量开箱即用**：无需 Redis，双 Token 轮换与黑名单基于数据库维护。
+- **边缘 AI 视频分析**：基于 C++20 引擎与标准 C ABI 算法插件体系，支持 Core ML (macOS Apple Silicon)、Rockchip RKNN (RK3576/RK3588) 等多硬件后端与端边算力协同。
 - **完整部署生态**：提供多阶段 Dockerfile、Nginx 反代配置及 Docker Compose 一键拉起环境。
 
 ---
@@ -46,11 +47,26 @@ git clone <repository-url>
 cd niko-vue-admin
 ```
 
-### 2. 启动数据库
+### 2. 下载模型权重文件
+
+由于 AI 算法模型权重文件较大，未直接提交到 Git 仓库。请从以下 Google Drive 地址下载模型文件并解压放置到对应的算法包目录中：
+
+- **下载地址**：[Google Drive 模型权重下载链接](https://drive.google.com/drive/folders/13eXexmJK5bIsFo-qAb-3Npb6QNt2LfSQ?usp=sharing)
+- **对应放置路径**：
+  - **macOS (arm64) YOLOv8n**：`algo-packages/macos/arm64/yolov8n/model/yolov8n.mlpackage`（或 `weights/`）
+  - **macOS (arm64) 人脸识别**：
+    - `algo-packages/macos/arm64/face_recognition/model/yolov8n.mlpackage`
+    - `algo-packages/macos/arm64/face_recognition/model/scrfd_10g_bnkps.mlpackage`（以及 `weights/scrfd_10g_bnkps.onnx`）
+    - `algo-packages/macos/arm64/face_recognition/model/glintr100.mlpackage`（以及 `weights/glintr100.onnx`）
+  - **RK3576 YOLOv8n**：
+    - `algo-packages/rknn/rk3576/yolov8n/model/yolov8n.rknn`
+    - `algo-packages/rknn/rk3576/yolov8n/model/yolov8n.onnx`
+
+### 3. 启动数据库
 
 在本地启动 PostgreSQL（默认端口 `5432`）或 MySQL（默认端口 `3306`），并创建数据库 `niko_vue_admin_go`。
 
-### 3. 启动后端 (`app`)
+### 4. 启动后端 (`app`)
 
 ```bash
 cd app
@@ -70,7 +86,7 @@ make dev-raw
 - 后端服务默认监听：`http://localhost:8000`
 - Swagger 文档地址：`http://localhost:8000/swagger/index.html`
 
-### 4. 启动前端 (`ui`)
+### 5. 启动前端 (`ui`)
 
 打开新终端窗口：
 
@@ -118,6 +134,7 @@ docker compose up -d --build
 
 ```text
 niko-vue-admin/
+├── algo-packages/               # 独立算法插件包 (macOS CoreML, RKNN 等)
 ├── app/                          # Go 后端工程
 │   ├── cmd/api/                  # 入口与 Wire DI 装配 (main.go, wire.go)
 │   ├── configs/                  # 配置文件 (config.yaml)
@@ -133,6 +150,8 @@ niko-vue-admin/
 │   ├── migrations/               # 版本化 SQL 迁移脚本
 │   ├── Makefile                  # 构建、测试、文档生成脚本
 │   └── Dockerfile                # 多阶段构建镜像定义
+├── engine/                       # C++20 媒体推理引擎与管线调度
+├── sdk/                          # 共享 C ABI 接口与 SDK 头文件
 ├── ui/                           # 前端 Monorepo
 │   ├── apps/
 │   │   └── web-antd/             # Ant Design Vue 主业务应用

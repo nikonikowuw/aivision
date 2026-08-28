@@ -143,6 +143,9 @@
     "actionNetworkConfirm": "確認網路變更",
     "actionNetworkReset": "恢復出廠設定",
     "actionNetworkRollback": "回滾網路設定",
-    "actionNetworkStartupRecovery": "啟動網路還原"
+    "actionNetworkStartupRecovery": "啟動網路還原",
+    "actionAlgoUpload": "安裝演算法包",
+    "actionAlgoActivate": "啟用演算法版本",
+    "actionAlgoUninstall": "解除安裝演算法版本"
   }
 }

@@ -1,0 +1,101 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "person_detection_threshold": {
+      "type": "number",
+      "title": "人体检测阈值",
+      "description": "人体检测框置信度过滤阈值",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.35
+    },
+    "face_detection_threshold": {
+      "type": "number",
+      "title": "人脸检测阈值",
+      "description": "人脸检测框置信度过滤阈值",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.50
+    },
+    "face_nms_threshold": {
+      "type": "number",
+      "title": "人脸 NMS 阈值",
+      "description": "人脸检测非极大值抑制交并比阈值",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.40
+    },
+    "max_person_count": {
+      "type": "integer",
+      "title": "最大人体数",
+      "description": "单帧输出的最大人体跟踪数量",
+      "minimum": 1,
+      "maximum": 64,
+      "default": 16
+    },
+    "track_buffer": {
+      "type": "integer",
+      "title": "跟踪丢失缓存帧数",
+      "description": "轨迹丢失时保留的最大帧数",
+      "minimum": 1,
+      "maximum": 120,
+      "default": 30
+    },
+    "track_match_threshold": {
+      "type": "number",
+      "title": "轨迹匹配阈值",
+      "description": "ByteTrack 关联的最低匹配分数阈值",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.80
+    },
+    "track_confirm_frames": {
+      "type": "integer",
+      "title": "轨迹确认帧数",
+      "description": "新轨迹连续匹配达到该帧数后才允许触发人脸特征提取 (防抖与防虚警, default: 2)",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 2
+    },
+    "feature_mode": {
+      "type": "string",
+      "title": "特征提取模式",
+      "description": "all (全量逐帧提取) 或 best_shot (轨迹抓拍优选)",
+      "enum": ["all", "best_shot"],
+      "default": "best_shot"
+    },
+    "min_face_size": {
+      "type": "integer",
+      "title": "最小抓拍人脸像素",
+      "description": "优选提取允许的人脸短边最小像素",
+      "minimum": 16,
+      "maximum": 512,
+      "default": 40
+    },
+    "quality_threshold": {
+      "type": "number",
+      "title": "质量准入分",
+      "description": "首优抓拍所需的人脸综合质量最低评分 (0-100)",
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "default": 35.0
+    },
+    "quality_update_margin": {
+      "type": "number",
+      "title": "优选提升分差",
+      "description": "后续优选人脸覆盖旧抓拍所需的高出质量分差",
+      "minimum": 0.0,
+      "maximum": 50.0,
+      "default": 10.0
+    },
+    "reextract_interval_frames": {
+      "type": "integer",
+      "title": "重提取帧间隔",
+      "description": "同一人体轨迹周期性重新抓拍的最小间隔帧数 (0为单轨迹仅提取一次)",
+      "minimum": 0,
+      "maximum": 300,
+      "default": 45
+    }
+  }
+}

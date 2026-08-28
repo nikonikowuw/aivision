@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "C ABI 帧生命周期与结果枚举扩展规范"}
+{"file": ".trellis/spec/engine/algo-package-spec.md", "reason": "算法包 C ABI 接口与生命周期契约"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "算法包清单、配置与结果 schema 规范"}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "macOS CoreML 平台适配与图像原语规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流与契约一致性思考指南"}

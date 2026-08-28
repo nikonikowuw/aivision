@@ -16,5 +16,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&SystemConfig{},
 		&Camera{},
 		&Person{},
+		&Algorithm{},
+		&AlgorithmVersion{},
 	)
 }

@@ -1,0 +1,16 @@
+build/
+build_asan/
+lib/
+result.jpg
+package.zip
+package.zip.sha256
+*.zip
+*.zip.sha256
+
+# Models and weights
+*.onnx
+*.mlpackage/
+*.mlmodel
+*.bin
+weights/
+

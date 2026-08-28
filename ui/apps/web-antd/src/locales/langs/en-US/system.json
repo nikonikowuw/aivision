@@ -144,6 +144,9 @@
     "actionNetworkConfirm": "Confirm Network Change",
     "actionNetworkReset": "Factory Reset",
     "actionNetworkRollback": "Rollback Network Configuration",
-    "actionNetworkStartupRecovery": "Startup Network Recovery"
+    "actionNetworkStartupRecovery": "Startup Network Recovery",
+    "actionAlgoUpload": "Install Algorithm Package",
+    "actionAlgoActivate": "Activate Algorithm Version",
+    "actionAlgoUninstall": "Uninstall Algorithm Version"
   }
 }

@@ -1,28 +1,31 @@
 {
-  "ops": {
-    "ops": "Operations",
-    "network": "Network Configuration",
-    "time": "Time Management"
-  },
-  "resource": {
-    "resource": "Resources",
-    "camera": "Cameras",
-    "person": "Persons"
+  "dashboard": {
+    "analytics": "Analytics",
+    "workspace": "Workspace"
   },
   "live": {
     "live": "Live Preview"
   },
-  "system": {
-    "dept": "Department Management",
-    "log": "Operation Log",
-    "menu": "Menu Management",
-    "role": "Role Management",
-    "system": "System Management",
-    "user": "User Management"
+  "ops": {
+    "network": "Network Config",
+    "ops": "Operations",
+    "time": "Time Sync"
   },
-  "dashboard": {
-    "analytics": "Analytics",
-    "workspace": "Workspace",
-    "title": "Dashboard"
+  "resource": {
+    "camera": "Camera",
+    "person": "Person Management",
+    "resource": "Resource"
+  },
+  "ai": {
+    "ai": "AI Algorithm",
+    "algorithm": "Algorithm Packages"
+  },
+  "system": {
+    "dept": "Department",
+    "log": "Operation Log",
+    "menu": "Menu",
+    "role": "Role",
+    "system": "System",
+    "user": "User"
   }
 }

@@ -2,12 +2,12 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { PersonApi } from '#/api';
 
-import { onActivated, ref } from 'vue';
+import { ref } from 'vue';
 
-import { Page, useVbenModal, VbenLoading } from '@vben/common-ui';
+import { Page, useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
-import { Alert, Button, message, Popconfirm, Space } from 'ant-design-vue';
+import { Button, message, Popconfirm } from 'ant-design-vue';
 
 import { useVbenForm, z } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -23,8 +23,6 @@ type PersonFormValues = {
   name: string;
   personId?: string;
 };
-
-const GRID_MIN_LOADING_TIME = 200;
 
 const currentEditPersonId = ref<null | string>(null);
 const selectedPersons = ref<PersonApi.PersonItem[]>([]);
@@ -85,9 +83,6 @@ const [Form, formApi] = useVbenForm<PersonFormValues>({
 
 // 人员新增/编辑弹窗
 const [Modal, modalApi] = useVbenModal({
-  onCancel() {
-    modalApi.close();
-  },
   onConfirm: async () => {
     const { valid } = await formApi.validate();
     if (!valid) return;
@@ -108,7 +103,7 @@ const [Modal, modalApi] = useVbenModal({
         message.success($t('system.common.success'));
       }
       modalApi.close();
-      gridApi.query();
+      gridApi.reload();
     } catch {
       // 错误由拦截器统一提示
     } finally {
@@ -126,6 +121,7 @@ function openAddModal() {
 
 function openEditModal(record: PersonApi.PersonItem) {
   currentEditPersonId.value = record.personId;
+  formApi.reset();
   formApi.setValues({
     name: record.name,
     personId: record.personId,
@@ -139,7 +135,7 @@ async function handleDelete(record: PersonApi.PersonItem) {
     await deletePersonApi(record.personId);
     message.success($t('system.common.success'));
     handleClearSelection();
-    gridApi.query();
+    gridApi.reload();
   } catch {
     // 拦截器提示错误
   }
@@ -152,10 +148,15 @@ async function handleBatchDelete() {
     await batchDeletePersonApi({ personIds });
     message.success($t('system.common.success'));
     handleClearSelection();
-    gridApi.query();
+    gridApi.reload();
   } catch {
     // 拦截器提示错误
   }
+}
+
+function handleClearSelection() {
+  gridApi.grid?.clearCheckboxRow();
+  selectedPersons.value = [];
 }
 
 const gridOptions: VxeTableGridOptions<PersonApi.PersonItem> = {
@@ -190,20 +191,17 @@ const gridOptions: VxeTableGridOptions<PersonApi.PersonItem> = {
       field: 'actions',
       fixed: 'right',
       showOverflow: false,
-      slots: { default: 'action' },
-      title: $t('resource.person.action'),
-      width: 200,
+      slots: { default: 'actions' },
+      title: $t('system.common.action'),
+      width: 150,
     },
   ],
-  height: 'auto',
   pagerConfig: {
     enabled: true,
   },
   proxyConfig: {
     ajax: {
       query: async ({ page }, formValues) => {
-        // 翻页或筛选后清空 VXE 实际勾选状态，避免本地数组与表格状态不一致。
-        handleClearSelection();
         return await getPersonPageApi({
           page: page.currentPage,
           pageSize: page.pageSize,
@@ -211,9 +209,6 @@ const gridOptions: VxeTableGridOptions<PersonApi.PersonItem> = {
         });
       },
     },
-  },
-  toolbarConfig: {
-    search: true,
   },
 };
 
@@ -248,117 +243,86 @@ const [Grid, gridApi] = useVbenVxeGrid({
   },
   gridOptions,
 });
-
-// 清空人员选择，同时同步清理 VXE Grid 的内部 checkbox 状态。
-function handleClearSelection() {
-  gridApi.grid?.clearCheckboxRow?.();
-  selectedPersons.value = [];
-}
-
-// KeepAlive 页面再次激活时刷新当前筛选和分页，避免缓存列表过期。
-let hasActivated = false;
-onActivated(() => {
-  if (!hasActivated) {
-    hasActivated = true;
-    return;
-  }
-  handleClearSelection();
-  void gridApi.query();
-});
 </script>
 
 <template>
   <Page auto-content-height>
-    <div class="h-full flex flex-col gap-3">
-      <Alert
-        v-if="selectedPersons.length > 0"
-        class="mb-1"
-        show-icon
-        type="info"
-      >
-        <template #message>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span>
-                {{
-                  $t('system.common.selectedCount', {
-                    count: selectedPersons.length,
-                  })
-                }}
-              </span>
-              <Button type="link" size="small" @click="handleClearSelection">
-                {{ $t('system.common.clearSelection') }}
-              </Button>
-            </div>
-            <Popconfirm
-              :title="
-                $t('resource.person.batchDeleteConfirm', {
-                  count: selectedPersons.length,
-                })
-              "
-              :ok-text="$t('system.common.confirm')"
-              :cancel-text="$t('system.common.cancel')"
-              @confirm="handleBatchDelete"
-            >
-              <Button
-                v-access:code="['resource:person:delete']"
-                danger
-                size="small"
-                type="link"
-              >
-                {{ $t('common.delete') }}
-              </Button>
-            </Popconfirm>
-          </div>
-        </template>
-      </Alert>
-
-      <Grid>
-        <template #loading>
-          <VbenLoading
-            :min-loading-time="GRID_MIN_LOADING_TIME"
-            :spinning="true"
-          />
-        </template>
-        <template #toolbar-tools>
-          <Space>
-            <Button
-              v-access:code="['resource:person:add']"
-              type="primary"
-              @click="openAddModal"
-            >
-              {{ $t('resource.person.add') }}
-            </Button>
-          </Space>
-        </template>
-
-        <template #action="{ row }">
-          <Space>
-            <Button
-              v-access:code="['resource:person:edit']"
-              size="small"
-              type="link"
-              @click="openEditModal(row)"
-            >
-              {{ $t('common.edit') }}
-            </Button>
-            <Popconfirm
-              :title="$t('resource.person.deleteConfirm')"
-              @confirm="handleDelete(row)"
-            >
-              <Button
-                v-access:code="['resource:person:delete']"
-                danger
-                size="small"
-                type="link"
-              >
-                {{ $t('common.delete') }}
-              </Button>
-            </Popconfirm>
-          </Space>
-        </template>
-      </Grid>
+    <div
+      v-if="selectedPersons.length > 0"
+      class="mb-3 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-sm"
+    >
+      <div class="flex items-center gap-2">
+        <span class="text-foreground font-medium">
+          {{
+            $t('system.common.selectedCount', {
+              count: selectedPersons.length,
+            })
+          }}
+        </span>
+        <Button type="link" size="small" @click="handleClearSelection">
+          {{ $t('system.common.clearSelection') }}
+        </Button>
+      </div>
+      <div class="flex items-center gap-2">
+        <Popconfirm
+          :title="
+            $t('resource.person.batchDeleteConfirm', {
+              count: selectedPersons.length,
+            })
+          "
+          :ok-text="$t('system.common.confirm')"
+          :cancel-text="$t('system.common.cancel')"
+          @confirm="handleBatchDelete"
+        >
+          <Button
+            v-access:code="['resource:person:delete']"
+            type="primary"
+            danger
+            size="small"
+          >
+            {{ $t('system.common.batchDelete') }}
+          </Button>
+        </Popconfirm>
+      </div>
     </div>
+
+    <Grid>
+      <template #toolbar-tools>
+        <Button
+          v-access:code="['resource:person:add']"
+          type="primary"
+          @click="openAddModal"
+        >
+          {{ $t('resource.person.add') }}
+        </Button>
+      </template>
+
+      <template #actions="{ row }">
+        <Button
+          v-access:code="['resource:person:edit']"
+          size="small"
+          type="link"
+          @click="openEditModal(row)"
+        >
+          {{ $t('system.common.edit') }}
+        </Button>
+        <Popconfirm
+          :title="$t('resource.person.deleteConfirm')"
+          :ok-text="$t('system.common.confirm')"
+          :cancel-text="$t('system.common.cancel')"
+          @confirm="handleDelete(row)"
+        >
+          <Button
+            v-access:code="['resource:person:delete']"
+            danger
+            size="small"
+            type="link"
+          >
+            {{ $t('system.common.delete') }}
+          </Button>
+        </Popconfirm>
+      </template>
+    </Grid>
 
     <Modal>
       <Form />

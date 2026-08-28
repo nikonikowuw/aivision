@@ -80,6 +80,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	personRepository := repository.NewPersonRepository(gormDB)
 	personService := service.NewPersonService(personRepository)
 	personHandler := api.NewPersonHandler(personService)
+	algorithmRepository := repository.NewAlgorithmRepository(gormDB)
+	algorithmService := service.NewAlgorithmService(algorithmRepository, engineClient, zapLogger)
+	algorithmHandler := api.NewAlgorithmHandler(algorithmService)
 	deps := router.Deps{
 		ErrorHandler:           handlerFunc,
 		AuthMiddleware:         authMiddleware,
@@ -97,6 +100,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		NetworkHandler:         networkHandler,
 		CameraHandler:          cameraHandler,
 		PersonHandler:          personHandler,
+		AlgorithmHandler:       algorithmHandler,
 	}
 	engine := router.New(cfg, deps)
 	desiredStateAdapter := engineipc.UnavailableDesiredStateAdapter()

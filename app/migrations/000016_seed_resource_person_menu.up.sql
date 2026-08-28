@@ -1,4 +1,4 @@
--- 000014_seed_resource_person_menu.up.sql
+-- 000016_seed_resource_person_menu.up.sql
 -- 幂等写入资源管理(Resource)下人员管理(ResourcePerson)菜单与权限按钮
 
 DO $$

@@ -144,6 +144,9 @@
     "actionNetworkConfirm": "确认网络变更",
     "actionNetworkReset": "恢复出厂设置",
     "actionNetworkRollback": "回滚网络配置",
-    "actionNetworkStartupRecovery": "启动网络恢复"
+    "actionNetworkStartupRecovery": "启动网络恢复",
+    "actionAlgoUpload": "安装算法包",
+    "actionAlgoActivate": "激活算法版本",
+    "actionAlgoUninstall": "卸载算法版本"
   }
 }

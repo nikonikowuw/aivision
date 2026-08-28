@@ -236,6 +236,11 @@ var actionI18nMap = map[string]string{
 	"POST /api/network/transactions/:transactionId/confirm":   "system.log.actionNetworkConfirm",
 	"POST /api/network/transactions/:transactionId/cancel":    "system.log.actionNetworkCancel",
 	"POST /api/network/interfaces/:interfaceId/factory-reset": "system.log.actionNetworkReset",
+
+	// Algorithm
+	"POST /api/algorithm/upload":                        "system.log.actionAlgoUpload",
+	"PUT /api/algorithm/:id/versions/:version/activate": "system.log.actionAlgoActivate",
+	"DELETE /api/algorithm/:id/versions/:version":       "system.log.actionAlgoUninstall",
 }
 
 // inferAction 根据 Gin FullPath 和 Method 推断语义化的 i18n action key，未匹配则 fallback 到 "Method Path"。

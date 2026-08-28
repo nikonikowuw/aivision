@@ -1,4 +1,4 @@
--- 000013_add_persons.up.sql
+-- 000015_add_persons.up.sql
 -- 人员基础信息表（人员管理 MVP）
 -- 遵循项目规范：显式 snake_case 列、无外键、毫秒软删除（BaseModel）。
 -- person_id 在包含软删除的所有记录中保持唯一。

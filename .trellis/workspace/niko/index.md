@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
+- **Total Sessions**: 26
 - **Last Active**: 2026-08-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~766 | Active |
+| `journal-1.md` | ~788 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-08-28 | Algorithm Package Management & Face Recognition Package Implementation | `a2cdd2d`, `e45a4d9` | `dev` |
 | 25 | 2026-08-28 | 完成摄像头实时预览功能 | `afaf135` | `dev` |
 | 24 | 2026-08-27 | Person Management MVP | `de26c68` | `dev` |
 | 23 | 2026-08-27 | RTSP Camera Source MVP | `cee5031`, `f000819`, `86ac888`, `e2a1c8b`, `f74b914` | `dev` |

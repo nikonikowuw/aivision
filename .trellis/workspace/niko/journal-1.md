@@ -764,3 +764,25 @@ Implement person management MVP with backend CRUD, sync APIs, and frontend pages
 ### Status
 
 [OK] **Completed**
+
+
+## Session 26: Algorithm Package Management & Face Recognition Package Implementation
+
+**Date**: 2026-08-28
+**Task**: Algorithm Package Management & Face Recognition Package Implementation
+**Branch**: `dev`
+
+### Summary
+
+Completed end-to-end algorithm package lifecycle management: backend tar safety & validation, gRPC/IPC package installation & activation, face_recognition algo contract and macOS self-contained package implementation with best-shot selection, and frontend management console.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a2cdd2d` | (see git log) |
+| `e45a4d9` | (see git log) |
+
+### Status
+
+[OK] **Completed**

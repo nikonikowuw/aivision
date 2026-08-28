@@ -71,5 +71,15 @@
     "createdAt": "Created At",
     "updatedAt": "Updated At",
     "action": "Action"
+  },
+  "task": {
+    "add": "Add Task",
+    "edit": "Edit Task",
+    "delete": "Delete Task",
+    "toggleEnabled": "Toggle Task",
+    "instanceAdd": "Add Algorithm Instance",
+    "instanceEdit": "Edit Algorithm Instance",
+    "instanceToggleEnabled": "Toggle Algorithm Instance",
+    "instanceDelete": "Delete Algorithm Instance"
   }
 }

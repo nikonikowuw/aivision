@@ -241,6 +241,16 @@ var actionI18nMap = map[string]string{
 	"POST /api/algorithm/upload":                        "system.log.actionAlgoUpload",
 	"PUT /api/algorithm/:id/versions/:version/activate": "system.log.actionAlgoActivate",
 	"DELETE /api/algorithm/:id/versions/:version":       "system.log.actionAlgoUninstall",
+
+	// Task（任务与实例启停、参数热更新均入操作日志，PRD §7.16.2）
+	"POST /api/task":                             "resource.task.add",
+	"PUT /api/task/:cameraId":                    "resource.task.edit",
+	"PUT /api/task/:cameraId/enabled":            "resource.task.toggleEnabled",
+	"DELETE /api/task/:cameraId":                 "resource.task.delete",
+	"POST /api/task/instance":                    "resource.task.instanceAdd",
+	"PUT /api/task/instance/:instanceId":         "resource.task.instanceEdit",
+	"PUT /api/task/instance/:instanceId/enabled": "resource.task.instanceToggleEnabled",
+	"DELETE /api/task/instance/:instanceId":      "resource.task.instanceDelete",
 }
 
 // inferAction 根据 Gin FullPath 和 Method 推断语义化的 i18n action key，未匹配则 fallback 到 "Method Path"。

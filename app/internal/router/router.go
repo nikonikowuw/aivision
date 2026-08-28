@@ -54,6 +54,11 @@ const (
 	personRoutePath      = "/person"
 	personIDRoutePath    = "/:personId"
 	algorithmRoutePath   = "/algorithm"
+	taskRoutePath        = "/task"
+	instanceRoutePath    = "/instance"
+	availableCamerasPath = "/available-cameras"
+	enabledRoutePath     = "/enabled"
+	listRoutePath        = "/list"
 	openV1RoutePath      = "/v1/open"
 )
 
@@ -77,6 +82,7 @@ type Deps struct {
 	CameraHandler          *api.CameraHandler
 	PersonHandler          *api.PersonHandler
 	AlgorithmHandler       *api.AlgorithmHandler
+	TaskHandler            *api.TaskHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -291,6 +297,34 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+algorithmRoutePath+"/upload", "ai:algorithm:upload")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+algorithmRoutePath+idRoutePath+"/versions/:version/activate", "ai:algorithm:activate")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+algorithmRoutePath+idRoutePath+"/versions/:version", "ai:algorithm:uninstall")
+
+		taskGroup := apiGroup.Group(taskRoutePath)
+		{
+			taskGroup.GET(listRoutePath, deps.TaskHandler.ListTasks)
+			taskGroup.POST("", deps.TaskHandler.CreateTask)
+			taskGroup.GET(availableCamerasPath, deps.TaskHandler.ListAvailableCameras)
+			taskGroup.PUT("/:cameraId", deps.TaskHandler.UpdateTask)
+			taskGroup.PUT("/:cameraId"+enabledRoutePath, deps.TaskHandler.SetTaskEnabled)
+			taskGroup.DELETE("/:cameraId", deps.TaskHandler.DeleteTask)
+
+			taskGroup.GET(instanceRoutePath+listRoutePath, deps.TaskHandler.ListInstances)
+			taskGroup.POST(instanceRoutePath, deps.TaskHandler.CreateInstance)
+			taskGroup.PUT(instanceRoutePath+"/:instanceId", deps.TaskHandler.UpdateInstance)
+			taskGroup.PUT(instanceRoutePath+"/:instanceId"+enabledRoutePath, deps.TaskHandler.SetInstanceEnabled)
+			taskGroup.DELETE(instanceRoutePath+"/:instanceId", deps.TaskHandler.DeleteInstance)
+		}
+		// 页面权限 resource:task；按钮权限 add/edit/delete（对齐 camera 的权限注册方式）。
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+taskRoutePath+listRoutePath, "resource:task")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+taskRoutePath, "resource:task:add")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+taskRoutePath+availableCamerasPath, "resource:task:add")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+"/:cameraId", "resource:task:edit")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+"/:cameraId"+enabledRoutePath, "resource:task:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+taskRoutePath+"/:cameraId", "resource:task:delete")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+taskRoutePath+instanceRoutePath+listRoutePath, "resource:task")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+taskRoutePath+instanceRoutePath, "resource:task:add")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+instanceRoutePath+"/:instanceId", "resource:task:edit")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+instanceRoutePath+"/:instanceId"+enabledRoutePath, "resource:task:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+taskRoutePath+instanceRoutePath+"/:instanceId", "resource:task:delete")
 	}
 
 	// 外部开放同步 API：位于认证与权限中间件之外，使用受控 IP 白名单保护

@@ -81,22 +81,23 @@ cd app && go test ./internal/repository/ -run TestTask -v
 
 **本 Phase 结束即打通后端全链路**，可脱离前端验证。
 
-- [ ] `app/internal/service/revision.go`：`RevisionBumper` 接口
-- [ ] `app/internal/service/task.go`：`TaskService` 接口与实现
+- [x] `app/internal/service/revision.go`：`RevisionBumper` 接口
+- [x] `app/internal/service/task.go`：`TaskService` 接口与实现
   - 任务：List / Create / Update / SetEnabled / Delete
   - 实例：ListByCamera / Create / Update（整份提交）/ SetEnabled / Delete
   - 校验顺序固定：schema → 几何 → 配额（design §4.1）
   - 辅助：`ListAvailableCameras`——未建任务的摄像头轻量列表，供 `GET /api/task/available-cameras` 下拉（design §8 数据契约）
-- [ ] 配额上限缓存：启动异步 `QueryProfile`，5 分钟刷新，`total == 0` 视为未获取（design §7 兼容性）
-- [ ] `desiredStateAdapter`：实现 `engineipc.DesiredStateAdapter`
-- [ ] `reportAdapter`：实现 `engineipc.ReportAdapter`，**嵌入 `unavailableReportAdapter`** 以保留未实现方法的 fail-closed 行为
-- [ ] `app/internal/api/task.go`：HTTP handler + DTO 绑定
-- [ ] `app/internal/router/router.go`：路由常量 + Group + `PermMiddleware.Register`
+  - 附：`paramschema.go` 自研受限 JSON Schema 校验器（无第三方依赖，manifest-schema §3 受限子集 + Draft-07 语义）
+- [x] 配额上限缓存：启动异步 `QueryProfile`，5 分钟刷新，`total == 0` 视为未获取（design §7 兼容性）
+- [x] `desiredStateAdapter`：实现 `engineipc.DesiredStateAdapter`
+- [x] `reportAdapter`：实现 `engineipc.ReportAdapter`，**嵌入 `unavailableReportAdapter`** 以保留未实现方法的 fail-closed 行为（实际：类型未导出不可嵌入，改为显式返回 `IPC_UNAVAILABLE`，语义一致）
+- [x] `app/internal/api/task.go`：HTTP handler + DTO 绑定
+- [x] `app/internal/router/router.go`：路由常量 + Group + `PermMiddleware.Register`
   - 页面权限 `resource:task`，按钮权限 `resource:task:add` / `:edit` / `:delete`
-- [ ] 写操作接入操作日志（§7.16.2：任务与实例启停、参数热更新）
-- [ ] `app/cmd/api/wire.go`：替换两个 `Unavailable*` 为真实 adapter
-- [ ] `make wire` 重新生成 DI 代码
-- [ ] `task_service_test.go`：配额拒绝不写库不 bump、整份更新原子性、状态码未变不写库
+- [x] 写操作接入操作日志（§7.16.2：任务与实例启停、参数热更新）
+- [x] `app/cmd/api/wire.go`：替换两个 `Unavailable*` 为真实 adapter
+- [x] `make wire` 重新生成 DI 代码
+- [x] `task_service_test.go`：配额拒绝不写库不 bump、整份更新原子性、状态码未变不写库
 
 **验证**
 

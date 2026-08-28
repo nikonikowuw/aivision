@@ -34,7 +34,9 @@ func Success(c *gin.Context, data any) {
 }
 
 // WriteFail 按请求语言输出统一失败响应，供错误中间件 / NoRoute / NoMethod / Recovery 复用。
-func WriteFail(c *gin.Context, status, code int) {
+// args 可选：插值到 errno 文案模板占位符的参数（见 errno.MessageWithArgs，
+// 如 CodeResourceExceeded 的已用/申请/上限三个数字）。
+func WriteFail(c *gin.Context, status, code int, args ...any) {
 	lang := errno.LangFromHeader(c.GetHeader("Accept-Language"))
-	c.JSON(status, Fail(code, errno.Message(lang, code)))
+	c.JSON(status, Fail(code, errno.MessageWithArgs(lang, code, args...)))
 }

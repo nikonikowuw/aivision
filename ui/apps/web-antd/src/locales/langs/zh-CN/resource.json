@@ -71,5 +71,15 @@
     "createdAt": "创建时间",
     "updatedAt": "更新时间",
     "action": "操作"
+  },
+  "task": {
+    "add": "新增任务",
+    "edit": "编辑任务",
+    "delete": "删除任务",
+    "toggleEnabled": "启停任务",
+    "instanceAdd": "新增算法实例",
+    "instanceEdit": "编辑算法实例",
+    "instanceToggleEnabled": "启停算法实例",
+    "instanceDelete": "删除算法实例"
   }
 }

@@ -3,6 +3,7 @@ package errno
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -153,7 +154,7 @@ var messages = map[string]map[int]string{
 		CodeNTPSyncFailed:                 "NTP 同步失败",
 		CodeNTPExecutorUnavailable:        "底层对时执行器不可用",
 		CodeCameraInUse:                   "摄像头已关联分析任务，禁止删除",
-		CodeResourceExceeded:              "计算资源超出可分配上限",
+		CodeResourceExceeded:              "计算资源超出可分配上限（已用 %d / 申请 %d / 上限 %d）",
 		CodeFPSTierExceeded:               "请求的采样帧率超过算法包支持的最高档位",
 		CodeRuleOutOfBounds:               "检测规则坐标超出有效画面范围",
 		CodeRuleTooFewPoints:              "检测规则顶点数量不足",
@@ -215,7 +216,7 @@ var messages = map[string]map[int]string{
 		CodeNTPSyncFailed:                 "Failed to synchronize NTP",
 		CodeNTPExecutorUnavailable:        "NTP executor is unavailable",
 		CodeCameraInUse:                   "Camera is associated with an analysis task and cannot be deleted",
-		CodeResourceExceeded:              "Compute resource request exceeds the allocatable limit",
+		CodeResourceExceeded:              "Compute resource request exceeds the allocatable limit (used %d / requested %d / available %d)",
 		CodeFPSTierExceeded:               "Requested analysis FPS exceeds the highest declared tier",
 		CodeRuleOutOfBounds:               "Detection rule coordinates are out of the normalized frame bounds",
 		CodeRuleTooFewPoints:              "Detection rule has too few points",
@@ -277,7 +278,7 @@ var messages = map[string]map[int]string{
 		CodeNTPSyncFailed:                 "NTP 同步失敗",
 		CodeNTPExecutorUnavailable:        "底層對時執行器不可用",
 		CodeCameraInUse:                   "攝影機已關聯分析任務，禁止刪除",
-		CodeResourceExceeded:              "計算資源超出可分配上限",
+		CodeResourceExceeded:              "計算資源超出可分配上限（已用 %d / 申請 %d / 上限 %d）",
 		CodeFPSTierExceeded:               "請求的取樣幀率超過演算法包支援的最高檔位",
 		CodeRuleOutOfBounds:               "偵測規則座標超出有效畫面範圍",
 		CodeRuleTooFewPoints:              "偵測規則頂點數量不足",
@@ -327,12 +328,20 @@ func LangFromHeader(header string) string {
 
 // Error 携带业务错误码的业务错误。文案不在此固化，统一由
 // response/middleware 按请求语言经 Message 获取，避免绕过 i18n。
+// args 是可选的文案插值参数：文案模板保留在 errno 表内，占位符按
+// fmt.Sprintf 语义填充（如 CodeResourceExceeded 的已用/申请/上限）。
 type Error struct {
 	Code int
+	args []any
 }
 
 func (e *Error) Error() string {
-	return Message(DefaultLang, e.Code)
+	return MessageWithArgs(DefaultLang, e.Code, e.args...)
+}
+
+// Args 返回该错误携带的文案插值参数（未携带时返回 nil）。
+func (e *Error) Args() []any {
+	return e.args
 }
 
 // Is 判定错误码是否一致。
@@ -350,6 +359,12 @@ func Is(err error, code int) bool {
 // NewError 构造携带业务错误码的 Error。
 func NewError(code int) *Error {
 	return &Error{Code: code}
+}
+
+// NewErrorArgs 构造携带业务错误码与文案插值参数的 Error。
+// 只有 errno 文案表明确声明占位符的错误码才应携带 args（当前仅 CodeResourceExceeded）。
+func NewErrorArgs(code int, args ...any) *Error {
+	return &Error{Code: code, args: args}
 }
 
 // New 是 NewError 的简写别名。
@@ -372,4 +387,14 @@ func Message(lang string, code int) string {
 		return fallback
 	}
 	return messages[DefaultLang][unknownCode]
+}
+
+// MessageWithArgs 返回指定语言 lang 下错误码 code 的文案，并按 fmt.Sprintf
+// 将 args 插值到文案模板的占位符中；args 为空时等价于 Message。
+func MessageWithArgs(lang string, code int, args ...any) string {
+	msg := Message(lang, code)
+	if len(args) == 0 {
+		return msg
+	}
+	return fmt.Sprintf(msg, args...)
 }

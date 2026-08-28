@@ -25,6 +25,9 @@ type CameraRepository interface {
 	GetByID(ctx context.Context, id uint64) (*model.Camera, error)
 	GetByCameraID(ctx context.Context, cameraID string) (*model.Camera, error)
 	ListPage(ctx context.Context, filter *CameraFilter) ([]model.Camera, int64, error)
+	// ListAll 返回全部未软删摄像头（规模受平台摄像头上限约束，供任务配置下拉
+	// 全量过滤「未建任务」摄像头，无分页，design §8）。
+	ListAll(ctx context.Context) ([]model.Camera, error)
 }
 
 type cameraRepository struct {
@@ -105,4 +108,10 @@ func (r *cameraRepository) ListPage(ctx context.Context, filter *CameraFilter) (
 		return nil, 0, err
 	}
 	return cameras, total, nil
+}
+
+func (r *cameraRepository) ListAll(ctx context.Context) ([]model.Camera, error) {
+	var cameras []model.Camera
+	err := r.db.WithContext(ctx).Order("id desc").Find(&cameras).Error
+	return cameras, err
 }

@@ -83,6 +83,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	algorithmRepository := repository.NewAlgorithmRepository(gormDB)
 	algorithmService := service.NewAlgorithmService(algorithmRepository, engineClient, zapLogger)
 	algorithmHandler := api.NewAlgorithmHandler(algorithmService)
+	taskRepository := repository.NewTaskRepository(gormDB)
+	reportAdapter := service.NewReportAdapter(taskRepository, zapLogger)
+	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
+	taskHandler := api.NewTaskHandler(taskService)
 	deps := router.Deps{
 		ErrorHandler:           handlerFunc,
 		AuthMiddleware:         authMiddleware,
@@ -101,10 +105,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		CameraHandler:          cameraHandler,
 		PersonHandler:          personHandler,
 		AlgorithmHandler:       algorithmHandler,
+		TaskHandler:            taskHandler,
 	}
 	engine := router.New(cfg, deps)
-	desiredStateAdapter := engineipc.UnavailableDesiredStateAdapter()
-	reportAdapter := engineipc.UnavailableReportAdapter()
+	desiredStateAdapter := service.NewDesiredStateAdapter(taskRepository, zapLogger)
 	runtime := engineipc.NewRuntime(zapLogger, desiredStateAdapter, reportAdapter)
 	app := &App{
 		DB:           gormDB,

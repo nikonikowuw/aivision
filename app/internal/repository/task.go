@@ -38,6 +38,9 @@ type TaskRepository interface {
 	GetTaskByCameraID(ctx context.Context, cameraID string) (*model.AnalysisTask, error)
 	ListTaskPage(ctx context.Context, filter *TaskFilter) ([]model.AnalysisTask, int64, error)
 	CountTasksByCameraID(ctx context.Context, cameraID string) (int64, error) // 供删摄像头保护
+	// ListTaskCameraIDs 返回全部未软删任务的 camera_id，供 available-cameras
+	// 的 service 层内存过滤（design §8）。
+	ListTaskCameraIDs(ctx context.Context) ([]string, error)
 
 	// 实例操作
 	CreateInstance(ctx context.Context, inst *model.AlgorithmInstance) error
@@ -157,6 +160,14 @@ func (r *taskRepository) CountTasksByCameraID(ctx context.Context, cameraID stri
 		Where("camera_id = ?", cameraID).
 		Count(&count).Error
 	return count, err
+}
+
+func (r *taskRepository) ListTaskCameraIDs(ctx context.Context) ([]string, error) {
+	var ids []string
+	err := r.db.WithContext(ctx).
+		Model(&model.AnalysisTask{}).
+		Pluck("camera_id", &ids).Error
+	return ids, err
 }
 
 // ── 实例 ──────────────────────────────────────────────────────────────

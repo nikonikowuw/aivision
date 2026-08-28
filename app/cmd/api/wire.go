@@ -64,16 +64,22 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		repository.NewAlgorithmRepository,
 		service.NewAlgorithmService,
 		api.NewAlgorithmHandler,
+		repository.NewTaskRepository,
+		service.NewTaskService,
+		service.NewDesiredStateAdapter,
+		service.NewReportAdapter,
+		api.NewTaskHandler,
 		middleware.NewOpenPersonIPWhitelistMiddleware,
 		router.New,
 		wire.Struct(new(router.Deps), "*"),
-		// gRPC over UDS：生产注入 fail-closed 的 unavailable adapters、Runtime 与 EngineClient。
-		engineipc.UnavailableDesiredStateAdapter,
-		engineipc.UnavailableReportAdapter,
+		// gRPC over UDS：Go 侧业务实现 DesiredState/Report 适配器，Engine 经 app.sock
+		// 拉取期望状态、上报运行状态；配额上限经 engine.sock 的 QueryProfile 获取。
 		engineipc.NewRuntime,
 		engineipc.NewEngineClient,
 		wire.Bind(new(ipcRuntime), new(*engineipc.Runtime)),
 		wire.Bind(new(service.CameraProbeClient), new(*engineipc.EngineClient)),
+		wire.Bind(new(service.ProfileClient), new(*engineipc.EngineClient)),
+		wire.Bind(new(engineipc.ReportAdapter), new(*service.ReportAdapter)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

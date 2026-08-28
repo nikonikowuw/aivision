@@ -34,14 +34,18 @@ func ErrorHandler() gin.HandlerFunc {
 				status = http.StatusForbidden
 			case errno.CodeInvalidParam, errno.CodeFileTooLarge, errno.CodeFileTypeNotAllowed, errno.CodeNetworkInvalidConfig, errno.CodeNetworkGatewayPoolInvalid:
 				status = http.StatusBadRequest
-			case errno.CodeNotFound, errno.CodeNetworkTransactionNotFound:
+			case errno.CodeNotFound, errno.CodeNetworkTransactionNotFound, errno.CodeTaskNotFound, errno.CodeInstanceNotFound:
 				status = http.StatusNotFound
-			case errno.CodeNetworkTransactionPending, errno.CodeNetworkTransactionExpired, errno.CodeNetworkInterfaceNotManaged, errno.CodeNetworkOwnershipConflict, errno.CodeNetworkExternalDrift, errno.CodeNetworkBondSlaveInvalid, errno.CodeNetworkBondModeConflict, errno.CodeNetworkDhcpServerConflict:
+			case errno.CodeNetworkTransactionPending, errno.CodeNetworkTransactionExpired, errno.CodeNetworkInterfaceNotManaged, errno.CodeNetworkOwnershipConflict, errno.CodeNetworkExternalDrift, errno.CodeNetworkBondSlaveInvalid, errno.CodeNetworkBondModeConflict, errno.CodeNetworkDhcpServerConflict,
+				errno.CodeCameraInUse, errno.CodeTaskAlreadyExists:
 				status = http.StatusConflict
 			case errno.CodeNetworkUnsupported, errno.CodeNetworkApplyFailed, errno.CodeNetworkRecoveryFailed, errno.CodeNetworkStateCorrupt, errno.CodeNetworkNotReady, errno.CodeNetworkLacpNegotiationFailed:
 				status = http.StatusServiceUnavailable
+			case errno.CodeResourceExceeded, errno.CodeFPSTierExceeded, errno.CodeRuleOutOfBounds, errno.CodeRuleTooFewPoints, errno.CodeRuleSelfIntersect:
+				status = http.StatusBadRequest
 			}
-			response.WriteFail(c, status, e.Code)
+			// 携带文案插值参数的错误（如配额拒绝的三个数字）随响应输出。
+			response.WriteFail(c, status, e.Code, e.Args()...)
 			return
 		}
 

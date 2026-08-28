@@ -188,6 +188,32 @@ func setupMiddlewareTestApp(t *testing.T) (*gin.Engine, *gorm.DB, service.Operat
 	permMid.Register(http.MethodPost, "/api/camera/:id/preview/start", "live:preview:stream")
 	permMid.Register(http.MethodPost, "/api/camera/:id/preview/stop", "live:preview:stream")
 
+	// Task：任务与实例写接口（路径与 router 装配一致，oplog 断言 action i18n key）。
+	taskGroup := apiGroup.Group("/task")
+	taskGroup.Use(authMid.Handler)
+	taskGroup.Use(permMid.Handler)
+	{
+		ok := func(c *gin.Context) {
+			response.Success(c, "ok")
+		}
+		taskGroup.POST("", ok)
+		taskGroup.PUT("/:cameraId", ok)
+		taskGroup.PUT("/:cameraId/enabled", ok)
+		taskGroup.DELETE("/:cameraId", ok)
+		taskGroup.POST("/instance", ok)
+		taskGroup.PUT("/instance/:instanceId", ok)
+		taskGroup.PUT("/instance/:instanceId/enabled", ok)
+		taskGroup.DELETE("/instance/:instanceId", ok)
+	}
+	permMid.Register(http.MethodPost, "/api/task", "resource:task:add")
+	permMid.Register(http.MethodPut, "/api/task/:cameraId", "resource:task:edit")
+	permMid.Register(http.MethodPut, "/api/task/:cameraId/enabled", "resource:task:edit")
+	permMid.Register(http.MethodDelete, "/api/task/:cameraId", "resource:task:delete")
+	permMid.Register(http.MethodPost, "/api/task/instance", "resource:task:add")
+	permMid.Register(http.MethodPut, "/api/task/instance/:instanceId", "resource:task:edit")
+	permMid.Register(http.MethodPut, "/api/task/instance/:instanceId/enabled", "resource:task:edit")
+	permMid.Register(http.MethodDelete, "/api/task/instance/:instanceId", "resource:task:delete")
+
 	return engine, db, oplogSrv, adminToken, normalToken
 }
 
@@ -581,6 +607,47 @@ func TestOplogActionInference(t *testing.T) {
 
 	page = waitForPage(t, oplogSrv, &service.LogPageQuery{PageSize: 100}, 16)
 	for _, tc := range personCases {
+		found := false
+		for _, item := range page.Items {
+			if item.Path == tc.path && item.Method == tc.method {
+				found = true
+				if item.Action != tc.wantAction {
+					t.Errorf("%s %s action = %q, want %q", tc.method, tc.path, item.Action, tc.wantAction)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("log item not found for %s %s", tc.method, tc.path)
+		}
+	}
+
+	// 任务路由动作映射（四位一体闭环：actionI18nMap + 前端翻译 + 此处断言）。
+	taskCases := []struct {
+		method     string
+		path       string
+		wantAction string
+	}{
+		{http.MethodPost, "/api/task", "resource.task.add"},
+		{http.MethodPut, "/api/task/cam-1", "resource.task.edit"},
+		{http.MethodPut, "/api/task/cam-1/enabled", "resource.task.toggleEnabled"},
+		{http.MethodDelete, "/api/task/cam-1", "resource.task.delete"},
+		{http.MethodPost, "/api/task/instance", "resource.task.instanceAdd"},
+		{http.MethodPut, "/api/task/instance/inst-1", "resource.task.instanceEdit"},
+		{http.MethodPut, "/api/task/instance/inst-1/enabled", "resource.task.instanceToggleEnabled"},
+		{http.MethodDelete, "/api/task/instance/inst-1", "resource.task.instanceDelete"},
+	}
+	for _, tc := range taskCases {
+		rec = httptest.NewRecorder()
+		req = httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		engine.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s %s status = %d, want 200", tc.method, tc.path, rec.Code)
+		}
+	}
+	page = waitForPage(t, oplogSrv, &service.LogPageQuery{PageSize: 100}, int64(16+len(taskCases)))
+	for _, tc := range taskCases {
 		found := false
 		for _, item := range page.Items {
 			if item.Path == tc.path && item.Method == tc.method {

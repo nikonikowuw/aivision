@@ -56,13 +56,13 @@ make -C app vet
 
 ## Phase 2：数据模型与仓储层
 
-- [ ] `app/internal/model/task.go`：`AnalysisTask`、`AlgorithmInstance`、`DetectionRule` / `DetectionPoint`
-  - task 与 instance 的状态码常量**分别定义**（枚举数值语义不同，见 design §2.2）
-- [ ] `app/migrations/000019_add_analysis_tasks.up.sql` / `.down.sql`：三张表 + 索引
-- [ ] `app/internal/repository/task.go`：`TaskRepository` 接口与实现
-- [ ] `InTx` 事务包装器：确保业务写与 `BumpRevision` 同事务
-- [ ] `LoadDesiredSnapshot`：JOIN cameras 取 rtsp_url，JOIN algorithms 取 active_version
-- [ ] `task_repository_test.go`：sqlite AutoMigrate 单测（遵循项目约定，AutoMigrate 仅用于单测）
+- [x] `app/internal/model/task.go`：`AnalysisTask`、`AlgorithmInstance`、`DetectionRule` / `DetectionPoint`
+  - 状态码常量按 task/instance 两套枚举分别定义（design §2.2）；软删除遵循 database-guidelines（毫秒 deleted_at=0 + 复合唯一索引，偏离 design §2.1 的 TIMESTAMPTZ 部分索引，系 spec CRITICAL 约束优先）
+- [x] `app/migrations/000019_add_analysis_tasks.up.sql` / `.down.sql`：三张表 + 索引
+- [x] `app/internal/repository/task.go`：`TaskRepository` 接口与实现
+- [x] `InTx` 事务包装器：确保业务写与 `BumpRevision` 同事务
+- [x] `LoadDesiredSnapshot`：JOIN cameras 取 rtsp_url，JOIN algorithms 取 active_version
+- [x] `task_repository_test.go`：sqlite AutoMigrate 单测（遵循项目约定，AutoMigrate 仅用于单测）
 
 **验证**
 

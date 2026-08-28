@@ -24,11 +24,12 @@ const (
 // 完整 RTSP URL（可含百分号编码 userinfo）按产品决策明文持久化，不做额外脱敏。
 type Camera struct {
 	BaseModel
-	CameraID string `gorm:"column:camera_id;size:36;not null;uniqueIndex:uk_cameras_camera_id" json:"cameraId"`
-	Protocol string `gorm:"column:protocol;size:16;not null;default:'rtsp'" json:"protocol"`
-	Name     string `gorm:"column:name;size:128;not null" json:"name"`
-	RtspURL  string `gorm:"column:rtsp_url;size:2048;not null" json:"rtspUrl"`
-	Remark   string `gorm:"column:remark;size:255;not null;default:''" json:"remark"`
+	CameraID   string `gorm:"column:camera_id;size:36;not null;uniqueIndex:uk_cameras_camera_id" json:"cameraId"`
+	Protocol   string `gorm:"column:protocol;size:16;not null;default:'rtsp'" json:"protocol"`
+	Name       string `gorm:"column:name;size:128;not null" json:"name"`
+	RtspURL    string `gorm:"column:rtsp_url;size:2048;not null" json:"rtspUrl"`
+	SubRtspURL string `gorm:"column:sub_rtsp_url;size:2048;not null;default:''" json:"subRtspUrl"`
+	Remark     string `gorm:"column:remark;size:255;not null;default:''" json:"remark"`
 	// 传输策略（当前固定 auto）。Go/C++ 通过协议/策略适配选择实现，前端不可编辑。
 	TransportPolicy string `gorm:"column:transport_policy;size:16;not null;default:'auto'" json:"transportPolicy"`
 

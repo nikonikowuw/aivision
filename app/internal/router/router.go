@@ -250,6 +250,8 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			cameraGroup.PUT(idRoutePath, deps.CameraHandler.UpdateCamera)
 			cameraGroup.DELETE(idRoutePath, deps.CameraHandler.DeleteCamera)
 			cameraGroup.POST(probeRoutePath, deps.CameraHandler.ProbeCamera)
+			cameraGroup.POST(idRoutePath+"/preview/start", deps.CameraHandler.StartLivePreview)
+			cameraGroup.POST(idRoutePath+"/preview/stop", deps.CameraHandler.StopLivePreview)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+cameraRoutePath+pageRoutePath, "resource:camera")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+cameraRoutePath, "resource:camera:add")
@@ -282,6 +284,8 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			openPersonGroup.PUT(personIDRoutePath, deps.PersonHandler.SyncUpsertPerson)
 			openPersonGroup.DELETE(personIDRoutePath, deps.PersonHandler.SyncDeletePerson)
 		}
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+cameraRoutePath+idRoutePath+"/preview/start", "live:preview:stream")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+cameraRoutePath+idRoutePath+"/preview/stop", "live:preview:stream")
 	}
 
 	return engine

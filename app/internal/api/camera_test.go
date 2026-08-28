@@ -41,6 +41,18 @@ func (f *fakeProbeClient) ProbeCamera(ctx context.Context, req *aivisionv1.Probe
 	return &aivisionv1.ProbeCameraResponse{}, nil
 }
 
+func (f *fakeProbeClient) StartCameraPreview(ctx context.Context, req *aivisionv1.StartCameraPreviewRequest, _ ...grpc.CallOption) (*aivisionv1.StartCameraPreviewResponse, error) {
+	return &aivisionv1.StartCameraPreviewResponse{
+		StreamPath: "/live/" + req.CameraId + "_main.live.flv",
+		HttpPort:   8080,
+		WsPort:     8080,
+	}, nil
+}
+
+func (f *fakeProbeClient) StopCameraPreview(ctx context.Context, req *aivisionv1.StopCameraPreviewRequest, _ ...grpc.CallOption) (*aivisionv1.StopCameraPreviewResponse, error) {
+	return &aivisionv1.StopCameraPreviewResponse{}, nil
+}
+
 type cameraAPIResp struct {
 	Code    int             `json:"code"`
 	Data    json.RawMessage `json:"data"`

@@ -148,3 +148,13 @@ func (c *EngineClient) QueryMetrics(ctx context.Context, req *aivisionv1.QueryMe
 func (c *EngineClient) ProbeCamera(ctx context.Context, req *aivisionv1.ProbeCameraRequest, opts ...grpc.CallOption) (*aivisionv1.ProbeCameraResponse, error) {
 	return call(c.raw.ProbeCamera, ctx, req, opts...)
 }
+
+// StartCameraPreview 请求开启摄像头预览拉流。
+func (c *EngineClient) StartCameraPreview(ctx context.Context, req *aivisionv1.StartCameraPreviewRequest, opts ...grpc.CallOption) (*aivisionv1.StartCameraPreviewResponse, error) {
+	return call(c.raw.StartCameraPreview, ctx, req, opts...)
+}
+
+// StopCameraPreview 停止摄像头预览拉流。
+func (c *EngineClient) StopCameraPreview(ctx context.Context, req *aivisionv1.StopCameraPreviewRequest, opts ...grpc.CallOption) (*aivisionv1.StopCameraPreviewResponse, error) {
+	return call(c.raw.StopCameraPreview, ctx, req, opts...)
+}

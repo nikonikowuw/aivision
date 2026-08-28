@@ -19,7 +19,7 @@ export const overridesPreferences = defineOverridesPreferences({
   // overrides
   app: {
     accessMode: 'backend',
-    defaultHomePath: '/dashboard',
+    defaultHomePath: '/live',
     name: import.meta.env.VITE_APP_TITLE,
   },
   copyright: {

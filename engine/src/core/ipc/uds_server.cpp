@@ -12,6 +12,7 @@
 #include "aivision/core/image_manager.hpp"
 #include "aivision/core/algo_manager.hpp"
 #include "aivision/core/algo_sandbox.hpp"
+#include "aivision/core/live_stream_manager.hpp"
 #include "aivision/core/logging/log_adapter.hpp"
 #include "aivision/core/probe_rtsp.hpp"
 #include "aivision/core/resource_ledger.hpp"
@@ -808,6 +809,44 @@ public:
         }
         return grpc::Status::OK;
     }
+
+    grpc::Status StartCameraPreview(grpc::ServerContext*,
+                                   const aivision::v1::StartCameraPreviewRequest* request,
+                                   aivision::v1::StartCameraPreviewResponse* response) override {
+        if (!request || request->camera_id().empty() || request->url().empty()) {
+            response->set_code("INVALID_ARGUMENT");
+            response->set_error_message("camera_id and url must not be empty");
+            return grpc::Status::OK;
+        }
+
+        std::string stream_path;
+        std::string error_message;
+        const std::string code = LiveStreamManager::instance().start_preview(
+            request->camera_id(), request->stream_type(), request->url(),
+            &stream_path, &error_message);
+
+        response->set_code(code);
+        response->set_error_message(error_message);
+        response->set_stream_path(stream_path);
+        const int32_t port = static_cast<int32_t>(LiveStreamManager::instance().get_http_port());
+        response->set_http_port(port);
+        response->set_ws_port(port);
+        return grpc::Status::OK;
+    }
+
+    grpc::Status StopCameraPreview(grpc::ServerContext*,
+                                  const aivision::v1::StopCameraPreviewRequest* request,
+                                  aivision::v1::StopCameraPreviewResponse* response) override {
+        if (!request || request->camera_id().empty()) {
+            response->set_code("INVALID_ARGUMENT");
+            response->set_error_message("camera_id must not be empty");
+            return grpc::Status::OK;
+        }
+
+        LiveStreamManager::instance().stop_preview(request->camera_id(), request->stream_type());
+        response->set_code("");
+        return grpc::Status::OK;
+    }
 private:
     struct RuntimeSnapshot {
         std::unordered_map<std::string, aivision::v1::CameraTaskConfig> task_configs;
@@ -988,7 +1027,7 @@ private:
         info.api_version = AV_ALGO_API_VERSION;
         if (package->abi->library_query(package->library, &info) != AV_OK ||
             std::string(info.algorithm_id) != algorithm_id || std::string(info.version) != version ||
-            std::string(info.algorithm_type) != "object_detection") {
+            !is_supported_algorithm_type(std::string(info.algorithm_type))) {
             error = "PACKAGE_METADATA_MISMATCH";
             return nullptr;
         }

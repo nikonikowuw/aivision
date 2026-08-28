@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "C++ 引擎单元测试与流媒体模块质量门禁"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Go 后端测试与代码规范检查"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Vue3 前端 pnpm check 与单元测试检查清单"}
+{"file": "docs/prd/ai-video-analytics-edge-platform-v1.0.md", "reason": "平台 PRD 实时预览与菜单规范"}

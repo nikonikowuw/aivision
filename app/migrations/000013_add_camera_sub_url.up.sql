@@ -1,0 +1,2 @@
+ALTER TABLE cameras 
+  ADD COLUMN IF NOT EXISTS sub_rtsp_url text NOT NULL DEFAULT '';

@@ -1,0 +1,27 @@
+{
+  "title": "即時預覽",
+  "split1": "單畫面",
+  "split4": "四分屏",
+  "split9": "九分屏",
+  "selectCamera": "選擇攝影機",
+  "noSignal": "暫無訊號",
+  "playing": "正在播放",
+  "buffering": "載入中...",
+  "reconnecting": "正在重新連接...",
+  "offline": "設備離線",
+  "mainStream": "主碼流",
+  "subStream": "子碼流",
+  "streamType": "碼流",
+  "fullScreen": "全螢幕",
+  "exitFullScreen": "退出全螢幕",
+  "closeStream": "關閉",
+  "refresh": "重新整理",
+  "screenshot": "截圖",
+  "searchCamera": "搜尋攝影機",
+  "noCameras": "暫無可用攝影機",
+  "preview": {
+    "start": "開始預覽",
+    "stop": "停止預覽",
+    "failed": "無法開啟即時預覽"
+  }
+}

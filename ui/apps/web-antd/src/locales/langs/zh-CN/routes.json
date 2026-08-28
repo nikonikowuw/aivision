@@ -9,6 +9,9 @@
     "camera": "摄像头",
     "person": "人员管理"
   },
+  "live": {
+    "live": "实时预览"
+  },
   "system": {
     "dept": "部门管理",
     "log": "操作日志",

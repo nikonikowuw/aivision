@@ -35,6 +35,7 @@ type CameraFormValues = {
   name: string;
   password: string;
   remark: string;
+  subRtspUrl?: string;
   username: string;
 };
 
@@ -113,6 +114,14 @@ const [Form, formApi] = useVbenForm<CameraFormValues>({
       label: $t('resource.camera.password'),
     },
     {
+      component: 'Input',
+      fieldName: 'subRtspUrl',
+      label: $t('resource.camera.subRtspUrl'),
+      componentProps: {
+        placeholder: $t('resource.camera.subRtspUrlPlaceholder'),
+      },
+    },
+    {
       component: 'Textarea',
       fieldName: 'remark',
       label: $t('resource.camera.remark'),
@@ -135,6 +144,7 @@ const [CameraModal, cameraModalApi] = useVbenModal({
       name: values.name,
       remark: values.remark,
       rtspUrl: buildRtspUrl(values.address, values.username, values.password),
+      subRtspUrl: values.subRtspUrl,
     };
     try {
       cameraModalApi.setState({ confirmLoading: true });

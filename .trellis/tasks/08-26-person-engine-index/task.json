@@ -1,0 +1,32 @@
+{
+  "id": "person-engine-index",
+  "name": "person-engine-index",
+  "title": "人员注册与索引引擎",
+  "description": "定义并实现注册图质量检测、特征提取、候选索引构建与原子激活能力",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "niko",
+  "assignee": "niko",
+  "createdAt": "2026-08-26",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-26-person-management",
+  "relatedFiles": [],
+  "notes": "PRD frozen with parent task on 2026-08-26; implementation is not yet authorized.",
+  "meta": {
+    "prd": {
+      "status": "frozen",
+      "frozenAt": "2026-08-26",
+      "approvedBy": "user"
+    }
+  }
+}

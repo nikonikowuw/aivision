@@ -15,11 +15,43 @@
  */
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <nlohmann/json.hpp>
 #include "aivision/types.h"
 
 namespace aivision::core {
+
+/**
+ * @brief 算法包类型（manifest.algorithm_type / ABI info.algorithm_type 的内部枚举表示）
+ *
+ * manifest/ABI 边界处为字符串，Engine 内部逻辑一律使用本枚举，避免字符串拼写错误。
+ */
+enum class AlgorithmType {
+    ObjectDetection,   ///< 目标检测
+    FaceRecognition,   ///< 人脸识别
+    Unknown,           ///< 未识别/不支持
+};
+
+/**
+ * @brief 将字符串算法类型解析为枚举
+ * @param type manifest.algorithm_type 或 ABI info.algorithm_type 的字符串值
+ * @return 对应枚举；无法识别时返回 AlgorithmType::Unknown
+ */
+inline AlgorithmType parse_algorithm_type(std::string_view type) {
+    if (type == "object_detection") return AlgorithmType::ObjectDetection;
+    if (type == "face_recognition") return AlgorithmType::FaceRecognition;
+    return AlgorithmType::Unknown;
+}
+
+/**
+ * @brief 判断字符串算法类型是否受 Engine 支持
+ * @param type 算法类型字符串
+ * @return 受支持返回 true
+ */
+inline bool is_supported_algorithm_type(std::string_view type) {
+    return parse_algorithm_type(type) != AlgorithmType::Unknown;
+}
 
 /// 自检测试帧生成函数指针
 using SelfTestFrameFactory = bool (*)(const char* package_root, const char* test_image_file,
@@ -34,7 +66,7 @@ struct PackageManifest {
     std::string algorithm_id;               ///< 算法标识
     std::string version;                    ///< 版本号
     std::string platform_id;                ///< 目标平台
-    std::string algorithm_type;             ///< 算法类型（如 "alarm", "recognition"）
+    AlgorithmType algorithm_type = AlgorithmType::Unknown;  ///< 算法类型（枚举，见 AlgorithmType）
     std::string alarm_type_id;              ///< 告警类型标识（识别类为空）
     std::string min_engine_version;         ///< 要求的最低引擎版本
     uint32_t compute_units = 100;           ///< 算力消耗评估值（默认100点）

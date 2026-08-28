@@ -214,11 +214,13 @@ var actionI18nMap = map[string]string{
 	"POST /api/ntp/set-time": "ops.time.setTime",
 
 	// Camera
-	"POST /api/camera":         "resource.camera.add",
-	"PUT /api/camera/:id":      "resource.camera.edit",
-	"DELETE /api/camera/:id":   "resource.camera.delete",
-	"DELETE /api/camera/batch": "system.common.batchDelete",
-	"POST /api/camera/probe":   "resource.camera.probe",
+	"POST /api/camera":                   "resource.camera.add",
+	"PUT /api/camera/:id":                "resource.camera.edit",
+	"DELETE /api/camera/:id":             "resource.camera.delete",
+	"DELETE /api/camera/batch":           "system.common.batchDelete",
+	"POST /api/camera/probe":             "resource.camera.probe",
+	"POST /api/camera/:id/preview/start": "live.preview.start",
+	"POST /api/camera/:id/preview/stop":  "live.preview.stop",
 
 	// Person
 	"POST /api/person":                     "resource.person.add",

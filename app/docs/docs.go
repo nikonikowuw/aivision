@@ -316,20 +316,35 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "BearerAuth": []
                     }
                 ],
-                "description": "对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中",
+                "description": "对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中\n对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中",
                 "consumes": [
+                    "application/json",
                     "application/json"
                 ],
                 "produces": [
+                    "application/json",
                     "application/json"
                 ],
                 "tags": [
+                    "摄像头管理",
                     "摄像头管理"
                 ],
                 "summary": "摄像头测活",
                 "parameters": [
+                    {
+                        "description": "测活参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ProbeCameraInput"
+                        }
+                    },
                     {
                         "description": "测活参数",
                         "name": "request",
@@ -457,6 +472,124 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/{id}/preview/start": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "启动或复用 ZLMediaKit 实时预览拉流通道（支持 main/sub 码流自适应）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "开启摄像头实时预览",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "main",
+                        "description": "码流类型 (main/sub)",
+                        "name": "streamType",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "实时拉流地址",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.LiveStreamResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/niko-vue-admin_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/{id}/preview/stop": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "显式停止指定摄像头的实时拉流通道",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "停止摄像头实时预览",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "main",
+                        "description": "码流类型 (main/sub)",
+                        "name": "streamType",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "停止成功",
                         "schema": {
                             "$ref": "#/definitions/internal_api.NilResponse"
                         }
@@ -2449,6 +2582,20 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_api.LiveStreamResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/niko-vue-admin_app_internal_service.CameraLiveStreamResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_api.LogPageResponse": {
             "type": "object",
             "properties": {
@@ -2766,6 +2913,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "rtspUrl": {
+                    "type": "string"
+                },
+                "subRtspUrl": {
                     "type": "string"
                 },
                 "transportPolicy": {
@@ -3111,6 +3261,29 @@ const docTemplate = `{
                 }
             }
         },
+        "niko-vue-admin_app_internal_service.CameraLiveStreamResult": {
+            "type": "object",
+            "properties": {
+                "httpPort": {
+                    "type": "integer"
+                },
+                "httpUrl": {
+                    "type": "string"
+                },
+                "streamPath": {
+                    "type": "string"
+                },
+                "streamType": {
+                    "type": "string"
+                },
+                "wsPort": {
+                    "type": "integer"
+                },
+                "wsUrl": {
+                    "type": "string"
+                }
+            }
+        },
         "niko-vue-admin_app_internal_service.CameraPageResult": {
             "type": "object",
             "properties": {
@@ -3307,6 +3480,10 @@ const docTemplate = `{
                     "maxLength": 255
                 },
                 "rtspUrl": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "subRtspUrl": {
                     "type": "string",
                     "maxLength": 2048
                 }

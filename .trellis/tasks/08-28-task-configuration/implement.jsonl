@@ -1,0 +1,18 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端规范入口与开发前检查清单；本任务主体是 Go 业务层。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "model/repository/service/api/router 分层与文件布局；task 模块须与 camera/algorithm 同构。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "显式表名列名、不建外键、status 用 int8、版本化 SQL 迁移；三张新表与菜单 seed 必须遵循。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "errno 错误码定义与三语言消息映射、统一响应契约；新增 9 个错误码须对齐。"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "zap 结构化日志字段与级别；状态回报与配额拒绝的日志约定。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁止/必用模式与测试要求；quota/rulegeom 纯函数单测与 sqlite 仓储测试。"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "GetDesiredState/revision 语义、配置状态权威归属、双 UDS 契约——本任务实现 Go 侧对端。"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "fps_tiers 离散档位与严格递增保证、config.schema.json 受限关键字与禁止 x-ui、rules 属任务级配置。"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "稳定错误码语义；Go 侧不得解析 error_message 文本，只按 code 判定。"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范入口；Phase 5 任务管理页与动态表单。"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "views/api/components 布局；resource/task 须与 resource/camera 同构。"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "三语对齐与 routes.* 菜单键；PRD §7.17.1 要求菜单标题使用国际化键。"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "vben/antd 组合与 props 约定；SchemaForm 动态控件实现。"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "API 命名空间与禁止 any；config_schema 的动态类型需受控收敛。"}
+{"file": ".trellis/tasks/08-28-task-configuration/prd.md", "reason": "任务范围、D1-D12 决策与验收标准；D3/D10 记录了对 PRD 字面要求的有意识偏离。"}
+{"file": ".trellis/tasks/08-28-task-configuration/design.md", "reason": "分层边界、DDL、接口签名、数据流、配额算法三条不变式与回滚方案。"}
+{"file": ".trellis/tasks/08-28-task-configuration/implement.md", "reason": "五阶段顺序、每阶段验证命令与 review gate；跨阶段改动须回到规划同步。"}
+{"file": "AGENTS.md", "reason": "项目命令、目录职责与全仓库约定。"}

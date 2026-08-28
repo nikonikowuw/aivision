@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "以后端开发前 Gate 与质量检查清单为总纲。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核验表名列名显式声明、无外键、int8 状态、迁移可逆（up/down 成对）。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核验新增错误码的编号区间、三语言消息完整性与响应契约一致性。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核验禁止模式、测试覆盖与 sqlite AutoMigrate 仅用于单测的约定。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核验分层职责未越界：adapter 在 service 层、纯函数不依赖 gorm/gin/grpc。"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核验日志字段低基数、无敏感信息（RTSP 凭据不得入日志）。"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "核验 revision 单调不回退、DesiredState 快照完整性、Go 侧不解析 error_message。"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "核验 FPS 档位换算三条不变式与 uds_server.cpp 一致、config schema 未引入 x-ui。"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "以前端评审检查清单为准核验页面实现。"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "核验三语对齐无遗漏、菜单标题使用 routes.* 键而非硬编码文本。"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "核验未引入 any、动态 schema 类型已收敛。"}
+{"file": ".trellis/tasks/08-28-task-configuration/prd.md", "reason": "逐项映射验收标准与 Non-Goals；确认未越界实现告警/图片/Webhook。"}
+{"file": ".trellis/tasks/08-28-task-configuration/design.md", "reason": "核验 InTx 无绕过路径、三处 revision bump 在事务内、reportAdapter 嵌入 fail-closed 默认实现。"}

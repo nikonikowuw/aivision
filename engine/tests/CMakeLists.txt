@@ -56,6 +56,7 @@ add_executable(unit_tests
     unit/test_live_stream_manager.cpp
     unit/test_image_manager.cpp
     unit/test_real_media.cpp
+    unit/test_uds_reconcile.cpp
 )
 target_include_directories(unit_tests PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>

@@ -448,6 +448,26 @@ public:
                     item->set_error_message("item was rolled back after another desired-state item failed");
                 }
             }
+            // R10a：失败实例经 ReportInstanceState 异步回流 ERROR，避免 Go 侧实例永久停在 STARTING。
+            // 被回滚牵连的原 OK 实例同样上报 ERROR 属正常瞬态——rollback 已恢复其运行，
+            // 控制面上报循环会在下一轮（≤2s）以 RUNNING/STOPPED 覆盖。上报失败记入
+            // restart_failures_（对齐 mark_package_degraded 模式），下一轮上报会重试。
+            for (int index = 0; index < response->results_size(); ++index) {
+                const auto& item = response->results(index);
+                if (item.kind() != aivision::v1::RECONCILE_ITEM_KIND_INSTANCE ||
+                    item.status() != aivision::v1::RECONCILE_ITEM_STATUS_FAILED) {
+                    continue;
+                }
+                aivision::v1::InstanceState state;
+                state.set_instance_id(item.id());
+                state.set_status(aivision::v1::INSTANCE_STATUS_ERROR);
+                state.set_message(item.code() + ": " + item.error_message());
+                if (app_client_ && !app_client_->report_instance_state(state)) {
+                    auto& report_error = restart_failures_[item.id()];
+                    if (!report_error.empty()) report_error += "; ";
+                    report_error += "ERROR_STATE_REPORT_FAILED";
+                }
+            }
             response->set_applied_revision(current_revision);
             if (rolled_back) {
                 response->set_code("RECONCILE_FAILED");
@@ -720,6 +740,8 @@ public:
         profile->add_frame_caps(aivision::v1::FRAME_PIX_RGB24);
         profile->set_max_cameras(static_cast<int32_t>(source.total_compute_units > source.reserved_compute_units ? 16 : 0));
         profile->set_max_instances(32);
+        profile->set_total_compute_units(static_cast<int32_t>(source.total_compute_units));
+        profile->set_reserved_compute_units(static_cast<int32_t>(source.reserved_compute_units));
         auto add_capability = [profile](const char* id, platform::CapabilityStatus status, const std::string& reason) {
             auto* capability = profile->add_capabilities();
             capability->set_id(id);
@@ -1105,8 +1127,12 @@ private:
             return {};
         }
         if (!task) return "TASK_NOT_FOUND";
+        const int32_t target_fps = config.analysis_fps() > 0 ? config.analysis_fps() : 25;
         if (existing && (existing->get_algorithm_id() != config.algorithm_id() ||
-                         existing->get_version() != config.algorithm_version())) {
+                         existing->get_version() != config.algorithm_version() ||
+                         existing->get_target_fps() != target_fps)) {
+            // FPS 变更不能只改成员变量：资源账本按档位结算，必须释放旧账单
+            // （remove_instance 内 release）后落入下方 create 路径重新 allocate（R10b）。
             remove_instance(config.instance_id());
         }
         const auto current = AlgoManager::instance().get(config.instance_id());
@@ -1127,7 +1153,6 @@ private:
         std::string package_error;
         const auto package = load_package(config.algorithm_id(), config.algorithm_version(), package_error);
         if (!package) return package_error;
-        const int32_t target_fps = config.analysis_fps() > 0 ? config.analysis_fps() : 25;
         uint32_t compute_units = 0;
         bool matched_fps_tier = false;
         for (const auto& [tier_fps, tier_units] : package->fps_tiers) {

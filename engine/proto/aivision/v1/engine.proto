@@ -238,6 +238,8 @@ message PlatformProfileInfo {
   repeated CapabilityState capabilities = 9;
   int32 max_cameras = 10;               // 资源账本导出的容量上限
   int32 max_instances = 11;
+  int32 total_compute_units = 12;       // 归一化算力总量（PRD §7.7 基准 1000）
+  int32 reserved_compute_units = 13;    // 系统安全保留量（不可分配给实例）
 }
 
 message QueryProfileResponse {

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "以前端评审检查清单为总纲。"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核验约定、测试覆盖与评审项。"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "核验未引入 any，规则类型定义完整。"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "核验三语对齐无遗漏。"}
+{"file": ".trellis/tasks/08-28-detection-rule-editor/prd.md", "reason": "逐项映射验收标准；重点核验坐标换算三种黑边情形与正反变换互逆性。"}

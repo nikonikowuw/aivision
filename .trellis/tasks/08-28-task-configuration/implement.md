@@ -21,20 +21,20 @@
 
 **R10 与 R9 同批实施**：R10 的两处 Engine reconcile 语义补齐（失败异步回流 + FPS 热更新生效）同在 `uds_server.cpp`，是 Go 侧闭环的前置依赖——Phase 3 的「失败实例 ≤5s 上报 ERROR」与「改 FPS 生效」验收依赖它，必须在本 Phase 一并改动、一并回归，不能拖到 Phase 5。
 
-- [ ] `engine/proto/aivision/v1/engine.proto`：`PlatformProfileInfo` 增加 `total_compute_units = 12`、`reserved_compute_units = 13`，不动既有字段编号
-- [ ] 重新生成 C++ 与 Go protobuf 代码
-- [ ] `engine/src/core/ipc/uds_server.cpp` 的 `QueryProfile` 处理：从 platform profile 读取两个值填入响应
-- [ ] **R10a（reconcile 失败异步回流）**：`apply_desired_state` 回滚块（`uds_server.cpp:442-464`）中，在将 OK 项重标记为 `RECONCILE_ROLLED_BACK` 之后，遍历 `response->results()`，对 `status == RECONCILE_ITEM_STATUS_FAILED` 的实例构造 `InstanceState{instance_id, INSTANCE_STATUS_ERROR, message = code + ": " + error_message}`，经 `app_client_->report_instance_state()` 主动上报（对齐 `mark_package_degraded` 的既有模式，`uds_server.cpp:1270-1290`；上报失败记入 `restart_failures_`）。被回滚牵连的原 OK 项上报 ERROR 属正常瞬态——restore 后重建为 RUNNING。
-- [ ] **R10b（FPS 热更新生效）**：`reconcile_instance` 的 current 分支（`uds_server.cpp:1112-1123`）检测 `(config.analysis_fps() > 0 ? config.analysis_fps() : 25) != current->get_target_fps()`（访问器见 `algo_instance.hpp:94`）时走重建路径：`remove_instance(config.instance_id())` → 重新取 `current = AlgoManager::instance().get(...)`（变为 null）→ 落入下方 create 路径重新 allocate（对齐 1106-1110 的算法/版本变更模式）。资源账本由 `remove_instance` 释放 + create 路径重算，无需为 `AlgorithmInstance` 新增 `set_target_fps`。
-- [ ] 新增 `app/internal/service/quota.go`：`ResolveUnits` 复刻 `uds_server.cpp:1130-1140` 三条不变式
-- [ ] 新增 `app/internal/service/rulegeom.go`：`ValidateRules` 五项几何校验
-- [ ] `app/internal/pkg/errno/errno.go`：新增错误码 + 三语言消息
+- [x] `engine/proto/aivision/v1/engine.proto`：`PlatformProfileInfo` 增加 `total_compute_units = 12`、`reserved_compute_units = 13`，不动既有字段编号
+- [x] 重新生成 C++ 与 Go protobuf 代码
+- [x] `engine/src/core/ipc/uds_server.cpp` 的 `QueryProfile` 处理：从 platform profile 读取两个值填入响应
+- [x] **R10a（reconcile 失败异步回流）**：`apply_desired_state` 回滚块（`uds_server.cpp:442-464`）中，在将 OK 项重标记为 `RECONCILE_ROLLED_BACK` 之后，遍历 `response->results()`，对 `status == RECONCILE_ITEM_STATUS_FAILED` 的实例构造 `InstanceState{instance_id, INSTANCE_STATUS_ERROR, message = code + ": " + error_message}`，经 `app_client_->report_instance_state()` 主动上报（对齐 `mark_package_degraded` 的既有模式，`uds_server.cpp:1270-1290`；上报失败记入 `restart_failures_`）。被回滚牵连的原 OK 项上报 ERROR 属正常瞬态——restore 后重建为 RUNNING。
+- [x] **R10b（FPS 热更新生效）**：`reconcile_instance` 的 current 分支（`uds_server.cpp:1112-1123`）检测 `(config.analysis_fps() > 0 ? config.analysis_fps() : 25) != current->get_target_fps()`（访问器见 `algo_instance.hpp:94`）时走重建路径：`remove_instance(config.instance_id())` → 重新取 `current = AlgoManager::instance().get(...)`（变为 null）→ 落入下方 create 路径重新 allocate（对齐 1106-1110 的算法/版本变更模式）。资源账本由 `remove_instance` 释放 + create 路径重算，无需为 `AlgorithmInstance` 新增 `set_target_fps`。
+- [x] 新增 `app/internal/service/quota.go`：`ResolveUnits` 复刻 `uds_server.cpp:1130-1140` 三条不变式
+- [x] 新增 `app/internal/service/rulegeom.go`：`ValidateRules` 五项几何校验
+- [x] `app/internal/pkg/errno/errno.go`：新增错误码 + 三语言消息
   - `CodeCameraInUse`、`CodeResourceExceeded`、`CodeFPSTierExceeded`
   - `CodeRuleOutOfBounds`、`CodeRuleTooFewPoints`、`CodeRuleSelfIntersect`
   - `CodeTaskNotFound`、`CodeTaskAlreadyExists`、`CodeInstanceNotFound`
-- [ ] `quota_test.go`：覆盖 design §5 列出的全部 7 个边界值
-- [ ] `rulegeom_test.go`：覆盖坐标越界、顶点不足、自交、方向字段误用
-- [ ] `engine/tests/unit/` 新增 reconcile 单测（如 `test_uds_reconcile.cpp`），覆盖 R10 两条路径：
+- [x] `quota_test.go`：覆盖 design §5 列出的全部 7 个边界值
+- [x] `rulegeom_test.go`：覆盖坐标越界、顶点不足、自交、方向字段误用
+- [x] `engine/tests/unit/` 新增 reconcile 单测（如 `test_uds_reconcile.cpp`），覆盖 R10 两条路径：
   - 某实例 reconcile 失败整体回滚后，该实例收到 `INSTANCE_STATUS_ERROR` 上报且 message 含 code
   - 同算法同版本仅改 `analysis_fps` 后，实例重建、`get_target_fps()` 变为新值、`ResourceLedger` used 随之重算，同任务其他实例不受影响
 

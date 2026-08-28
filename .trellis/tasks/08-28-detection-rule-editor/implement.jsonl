@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范入口与开发前检查清单。"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "组件在 views/resource/task/components 下的组织方式。"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "vben/antd 组合、props 与样式约定；canvas 叠加层组件封装。"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "composables 抽取；坐标换算与绘制状态适合独立为 hook 以便单测。"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "DetectionRule/DetectionPoint 类型定义，禁止 any。"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "绘制器内文案三语对齐。"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "规则为任务级配置、判定语义归算法、不进 config.schema.json。"}
+{"file": ".trellis/tasks/08-28-detection-rule-editor/prd.md", "reason": "本任务范围、坐标换算契约与验收标准。"}
+{"file": ".trellis/tasks/08-28-task-configuration/design.md", "reason": "父任务 §6 记录了归一化坐标契约与后端几何校验规则，前端校验须与之一致。"}
+{"file": "AGENTS.md", "reason": "项目命令与前端目录职责。"}

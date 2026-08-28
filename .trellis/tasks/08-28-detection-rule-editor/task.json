@@ -1,9 +1,9 @@
 {
-  "id": "task-configuration",
-  "name": "task-configuration",
-  "title": "任务配置模块",
-  "description": "",
-  "status": "in_progress",
+  "id": "detection-rule-editor",
+  "name": "detection-rule-editor",
+  "title": "检测规则编辑器",
+  "description": "在实时视频流上叠加 canvas 绘制 ROI/Mask/分界线，输出归一化坐标",
+  "status": "planning",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -18,10 +18,8 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "08-28-detection-rule-editor"
-  ],
-  "parent": null,
+  "children": [],
+  "parent": "08-28-task-configuration",
   "relatedFiles": [],
   "notes": "",
   "meta": {}

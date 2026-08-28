@@ -51,25 +51,30 @@ const (
 	syncedRoutePath      = "/synced"
 	cameraRoutePath      = "/camera"
 	probeRoutePath       = "/probe"
+	personRoutePath      = "/person"
+	personIDRoutePath    = "/:personId"
+	openV1RoutePath      = "/v1/open"
 )
 
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
 // （wire.Struct 按字段自动装配，见 cmd/api/wire.go）。
 type Deps struct {
-	ErrorHandler        gin.HandlerFunc
-	AuthMiddleware      *middleware.AuthMiddleware
-	PermMiddleware      *middleware.PermMiddleware
-	OplogMiddleware     *middleware.OplogMiddleware
-	MenuHandler         *api.MenuHandler
-	RoleHandler         *api.RoleHandler
-	DepartmentHandler   *api.DepartmentHandler
-	OperationLogHandler *api.OperationLogHandler
-	UserHandler         *api.UserHandler
-	AuthHandler         *api.AuthHandler
-	FileHandler         *api.FileHandler
-	NTPHandler          *api.NTPHandler
-	NetworkHandler      *api.NetworkHandler
-	CameraHandler       *api.CameraHandler
+	ErrorHandler           gin.HandlerFunc
+	AuthMiddleware         *middleware.AuthMiddleware
+	PermMiddleware         *middleware.PermMiddleware
+	OplogMiddleware        *middleware.OplogMiddleware
+	OpenPersonIPMiddleware *middleware.OpenPersonIPWhitelistMiddleware
+	MenuHandler            *api.MenuHandler
+	RoleHandler            *api.RoleHandler
+	DepartmentHandler      *api.DepartmentHandler
+	OperationLogHandler    *api.OperationLogHandler
+	UserHandler            *api.UserHandler
+	AuthHandler            *api.AuthHandler
+	FileHandler            *api.FileHandler
+	NTPHandler             *api.NTPHandler
+	NetworkHandler         *api.NetworkHandler
+	CameraHandler          *api.CameraHandler
+	PersonHandler          *api.PersonHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -252,6 +257,31 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+cameraRoutePath+idRoutePath, "resource:camera:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+cameraRoutePath+idRoutePath, "resource:camera:delete")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+cameraRoutePath+probeRoutePath, "resource:camera:probe")
+
+		personGroup := apiGroup.Group(personRoutePath)
+		{
+			personGroup.GET(pageRoutePath, deps.PersonHandler.GetPage)
+			personGroup.POST("", deps.PersonHandler.CreatePerson)
+			personGroup.DELETE(batchRoutePath, deps.PersonHandler.BatchDeletePerson)
+			personGroup.PUT(personIDRoutePath, deps.PersonHandler.UpdatePerson)
+			personGroup.DELETE(personIDRoutePath, deps.PersonHandler.DeletePerson)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+pageRoutePath, "resource:person")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+personRoutePath, "resource:person:add")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+batchRoutePath, "resource:person:delete")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+personRoutePath+personIDRoutePath, "resource:person:edit")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+personIDRoutePath, "resource:person:delete")
+	}
+
+	// 外部开放同步 API：位于认证与权限中间件之外，使用受控 IP 白名单保护
+	openV1Group := engine.Group(apiRoutePath + openV1RoutePath)
+	openV1Group.Use(deps.OpenPersonIPMiddleware.Handler)
+	{
+		openPersonGroup := openV1Group.Group(personRoutePath)
+		{
+			openPersonGroup.PUT(personIDRoutePath, deps.PersonHandler.SyncUpsertPerson)
+			openPersonGroup.DELETE(personIDRoutePath, deps.PersonHandler.SyncDeletePerson)
+		}
 	}
 
 	return engine

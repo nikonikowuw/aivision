@@ -446,3 +446,60 @@ func TestLoadEngineProfileRejectsInvalidPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadOpenPersonSyncAllowedIPs(t *testing.T) {
+	valid := `open:
+  person_sync_allowed_ips:
+    - 192.168.1.100
+    - 10.0.0.0/24
+    - "2001:db8::1"
+    - "2001:db8::/32"
+`
+	cfg, err := load(writeConfig(t, valid))
+	if err != nil {
+		t.Fatalf("load valid open config: %v", err)
+	}
+	if len(cfg.Open.PersonSyncAllowedIPs) != 4 {
+		t.Fatalf("expected 4 allowed IPs, got %d", len(cfg.Open.PersonSyncAllowedIPs))
+	}
+
+	invalid := []string{
+		"open:\n  person_sync_allowed_ips:\n    - \"\"\n",
+		"open:\n  person_sync_allowed_ips:\n    - \"invalid_ip\"\n",
+		"open:\n  person_sync_allowed_ips:\n    - \"192.168.1.300\"\n",
+		"open:\n  person_sync_allowed_ips:\n    - \"10.0.0.0/33\"\n",
+	}
+	for _, content := range invalid {
+		if _, err := load(writeConfig(t, content)); err == nil {
+			t.Errorf("load should fail for invalid open config %q", content)
+		}
+	}
+}
+
+func TestLoadOpenPersonSyncAllowedIPsFromEnv(t *testing.T) {
+	path := writeConfig(t, "open:\n  person_sync_allowed_ips: []\n")
+	t.Setenv("APP_OPEN_PERSON_SYNC_ALLOWED_IPS", "192.0.2.10, 2001:db8::/32")
+
+	cfg, err := load(path)
+	if err != nil {
+		t.Fatalf("load open IPs from env: %v", err)
+	}
+	want := []string{"192.0.2.10", "2001:db8::/32"}
+	if len(cfg.Open.PersonSyncAllowedIPs) != len(want) {
+		t.Fatalf("allowed IP count = %d, want %d: %v", len(cfg.Open.PersonSyncAllowedIPs), len(want), cfg.Open.PersonSyncAllowedIPs)
+	}
+	for i := range want {
+		if cfg.Open.PersonSyncAllowedIPs[i] != want[i] {
+			t.Errorf("allowed IP[%d] = %q, want %q", i, cfg.Open.PersonSyncAllowedIPs[i], want[i])
+		}
+	}
+}
+
+func TestLoadInvalidOpenPersonSyncAllowedIPsFromEnv(t *testing.T) {
+	path := writeConfig(t, "open:\n  person_sync_allowed_ips: []\n")
+	t.Setenv("APP_OPEN_PERSON_SYNC_ALLOWED_IPS", "192.0.2.10,not-an-ip")
+
+	if _, err := load(path); err == nil {
+		t.Fatal("load should fail for invalid open IP from env")
+	}
+}

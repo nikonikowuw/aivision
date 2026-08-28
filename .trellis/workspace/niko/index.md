@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-08-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~668 | Active |
+| `journal-1.md` | ~689 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-08-27 | Person Management MVP | `de26c68` | `dev` |
 | 23 | 2026-08-27 | RTSP Camera Source MVP | `cee5031`, `f000819`, `86ac888`, `e2a1c8b`, `f74b914` | `dev` |
 | 22 | 2026-08-26 | Go gRPC integration | `6952640`, `37f589c` | `dev` |
 | 21 | 2026-08-25 | C++ Engine structured logging (JSONL) | `e165e8d` | `dev` |

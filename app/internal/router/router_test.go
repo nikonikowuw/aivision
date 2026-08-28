@@ -174,19 +174,22 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 	deptRepo := repository.NewDepartmentRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	userSvc := service.NewUserService(userRepo, deptRepo, repository.NewRoleRepository(db))
+	personSvc := service.NewPersonService(repository.NewPersonRepository(db))
 	authSvc := service.NewAuthService(repository.NewAuthRepository(db), userRepo, menuRepo, cfg)
 	engine := New(cfg, Deps{
-		ErrorHandler:        middleware.ErrorHandler(),
-		AuthMiddleware:      auth,
-		PermMiddleware:      perm,
-		OplogMiddleware:     oplogMid,
-		MenuHandler:         api.NewMenuHandler(fakeService),
-		RoleHandler:         api.NewRoleHandler(roleSrv),
-		DepartmentHandler:   api.NewDepartmentHandler(deptSrv),
-		OperationLogHandler: api.NewOperationLogHandler(oplogSrv),
-		UserHandler:         api.NewUserHandler(userSvc),
-		AuthHandler:         api.NewAuthHandler(authSvc, auth, cfg),
-		FileHandler:         api.NewFileHandler(service.NewFileService(storage.NopStorage(), cfg), cfg),
+		ErrorHandler:           middleware.ErrorHandler(),
+		AuthMiddleware:         auth,
+		PermMiddleware:         perm,
+		OplogMiddleware:        oplogMid,
+		MenuHandler:            api.NewMenuHandler(fakeService),
+		RoleHandler:            api.NewRoleHandler(roleSrv),
+		DepartmentHandler:      api.NewDepartmentHandler(deptSrv),
+		OperationLogHandler:    api.NewOperationLogHandler(oplogSrv),
+		UserHandler:            api.NewUserHandler(userSvc),
+		AuthHandler:            api.NewAuthHandler(authSvc, auth, cfg),
+		FileHandler:            api.NewFileHandler(service.NewFileService(storage.NopStorage(), cfg), cfg),
+		PersonHandler:          api.NewPersonHandler(personSvc),
+		OpenPersonIPMiddleware: middleware.NewOpenPersonIPWhitelistMiddleware(cfg),
 	})
 	return engine, fakeService, signRouterToken(t, cfg.JWT.Secret, user.ID), oplogSrv, db
 }
@@ -273,6 +276,63 @@ func TestMenuRoutesRequireAuthenticationAndUseActiveRoles(t *testing.T) {
 	if len(fakeService.roleCodes) != 1 || fakeService.roleCodes[0] != model.RoleSuperCode {
 		t.Fatalf("role codes = %v, want active super only", fakeService.roleCodes)
 	}
+}
+
+func TestPersonRoutesRequireAuthenticationAndOpenIPWhitelist(t *testing.T) {
+	engine, _, token, oplogSrv, db := newRouterTestEngine(t, false)
+
+	unauthenticated := httptest.NewRecorder()
+	engine.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/person/page", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated person page status = %d, want %d", unauthenticated.Code, http.StatusUnauthorized)
+	}
+	if code := readCode(t, unauthenticated); code != errno.CodeUnauthorized {
+		t.Fatalf("unauthenticated person page code = %d, want %d", code, errno.CodeUnauthorized)
+	}
+
+	authenticated := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/person/page", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	engine.ServeHTTP(authenticated, req)
+	if authenticated.Code != http.StatusOK {
+		t.Fatalf("authenticated person page status = %d, want %d", authenticated.Code, http.StatusOK)
+	}
+
+	normalUser := model.User{Username: "person-reader", Status: model.StatusEnabled}
+	if err := db.Create(&normalUser).Error; err != nil {
+		t.Fatalf("create normal user: %v", err)
+	}
+	normalRole := model.Role{Name: "Person reader", Code: "person-reader", Status: model.StatusEnabled}
+	if err := db.Create(&normalRole).Error; err != nil {
+		t.Fatalf("create normal role: %v", err)
+	}
+	if err := db.Create(&model.UserRole{UserID: normalUser.ID, RoleID: normalRole.ID}).Error; err != nil {
+		t.Fatalf("create normal user role: %v", err)
+	}
+
+	forbidden := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/person/page", nil)
+	req.Header.Set("Authorization", "Bearer "+signRouterToken(t, "test-secret", normalUser.ID))
+	engine.ServeHTTP(forbidden, req)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("person page without permission status = %d, want %d", forbidden.Code, http.StatusForbidden)
+	}
+	if code := readCode(t, forbidden); code != errno.CodeForbidden {
+		t.Fatalf("person page without permission code = %d, want %d", code, errno.CodeForbidden)
+	}
+
+	openRequest := httptest.NewRequest(http.MethodPut, "/api/v1/open/person/EMP001", strings.NewReader(`{"name":"Alice"}`))
+	openRequest.RemoteAddr = "192.0.2.10:1234"
+	openRequest.Header.Set("Content-Type", "application/json")
+	openResponse := httptest.NewRecorder()
+	engine.ServeHTTP(openResponse, openRequest)
+	if openResponse.Code != http.StatusForbidden {
+		t.Fatalf("open person without whitelist status = %d, want %d", openResponse.Code, http.StatusForbidden)
+	}
+	if code := readCode(t, openResponse); code != errno.CodeForbidden {
+		t.Fatalf("open person without whitelist code = %d, want %d", code, errno.CodeForbidden)
+	}
+	waitForLoggedRequest(t, oplogSrv.records, "/api/v1/open/person/EMP001")
 }
 
 func TestRoleRoutesRequireAuthentication(t *testing.T) {

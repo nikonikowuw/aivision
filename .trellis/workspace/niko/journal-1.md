@@ -666,3 +666,24 @@ Completed the RTSP camera source MVP across the engine, app, and web UI: RTSP pr
 ### Status
 
 [OK] **Completed**
+
+
+## Session 24: Person Management MVP
+
+**Date**: 2026-08-27
+**Task**: Person Management MVP
+**Branch**: `dev`
+
+### Summary
+
+Implement person management MVP with backend CRUD, sync APIs, and frontend pages.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `de26c68` | (see git log) |
+
+### Status
+
+[OK] **Completed**

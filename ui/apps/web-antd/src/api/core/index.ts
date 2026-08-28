@@ -6,5 +6,6 @@ export * from './log';
 export * from './menu';
 export * from './network';
 export * from './ntp';
+export * from './person';
 export * from './role';
 export * from './user';

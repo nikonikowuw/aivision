@@ -40,6 +40,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	operationLogRepository := repository.NewOperationLogRepository(gormDB)
 	operationLogService := service.NewOperationLogService(operationLogRepository)
 	oplogMiddleware := middleware.NewOplogMiddleware(operationLogService, zapLogger)
+	openPersonIPWhitelistMiddleware := middleware.NewOpenPersonIPWhitelistMiddleware(cfg)
 	menuService := service.NewMenuService(menuRepository)
 	menuHandler := api.NewMenuHandler(menuService)
 	roleRepository := repository.NewRoleRepository(gormDB)
@@ -76,21 +77,26 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	}
 	cameraService := service.NewCameraService(cameraRepository, engineClient)
 	cameraHandler := api.NewCameraHandler(cameraService)
+	personRepository := repository.NewPersonRepository(gormDB)
+	personService := service.NewPersonService(personRepository)
+	personHandler := api.NewPersonHandler(personService)
 	deps := router.Deps{
-		ErrorHandler:        handlerFunc,
-		AuthMiddleware:      authMiddleware,
-		PermMiddleware:      permMiddleware,
-		OplogMiddleware:     oplogMiddleware,
-		MenuHandler:         menuHandler,
-		RoleHandler:         roleHandler,
-		DepartmentHandler:   departmentHandler,
-		OperationLogHandler: operationLogHandler,
-		UserHandler:         userHandler,
-		AuthHandler:         authHandler,
-		FileHandler:         fileHandler,
-		NTPHandler:          ntpHandler,
-		NetworkHandler:      networkHandler,
-		CameraHandler:       cameraHandler,
+		ErrorHandler:           handlerFunc,
+		AuthMiddleware:         authMiddleware,
+		PermMiddleware:         permMiddleware,
+		OplogMiddleware:        oplogMiddleware,
+		OpenPersonIPMiddleware: openPersonIPWhitelistMiddleware,
+		MenuHandler:            menuHandler,
+		RoleHandler:            roleHandler,
+		DepartmentHandler:      departmentHandler,
+		OperationLogHandler:    operationLogHandler,
+		UserHandler:            userHandler,
+		AuthHandler:            authHandler,
+		FileHandler:            fileHandler,
+		NTPHandler:             ntpHandler,
+		NetworkHandler:         networkHandler,
+		CameraHandler:          cameraHandler,
+		PersonHandler:          personHandler,
 	}
 	engine := router.New(cfg, deps)
 	desiredStateAdapter := engineipc.UnavailableDesiredStateAdapter()

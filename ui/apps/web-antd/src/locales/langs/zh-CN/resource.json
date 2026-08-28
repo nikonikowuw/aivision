@@ -47,5 +47,25 @@
       "RTSP_UNSUPPORTED_PROTOCOL": "不支持的协议",
       "RTSP_PROBE_CANCELLED": "测活已取消"
     }
+  },
+  "person": {
+    "title": "人员管理",
+    "add": "新增人员",
+    "edit": "编辑人员",
+    "delete": "删除人员",
+    "syncUpsert": "同步新增或更新人员",
+    "syncDelete": "同步删除人员",
+    "deleteConfirm": "确定要删除该人员吗？",
+    "batchDeleteConfirm": "确定要删除选中的 {count} 名人员吗？",
+    "personId": "人员标识",
+    "personIdPlaceholder": "留空自动生成，首字符字母或数字，只允许字母数字._-:",
+    "personIdInvalid": "首字符须为字母或数字，且仅支持字母、数字、._-:",
+    "name": "姓名",
+    "nameRequired": "请输入姓名",
+    "nameMaxLength": "姓名最多 64 个字符",
+    "nameInvalid": "姓名不可包含控制字符",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+    "action": "操作"
   }
 }

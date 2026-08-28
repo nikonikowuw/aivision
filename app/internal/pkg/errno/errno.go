@@ -47,22 +47,23 @@ const (
 	CodeAdminUserProtected = 1015 // 超级管理员账号不可删除、停用或修改用户名
 	CodeFileTooLarge       = 1016 // 文件超过大小限制
 	CodeFileTypeNotAllowed = 1017 // 文件类型不允许
+	CodePersonIDTaken      = 1018 // 人员标识已存在
 
 	// 网络配置业务错误码 1100 ~ 1113
-	CodeNetworkInvalidConfig       = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
-	CodeNetworkTransactionPending  = 1101 // 已存在整机候选事务
-	CodeNetworkTransactionNotFound = 1102 // transaction ID 不存在/已完成
-	CodeNetworkTransactionExpired  = 1103 // deadline 已过
-	CodeNetworkInterfaceNotManaged = 1104 // ID 不在当前可写集合或指纹变化
-	CodeNetworkOwnershipConflict   = 1105 // Linux 外部管理器/漂移/Resolver 非本系统所有
-	CodeNetworkUnsupported         = 1106 // 平台或能力不支持
-	CodeNetworkApplyFailed         = 1107 // 平台应用失败且补偿完成或进入故障
-	CodeNetworkRecoveryFailed      = 1108 // before/last-valid/factory 恢复失败
-	CodeNetworkStateCorrupt        = 1109 // root-only envelope 损坏/版本未知/校验和不符
-	CodeNetworkExternalDrift       = 1110 // 当前状态被外部修改，拒绝覆盖
-	CodeNetworkNotReady            = 1111 // 启动恢复/能力检查未完成
-	CodeNetworkBondSlaveInvalid    = 1112 // bond slave 数量/存在/可写/重复/占用/primary 不合法
-	CodeNetworkBondModeConflict    = 1113 // 目标模式与当前拓扑冲突（已处于该模式等）
+	CodeNetworkInvalidConfig         = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
+	CodeNetworkTransactionPending    = 1101 // 已存在整机候选事务
+	CodeNetworkTransactionNotFound   = 1102 // transaction ID 不存在/已完成
+	CodeNetworkTransactionExpired    = 1103 // deadline 已过
+	CodeNetworkInterfaceNotManaged   = 1104 // ID 不在当前可写集合或指纹变化
+	CodeNetworkOwnershipConflict     = 1105 // Linux 外部管理器/漂移/Resolver 非本系统所有
+	CodeNetworkUnsupported           = 1106 // 平台或能力不支持
+	CodeNetworkApplyFailed           = 1107 // 平台应用失败且补偿完成或进入故障
+	CodeNetworkRecoveryFailed        = 1108 // before/last-valid/factory 恢复失败
+	CodeNetworkStateCorrupt          = 1109 // root-only envelope 损坏/版本未知/校验和不符
+	CodeNetworkExternalDrift         = 1110 // 当前状态被外部修改，拒绝覆盖
+	CodeNetworkNotReady              = 1111 // 启动恢复/能力检查未完成
+	CodeNetworkBondSlaveInvalid      = 1112 // bond slave 数量/存在/可写/重复/占用/primary 不合法
+	CodeNetworkBondModeConflict      = 1113 // 目标模式与当前拓扑冲突（已处于该模式等）
 	CodeNetworkLacpNegotiationFailed = 1114 // LACP 聚合建立失败（内核/驱动拒绝）
 	CodeNetworkGatewayPoolInvalid    = 1115 // 地址池、掩码或租约时长非法
 	CodeNetworkDhcpServerConflict    = 1116 // 目标链路已存在 DHCP 服务，或接口为 DHCP client 模式
@@ -107,6 +108,7 @@ var messages = map[string]map[int]string{
 		CodeAdminUserProtected:            "超级管理员账号受系统保护，不可删除、停用或修改用户名",
 		CodeFileTooLarge:                  "文件大小超出限制",
 		CodeFileTypeNotAllowed:            "不支持的文件类型",
+		CodePersonIDTaken:                 "人员标识已存在",
 		CodeNetworkInvalidConfig:          "网络配置参数非法或冲突",
 		CodeNetworkTransactionPending:     "已有待确认的网络配置事务，请先确认或取消",
 		CodeNetworkTransactionNotFound:    "网络事务不存在或已处理",
@@ -155,6 +157,7 @@ var messages = map[string]map[int]string{
 		CodeAdminUserProtected:            "Super admin user is protected and cannot be deleted, disabled, or renamed",
 		CodeFileTooLarge:                  "File size exceeds the limit",
 		CodeFileTypeNotAllowed:            "File type is not allowed",
+		CodePersonIDTaken:                 "Person ID already exists",
 		CodeNetworkInvalidConfig:          "Invalid or conflicting network configuration",
 		CodeNetworkTransactionPending:     "A network transaction is already pending confirmation",
 		CodeNetworkTransactionNotFound:    "Network transaction not found or already completed",
@@ -203,6 +206,7 @@ var messages = map[string]map[int]string{
 		CodeAdminUserProtected:            "超級管理員帳號受系統保護，不可刪除、停用或修改使用者名稱",
 		CodeFileTooLarge:                  "檔案大小超出限制",
 		CodeFileTypeNotAllowed:            "不支援的檔案類型",
+		CodePersonIDTaken:                 "人員標識已存在",
 		CodeNetworkInvalidConfig:          "網路設定參數非法或衝突",
 		CodeNetworkTransactionPending:     "已有待確認的網路設定事務，請先確認或取消",
 		CodeNetworkTransactionNotFound:    "網路事務不存在或已處理",

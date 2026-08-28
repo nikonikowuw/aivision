@@ -220,6 +220,14 @@ var actionI18nMap = map[string]string{
 	"DELETE /api/camera/batch": "system.common.batchDelete",
 	"POST /api/camera/probe":   "resource.camera.probe",
 
+	// Person
+	"POST /api/person":                     "resource.person.add",
+	"PUT /api/person/:personId":            "resource.person.edit",
+	"DELETE /api/person/:personId":         "resource.person.delete",
+	"DELETE /api/person/batch":             "system.common.batchDelete",
+	"PUT /api/v1/open/person/:personId":    "resource.person.syncUpsert",
+	"DELETE /api/v1/open/person/:personId": "resource.person.syncDelete",
+
 	// Network
 	"PUT /api/network/interfaces/:interfaceId":                "system.log.actionNetworkApply",
 	"PUT /api/network/mode":                                   "system.log.actionNetworkModeSwitch",

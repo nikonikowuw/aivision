@@ -6,7 +6,8 @@
   },
   "resource": {
     "resource": "资源管理",
-    "camera": "摄像头"
+    "camera": "摄像头",
+    "person": "人员管理"
   },
   "system": {
     "dept": "部门管理",

@@ -51,4 +51,3 @@ func NewGatewayBackend(platformType PlatformType, fake bool, log *zap.Logger) Ga
 	}
 	return NewFakeGatewayBackend()
 }
-

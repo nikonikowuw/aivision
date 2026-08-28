@@ -47,5 +47,25 @@
       "RTSP_UNSUPPORTED_PROTOCOL": "不支援的協定",
       "RTSP_PROBE_CANCELLED": "測活已取消"
     }
+  },
+  "person": {
+    "title": "人員管理",
+    "add": "新增人員",
+    "edit": "編輯人員",
+    "delete": "刪除人員",
+    "syncUpsert": "同步新增或更新人員",
+    "syncDelete": "同步刪除人員",
+    "deleteConfirm": "確定要刪除該人員嗎？",
+    "batchDeleteConfirm": "確定要刪除選取的 {count} 名人員嗎？",
+    "personId": "人員標識",
+    "personIdPlaceholder": "留空自動產生，首字元字母或數字，只允許英數字._-:",
+    "personIdInvalid": "首字元須為字母或數字，且僅支援英數字、._-:",
+    "name": "姓名",
+    "nameRequired": "請輸入姓名",
+    "nameMaxLength": "姓名最多 64 個字元",
+    "nameInvalid": "姓名不可包含控制字元",
+    "createdAt": "建立時間",
+    "updatedAt": "更新時間",
+    "action": "操作"
   }
 }

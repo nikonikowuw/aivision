@@ -302,5 +302,3 @@ func ValidateGatewayPlan(plan *GatewayPlan, iface *InterfaceInfo, primaryInterfa
 
 	return normalized, nil
 }
-
-

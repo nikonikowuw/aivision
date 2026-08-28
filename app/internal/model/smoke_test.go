@@ -29,7 +29,7 @@ func newSmokeDB(t *testing.T) *gorm.DB {
 
 func TestAutoMigrateCreatesAllTables(t *testing.T) {
 	gdb := newSmokeDB(t)
-	want := []string{"users", "roles", "menus", "departments", "user_roles", "role_menus", "refresh_tokens", "operation_logs", "system_configs"}
+	want := []string{"users", "roles", "menus", "departments", "user_roles", "role_menus", "refresh_tokens", "operation_logs", "system_configs", "cameras", "persons"}
 	for _, name := range want {
 		if !gdb.Migrator().HasTable(name) {
 			t.Errorf("table %s missing", name)

@@ -5,6 +5,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ type Config struct {
 	Storage Storage `mapstructure:"storage"`
 	Network Network `mapstructure:"network"`
 	IPC     IPC     `mapstructure:"ipc"`
+	Open    Open    `mapstructure:"open"`
 }
 
 // Server HTTP 服务配置。
@@ -93,6 +95,11 @@ type IPC struct {
 	ProfilePath  string `mapstructure:"profile_path"`  // 生产 Profile 的唯一入口（AIVISION_ENGINE_PROFILE）
 	AppSocket    string `mapstructure:"app_socket"`    // Go 侧 app.sock：Engine 回调 ControlPlane/Report
 	EngineSocket string `mapstructure:"engine_socket"` // C++ 侧 engine.sock：Go 调用 EngineService
+}
+
+// Open 开放同步接口配置。
+type Open struct {
+	PersonSyncAllowedIPs []string `mapstructure:"person_sync_allowed_ips"` // 人员同步允许访问的 IP / CIDR 白名单
 }
 
 const (
@@ -170,6 +177,7 @@ func load(path string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	normalizeOpen(&cfg.Open)
 	if err := applyEngineProfile(&cfg.IPC); err != nil {
 		return nil, err
 	}
@@ -218,6 +226,7 @@ func defaults() []keyValue {
 		{"network.fake_platform", defaultNetworkFakePlatform},
 		{"ipc.app_socket", defaultIPCAPPSocket},
 		{"ipc.engine_socket", defaultIPCEngineSocket},
+		{"open.person_sync_allowed_ips", []string{}},
 	}
 }
 
@@ -249,7 +258,10 @@ func validate(cfg *Config) error {
 	if err := validateNetwork(&cfg.Network); err != nil {
 		return err
 	}
-	return validateIPC(&cfg.IPC)
+	if err := validateIPC(&cfg.IPC); err != nil {
+		return err
+	}
+	return validateOpen(&cfg.Open)
 }
 
 func validateNetwork(network *Network) error {
@@ -261,6 +273,29 @@ func validateNetwork(network *Network) error {
 	}
 	if network.ConfirmTimeout <= 0 {
 		return fmt.Errorf("network.confirm_timeout must be greater than zero")
+	}
+	return nil
+}
+
+// normalizeOpen 规范化开放接口白名单项，允许逗号分隔符两侧存在空白。
+func normalizeOpen(open *Open) {
+	for i, raw := range open.PersonSyncAllowedIPs {
+		open.PersonSyncAllowedIPs[i] = strings.TrimSpace(raw)
+	}
+}
+
+// validateOpen 校验开放同步配置：白名单列表每一项必须是合法的单 IP 或 CIDR。
+func validateOpen(open *Open) error {
+	for _, raw := range open.PersonSyncAllowedIPs {
+		item := strings.TrimSpace(raw)
+		if item == "" {
+			return fmt.Errorf("open.person_sync_allowed_ips contains empty element")
+		}
+		if _, _, err := net.ParseCIDR(item); err != nil {
+			if ip := net.ParseIP(item); ip == nil {
+				return fmt.Errorf("invalid open.person_sync_allowed_ips entry %q: neither valid IP nor CIDR", raw)
+			}
+		}
 	}
 	return nil
 }

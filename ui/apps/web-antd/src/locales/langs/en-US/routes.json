@@ -6,7 +6,8 @@
   },
   "resource": {
     "resource": "Resources",
-    "camera": "Cameras"
+    "camera": "Cameras",
+    "person": "Persons"
   },
   "system": {
     "dept": "Department Management",

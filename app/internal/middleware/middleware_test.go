@@ -425,6 +425,26 @@ func TestOplogReplaysLargeBody(t *testing.T) {
 func TestOplogActionInference(t *testing.T) {
 	engine, _, oplogSrv, adminToken, _ := setupMiddlewareTestApp(t)
 
+	// 注册人员路由以验证页面与开放同步 action 都能精确映射到 i18n key。
+	engine.POST("/api/person", func(c *gin.Context) {
+		response.Success(c, "person created")
+	})
+	engine.PUT("/api/person/:personId", func(c *gin.Context) {
+		response.Success(c, "person updated")
+	})
+	engine.DELETE("/api/person/batch", func(c *gin.Context) {
+		response.Success(c, "person batch deleted")
+	})
+	engine.DELETE("/api/person/:personId", func(c *gin.Context) {
+		response.Success(c, "person deleted")
+	})
+	engine.PUT("/api/v1/open/person/:personId", func(c *gin.Context) {
+		response.Success(c, "person sync upserted")
+	})
+	engine.DELETE("/api/v1/open/person/:personId", func(c *gin.Context) {
+		response.Success(c, "person sync deleted")
+	})
+
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/user", nil)
 	req.Header.Set("Authorization", "Bearer "+adminToken)
@@ -510,6 +530,47 @@ func TestOplogActionInference(t *testing.T) {
 
 	page = waitForPage(t, oplogSrv, &service.LogPageQuery{Module: "camera"}, int64(len(cameraCases)))
 	for _, tc := range cameraCases {
+		found := false
+		for _, item := range page.Items {
+			if item.Path == tc.path && item.Method == tc.method {
+				found = true
+				if item.Action != tc.wantAction {
+					t.Errorf("%s %s action = %q, want %q", tc.method, tc.path, item.Action, tc.wantAction)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("log item not found for %s %s", tc.method, tc.path)
+		}
+	}
+
+	personCases := []struct {
+		method     string
+		path       string
+		wantAction string
+	}{
+		{http.MethodPost, "/api/person", "resource.person.add"},
+		{http.MethodPut, "/api/person/EMP001", "resource.person.edit"},
+		{http.MethodDelete, "/api/person/EMP001", "resource.person.delete"},
+		{http.MethodDelete, "/api/person/batch", "system.common.batchDelete"},
+		{http.MethodPut, "/api/v1/open/person/EMP001", "resource.person.syncUpsert"},
+		{http.MethodDelete, "/api/v1/open/person/EMP001", "resource.person.syncDelete"},
+	}
+	for _, tc := range personCases {
+		rec = httptest.NewRecorder()
+		req = httptest.NewRequest(tc.method, tc.path, nil)
+		if strings.HasPrefix(tc.path, "/api/person") {
+			req.Header.Set("Authorization", "Bearer "+adminToken)
+		}
+		engine.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s %s status = %d, want 200", tc.method, tc.path, rec.Code)
+		}
+	}
+
+	page = waitForPage(t, oplogSrv, &service.LogPageQuery{PageSize: 100}, 14)
+	for _, tc := range personCases {
 		found := false
 		for _, item := range page.Items {
 			if item.Path == tc.path && item.Method == tc.method {

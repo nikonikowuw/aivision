@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/index.md","reason":"按后端规范检查人员模块的分层、错误、数据库和质量门禁。"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"检查 migration、软删除、唯一索引、恢复和 PostgreSQL/SQLite 一致性。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"检查统一错误响应、1018 错误码、403 白名单和内部 ID/错误细节泄露。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查测试、gofmt、vet、wire、配置和无外键等质量要求。"}
+{"file":".trellis/spec/frontend/index.md","reason":"按前端规范检查页面、API、动态菜单和权限集成。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"检查表格选择、批量删除、时间列、loading 和多语言操作列。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"检查三语 key 对齐、路由标题和操作日志动作翻译。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"检查 pnpm check、共享 requestClient、权限控制和错误提示。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查 API namespace、DTO 类型和内部 id 不泄露。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查跨层字段、错误、软删除恢复和 JSON 契约是否一致。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"检查是否复用现有 camera/user 模式，避免重复实现分页与批量交互。"}

@@ -58,6 +58,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		repository.NewCameraRepository,
 		service.NewCameraService,
 		api.NewCameraHandler,
+		repository.NewPersonRepository,
+		service.NewPersonService,
+		api.NewPersonHandler,
+		middleware.NewOpenPersonIPWhitelistMiddleware,
 		router.New,
 		wire.Struct(new(router.Deps), "*"),
 		// gRPC over UDS：生产注入 fail-closed 的 unavailable adapters、Runtime 与 EngineClient。

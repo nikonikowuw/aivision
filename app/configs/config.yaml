@@ -42,3 +42,5 @@ network:
 ipc:
   app_socket: /tmp/aivision-app.sock
   engine_socket: /tmp/aivision-engine.sock
+open:
+  person_sync_allowed_ips: []

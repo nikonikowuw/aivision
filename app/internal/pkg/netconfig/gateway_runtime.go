@@ -10,14 +10,14 @@ import (
 
 // FakeGatewayBackend 用于测试和 Fake 平台的网关后端。
 type FakeGatewayBackend struct {
-	mu                  sync.Mutex
-	ipForward           bool
-	probeResponse       bool
-	probeErr            error
-	runningServer       *FakeDHCPServer
-	startErr            error
-	simulatedLeases     []GatewayLease
-	conflictDetected    bool
+	mu               sync.Mutex
+	ipForward        bool
+	probeResponse    bool
+	probeErr         error
+	runningServer    *FakeDHCPServer
+	startErr         error
+	simulatedLeases  []GatewayLease
+	conflictDetected bool
 }
 
 // NewFakeGatewayBackend 创建 Fake 网关后端。

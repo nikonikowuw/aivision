@@ -1,0 +1,14 @@
+{"file":".trellis/spec/backend/index.md","reason":"人员管理后端需遵循 Go/Gin/GORM/wire 分层与后端开发前检查清单。"}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"确认 model/repository/service/api/middleware/router 的文件边界、命名和 JSON camelCase 约定。"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"确认 BaseModel 软删除、全局 person_id 唯一约束、版本化 PostgreSQL migration、AutoMigrate 和无外键要求。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"确认 CodePersonIDTaken、统一 {code,data,message}、HTTP 403 和 handler 错误处理边界。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"确认 gofmt、make test/vet、wire 生成、SQLite 测试和无裸魔数要求。"}
+{"file":".trellis/spec/frontend/index.md","reason":"人员页面跨越 API、动态菜单和 Vue 页面，需遵循前端应用层规范。"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"确认 api/core、views/resource 和动态路由/菜单组织方式。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"确认 Vben Form/Vxe Grid、批量提示条、时间 formatter 和操作列宽度约定。"}
+{"file":".trellis/spec/frontend/i18n-guidelines.md","reason":"确认 routes/resource/action 三语 i18n 和操作日志 key 契约。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"确认 requestClient、pnpm check、权限指令和错误提示使用后端 message。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"确认 PersonApi namespace、类型化 API、禁止裸 any 和前端模型不暴露内部 id。"}
+{"file":".trellis/spec/guides/index.md","reason":"跨层人员数据流需要遵循共享思考指南入口。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"确认数据库、Service、HTTP DTO、前端 API 和页面之间的契约与边界测试。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"确认复用现有 camera/user CRUD、分页、批量和菜单模式，避免复制不一致逻辑。"}

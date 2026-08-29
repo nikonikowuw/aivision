@@ -166,7 +166,7 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
         option.enable_rtmp = true;  // 必须开启 RTMP/FLV 转封装以供 HTTP-FLV / WS-FLV 消费
         option.enable_ts = false;
         option.enable_fmp4 = false;
-        option.modify_stamp = 0;
+        option.modify_stamp = mediakit::ProtocolOption::kModifyStampRelative; // 采用源视频流时间戳相对时间戳并矫正跳跃与回退
         option.auto_close = true; // 无观看者时自动关闭
 
         const mediakit::MediaTuple tuple{"__defaultVhost__", "live", stream_id, ""};

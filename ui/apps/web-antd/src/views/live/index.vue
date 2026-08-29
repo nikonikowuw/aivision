@@ -21,6 +21,7 @@ interface PlayerSlot {
   camera: CameraApi.CameraItem | null;
   streamUrl: string;
   streamType: 'main' | 'sub';
+  reloadToken: number;
 }
 
 const splitMode = ref<SplitMode>(1);
@@ -41,6 +42,7 @@ const slots = ref<PlayerSlot[]>(
     camera: null,
     streamUrl: '',
     streamType: 'main',
+    reloadToken: 0,
   })),
 );
 
@@ -108,6 +110,7 @@ async function playCameraInSlot(
     slot.camera = camera;
     slot.streamUrl = res.wsUrl || res.httpUrl;
     slot.streamType = targetStreamType;
+    slot.reloadToken += 1;
   } catch (error) {
     console.error('Failed to start preview:', error);
   }
@@ -115,15 +118,16 @@ async function playCameraInSlot(
 
 /**
  * 获取下一个自动补位或覆盖的目标槽位：
- * 1. 在当前分屏范围内 [0, splitMode) 从 lastAssignedIndex + 1 循环寻找首个空闲槽
- * 2. 如果全满，则循环覆盖下一个槽位：(lastAssignedIndex + 1) % splitMode
+ * 1. 在当前分屏范围内 [0, splitMode) 寻找首个空闲槽位（从已分配位置的下一个开始循环）
+ * 2. 如果全满，则循环覆盖下一个槽位
  */
 function getNextAvailableSlotIndex(): number {
   const max = splitMode.value;
   if (max === 1) return 0;
 
-  const startIdx = Math.max(0, lastAssignedIndex.value);
-  for (let i = 1; i <= max; i++) {
+  const startIdx =
+    lastAssignedIndex.value < 0 ? 0 : (lastAssignedIndex.value + 1) % max;
+  for (let i = 0; i < max; i++) {
     const idx = (startIdx + i) % max;
     if (!slots.value[idx]?.camera) {
       return idx;
@@ -131,7 +135,7 @@ function getNextAvailableSlotIndex(): number {
   }
 
   // 全满，循环覆盖下一个槽位
-  return (startIdx + 1) % max;
+  return startIdx;
 }
 
 function assignCameraToSlot(targetIdx: number, camera: CameraApi.CameraItem) {
@@ -462,6 +466,7 @@ onBeforeUnmount(() => {
             @drop="(e) => handleSlotDrop(e, slot.index)"
           >
             <VideoPlayer
+              :key="`${slot.index}_${slot.camera?.id || 'none'}_${slot.streamType}_${slot.reloadToken}`"
               :url="slot.streamUrl"
               :title="slot.camera?.name"
               :stream-type="slot.streamType"

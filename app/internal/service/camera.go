@@ -104,14 +104,16 @@ type CameraService interface {
 
 type cameraService struct {
 	repo     repository.CameraRepository
+	taskRepo repository.TaskRepository
 	registry *ProtocolRegistry
 	engine   CameraProbeClient
 }
 
 // NewCameraService 创建 CameraService 实例。
-func NewCameraService(repo repository.CameraRepository, engine CameraProbeClient) CameraService {
+func NewCameraService(repo repository.CameraRepository, taskRepo repository.TaskRepository, engine CameraProbeClient) CameraService {
 	return &cameraService{
 		repo:     repo,
+		taskRepo: taskRepo,
 		registry: NewProtocolRegistry(),
 		engine:   engine,
 	}
@@ -175,6 +177,10 @@ func (s *cameraService) UpdateCamera(ctx context.Context, id uint64, input *Save
 }
 
 func (s *cameraService) DeleteCamera(ctx context.Context, id uint64) error {
+	// 删除保护（D9）：摄像头存在未软删分析任务时拒绝删除。
+	if err := s.ensureNoTaskRef(ctx, id); err != nil {
+		return err
+	}
 	deleted, err := s.repo.Delete(ctx, id)
 	if err != nil {
 		return err
@@ -186,7 +192,31 @@ func (s *cameraService) DeleteCamera(ctx context.Context, id uint64) error {
 }
 
 func (s *cameraService) BatchDeleteCamera(ctx context.Context, ids []uint64) error {
+	// 删除保护（D9）：任一摄像头存在未软删任务即整批拒绝——
+	// 部分成功会让用户误判操作结果；16 路规模下全量检查代价可忽略。
+	for _, id := range ids {
+		if err := s.ensureNoTaskRef(ctx, id); err != nil {
+			return err
+		}
+	}
 	return s.repo.BatchDelete(ctx, ids)
+}
+
+// ensureNoTaskRef 校验指定摄像头（按主键 id 取 camera_id 业务键）无未软删分析任务，
+// 存在则返回 CodeCameraInUse（D9）。
+func (s *cameraService) ensureNoTaskRef(ctx context.Context, id uint64) error {
+	camera, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return mapRepoError(err)
+	}
+	count, err := s.taskRepo.CountTasksByCameraID(ctx, camera.CameraID)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errno.NewError(errno.CodeCameraInUse)
+	}
+	return nil
 }
 
 // ProbeCamera 测活编排：协议/URL 校验 → 读取 DB → 调 Engine → 按配置指纹规则落库。

@@ -117,7 +117,9 @@ func (s *algorithmService) UploadAndInstall(ctx context.Context, reader io.Reade
 		return nil, errno.New(errno.CodeAlgoInstallFailed)
 	}
 
-	// 4. Engine 校验安装成功后，持久化元数据至数据库
+	// 4. Engine 校验安装成功后，持久化元数据：算法/版本/激活状态与 revision bump
+	// 在同一事务内提交（design §3.2 / D11）——active_version 变更若不同事务 bump，
+	// 存在「配置已变但 revision 未增 → Engine 永不感知」的崩溃窗口。
 	algoModel := &model.Algorithm{
 		AlgorithmID:   extracted.AlgorithmID,
 		Name:          extracted.Name,
@@ -125,10 +127,6 @@ func (s *algorithmService) UploadAndInstall(ctx context.Context, reader io.Reade
 		AlarmTypeID:   extracted.AlarmTypeID,
 		ActiveVersion: extracted.Version, // 默认首次安装即为激活版本
 		Description:   extracted.Description,
-	}
-	if err := s.repo.UpsertAlgorithm(ctx, algoModel); err != nil {
-		s.logger.Error("failed to upsert algorithm to db", zap.Error(err))
-		return nil, err
 	}
 
 	fpsTiersJSON, err := json.Marshal(extracted.FPSTiers)
@@ -148,14 +146,23 @@ func (s *algorithmService) UploadAndInstall(ctx context.Context, reader io.Reade
 		PackageSizeBytes:  extracted.TotalSizeBytes,
 		IsActive:          true,
 	}
-	if err := s.repo.UpsertVersion(ctx, versionModel); err != nil {
-		s.logger.Error("failed to upsert algorithm version to db", zap.Error(err))
-		return nil, err
-	}
 
-	// 将其他版本置为非激活并激活当前
-	if err := s.repo.ActivateVersion(ctx, extracted.AlgorithmID, extracted.Version); err != nil {
-		s.logger.Warn("failed to set version active in db", zap.Error(err))
+	err = s.repo.InTx(ctx, func(ctx context.Context, r repository.AlgorithmRepository) error {
+		if err := r.UpsertAlgorithm(ctx, algoModel); err != nil {
+			return err
+		}
+		if err := r.UpsertVersion(ctx, versionModel); err != nil {
+			return err
+		}
+		if err := r.ActivateVersion(ctx, extracted.AlgorithmID, extracted.Version); err != nil {
+			return err
+		}
+		_, err := r.BumpRevision(ctx)
+		return err
+	})
+	if err != nil {
+		s.logger.Error("failed to persist algorithm package to db", zap.Error(err))
+		return nil, err
 	}
 
 	s.logger.Info("algorithm package installed successfully",
@@ -191,8 +198,16 @@ func (s *algorithmService) ActivateVersion(ctx context.Context, algorithmID, ver
 		return errno.New(errno.CodeAlgoInstallFailed)
 	}
 
-	// 3. 更新数据库激活状态
-	return s.repo.ActivateVersion(ctx, algorithmID, version)
+	// 3. 更新数据库激活状态并在同一事务内递增 revision：
+	// active_version 变更会改变 DesiredState 内容，bump 与业务写必须原子提交
+	// （design §3.2 / D11），否则 Engine 永不感知版本切换。
+	return s.repo.InTx(ctx, func(ctx context.Context, r repository.AlgorithmRepository) error {
+		if err := r.ActivateVersion(ctx, algorithmID, version); err != nil {
+			return err
+		}
+		_, err := r.BumpRevision(ctx)
+		return err
+	})
 }
 
 func (s *algorithmService) UninstallVersion(ctx context.Context, algorithmID, version string) error {
@@ -233,6 +248,14 @@ func (s *algorithmService) UninstallVersion(ctx context.Context, algorithmID, ve
 		return errno.New(errno.CodeInternal)
 	}
 
-	// 4. 清理数据库记录
-	return s.repo.DeleteVersion(ctx, algorithmID, version)
+	// 4. 清理数据库记录并在同一事务内递增 revision：
+	// 卸载活跃版本会改变 DesiredState（active_version 回退/算法删除），
+	// 与 revision bump 必须原子提交（design §3.2 / D11）。
+	return s.repo.InTx(ctx, func(ctx context.Context, r repository.AlgorithmRepository) error {
+		if err := r.DeleteVersion(ctx, algorithmID, version); err != nil {
+			return err
+		}
+		_, err := r.BumpRevision(ctx)
+		return err
+	})
 }

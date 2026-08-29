@@ -123,14 +123,14 @@ sleep 5 && curl /api/task/instance/list?cameraId=...   # 期望 status=RUNNING
 
 **为什么单独一个 Phase**：这些改动侵入已有的 `algorithm.go` / `camera.go`，与前三个 Phase 的新增代码风险性质不同，独立成节点便于回退。
 
-- [ ] `app/internal/repository/algorithm.go:260`：`CountActiveInstances` 填真实查询，删除占位注释
-- [ ] `app/internal/service/algorithm.go`：注入 `RevisionBumper`，在三处调用
+- [x] `app/internal/repository/algorithm.go:260`：`CountActiveInstances` 填真实查询，删除占位注释（按 algorithm_id 统计未软删实例）
+- [x] `app/internal/service/algorithm.go`：三处写路径接入 `s.repo.InTx` 并在同事务内调用 `BumpRevision`
   - `UploadAndInstall`（首次安装设 ActiveVersion）
   - `ActivateVersion`
   - `UninstallVersion`
-  - 三处均须与各自业务事务同事务
-- [ ] `app/internal/service/camera.go` 的 `DeleteCamera` / `BatchDeleteCamera`：前置 `CountTasksByCameraID` 检查，返回 `CodeCameraInUse`
-- [ ] 回归测试：卸载被引用算法包被拒、删除有任务的摄像头被拒、版本切换后 DesiredState 更新
+  - 三处均与各自业务事务同事务原子提交；`repository.BumpRevisionTx` 抽取供跨仓库事务复用
+- [x] `app/internal/service/camera.go` 的 `DeleteCamera` / `BatchDeleteCamera`：前置 `CountTasksByCameraID` 检查，返回 `CodeCameraInUse`
+- [x] 回归测试：卸载被引用算法包被拒、删除有任务的摄像头被拒、版本切换后 DesiredState 更新与 bump 失败回滚
 
 **验证**
 

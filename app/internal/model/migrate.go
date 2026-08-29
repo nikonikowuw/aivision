@@ -18,5 +18,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&Person{},
 		&Algorithm{},
 		&AlgorithmVersion{},
+		&AnalysisTask{},
+		&AlgorithmInstance{},
+		&DesiredStateRevision{},
 	)
 }

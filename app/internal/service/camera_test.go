@@ -50,11 +50,11 @@ func newCameraServiceTestEnv(t *testing.T) (CameraService, *fakeProbeClient, *go
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Camera{}); err != nil {
+	if err := db.AutoMigrate(&model.Camera{}, &model.AnalysisTask{}); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
 	fake := &fakeProbeClient{}
-	svc := NewCameraService(repository.NewCameraRepository(db), fake)
+	svc := NewCameraService(repository.NewCameraRepository(db), repository.NewTaskRepository(db), fake)
 	return svc, fake, db
 }
 
@@ -356,5 +356,55 @@ func TestCameraServiceProbeUnknownIDReturnsNotFound(t *testing.T) {
 	_, err := svc.ProbeCamera(context.Background(), &ProbeCameraRequest{ID: 9999, Protocol: "rtsp", RtspURL: "rtsp://192.168.1.10/live"})
 	if !errno.Is(err, errno.CodeNotFound) {
 		t.Fatalf("unknown id error = %v, want CodeNotFound", err)
+	}
+}
+
+// TestCameraServiceDeleteBlockedByActiveTask 摄像头存在关联分析任务时拒绝删除（D9）。
+func TestCameraServiceDeleteBlockedByActiveTask(t *testing.T) {
+	svc, _, db := newCameraServiceTestEnv(t)
+	ctx := context.Background()
+	cam := createFixtureCamera(t, svc, "门口", "rtsp://192.168.1.10/live")
+
+	// 存在未软删分析任务 → 拒绝删除并返回 CodeCameraInUse
+	if err := db.Create(&model.AnalysisTask{CameraID: cam.CameraID, Name: "task-a"}).Error; err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if err := svc.DeleteCamera(ctx, cam.ID); !errno.Is(err, errno.CodeCameraInUse) {
+		t.Fatalf("delete with active task = %v, want CodeCameraInUse", err)
+	}
+	if _, err := repository.NewCameraRepository(db).GetByID(ctx, cam.ID); err != nil {
+		t.Fatalf("camera must remain after rejected delete: %v", err)
+	}
+
+	// 任务软删后 → 允许删除
+	if err := db.Delete(&model.AnalysisTask{}, "camera_id = ?", cam.CameraID).Error; err != nil {
+		t.Fatalf("soft delete task: %v", err)
+	}
+	if err := svc.DeleteCamera(ctx, cam.ID); err != nil {
+		t.Fatalf("delete after task removed failed: %v", err)
+	}
+}
+
+// TestCameraServiceBatchDeleteBlockedWhenAnyCameraHasTask
+// 批量删除时任一摄像头有关联任务即整批拒绝。
+func TestCameraServiceBatchDeleteBlockedWhenAnyCameraHasTask(t *testing.T) {
+	svc, _, db := newCameraServiceTestEnv(t)
+	ctx := context.Background()
+	c1 := createFixtureCamera(t, svc, "A", "rtsp://192.168.1.1/live")
+	c2 := createFixtureCamera(t, svc, "B", "rtsp://192.168.1.2/live")
+	if err := db.Create(&model.AnalysisTask{CameraID: c2.CameraID, Name: "task-b"}).Error; err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+
+	// 任一摄像头有任务即整批拒绝，c1 也不应被删除
+	if err := svc.BatchDeleteCamera(ctx, []uint64{c1.ID, c2.ID}); !errno.Is(err, errno.CodeCameraInUse) {
+		t.Fatalf("batch delete = %v, want CodeCameraInUse", err)
+	}
+	page, err := svc.GetPage(ctx, &CameraPageQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("get page: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("total = %d, want 2 (nothing deleted)", page.Total)
 	}
 }

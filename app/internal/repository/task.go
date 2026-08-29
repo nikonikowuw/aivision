@@ -242,8 +242,16 @@ func (r *taskRepository) UpdateInstanceStatus(ctx context.Context, instanceID st
 // 必须在业务事务内调用：改变 DesiredState 内容的写入与版本递增必须原子提交。
 // 返回 0 视为单行缺失：revision 只增不减，合法的 bump 结果恒 ≥ 1。
 func (r *taskRepository) BumpRevision(ctx context.Context) (uint64, error) {
+	return BumpRevisionTx(ctx, r.db)
+}
+
+// BumpRevisionTx 在指定事务连接上执行单行计数器 revision+1 并返回新值。
+// TaskRepository.InTx / AlgorithmRepository.InTx 闭包内的 BumpRevision 均落到本实现，
+// 保证「业务写 + revision 递增」在同一事务内原子提交（design §3.1/§3.2 / D4）。
+// 返回 0 视为单行缺失：revision 只增不减，合法的 bump 结果恒 ≥ 1。
+func BumpRevisionTx(ctx context.Context, tx *gorm.DB) (uint64, error) {
 	var rev uint64
-	err := r.db.WithContext(ctx).Raw(
+	err := tx.WithContext(ctx).Raw(
 		"UPDATE desired_state_revision SET revision = revision + 1 WHERE id = 1 RETURNING revision",
 	).Scan(&rev).Error
 	if err != nil {

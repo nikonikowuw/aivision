@@ -71,11 +71,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	}
 	networkHandler := api.NewNetworkHandler(networkService)
 	cameraRepository := repository.NewCameraRepository(gormDB)
+	taskRepository := repository.NewTaskRepository(gormDB)
 	engineClient, err := engineipc.NewEngineClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-	cameraService := service.NewCameraService(cameraRepository, engineClient)
+	cameraService := service.NewCameraService(cameraRepository, taskRepository, engineClient)
 	cameraHandler := api.NewCameraHandler(cameraService)
 	personRepository := repository.NewPersonRepository(gormDB)
 	personService := service.NewPersonService(personRepository)
@@ -83,7 +84,6 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	algorithmRepository := repository.NewAlgorithmRepository(gormDB)
 	algorithmService := service.NewAlgorithmService(algorithmRepository, engineClient, zapLogger)
 	algorithmHandler := api.NewAlgorithmHandler(algorithmService)
-	taskRepository := repository.NewTaskRepository(gormDB)
 	reportAdapter := service.NewReportAdapter(taskRepository, zapLogger)
 	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
 	taskHandler := api.NewTaskHandler(taskService)

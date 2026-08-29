@@ -33,6 +33,13 @@ type AlgorithmRepository interface {
 	ActivateVersion(ctx context.Context, algorithmID, version string) error
 	DeleteVersion(ctx context.Context, algorithmID, version string) error
 	CountActiveInstances(ctx context.Context, algorithmID, version string) (int64, error)
+
+	// revision 与事务：改变 DesiredState 内容的写路径（安装/激活/卸载版本）
+	// 必须经 InTx 并在闭包内调用 BumpRevision，保证「业务写 + revision 递增」
+	// 原子提交（design §3.2 / PRD D11：active_version 变更必须 bump，否则
+	// Engine 永不感知版本切换）。
+	BumpRevision(ctx context.Context) (uint64, error) // 必须在 InTx 闭包内调用
+	InTx(ctx context.Context, fn func(ctx context.Context, r AlgorithmRepository) error) error
 }
 
 type algorithmRepository struct {
@@ -257,7 +264,29 @@ func (r *algorithmRepository) DeleteVersion(ctx context.Context, algorithmID, ve
 	})
 }
 
+// CountActiveInstances 统计引用该算法的未软删实例数（软删约定 deleted_at=0 为活跃）。
+// 注意（PRD D11 连带结论）：algorithm_instances 不存版本列，实例经
+// algorithms.active_version 动态绑定版本——卸载任意版本都可能影响运行中实例，
+// 因此仅按 algorithm_id 计数；version 参数保留接口兼容，不参与过滤。
 func (r *algorithmRepository) CountActiveInstances(ctx context.Context, algorithmID, version string) (int64, error) {
-	// 在未来的 analysis_tasks 表建立前返回 0；后续在此补充查询活跃任务数
-	return 0, nil
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.AlgorithmInstance{}).
+		Where("algorithm_id = ?", algorithmID).
+		Count(&count).Error
+	return count, err
 }
+
+func (r *algorithmRepository) BumpRevision(ctx context.Context) (uint64, error) {
+	return BumpRevisionTx(ctx, r.db)
+}
+
+// InTx 在单事务内执行 fn；fn 收到的 AlgorithmRepository 绑定到该事务连接，
+// 与 TaskRepository.InTx 同构。fn 内调用 BumpRevision 与业务写共用同一事务，
+// 二者同提交同回滚（design §3.2 / D11）。
+func (r *algorithmRepository) InTx(ctx context.Context, fn func(ctx context.Context, r AlgorithmRepository) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(ctx, &algorithmRepository{db: tx})
+	})
+}
+

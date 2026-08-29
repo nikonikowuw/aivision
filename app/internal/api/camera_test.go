@@ -67,7 +67,7 @@ func setupCameraAPIEngine(t *testing.T) (*gin.Engine, *fakeProbeClient) {
 	db := newTestAPIDB(t, "camera")
 	repo := repository.NewCameraRepository(db)
 	fake := &fakeProbeClient{}
-	srv := service.NewCameraService(repo, fake)
+	srv := service.NewCameraService(repo, repository.NewTaskRepository(db), fake)
 	handler := api.NewCameraHandler(srv)
 
 	r := gin.New()
@@ -503,7 +503,7 @@ func setupCameraFullApp(t *testing.T) (*gin.Engine, *gorm.DB) {
 	userSvc := service.NewUserService(userRepo, deptRepo, roleRepo)
 	oplogSvc := service.NewOperationLogService(oplogRepo)
 	ntpSvc := service.NewNTPService(sysCfgRepo, ntp.NewMockExecutor(), zap.NewNop())
-	cameraSvc := service.NewCameraService(cameraRepo, &fakeProbeClient{})
+	cameraSvc := service.NewCameraService(cameraRepo, repository.NewTaskRepository(db), &fakeProbeClient{})
 
 	authMid := middleware.NewAuthMiddleware(authRepo, cfg)
 	permMid := middleware.NewPermMiddleware(menuRepo)

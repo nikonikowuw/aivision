@@ -14,7 +14,8 @@
   "resource": {
     "camera": "攝影機",
     "person": "人員管理",
-    "resource": "資源管理"
+    "resource": "資源管理",
+    "task": "任務管理"
   },
   "ai": {
     "ai": "AI 演算法",

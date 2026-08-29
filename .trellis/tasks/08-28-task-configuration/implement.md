@@ -149,15 +149,15 @@ curl -X DELETE /api/camera/1                            # 期望 CodeCameraInUse
 
 ## Phase 5：前端页面
 
-- [ ] `ui/apps/web-antd/src/api/task.ts`：RequestClient 封装
-- [ ] `views/resource/task/index.vue`：任务列表 + 筛选 + 启停 + 删除
-- [ ] `components/TaskFormModal.vue`：摄像头下拉仅列未建任务的（数据来自 `GET /api/task/available-cameras`，value 用 `camera_id` 业务键）
-- [ ] `components/InstanceDrawer.vue`：实例列表 + 增删改启停
-- [ ] `components/InstanceFormModal.vue`：选算法 + 设 FPS（`max` 绑定 `fpsTiers` 最高档，算法/版本切换联动）+ 嵌 SchemaForm
-- [ ] `components/SchemaForm.vue`：按 design §8 的类型映射表实现，复用 `SchemaModal.vue` 的解析逻辑
-- [ ] 状态轮询：保存后 1s 间隔，命中稳定态或 15s 超时停止
-- [ ] i18n：`routes.resource.task` 及页面内文案（zh-CN / en / zh-TW，与 errno 三语言保持一致）
-- [ ] `app/migrations/000020_seed_resource_task_menu.up.sql` / `.down.sql`
+- [x] `ui/apps/web-antd/src/api/task.ts`：RequestClient 封装（实际路径 `src/api/core/task.ts`，导出于 `src/api/core/index.ts`）
+- [x] `views/resource/task/index.vue`：任务列表 + 筛选 + 启停 + 删除（`name: ResourceTask`，支持 keep-alive）
+- [x] `components/TaskFormModal.vue`：摄像头下拉仅列未建任务的（数据来自 `GET /api/task/available-cameras`，value 用 `camera_id` 业务键）
+- [x] `components/InstanceDrawer.vue`：实例列表 + 增删改启停
+- [x] `components/InstanceFormModal.vue`：选算法 + 设 FPS（`max` 绑定 `fpsTiers` 最高档，算法/版本切换联动）+ 嵌 SchemaForm
+- [x] `components/SchemaForm.vue`：按 design §8 的类型映射表实现，复用 `SchemaModal.vue` 的解析逻辑（严禁 x-ui）
+- [x] 状态轮询：保存后 1s 间隔，命中稳定态或 15s 超时停止
+- [x] i18n：`routes.resource.task` 及页面内文案（zh-CN / en / zh-TW，与 errno 三语言保持一致）
+- [x] `app/migrations/000020_seed_resource_task_menu.up.sql` / `.down.sql`
   - 路径 `/resource/task`，路由名 `ResourceTask`，权限码 `resource:task`
   - 图标 `ant-design:profile-outlined`，`keepAlive=true`，`affix=false`
   - 按钮权限 `resource:task:add` / `:edit` / `:delete`

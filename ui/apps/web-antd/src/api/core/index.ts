@@ -9,4 +9,5 @@ export * from './network';
 export * from './ntp';
 export * from './person';
 export * from './role';
+export * from './task';
 export * from './user';

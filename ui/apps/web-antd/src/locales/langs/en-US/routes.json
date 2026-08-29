@@ -14,7 +14,8 @@
   "resource": {
     "camera": "Camera",
     "person": "Person Management",
-    "resource": "Resource"
+    "resource": "Resource",
+    "task": "Task Management"
   },
   "ai": {
     "ai": "AI Algorithm",

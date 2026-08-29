@@ -115,6 +115,7 @@ private:
     std::unique_ptr<grpc::Server> server_;
 };
 
+#if !defined(AIVISION_SKIP_IPC_TESTS)
 aivision::v1::AlgorithmInstanceConfig* add_instance(aivision::v1::DesiredState* desired,
                                                     const std::string& instance_id,
                                                     const std::string& camera_id,
@@ -131,6 +132,7 @@ aivision::v1::AlgorithmInstanceConfig* add_instance(aivision::v1::DesiredState* 
     instance->set_enabled(true);
     return instance;
 }
+#endif
 
 } // namespace
 

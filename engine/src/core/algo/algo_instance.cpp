@@ -192,19 +192,11 @@ void AlgorithmInstance::push_frame(const av_frame_desc& frame) {
         }
     }
 
-    // 抽帧节流：根据 target_fps 控制向实例喂帧的时间间隔
-    const auto now = std::chrono::steady_clock::now();
-    {
-        std::lock_guard<std::mutex> sample_lock(sample_mutex_);
-        if (target_fps_ > 0 && last_sample_time_.time_since_epoch().count() > 0) {
-            const auto interval_ms = 1000.0 / target_fps_;
-            const auto elapsed_ms = std::chrono::duration<double, std::milli>(now - last_sample_time_).count();
-            // 若距离上一帧时间未达到期望间隔的 90%，则丢弃此帧
-            if (elapsed_ms < interval_ms * 0.9) {
-                return;
-            }
-        }
-        last_sample_time_ = now;
+    // 抽帧节流：优先按媒体 PTS 采样。硬件解码器可能批量输出帧，使用回调到达时间
+    // 会把时间戳连续的视频帧误判为过密；PTS 缺失时才回退到单调时钟。
+    if (target_fps_ > 0 && should_throttle_sample(frame.pts_ns)) {
+        dropped_frames_.fetch_add(1, std::memory_order_relaxed);
+        return;
     }
 
     // 增加视频帧引用计数，确保其在队列缓存期间不被上游释放
@@ -315,13 +307,64 @@ void AlgorithmInstance::worker_loop() {
             }
         }
 
-        processed_frames_.fetch_add(1);
+        processed_frames_.fetch_add(1, std::memory_order_relaxed);
+        // 无锁累加滑动窗口帧计数（由 get_current_fps 在结算时原子提取并清零）
+        fps_window_frames_.fetch_add(1, std::memory_order_relaxed);
 
         // 推理完成后释放该帧在实例队列中的引用
         if (frame_ops_ && frame_ops_->release) {
             frame_ops_->release(frame_ops_->ctx, frame.frame_token);
         }
     }
+}
+
+double AlgorithmInstance::get_current_fps(std::chrono::steady_clock::time_point now) const {
+    // 1 秒滑动窗口：上报周期（~100ms）远小于窗口，结算值平滑稳定；
+    // 实例无帧进入或已停止时窗口归零，避免前端残留旧值。
+    constexpr double kFpsWindowMs = 1000.0;
+
+    std::lock_guard<std::mutex> lock(fps_calc_mutex_);
+    if (fps_window_start_.time_since_epoch().count() == 0) {
+        // 首次调用初始化窗口起点
+        fps_window_start_ = now;
+    }
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(now - fps_window_start_).count();
+    if (elapsed_ms >= kFpsWindowMs) {
+        // 进入结算时 elapsed_ms 恒 ≥ 窗口，无需再判 0
+        const uint64_t frames = fps_window_frames_.exchange(0, std::memory_order_relaxed);
+        current_fps_ = static_cast<double>(frames) / (elapsed_ms / 1000.0);
+        fps_window_start_ = now;
+    }
+    return current_fps_;
+}
+
+bool AlgorithmInstance::should_throttle_sample(int64_t pts_ns) {
+    constexpr double kSamplingTolerance = 0.9;
+    const int64_t interval_ns = static_cast<int64_t>(
+        (1'000'000'000.0 / target_fps_) * kSamplingTolerance);
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> sample_lock(sample_mutex_);
+
+    if (pts_ns > 0) {
+        // PTS 采样：与上一被采样帧的时间戳间隔不足则丢弃；缺失基准时接受首帧
+        bool throttled = false;
+        if (last_sample_pts_ns_ > 0) {
+            const int64_t elapsed_ns = pts_ns - last_sample_pts_ns_;
+            throttled = elapsed_ns >= 0 && elapsed_ns < interval_ns;
+        }
+        if (!throttled) last_sample_pts_ns_ = pts_ns;
+        last_sample_time_ = now;
+        return throttled;
+    }
+
+    // 回退到单调时钟采样：PTS 缺失且距上次采样不足则丢弃；首帧记录基准
+    if (last_sample_time_.time_since_epoch().count() > 0) {
+        const int64_t elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now - last_sample_time_).count();
+        if (elapsed_ns < interval_ns) return true;
+    }
+    last_sample_time_ = now;
+    return false;
 }
 
 } // namespace aivision::core

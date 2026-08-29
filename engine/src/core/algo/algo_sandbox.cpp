@@ -40,6 +40,10 @@
 #include <sys/wait.h>
 #include <signal.h>
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 
 extern char** environ;
 
@@ -85,6 +89,40 @@ bool spawn_process(const std::vector<std::string>& args,
     if (status != 0) return false;
     *out_pid = pid;
     return true;
+}
+
+std::string current_executable_path() {
+#if defined(__APPLE__)
+    uint32_t buffer_size = 0;
+    if (_NSGetExecutablePath(nullptr, &buffer_size) == 0 || buffer_size == 0) return {};
+    std::vector<char> buffer(buffer_size);
+    if (_NSGetExecutablePath(buffer.data(), &buffer_size) != 0) return {};
+    return std::string(buffer.data());
+#elif defined(__linux__)
+    std::array<char, 4096> buffer{};
+    const ssize_t length = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+    if (length <= 0) return {};
+    buffer[static_cast<size_t>(length)] = '\0';
+    return std::string(buffer.data());
+#else
+    return {};
+#endif
+}
+
+// 默认 validator 与 Engine 放在同一部署目录；只有找不到时才回退到 PATH 搜索。
+std::string resolve_validator_binary(const std::string& requested) {
+    if (requested != "package_validator" || requested.find('/') != std::string::npos) return requested;
+
+    const std::string executable = current_executable_path();
+    if (executable.empty()) return requested;
+
+    const fs::path candidate = fs::path(executable).parent_path() / requested;
+    std::error_code status_error;
+    if (fs::is_regular_file(candidate, status_error) && !status_error &&
+        ::access(candidate.c_str(), X_OK) == 0) {
+        return candidate.string();
+    }
+    return requested;
 }
 
 bool wait_with_deadline(pid_t pid, int* out_status, std::chrono::steady_clock::time_point deadline) {
@@ -1223,10 +1261,12 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
 ValidationResult PackageValidator::run_sandbox_validator(const std::string& validator_bin_path,
                                                          const std::string& package_path,
                                                          const std::string& install_base_dir) {
-    if (validator_bin_path.empty() ||
-        (validator_bin_path.find('/') != std::string::npos && !fs::is_regular_file(validator_bin_path))) {
+    const std::string validator_bin = resolve_validator_binary(validator_bin_path);
+    if (validator_bin.empty() ||
+        (validator_bin.find('/') != std::string::npos && !fs::is_regular_file(validator_bin))) {
         ValidationResult result;
         result.error_stage = "sandbox_spawn";
+        result.error_code = "VALIDATOR_CRASHED";
         result.error_message = "sandbox validator binary is unavailable";
         return result;
     }
@@ -1234,7 +1274,7 @@ ValidationResult PackageValidator::run_sandbox_validator(const std::string& vali
     std::string output;
     // merge_stderr = false: 只捕获 stdout 的机器 JSON 契约，子进程 stderr 日志直通宿主
     const bool executed = capture_command(
-        {validator_bin_path, package_path, install_base_dir}, output, 64 * 1024, false);
+        {validator_bin, package_path, install_base_dir}, output, 64 * 1024, false);
 
     ValidationResult result;
     std::string parse_error;

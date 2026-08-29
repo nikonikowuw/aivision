@@ -154,6 +154,7 @@ av_status CameraTask::start() {
     const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
     last_packet_time_ms_.store(now_ms);
+    last_frame_wall_time_ns_.store(0, std::memory_order_release);
     last_decoder_input_time_ms_.store(0);
     decoder_waiting_for_output_.store(false);
     saw_idr_keyframe_.store(false);
@@ -429,6 +430,10 @@ void CameraTask::decode_loop() {
                 frame->frame_token = const_cast<void*>(pool_token);
                 decoder_waiting_for_output_.store(false, std::memory_order_release);
                 decoded_frames_.fetch_add(1);
+                // wall_time_ns 由平台解码器在成功输出时填充；仅正值可作为真实最后帧时间。
+                if (frame->wall_time_ns > 0) {
+                    last_frame_wall_time_ns_.store(frame->wall_time_ns, std::memory_order_release);
+                }
 
                 // 注册底层硬件 surface 的级联析构释放回调
                 if (frame->opaque && platform_adapter_) {

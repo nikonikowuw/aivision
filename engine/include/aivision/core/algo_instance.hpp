@@ -97,6 +97,18 @@ public:
     [[nodiscard]] uint64_t get_dropped_frames() const { return dropped_frames_.load(); }
 
     /**
+     * @brief 获取当前推理帧率（FPS）
+     * @return 最近 1s 滑动窗口结算的推理吞吐；尚未满一个窗口或实例无帧进入时返回 0
+     */
+    [[nodiscard]] double get_current_fps() const { return get_current_fps(std::chrono::steady_clock::now()); }
+
+    /**
+     * @brief 按指定时间点结算推理帧率（测试可注入时间，避免依赖真实 sleep）
+     * @param now 当前时间点（单调时钟）
+     */
+    [[nodiscard]] double get_current_fps(std::chrono::steady_clock::time_point now) const;
+
+    /**
      * @brief 设置推理结果到达时的外部处理回调
      */
     void set_result_callback(std::function<void(const av_algo_result&, const av_frame_desc&)> cb) {
@@ -109,6 +121,8 @@ private:
     static void result_bridge(const av_algo_result* res, void* user_data);
     /// 工作线程主循环
     void worker_loop();
+    /// 按目标 FPS 判定当前帧是否应被抽帧节流丢弃（内部加锁更新采样基准）
+    bool should_throttle_sample(int64_t pts_ns);
 
     std::string instance_id_;
     std::string camera_id_;
@@ -138,7 +152,14 @@ private:
 
     std::atomic<uint64_t> processed_frames_{0};
     std::atomic<uint64_t> dropped_frames_{0};
+    int64_t last_sample_pts_ns_ = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_sample_time_{};
+
+    /// FPS 滑动窗口统计（worker 线程无锁累加，上报线程互斥结算）
+    mutable std::mutex fps_calc_mutex_;
+    mutable std::atomic<uint64_t> fps_window_frames_{0};
+    mutable std::chrono::time_point<std::chrono::steady_clock> fps_window_start_{};
+    mutable double current_fps_ = 0.0;
 
     std::function<void(const av_algo_result&, const av_frame_desc&)> result_cb_;
 };

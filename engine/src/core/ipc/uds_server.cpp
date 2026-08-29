@@ -637,9 +637,9 @@ public:
             return grpc::Status::OK;
         }
         if (AlgoManager::instance().has_package_reference(request->algorithm_id(), request->version()) ||
-            has_desired_package_reference(request->algorithm_id(), request->version())) {
+            has_desired_instance_reference(request->algorithm_id())) {
             response->set_code("PACKAGE_IN_USE");
-            response->set_error_message("package version is referenced by the applied desired state or a running instance");
+            response->set_error_message("package version is referenced by an active desired instance or a running instance");
             return grpc::Status::OK;
         }
         const fs::path target = package_root() / request->algorithm_id() / request->version();
@@ -1091,12 +1091,10 @@ private:
         return {};
     }
 
-    bool has_desired_package_reference(const std::string& algorithm_id, const std::string& version) const {
+    bool has_desired_instance_reference(const std::string& algorithm_id) const {
+        // active_package_versions 只是激活标记，不代表有任务使用该算法包。
         for (const auto& instance : applied_desired_state_.instances()) {
-            if (instance.algorithm_id() == algorithm_id) return true;
-        }
-        for (const auto& package : applied_desired_state_.active_package_versions()) {
-            if (package.algorithm_id() == algorithm_id && package.version() == version) return true;
+            if (instance.enabled() && instance.algorithm_id() == algorithm_id) return true;
         }
         return false;
     }

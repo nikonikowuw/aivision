@@ -120,6 +120,7 @@ TEST(CameraTaskTest, MultiInstanceAndIDRGate) {
 
     aivision::core::CameraTask task("cam-1", "rtsp://127.0.0.1/live/test", adapter, backend);
     EXPECT_EQ(task.start(), AV_OK);
+    EXPECT_EQ(task.get_last_frame_wall_time_ns(), 0);
 
     // Create 2 instances with different target FPS
     auto inst1 = std::make_shared<aivision::core::AlgorithmInstance>("inst-1", "cam-1", "yolo", "1.0.0", 25, "{}", nullptr, nullptr);
@@ -146,6 +147,7 @@ TEST(CameraTaskTest, MultiInstanceAndIDRGate) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     EXPECT_EQ(task.get_decoded_frames(), 1);
+    EXPECT_EQ(task.get_last_frame_wall_time_ns(), 2'000'000);
 
     // Allow worker threads to pick up frame
     std::this_thread::sleep_for(std::chrono::milliseconds(50));

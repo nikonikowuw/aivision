@@ -82,6 +82,12 @@ public:
     [[nodiscard]] std::string get_camera_id() const { return camera_id_; }
     [[nodiscard]] CameraState get_state() const { return state_.load(); }
     [[nodiscard]] uint64_t get_decoded_frames() const { return decoded_frames_.load(); }
+    /**
+     * @brief 返回最近一次成功解码帧的 wall clock 纳秒时间；尚无帧时返回 0
+     */
+    [[nodiscard]] int64_t get_last_frame_wall_time_ns() const {
+        return last_frame_wall_time_ns_.load(std::memory_order_acquire);
+    }
 
     /**
      * @brief 手动触发一次看门狗巡检（常用于单元测试）
@@ -125,6 +131,8 @@ private:
     std::vector<std::shared_ptr<AlgorithmInstance>> instances_;
 
     std::atomic<uint64_t> decoded_frames_{0};
+    /// 最近一次成功解码帧的墙上时钟纳秒值，供跨进程任务状态上报。
+    std::atomic<int64_t> last_frame_wall_time_ns_{0};
     std::atomic<int64_t> last_packet_time_ms_{0};
     std::atomic<int64_t> last_decoder_input_time_ms_{0};
     std::atomic<bool> decoder_waiting_for_output_{false};

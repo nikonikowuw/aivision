@@ -51,6 +51,7 @@ add_executable(unit_tests
     unit/test_resource_ledger.cpp
     unit/test_toolkit.cpp
     unit/test_algo_sandbox.cpp
+    unit/test_algo_instance.cpp
     unit/test_camera_task.cpp
     unit/test_probe_rtsp.cpp
     unit/test_live_stream_manager.cpp

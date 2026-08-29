@@ -82,6 +82,21 @@ std::vector<NalUnit> split_nals(const uint8_t* data, size_t size) {
     return result;
 }
 
+bool is_vcl_nal(const NalUnit& nal, bool hevc) {
+    if (nal.bytes.empty()) return false;
+    const uint8_t type = hevc ? static_cast<uint8_t>((nal.bytes[0] >> 1) & 0x3F)
+                              : static_cast<uint8_t>(nal.bytes[0] & 0x1F);
+    return hevc ? type <= 31 : (type >= 1 && type <= 5);
+}
+
+std::vector<NalUnit> vcl_nals(const std::vector<NalUnit>& nals, bool hevc) {
+    std::vector<NalUnit> result;
+    for (const auto& nal : nals) {
+        if (is_vcl_nal(nal, hevc)) result.push_back(nal);
+    }
+    return result;
+}
+
 } // namespace
 
 class MacosDecoder final : public IDecoder {
@@ -105,13 +120,16 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             const auto nals = split_nals(data, size);
             if (nals.empty()) return AV_ERR_INVALID_ARG;
-            // 提取 SPS/PPS/VPS 并更新 CMVideoFormatDescription
+            const bool hevc = codec_ == "H265" || codec_ == "HEVC";
+            // Parameter sets are carried by format_desc_; only VCL NALs form a decode sample.
             update_parameter_sets_locked(nals);
             if (!session_ && !create_session_locked()) return AV_ERR_RETRY;
+            const auto sample_nals = vcl_nals(nals, hevc);
+            if (sample_nals.empty()) return AV_OK;
 
             // 组装 AVCC 大端 4 字节长度前缀格式
             std::vector<uint8_t> avcc;
-            for (const auto& nal : nals) {
+            for (const auto& nal : sample_nals) {
                 const uint32_t length = static_cast<uint32_t>(nal.bytes.size());
                 avcc.push_back(static_cast<uint8_t>(length >> 24));
                 avcc.push_back(static_cast<uint8_t>(length >> 16));

@@ -130,36 +130,45 @@ public:
                     return;
                 }
 
-                // 注册视频帧回调委托，将 ZLM Frame 结构体转换封装为 aivision EncodedPacket
-                auto delegate = video_track->addDelegate([weak_state](const mediakit::Frame::Ptr& frame) {
+                // ZLM Track emits H.264/H.265 NAL units, while hardware decoders consume
+                // complete access units. Merge same-timestamp NALs and preserve Annex-B framing.
+                auto merger = std::make_shared<mediakit::FrameMerger>(mediakit::FrameMerger::h264_prefix);
+                auto delegate = video_track->addDelegate([weak_state, merger](const mediakit::Frame::Ptr& frame) {
                     if (!frame) return false;
-                    auto state = weak_state.lock();
-                    if (!state || !state->active.load()) return false;
+                    const std::string codec_name = frame->getCodecName();
+                    return merger->inputFrame(
+                        frame,
+                        [weak_state, codec_name](uint64_t dts, uint64_t pts,
+                                                 const toolkit::Buffer::Ptr& buffer,
+                                                 bool have_key_frame) {
+                            if (!buffer || buffer->size() == 0) return;
+                            auto state = weak_state.lock();
+                            if (!state || !state->active.load()) return;
 
-                    PacketCallback callback;
-                    {
-                        std::lock_guard<std::mutex> lock(state->mutex);
-                        callback = state->on_packet;
-                    }
-                    if (!callback) return false;
+                            PacketCallback callback;
+                            {
+                                std::lock_guard<std::mutex> lock(state->mutex);
+                                callback = state->on_packet;
+                            }
+                            if (!callback) return;
 
-                    auto bytes = std::make_shared<std::vector<uint8_t>>(
-                        reinterpret_cast<const uint8_t*>(frame->data()),
-                        reinterpret_cast<const uint8_t*>(frame->data()) + frame->size());
-                    EncodedPacket packet;
-                    packet.storage = bytes;
-                    packet.data = bytes->data();
-                    packet.size = bytes->size();
-                    packet.pts_us = static_cast<int64_t>(frame->pts()) * 1000;
-                    packet.dts_us = static_cast<int64_t>(frame->dts()) * 1000;
-                    packet.is_keyframe = frame->keyFrame();
-                    packet.codec_name = frame->getCodecName();
-                    try {
-                        callback(packet);
-                    } catch (...) {
-                        return false;
-                    }
-                    return true;
+                            auto bytes = std::make_shared<std::vector<uint8_t>>(
+                                reinterpret_cast<const uint8_t*>(buffer->data()),
+                                reinterpret_cast<const uint8_t*>(buffer->data()) + buffer->size());
+                            EncodedPacket packet;
+                            packet.storage = bytes;
+                            packet.data = bytes->data();
+                            packet.size = bytes->size();
+                            packet.pts_us = static_cast<int64_t>(pts) * 1000;
+                            packet.dts_us = static_cast<int64_t>(dts) * 1000;
+                            packet.is_keyframe = have_key_frame;
+                            packet.codec_name = codec_name;
+                            try {
+                                callback(packet);
+                            } catch (...) {
+                                // User callbacks must not escape the ZLMediaKit event thread.
+                            }
+                        });
                 });
                 bool keep_delegate = false;
                 {

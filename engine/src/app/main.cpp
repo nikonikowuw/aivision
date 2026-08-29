@@ -250,42 +250,44 @@ int main() {
                 server.apply_desired_state(desired, &response) && response.code().empty()) {
                 applied_revision = response.applied_revision();
             }
-            if (desired_received) {
-                // 上报各摄像头任务与算法实例的当前运行状态
-                for (const auto& camera_id : aivision::core::TaskScheduler::instance().task_ids()) {
-                    const auto task = aivision::core::TaskScheduler::instance().get_task(camera_id);
-                    if (!task) continue;
-                    aivision::v1::TaskState state;
-                    state.set_camera_id(camera_id);
-                    switch (task->get_state()) {
-                        case aivision::core::CameraState::CONNECTING:
-                            state.set_status(aivision::v1::TASK_STATUS_STARTING);
-                            break;
-                        case aivision::core::CameraState::RUNNING:
-                            state.set_status(aivision::v1::TASK_STATUS_RUNNING);
-                            break;
-                        case aivision::core::CameraState::RECONNECTING:
-                            state.set_status(aivision::v1::TASK_STATUS_RECONNECTING);
-                            break;
-                        case aivision::core::CameraState::ERROR:
-                            state.set_status(aivision::v1::TASK_STATUS_ERROR);
-                            break;
-                        default:
-                            state.set_status(aivision::v1::TASK_STATUS_STOPPED);
-                            break;
-                    }
-                    client.report_task_state(state);
+            // 运行态上报独立于 DesiredState 拉取：控制面短暂不可用时仍需刷新 FPS/状态，
+            // 上报失败由下一轮重试，避免 Go 侧长期停留在旧的 STARTING/0。
+            for (const auto& camera_id : aivision::core::TaskScheduler::instance().task_ids()) {
+                const auto task = aivision::core::TaskScheduler::instance().get_task(camera_id);
+                if (!task) continue;
+                aivision::v1::TaskState state;
+                state.set_camera_id(camera_id);
+                state.set_last_frame_wall_time_ns(task->get_last_frame_wall_time_ns());
+                switch (task->get_state()) {
+                    case aivision::core::CameraState::CONNECTING:
+                        state.set_status(aivision::v1::TASK_STATUS_STARTING);
+                        break;
+                    case aivision::core::CameraState::RUNNING:
+                        state.set_status(aivision::v1::TASK_STATUS_RUNNING);
+                        break;
+                    case aivision::core::CameraState::RECONNECTING:
+                        state.set_status(aivision::v1::TASK_STATUS_RECONNECTING);
+                        break;
+                    case aivision::core::CameraState::ERROR:
+                        state.set_status(aivision::v1::TASK_STATUS_ERROR);
+                        break;
+                    default:
+                        state.set_status(aivision::v1::TASK_STATUS_STOPPED);
+                        break;
                 }
-                for (const auto& instance_id : aivision::core::AlgoManager::instance().instance_ids()) {
-                    const auto instance = aivision::core::AlgoManager::instance().get(instance_id);
-                    if (!instance) continue;
-                    aivision::v1::InstanceState state;
-                    state.set_instance_id(instance_id);
-                    state.set_status(instance->is_running()
-                        ? aivision::v1::INSTANCE_STATUS_RUNNING
-                        : aivision::v1::INSTANCE_STATUS_STOPPED);
-                    client.report_instance_state(state);
-                }
+                client.report_task_state(state);
+            }
+            for (const auto& instance_id : aivision::core::AlgoManager::instance().instance_ids()) {
+                const auto instance = aivision::core::AlgoManager::instance().get(instance_id);
+                if (!instance) continue;
+                aivision::v1::InstanceState state;
+                state.set_instance_id(instance_id);
+                state.set_status(instance->is_running()
+                    ? aivision::v1::INSTANCE_STATUS_RUNNING
+                    : aivision::v1::INSTANCE_STATUS_STOPPED);
+                // 上报 1s 滑动窗口结算的推理帧率；未满窗口或未运行时为 0
+                state.set_current_fps(static_cast<float>(instance->get_current_fps()));
+                client.report_instance_state(state);
             }
 
             // 定期（每 10 秒）采集并向 Go 后端上报宿主机遥测指标

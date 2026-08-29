@@ -110,6 +110,27 @@ TEST(SandboxValidatorTest, RunsValidatorInChildProcess) {
     EXPECT_EQ(result.manifest.algorithm_id, "mock-detector");
     EXPECT_EQ(result.manifest.version, "1.0.0");
 }
+
+TEST(SandboxValidatorTest, RunsValidatorByCommandName) {
+    const char* previous_path = std::getenv("PATH");
+    const bool had_path = previous_path != nullptr;
+    const std::string original_path = had_path ? previous_path : "";
+    const std::string test_path = std::string(AIVISION_BINARY_DIR) +
+                                  (had_path ? ":" + original_path : "");
+    ASSERT_EQ(::setenv("PATH", test_path.c_str(), 1), 0);
+
+    const auto result = aivision::core::PackageValidator::run_sandbox_validator(
+        "package_validator", AIVISION_FIXTURE_PACKAGE_DIR, "var/sandbox-packages-command");
+
+    if (had_path) {
+        ASSERT_EQ(::setenv("PATH", original_path.c_str(), 1), 0);
+    } else {
+        ASSERT_EQ(::unsetenv("PATH"), 0);
+    }
+    EXPECT_TRUE(result.success) << result.error_stage << ": " << result.error_message;
+    EXPECT_EQ(result.manifest.algorithm_id, "mock-detector");
+    EXPECT_EQ(result.manifest.version, "1.0.0");
+}
 #endif
 TEST(SandboxValidatorTest, ValidMockPackage) {
     const std::string pkg_dir = AIVISION_FIXTURE_PACKAGE_DIR;
@@ -336,21 +357,6 @@ TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     ASSERT_TRUE(server.apply_desired_state(desired, &desired_response));
     ASSERT_TRUE(desired_response.code().empty()) << desired_response.error_message();
 
-    aivision::v1::UninstallPackageRequest protected_uninstall_request;
-    protected_uninstall_request.set_algorithm_id("mock-detector");
-    protected_uninstall_request.set_version("1.0.0");
-    aivision::v1::UninstallPackageResponse protected_uninstall_response;
-    grpc::ClientContext protected_uninstall_context;
-    protected_uninstall_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-    ASSERT_TRUE(stub->UninstallPackage(&protected_uninstall_context, protected_uninstall_request,
-                                       &protected_uninstall_response).ok());
-    EXPECT_EQ(protected_uninstall_response.code(), "PACKAGE_IN_USE");
-
-    aivision::v1::DesiredState clear_desired;
-    clear_desired.set_revision(2);
-    aivision::v1::ApplyDesiredStateResponse clear_response;
-    ASSERT_TRUE(server.apply_desired_state(clear_desired, &clear_response));
-    ASSERT_TRUE(clear_response.code().empty()) << clear_response.error_message();
     aivision::v1::UninstallPackageRequest uninstall_request;
     uninstall_request.set_algorithm_id("mock-detector");
     uninstall_request.set_version("1.0.0");
@@ -421,11 +427,31 @@ TEST(UdsServerTest, LoadsMockInstanceFromInstalledPackage) {
     ASSERT_TRUE(stub->UpdateInstanceConfig(&update_context, update_request, &update_response).ok());
     EXPECT_TRUE(update_response.code().empty()) << update_response.error_message();
 
+    aivision::v1::UninstallPackageRequest protected_uninstall_request;
+    protected_uninstall_request.set_algorithm_id("mock-detector");
+    protected_uninstall_request.set_version("1.0.0");
+    aivision::v1::UninstallPackageResponse protected_uninstall_response;
+    grpc::ClientContext protected_uninstall_context;
+    protected_uninstall_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    ASSERT_TRUE(stub->UninstallPackage(&protected_uninstall_context, protected_uninstall_request,
+                                       &protected_uninstall_response).ok());
+    EXPECT_EQ(protected_uninstall_response.code(), "PACKAGE_IN_USE");
+
     aivision::v1::DesiredState empty;
     empty.set_revision(2);
     aivision::v1::ApplyDesiredStateResponse empty_response;
     ASSERT_TRUE(server.apply_desired_state(empty, &empty_response));
     EXPECT_TRUE(empty_response.code().empty()) << empty_response.error_message();
+
+    aivision::v1::UninstallPackageRequest uninstall_request;
+    uninstall_request.set_algorithm_id("mock-detector");
+    uninstall_request.set_version("1.0.0");
+    aivision::v1::UninstallPackageResponse uninstall_response;
+    grpc::ClientContext uninstall_context;
+    uninstall_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    ASSERT_TRUE(stub->UninstallPackage(&uninstall_context, uninstall_request, &uninstall_response).ok());
+    EXPECT_TRUE(uninstall_response.code().empty()) << uninstall_response.error_message();
+    EXPECT_FALSE(std::filesystem::exists(package_dir + "/mock-detector/1.0.0"));
     server.stop();
     ::unsetenv("AIVISION_PACKAGE_VALIDATOR");
     ::unsetenv("AIVISION_PACKAGE_DIR");

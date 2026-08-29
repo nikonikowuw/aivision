@@ -104,7 +104,9 @@ func setupTaskAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 	grp := r.Group("/api/task")
 	{
 		grp.GET("/list", handler.ListTasks)
+		grp.GET("/stats", handler.GetTaskStats)
 		grp.POST("", handler.CreateTask)
+		grp.DELETE("/batch", handler.BatchDeleteTasks)
 		grp.PUT("/:cameraId", handler.UpdateTask)
 		grp.PUT("/:cameraId/enabled", handler.SetTaskEnabled)
 		grp.DELETE("/:cameraId", handler.DeleteTask)
@@ -204,6 +206,21 @@ func TestTaskHandlerTaskCRUD(t *testing.T) {
 	if len(available.Data) != 2 {
 		t.Fatalf("available after delete = %+v, want 2", available.Data)
 	}
+
+	// 7. 批量删除测试
+	doJSON(t, engine, http.MethodPost, "/api/task", `{"cameraId":"cam-1","name":"大门任务"}`)
+	doJSON(t, engine, http.MethodPost, "/api/task", `{"cameraId":"cam-2","name":"车库任务"}`)
+	rec = doJSON(t, engine, http.MethodDelete, "/api/task/batch", `{"cameraIds":["cam-1","cam-2"]}`)
+	if code := respCode(t, rec.Body.Bytes()); code != errno.CodeOK {
+		t.Fatalf("batch delete code = %d body=%s", code, rec.Body.String())
+	}
+	rec = doJSON(t, engine, http.MethodGet, "/api/task/available-cameras", "")
+	if err := json.Unmarshal(rec.Body.Bytes(), &available); err != nil {
+		t.Fatalf("unmarshal available after batch delete: %v", err)
+	}
+	if len(available.Data) != 2 {
+		t.Fatalf("available after batch delete = %+v, want 2", available.Data)
+	}
 }
 
 // TestTaskHandlerInstanceCRUD 实例 CRUD：停用创建（无需配额）、列表、启用
@@ -286,5 +303,68 @@ func TestTaskHandlerInstanceCRUD(t *testing.T) {
 	}
 	if len(list.Data) != 0 {
 		t.Fatalf("instance list after delete = %+v, want empty", list.Data)
+	}
+}
+
+// TestTaskHandlerTaskStats 概览统计接口：先等 quota 就绪，再建任务与启用实例，
+// 校验计数与算力负载字段（used/total/reserved/available）。
+func TestTaskHandlerTaskStats(t *testing.T) {
+	engine, _ := setupTaskAPIEngine(t)
+
+	// 轮询 /stats 直到 quota 就绪（totalUnits>0），避免后续启用实例被配额预检拒绝
+	var stats struct {
+		Data struct {
+			TotalTasks       int64 `json:"totalTasks"`
+			RunningTasks     int64 `json:"runningTasks"`
+			TotalInstances   int64 `json:"totalInstances"`
+			EnabledInstances int64 `json:"enabledInstances"`
+			UsedUnits        int   `json:"usedUnits"`
+			TotalUnits       int   `json:"totalUnits"`
+			ReservedUnits    int   `json:"reservedUnits"`
+			AvailableUnits   int   `json:"availableUnits"`
+		} `json:"data"`
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		rec := doJSON(t, engine, http.MethodGet, "/api/task/stats", "")
+		if respCode(t, rec.Body.Bytes()) != errno.CodeOK {
+			t.Fatalf("stats code not ok: %s", rec.Body.String())
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &stats)
+		if stats.Data.TotalUnits > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stats totalUnits never became ready")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// 建任务 cam-1 + 启用实例 25fps（→220 units）
+	rec := doJSON(t, engine, http.MethodPost, "/api/task", `{"cameraId":"cam-1","name":"大门任务"}`)
+	if respCode(t, rec.Body.Bytes()) != errno.CodeOK {
+		t.Fatalf("create task failed: %s", rec.Body.String())
+	}
+	rec = doJSON(t, engine, http.MethodPost, "/api/task/instance",
+		`{"cameraId":"cam-1","algorithmId":"yolov8n","analysisFps":25,"paramsJson":{"confidence_threshold":0.5},"enabled":true}`)
+	if respCode(t, rec.Body.Bytes()) != errno.CodeOK {
+		t.Fatalf("create enabled instance failed: %s", rec.Body.String())
+	}
+
+	rec = doJSON(t, engine, http.MethodGet, "/api/task/stats", "")
+	if respCode(t, rec.Body.Bytes()) != errno.CodeOK {
+		t.Fatalf("stats after write code not ok: %s", rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &stats); err != nil {
+		t.Fatalf("unmarshal stats: %v", err)
+	}
+	if stats.Data.TotalTasks != 1 || stats.Data.TotalInstances != 1 || stats.Data.EnabledInstances != 1 {
+		t.Fatalf("stats counts = %+v, want total/inst/enabled 1/1/1", stats.Data)
+	}
+	if stats.Data.UsedUnits != 220 {
+		t.Fatalf("used units = %d, want 220", stats.Data.UsedUnits)
+	}
+	if stats.Data.TotalUnits != 1000 || stats.Data.ReservedUnits != 100 || stats.Data.AvailableUnits != 900 {
+		t.Fatalf("units = %+v, want 1000/100/900", stats.Data)
 	}
 }

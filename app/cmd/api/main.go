@@ -37,6 +37,7 @@ type App struct {
 	Network      service.NetworkService
 	IPCRuntime   ipcRuntime
 	EngineClient *engineipc.EngineClient
+	TaskService  service.TaskService
 }
 
 // ipcRuntime 是 gRPC UDS 入站 runtime 的窄接口（serverLifecycle 只依赖这三个方法，

@@ -75,6 +75,19 @@ export namespace TaskApi {
     total: number;
   }
 
+  /** 任务管理概览统计（供页面顶部统计条展示） */
+  export interface TaskStats {
+    totalTasks: number;
+    runningTasks: number;
+    totalInstances: number;
+    enabledInstances: number;
+    usedUnits: number;
+    /** 0 表示 Engine 未上报算力（旧版/离线），负载应展示为不可用 */
+    totalUnits: number;
+    reservedUnits: number;
+    availableUnits: number;
+  }
+
   export interface CreateTaskInput {
     cameraId: string;
     name: string;
@@ -82,6 +95,10 @@ export namespace TaskApi {
 
   export interface UpdateTaskInput {
     name: string;
+  }
+
+  export interface BatchDeleteTaskInput {
+    cameraIds: string[];
   }
 
   /** 未分配任务的摄像头轻量信息（供下拉选择） */
@@ -130,6 +147,13 @@ export async function getTaskListApi(params?: TaskApi.TaskListQuery) {
 }
 
 /**
+ * 获取任务管理概览统计（在线任务/已调度实例/计算单元负载）
+ */
+export async function getTaskStatsApi() {
+  return requestClient.get<TaskApi.TaskStats>('/task/stats');
+}
+
+/**
  * 创建分析任务
  */
 export async function createTaskApi(data: TaskApi.CreateTaskInput) {
@@ -158,6 +182,13 @@ export async function setTaskEnabledApi(cameraId: string, enabled: boolean) {
  */
 export async function deleteTaskApi(cameraId: string) {
   return requestClient.delete<null>(`/task/${cameraId}`);
+}
+
+/**
+ * 批量删除分析任务
+ */
+export async function batchDeleteTasksApi(data: TaskApi.BatchDeleteTaskInput) {
+  return requestClient.delete<null>('/task/batch', { data });
 }
 
 /**

@@ -51,6 +51,7 @@ type quotaLimits struct {
 type quotaManager struct {
 	client ProfileClient
 	log    *zap.Logger
+	stop   chan struct{}
 
 	mu         sync.Mutex
 	limits     quotaLimits
@@ -58,10 +59,10 @@ type quotaManager struct {
 }
 
 func newQuotaManager(client ProfileClient, log *zap.Logger) *quotaManager {
-	return &quotaManager{client: client, log: log}
+	return &quotaManager{client: client, log: log, stop: make(chan struct{})}
 }
 
-// run 后台循环：指数退避重试直到首次成功获取上限。
+// run 后台循环：指数退避重试直到首次成功获取上限或收到 stop 信号。
 func (q *quotaManager) run() {
 	backoff := quotaInitialBackoff
 	for {
@@ -71,13 +72,26 @@ func (q *quotaManager) run() {
 		}
 		q.log.Warn("quota limits fetch failed, retrying",
 			zap.Duration("backoff", backoff), zap.Error(err))
-		time.Sleep(backoff)
+		select {
+		case <-q.stop:
+			return
+		case <-time.After(backoff):
+		}
 		if backoff < quotaMaxBackoff {
 			backoff *= 2
 			if backoff > quotaMaxBackoff {
 				backoff = quotaMaxBackoff
 			}
 		}
+	}
+}
+
+// shutdown 停止后台重试循环（幂等，多次调用安全）。
+func (q *quotaManager) shutdown() {
+	select {
+	case <-q.stop:
+	default:
+		close(q.stop)
 	}
 }
 
@@ -183,6 +197,21 @@ type TaskPageResult struct {
 	Total int64       `json:"total"`
 }
 
+// TaskStats 任务管理概览统计（供页面顶部统计条展示）。
+// UsedUnits 来自配额计价行（与 Engine reconcile 语义一致）；TotalUnits/ReservedUnits
+// 来自 Engine QueryProfile 缓存；TotalUnits==0 表示 Engine 尚未上报算力（旧版/离线），
+// 前端应展示为不可用而不计算百分比。
+type TaskStats struct {
+	TotalTasks       int64  `json:"totalTasks"`
+	RunningTasks     int64  `json:"runningTasks"`
+	TotalInstances   int64  `json:"totalInstances"`
+	EnabledInstances int64  `json:"enabledInstances"`
+	UsedUnits        uint32 `json:"usedUnits"`
+	TotalUnits       int32  `json:"totalUnits"`
+	ReservedUnits    int32  `json:"reservedUnits"`
+	AvailableUnits   int32  `json:"availableUnits"` // total - reserved，最小 0
+}
+
 // CreateTaskInput 创建分析任务入参（D8：任务绑定一个尚未建任务的摄像头）。
 type CreateTaskInput struct {
 	CameraID string `json:"cameraId" binding:"required"`
@@ -244,6 +273,11 @@ type UpdateInstanceInput struct {
 
 // ── TaskService ─────────────────────────────────────────────────────────
 
+// BatchDeleteTaskInput 批量删除任务入参。
+type BatchDeleteTaskInput struct {
+	CameraIDs []string `json:"cameraIds" binding:"required,min=1,max=100"`
+}
+
 // TaskService 任务配置模块业务接口。
 // 改变 DesiredState 内容的写路径全部经 repo.InTx 并同事务 BumpRevision；
 // 校验顺序固定为 schema → 几何 → 配额，任一失败零副作用（design §4.1）。
@@ -253,13 +287,18 @@ type TaskService interface {
 	UpdateTask(ctx context.Context, cameraID string, input *UpdateTaskInput) error
 	SetTaskEnabled(ctx context.Context, cameraID string, enabled bool) error
 	DeleteTask(ctx context.Context, cameraID string) error
+	BatchDeleteTasks(ctx context.Context, input *BatchDeleteTaskInput) error
 	ListAvailableCameras(ctx context.Context) ([]AvailableCameraItem, error)
+	TaskStats(ctx context.Context) (*TaskStats, error)
 
 	ListInstances(ctx context.Context, cameraID string) ([]*InstanceItem, error)
 	CreateInstance(ctx context.Context, input *CreateInstanceInput) (*InstanceItem, error)
 	UpdateInstance(ctx context.Context, instanceID string, input *UpdateInstanceInput) error
 	SetInstanceEnabled(ctx context.Context, instanceID string, enabled bool) error
 	DeleteInstance(ctx context.Context, instanceID string) error
+
+	// Shutdown 停止后台配额获取循环，优雅退出时调用以避免 goroutine 泄漏。
+	Shutdown()
 }
 
 type taskService struct {
@@ -502,6 +541,39 @@ func (s *taskService) DeleteTask(ctx context.Context, cameraID string) error {
 	})
 }
 
+func (s *taskService) BatchDeleteTasks(ctx context.Context, input *BatchDeleteTaskInput) error {
+	if input == nil || len(input.CameraIDs) == 0 {
+		return errno.New(errno.CodeInvalidParam)
+	}
+	uniqueIDs := make([]string, 0, len(input.CameraIDs))
+	seen := make(map[string]struct{}, len(input.CameraIDs))
+	for _, id := range input.CameraIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			return errno.New(errno.CodeInvalidParam)
+		}
+		if _, ok := seen[trimmed]; !ok {
+			seen[trimmed] = struct{}{}
+			uniqueIDs = append(uniqueIDs, trimmed)
+		}
+	}
+	if len(uniqueIDs) == 0 {
+		return errno.New(errno.CodeInvalidParam)
+	}
+
+	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+		affected, err := r.DeleteTasksCascade(ctx, uniqueIDs)
+		if err != nil {
+			return err
+		}
+		if affected > 0 {
+			_, err = r.BumpRevision(ctx)
+			return err
+		}
+		return nil
+	})
+}
+
 func (s *taskService) ListAvailableCameras(ctx context.Context) ([]AvailableCameraItem, error) {
 	cameras, err := s.cameraRepo.ListAll(ctx)
 	if err != nil {
@@ -634,8 +706,9 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 	// 3-5. 校验顺序固定：schema → 几何 → 配额；任一失败零副作用。
 	// 配额校验仅对「创建即启用」的实例执行：停用实例不占资源，允许 Engine
 	// 离线时先完成编排（design §7「拒绝启用」语义，非拒绝一切实例写入）。
-	if err := s.validateInstanceConfig(ctx, algorithmID, algo.ActiveVersion,
-		input.AnalysisFPS, input.ParamsJSON, input.Rules, "", input.Enabled); err != nil {
+	requested, err := s.validateInstanceConfig(ctx, algorithmID, algo.ActiveVersion,
+		input.AnalysisFPS, input.ParamsJSON, input.Rules, "", input.Enabled)
+	if err != nil {
 		return nil, err
 	}
 
@@ -663,6 +736,15 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 		inst.ActualStatus = model.InstanceStatusStarting
 	}
 	if err := s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+		if input.Enabled {
+			// 在事务内锁定 revision 行，串行化并发配额判定与写入（防 TOCTOU 竞态）
+			if err := r.LockRevision(ctx); err != nil {
+				return err
+			}
+			if err := s.checkQuota(ctx, "", requested); err != nil {
+				return err
+			}
+		}
 		if err := r.CreateInstance(ctx, inst); err != nil {
 			return err
 		}
@@ -708,8 +790,9 @@ func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, inp
 	fps := *input.AnalysisFPS
 	// 整份提交：schema → 几何 → 配额全量复校；配额排除自身旧占用，避免重复计数。
 	// 配额校验仅对已启用实例执行（停用实例不占资源，Engine 离线时仍可修改配置）。
-	if err := s.validateInstanceConfig(ctx, inst.AlgorithmID, algo.ActiveVersion,
-		fps, input.ParamsJSON, input.Rules, inst.InstanceID, inst.Enabled); err != nil {
+	requested, err := s.validateInstanceConfig(ctx, inst.AlgorithmID, algo.ActiveVersion,
+		fps, input.ParamsJSON, input.Rules, inst.InstanceID, inst.Enabled)
+	if err != nil {
 		return err
 	}
 
@@ -725,6 +808,15 @@ func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, inp
 	inst.ParamsJSON = paramsJSON
 	inst.RulesJSON = rulesJSON
 	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+		if inst.Enabled {
+			// 在事务内加排他锁校验配额
+			if err := r.LockRevision(ctx); err != nil {
+				return err
+			}
+			if err := s.checkQuota(ctx, inst.InstanceID, requested); err != nil {
+				return err
+			}
+		}
 		if err := r.UpdateInstance(ctx, inst); err != nil {
 			return err
 		}
@@ -748,6 +840,7 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 	if inst.Enabled == enabled {
 		return nil // 幂等：无状态变化不写库、不 bump
 	}
+	var requested uint32
 	if enabled {
 		// 启用前完整复校（design §4.1）：schema → 几何 → 配额。
 		algo, err := s.algoRepo.GetAlgorithmByID(ctx, inst.AlgorithmID)
@@ -768,9 +861,11 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 		if err != nil {
 			return err
 		}
-		if err := s.validateInstanceConfig(ctx, inst.AlgorithmID, algo.ActiveVersion,
-			inst.AnalysisFPS, inst.ParamsJSON, rules, inst.InstanceID, true); err != nil {
-			return err
+		var errVal error
+		requested, errVal = s.validateInstanceConfig(ctx, inst.AlgorithmID, algo.ActiveVersion,
+			inst.AnalysisFPS, inst.ParamsJSON, rules, inst.InstanceID, true)
+		if errVal != nil {
+			return errVal
 		}
 		inst.Enabled = true
 		inst.ActualStatus = model.InstanceStatusStarting
@@ -781,6 +876,15 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 		inst.StatusMessage = ""
 	}
 	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+		if enabled {
+			// 启用前事务内加排他锁校验配额
+			if err := r.LockRevision(ctx); err != nil {
+				return err
+			}
+			if err := s.checkQuota(ctx, inst.InstanceID, requested); err != nil {
+				return err
+			}
+		}
 		if err := r.UpdateInstance(ctx, inst); err != nil {
 			return err
 		}
@@ -809,6 +913,37 @@ func (s *taskService) DeleteInstance(ctx context.Context, instanceID string) err
 
 // ── 校验与配额 ──────────────────────────────────────────────────────────
 
+// TaskStats 聚合任务管理概览统计：任务/实例计数来自仓储，算力负载来自配额计价行
+// （sumUsedUnits，与 Engine reconcile 一致）与 Engine 算力上限缓存。
+// Engine 未成功上报算力时 TotalUnits=0，前端应展示为不可用（不计百分比）。
+func (s *taskService) TaskStats(ctx context.Context) (*TaskStats, error) {
+	row, err := s.repo.GetTaskStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	used, err := s.sumUsedUnits(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	stats := &TaskStats{
+		TotalTasks:       row.TotalTasks,
+		RunningTasks:     row.RunningTasks,
+		TotalInstances:   row.TotalInstances,
+		EnabledInstances: row.EnabledInstances,
+		UsedUnits:        used,
+	}
+	if limits, ok := s.quota.current(); ok {
+		stats.TotalUnits = limits.total
+		stats.ReservedUnits = limits.reserved
+		available := limits.total - limits.reserved
+		if available < 0 {
+			available = 0
+		}
+		stats.AvailableUnits = available
+	}
+	return stats, nil
+}
+
 // validateInstanceConfig 按固定顺序执行实例配置的三级校验：
 // schema（active version 的 config_schema）→ 几何（rulegeom）→ 配额。
 // exceptInstanceID 非空时配额累计排除该实例自身的旧占用（更新/启用语义）。
@@ -823,16 +958,16 @@ func (s *taskService) validateInstanceConfig(
 	rules []model.DetectionRule,
 	exceptInstanceID string,
 	needQuota bool,
-) error {
+) (uint32, error) {
 	version, err := s.algoRepo.GetVersion(ctx, algorithmID, activeVersion)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			s.log.Warn("active version row missing",
 				zap.String("algorithm_id", algorithmID),
 				zap.String("version", activeVersion))
-			return errno.New(errno.CodeInvalidParam)
+			return 0, errno.New(errno.CodeInvalidParam)
 		}
-		return err
+		return 0, err
 	}
 
 	// 1. schema 校验（服务端复校，不信任前端）。
@@ -841,17 +976,17 @@ func (s *taskService) validateInstanceConfig(
 		// 已安装算法包的 schema 非法属数据问题，按内部错误处理并记 warn。
 		s.log.Warn("stored config schema invalid",
 			zap.String("algorithm_id", algorithmID), zap.Error(err))
-		return fmt.Errorf("compile config schema of %s@%s: %w", algorithmID, activeVersion, err)
+		return 0, fmt.Errorf("compile config schema of %s@%s: %w", algorithmID, activeVersion, err)
 	}
 	if err := schema.Validate(paramsRaw); err != nil {
 		s.log.Warn("params failed schema validation",
 			zap.String("algorithm_id", algorithmID), zap.Error(err))
-		return errno.New(errno.CodeInvalidParam)
+		return 0, errno.New(errno.CodeInvalidParam)
 	}
 
 	// 2. 几何校验。
 	if err := ValidateRules(rules); err != nil {
-		return err
+		return 0, err
 	}
 
 	// 3. 配额校验。
@@ -859,18 +994,18 @@ func (s *taskService) validateInstanceConfig(
 	if err := json.Unmarshal(version.FPSTiers, &tiers); err != nil {
 		s.log.Warn("stored fps tiers invalid",
 			zap.String("algorithm_id", algorithmID), zap.Error(err))
-		return fmt.Errorf("parse fps tiers of %s@%s: %w", algorithmID, activeVersion, err)
+		return 0, fmt.Errorf("parse fps tiers of %s@%s: %w", algorithmID, activeVersion, err)
 	}
 	requested, err := ResolveUnits(tiers, analysisFPS)
 	if err != nil {
-		return errno.New(errno.CodeFPSTierExceeded)
+		return 0, errno.New(errno.CodeFPSTierExceeded)
 	}
 	if !needQuota {
 		// 停用实例不占资源：跳过配额比较（FPS 档位校验已在上方完成），
 		// 使 Engine 离线时仍可创建/修改停用实例做离线编排。
-		return nil
+		return requested, nil
 	}
-	return s.checkQuota(ctx, exceptInstanceID, requested)
+	return requested, s.checkQuota(ctx, exceptInstanceID, requested)
 }
 
 // checkQuota 校验 Σ units(已启用实例，排除 exceptInstanceID) + requested ≤ total - reserved。
@@ -984,6 +1119,11 @@ func marshalRules(rules []model.DetectionRule) (json.RawMessage, error) {
 		return nil, fmt.Errorf("marshal detection rules: %w", err)
 	}
 	return raw, nil
+}
+
+// Shutdown 停止后台配额获取循环。
+func (s *taskService) Shutdown() {
+	s.quota.shutdown()
 }
 
 // timePtr 拷贝时间值返回指针（列表合并用，避免共享 reportAdapter 内部值）。

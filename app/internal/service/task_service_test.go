@@ -648,3 +648,90 @@ func splitMessageFields(msg string) []string {
 		return r < '0' || r > '9'
 	})
 }
+
+// TestTaskServiceTaskStats 概览统计：任务/实例计数 + 算力负载。
+// 数据源：仓储计数 + sumUsedUnits（配额计价行）+ quotaManager 缓存上限。
+func TestTaskServiceTaskStats(t *testing.T) {
+	svc, db, _, taskRepo, _ := newTaskServiceTestEnv(t, 1000, 100)
+	seedTaskFixture(t, db) // cam-a RUNNING + yolov8n@1.0.0（testTiers: 5→60/15→150/25→220）
+	waitQuotaReady(t, svc)
+	ctx := context.Background()
+
+	// 再补两个任务：cam-b RUNNING、cam-c STOPPED（直接写库，绕过摄像头存在性校验）
+	for i, camID := range []string{"cam-b", "cam-c"} {
+		task := &model.AnalysisTask{CameraID: camID, Name: "任务" + camID}
+		if i == 0 {
+			task.ActualStatus = model.TaskStatusRunning
+		} else {
+			task.ActualStatus = model.TaskStatusStopped
+		}
+		if err := taskRepo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", camID, err)
+		}
+	}
+	// 实例：i-1 启用 25fps（→220 units）、i-2 停用 10fps（不计）
+	if _, err := svc.CreateInstance(ctx, &CreateInstanceInput{
+		CameraID:    "cam-a",
+		AlgorithmID: "yolov8n",
+		AnalysisFPS: 25,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("create enabled instance: %v", err)
+	}
+	if _, err := svc.CreateInstance(ctx, &CreateInstanceInput{
+		CameraID:    "cam-b",
+		AlgorithmID: "yolov8n",
+		AnalysisFPS: 10,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
+		Enabled:     false,
+	}); err != nil {
+		t.Fatalf("create disabled instance: %v", err)
+	}
+
+	stats, err := svc.TaskStats(ctx)
+	if err != nil {
+		t.Fatalf("task stats: %v", err)
+	}
+	if stats.TotalTasks != 3 || stats.RunningTasks != 2 {
+		t.Fatalf("tasks = total %d running %d, want 3/2", stats.TotalTasks, stats.RunningTasks)
+	}
+	if stats.TotalInstances != 2 || stats.EnabledInstances != 1 {
+		t.Fatalf("instances = total %d enabled %d, want 2/1", stats.TotalInstances, stats.EnabledInstances)
+	}
+	if stats.UsedUnits != 220 {
+		t.Fatalf("used units = %d, want 220", stats.UsedUnits)
+	}
+	if stats.TotalUnits != 1000 || stats.ReservedUnits != 100 || stats.AvailableUnits != 900 {
+		t.Fatalf("units = total %d reserved %d available %d, want 1000/100/900",
+			stats.TotalUnits, stats.ReservedUnits, stats.AvailableUnits)
+	}
+}
+
+// TestTaskServiceTaskStatsNoQuota 引擎未上报算力（quota 未就绪）时：TotalUnits=0，
+// 任务/实例计数仍返回，前端应据此展示负载为不可用而非报错。
+func TestTaskServiceTaskStatsNoQuota(t *testing.T) {
+	svc, db, _, _, _ := newTaskServiceTestEnv(t, 0, 0) // total=0 视为未成功获取
+	seedTaskFixture(t, db)
+	ctx := context.Background()
+
+	// 等待 quota 后台循环放弃（total=0 不会置 ok），随后直接调用 TaskStats。
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := svc.quota.current(); ok {
+			t.Fatal("quota unexpectedly ready with total=0")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	stats, err := svc.TaskStats(ctx)
+	if err != nil {
+		t.Fatalf("task stats: %v", err)
+	}
+	if stats.TotalTasks != 1 || stats.TotalUnits != 0 {
+		t.Fatalf("stats = total %d units %d, want 1/0", stats.TotalTasks, stats.TotalUnits)
+	}
+	if stats.AvailableUnits != 0 {
+		t.Fatalf("available units = %d, want 0 when quota not ready", stats.AvailableUnits)
+	}
+}

@@ -699,3 +699,55 @@ func TestTaskRepositoryListInstancesByCameraIDs(t *testing.T) {
 		t.Fatalf("after soft delete got len=%d err=%v, want 2/nil", len(items), err)
 	}
 }
+
+func TestTaskRepositoryGetTaskStats(t *testing.T) {
+	db := newTaskTestDB(t)
+	repo := NewTaskRepository(db)
+	ctx := context.Background()
+
+	// 任务：cam-a/cam-b RUNNING、cam-c STOPPED
+	for i, camID := range []string{"cam-a", "cam-b", "cam-c"} {
+		task := newTaskFixture(camID, "任务"+camID)
+		if i < 2 {
+			task.ActualStatus = model.TaskStatusRunning
+		} else {
+			task.ActualStatus = model.TaskStatusStopped
+		}
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", camID, err)
+		}
+	}
+	// 实例：i-a 启用、i-b 停用
+	iA := newInstanceFixture("i-a", "cam-a", "alg-a", 10)
+	iA.Enabled = true
+	iB := newInstanceFixture("i-b", "cam-b", "alg-a", 10)
+	for _, inst := range []*model.AlgorithmInstance{iA, iB} {
+		if err := repo.CreateInstance(ctx, inst); err != nil {
+			t.Fatalf("create instance: %v", err)
+		}
+	}
+
+	row, err := repo.GetTaskStats(ctx)
+	if err != nil {
+		t.Fatalf("get stats: %v", err)
+	}
+	if row.TotalTasks != 3 || row.RunningTasks != 2 {
+		t.Fatalf("tasks = total %d running %d, want 3/2", row.TotalTasks, row.RunningTasks)
+	}
+	if row.TotalInstances != 2 || row.EnabledInstances != 1 {
+		t.Fatalf("instances = total %d enabled %d, want 2/1", row.TotalInstances, row.EnabledInstances)
+	}
+
+	// 软删 cam-a 及其实例后：任务 2、实例 1，均不计软删行
+	if _, err := repo.DeleteTaskCascade(ctx, "cam-a"); err != nil {
+		t.Fatalf("cascade delete: %v", err)
+	}
+	row, err = repo.GetTaskStats(ctx)
+	if err != nil {
+		t.Fatalf("get stats after delete: %v", err)
+	}
+	if row.TotalTasks != 2 || row.TotalInstances != 1 || row.EnabledInstances != 0 {
+		t.Fatalf("after delete = total %d running %d inst %d enabled %d, want 2/2/1/0",
+			row.TotalTasks, row.RunningTasks, row.TotalInstances, row.EnabledInstances)
+	}
+}

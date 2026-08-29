@@ -9,39 +9,39 @@ export const NETWORK_MODES = {
 } as const;
 
 export namespace NetworkApi {
-  export type PlatformType = 'linux' | 'darwin' | 'fake';
+  export type PlatformType = 'darwin' | 'fake' | 'linux';
   export type StateStatus =
-    | 'ready'
     | 'degraded'
     | 'ownership_conflict'
+    | 'ready'
     | 'recovery_failed'
     | 'unsupported';
-  export type InterfaceType = 'ethernet' | 'wifi' | 'other';
-  export type LinkStatus = 'up' | 'down' | 'unknown';
+  export type InterfaceType = 'ethernet' | 'other' | 'wifi';
+  export type LinkStatus = 'down' | 'unknown' | 'up';
   export type OwnershipStatus =
+    | 'conflict'
     | 'managed'
     | 'unproven'
-    | 'conflict'
     | 'unsupported';
   export type IPMode = 'dhcp' | 'static' | 'unknown' | 'unsupported';
   export type IPStatus =
+    | 'conflict'
     | 'effective'
     | 'unavailable'
-    | 'conflict'
     | 'unsupported';
   export type TransactionStatus =
     | 'applying'
-    | 'pending_confirmation'
     | 'committing'
-    | 'rolling_back'
     | 'confirmed'
+    | 'pending_confirmation'
+    | 'recovery_failed'
     | 'rolled_back'
-    | 'recovery_failed';
+    | 'rolling_back';
   export type TransactionAction = 'apply' | 'factory_reset' | 'mode_switch';
   export type NetworkMode = (typeof NETWORK_MODES)[keyof typeof NETWORK_MODES];
 
   export type BondXmitHashPolicy = 'layer2' | 'layer2+3' | 'layer3+4';
-  export type InterfaceDuplex = 'unknown' | 'half' | 'full';
+  export type InterfaceDuplex = 'full' | 'half' | 'unknown';
 
   export interface LACPPortState {
     active: boolean;
@@ -73,7 +73,7 @@ export namespace NetworkApi {
     bondInterfaceId: string;
     slaveIds: string[];
     primarySlaveId?: string;
-    activeSlaveId?: string | null;
+    activeSlaveId?: null | string;
     miimon?: number;
     xmitHashPolicy?: BondXmitHashPolicy;
     lacp?: LACPStatus;
@@ -81,10 +81,10 @@ export namespace NetworkApi {
 
   export interface IPv4State {
     mode: IPMode;
-    address: string | null;
-    prefix: number | null;
-    subnetMask: string | null;
-    gateway: string | null;
+    address: null | string;
+    prefix: null | number;
+    subnetMask: null | string;
+    gateway: null | string;
     dnsServers: string[];
     status: IPStatus;
   }
@@ -94,13 +94,13 @@ export namespace NetworkApi {
     name: string;
     displayName: string;
     type: InterfaceType;
-    mac: string | null;
+    mac: null | string;
     linkStatus: LinkStatus;
     ownership: OwnershipStatus;
     writable: boolean;
     isPrimary: boolean;
     isBond: boolean;
-    masterId: string | null;
+    masterId: null | string;
     speedMbps?: number;
     duplex?: InterfaceDuplex;
     ipv4: IPv4State;
@@ -119,10 +119,10 @@ export namespace NetworkApi {
 
   export interface CandidateSummary {
     mode: IPMode;
-    address?: string | null;
-    prefix?: number | null;
-    subnetMask?: string | null;
-    gateway?: string | null;
+    address?: null | string;
+    prefix?: null | number;
+    subnetMask?: null | string;
+    gateway?: null | string;
     dnsServers?: string[];
   }
 
@@ -134,8 +134,8 @@ export namespace NetworkApi {
     expiresAt: string;
     remainingSeconds: number;
     targetInterfaceId: string;
-    previousPrimaryInterfaceId: string | null;
-    candidatePrimaryInterfaceId: string | null;
+    previousPrimaryInterfaceId: null | string;
+    candidatePrimaryInterfaceId: null | string;
     reconnectAddresses: ReconnectAddress[];
     requiresReconnect: boolean;
     candidate: CandidateSummary;
@@ -176,11 +176,11 @@ export namespace NetworkApi {
   export interface NetworkOverview {
     platform: PlatformType;
     state: StateStatus;
-    primaryInterfaceId: string | null;
-    defaultRouteInterfaceId: string | null;
+    primaryInterfaceId: null | string;
+    defaultRouteInterfaceId: null | string;
     systemDnsServers: string[];
     interfaces: InterfaceInfo[];
-    pendingTransaction: PendingTransaction | null;
+    pendingTransaction: null | PendingTransaction;
     capabilities: Capabilities;
     mode: NetworkMode;
     bond: BondTopology | null;
@@ -194,7 +194,7 @@ export namespace NetworkApi {
     overview?: NetworkOverview;
     reconnectAddresses?: ReconnectAddress[];
     warnings?: NetworkWarning[];
-    reason?: string | null;
+    reason?: null | string;
   }
 
   export interface ApplyInterfaceParams {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	aivisionv1 "niko-vue-admin/app/internal/proto/aivision/v1"
 
@@ -17,6 +18,14 @@ import (
 // CurrentRevision / BumpRevision 返回本错误时 adapter fail closed，不让 Engine 拿到
 // revision=0 的「配置被清空」快照。
 var ErrRevisionMissing = errors.New("repository: desired_state_revision singleton row missing")
+
+// TaskStatsRow 任务管理概览统计聚合结果：未软删任务/实例计数 + 在线（RUNNING）任务数。
+type TaskStatsRow struct {
+	TotalTasks       int64
+	RunningTasks     int64
+	TotalInstances   int64
+	EnabledInstances int64
+}
 
 // TaskFilter 分析任务分页查询条件。
 type TaskFilter struct {
@@ -35,8 +44,12 @@ type TaskRepository interface {
 	CreateTask(ctx context.Context, task *model.AnalysisTask) error
 	UpdateTask(ctx context.Context, task *model.AnalysisTask) error
 	DeleteTaskCascade(ctx context.Context, cameraID string) (bool, error) // 同事务软删任务及其全部实例
+	DeleteTasksCascade(ctx context.Context, cameraIDs []string) (int64, error) // 同事务批量软删任务及其全部实例
 	GetTaskByCameraID(ctx context.Context, cameraID string) (*model.AnalysisTask, error)
 	ListTaskPage(ctx context.Context, filter *TaskFilter) ([]model.AnalysisTask, int64, error)
+	// GetTaskStats 统计未软删任务数、在线（RUNNING）任务数、实例总数与已启用实例数，
+	// 供任务管理页顶部统计条展示（设计对齐原型 prototype-task.html 的在线任务/实例计数）。
+	GetTaskStats(ctx context.Context) (*TaskStatsRow, error)
 	CountTasksByCameraID(ctx context.Context, cameraID string) (int64, error) // 供删摄像头保护
 	// ListTaskCameraIDs 返回全部未软删任务的 camera_id，供 available-cameras
 	// 的 service 层内存过滤（design §8）。
@@ -58,6 +71,7 @@ type TaskRepository interface {
 	UpdateInstanceStatus(ctx context.Context, instanceID string, status int8, msg string) error
 
 	// revision：必须在业务事务内调用
+	LockRevision(ctx context.Context) error
 	BumpRevision(ctx context.Context) (uint64, error)
 	CurrentRevision(ctx context.Context) (uint64, error)
 
@@ -101,6 +115,22 @@ func (r *taskRepository) DeleteTaskCascade(ctx context.Context, cameraID string)
 	// 级联软删该任务下全部实例（实例无法脱离任务存在，见 D9）
 	err := r.db.WithContext(ctx).Where("camera_id = ?", cameraID).Delete(&model.AlgorithmInstance{}).Error
 	return true, err
+}
+
+// DeleteTasksCascade 批量软删除任务及其全部实例，返回受影响的任务数。
+func (r *taskRepository) DeleteTasksCascade(ctx context.Context, cameraIDs []string) (int64, error) {
+	if len(cameraIDs) == 0 {
+		return 0, nil
+	}
+	res := r.db.WithContext(ctx).Where("camera_id IN ?", cameraIDs).Delete(&model.AnalysisTask{})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return 0, nil
+	}
+	err := r.db.WithContext(ctx).Where("camera_id IN ?", cameraIDs).Delete(&model.AlgorithmInstance{}).Error
+	return res.RowsAffected, err
 }
 
 func (r *taskRepository) GetTaskByCameraID(ctx context.Context, cameraID string) (*model.AnalysisTask, error) {
@@ -161,6 +191,29 @@ func (r *taskRepository) CountTasksByCameraID(ctx context.Context, cameraID stri
 		Where("camera_id = ?", cameraID).
 		Count(&count).Error
 	return count, err
+}
+
+// GetTaskStats 聚合统计未软删任务/实例计数。
+// 使用 PostgreSQL COUNT FILTER 条件聚合，2 次查询替代原先 4 次独立 COUNT，
+// 减少 DB round-trip；deleted_at = 0 手动指定以匹配 soft_delete 插件语义。
+func (r *taskRepository) GetTaskStats(ctx context.Context) (*TaskStatsRow, error) {
+	row := &TaskStatsRow{}
+	if err := r.db.WithContext(ctx).Raw(
+		"SELECT COUNT(*) AS total_tasks, "+
+			"COUNT(*) FILTER (WHERE actual_status = ?) AS running_tasks "+
+			"FROM analysis_tasks WHERE deleted_at = 0",
+		model.TaskStatusRunning,
+	).Row().Scan(&row.TotalTasks, &row.RunningTasks); err != nil {
+		return nil, err
+	}
+	if err := r.db.WithContext(ctx).Raw(
+		"SELECT COUNT(*) AS total_instances, "+
+			"COUNT(*) FILTER (WHERE enabled = TRUE) AS enabled_instances "+
+			"FROM algorithm_instances WHERE deleted_at = 0",
+	).Row().Scan(&row.TotalInstances, &row.EnabledInstances); err != nil {
+		return nil, err
+	}
+	return row, nil
 }
 
 func (r *taskRepository) ListTaskCameraIDs(ctx context.Context) ([]string, error) {
@@ -270,6 +323,19 @@ func (r *taskRepository) UpdateInstanceStatus(ctx context.Context, instanceID st
 }
 
 // ── revision ─────────────────────────────────────────────────────────
+
+// LockRevision 在事务内对 desired_state_revision 单行加排他锁，串行化并发配额判定与状态提交。
+func (r *taskRepository) LockRevision(ctx context.Context) error {
+	var row model.DesiredStateRevision
+	err := r.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", 1).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrRevisionMissing
+	}
+	return err
+}
 
 // BumpRevision 单行计数器 revision+1 并返回新值（UPDATE ... RETURNING，见 design D4）。
 // 必须在业务事务内调用：改变 DesiredState 内容的写入与版本递增必须原子提交。

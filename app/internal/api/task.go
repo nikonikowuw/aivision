@@ -102,6 +102,20 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// BatchDeleteTasks 批量删除任务并级联删除实例 (DELETE /api/task/batch)。
+func (h *TaskHandler) BatchDeleteTasks(c *gin.Context) {
+	var input service.BatchDeleteTaskInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	if err := h.svc.BatchDeleteTasks(c.Request.Context(), &input); err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, nil)
+}
+
 // ListAvailableCameras 查询未建任务摄像头轻量列表 (GET /api/task/available-cameras)。
 // 供任务新建表单下拉（D8），无分页，value 使用 camera_id 业务键。
 func (h *TaskHandler) ListAvailableCameras(c *gin.Context) {
@@ -111,6 +125,17 @@ func (h *TaskHandler) ListAvailableCameras(c *gin.Context) {
 		return
 	}
 	response.Success(c, items)
+}
+
+// GetTaskStats 任务管理概览统计 (GET /api/task/stats)。
+// 返回任务/实例计数与计算单元负载（used/total/reserved/available），供页面顶部统计条展示。
+func (h *TaskHandler) GetTaskStats(c *gin.Context) {
+	stats, err := h.svc.TaskStats(c.Request.Context())
+	if err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, stats)
 }
 
 // ListInstances 查询任务的实例列表 (GET /api/task/instance/list?cameraId=...)。

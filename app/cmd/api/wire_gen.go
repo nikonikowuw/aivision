@@ -118,6 +118,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		Network:      networkService,
 		IPCRuntime:   runtime,
 		EngineClient: engineClient,
+		TaskService:  taskService,
 	}
 	return app, nil
 }

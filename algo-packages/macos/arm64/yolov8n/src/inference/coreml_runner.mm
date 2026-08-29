@@ -27,7 +27,7 @@ void log_message(const CoreMLRunner::Impl& impl, const char* message) {
 }
 
 void log_error(const CoreMLRunner::Impl& impl, NSString* prefix, NSError* error) {
-    NSString* detail = error ? [error localizedDescription] : @"unknown error";
+    NSString* detail = error ? [NSString stringWithFormat:@"%@ (code %ld, domain %@)", [error localizedDescription], (long)[error code], [error domain]] : @"unknown error";
     NSString* message = [NSString stringWithFormat:@"%@%s", prefix, detail.UTF8String ? detail.UTF8String : "unknown error"];
     log_message(impl, message.UTF8String);
 }
@@ -59,11 +59,15 @@ bool CoreMLRunner::load_model(const std::string& model_path) {
         NSError* error = nil;
         NSURL* compiled_url = model_url;
         if ([path_str hasSuffix:@".mlpackage"] || [path_str hasSuffix:@".mlmodel"]) {
+            std::string compile_msg = std::string("Compiling CoreML model at URL: ") + ([model_url.path UTF8String] ? [model_url.path UTF8String] : "");
+            log_message(*impl_, compile_msg.c_str());
             compiled_url = [MLModel compileModelAtURL:model_url error:&error];
             if (error || !compiled_url) {
                 log_error(*impl_, @"CoreML compileModelAtURL failed: ", error);
                 return false;
             }
+            std::string compiled_msg = std::string("Compiled CoreML model URL: ") + ([compiled_url.path UTF8String] ? [compiled_url.path UTF8String] : "");
+            log_message(*impl_, compiled_msg.c_str());
         }
 
         MLModelConfiguration* config = [[MLModelConfiguration alloc] init];

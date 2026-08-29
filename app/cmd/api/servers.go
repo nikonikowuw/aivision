@@ -119,6 +119,10 @@ func (l *serverLifecycle) closeDependencies(ctx context.Context) {
 	if l.app == nil {
 		return
 	}
+	// 停止后台配额获取循环，避免 goroutine 泄漏
+	if l.app.TaskService != nil {
+		l.app.TaskService.Shutdown()
+	}
 	if l.app.EngineClient != nil {
 		if err := l.app.EngineClient.Close(); err != nil {
 			l.app.Logger.Error("engine client close failed", zap.Error(err))

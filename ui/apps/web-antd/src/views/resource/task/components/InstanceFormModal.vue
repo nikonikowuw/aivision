@@ -26,7 +26,7 @@ import {
 import SchemaForm from './SchemaForm.vue';
 
 interface Props {
-  open: boolean;
+  open?: boolean;
   cameraId: string;
   instance?: null | TaskApi.InstanceItem;
 }
@@ -61,6 +61,7 @@ const schemaFormRef = ref<InstanceType<typeof SchemaForm>>();
 const algorithmList = ref<AlgorithmApi.AlgorithmItem[]>([]);
 const selectedAlgorithmId = ref<string>('');
 const analysisFps = ref<number>(25);
+const autoEnable = ref<boolean>(true);
 const paramsJson = ref<Record<string, any>>({});
 const rulesRaw = ref<string>('[]');
 
@@ -96,8 +97,8 @@ const maxFps = computed(() => {
 });
 
 const fpsTiersDisplay = computed(() => {
-  if (fpsTiers.value.length === 0) return '无特殊档位约束';
-  return fpsTiers.value.map((t) => `${t.fps}fps (${t.units}单位)`).join(', ');
+  if (fpsTiers.value.length === 0) return $t('resource.task.instance.noTierConstraint');
+  return fpsTiers.value.map((t) => `${t.fps}fps (${t.units} ${$t('resource.task.instance.tierUnit')})`).join(', ');
 });
 
 const currentConfigSchema = computed(() => {
@@ -121,7 +122,7 @@ async function loadAlgorithms() {
     const res = await getAlgorithmList({ page: 1, pageSize: 100 });
     algorithmList.value = res.items || [];
   } catch (err: any) {
-    message.error(err.message || '加载算法列表失败');
+    message.error(err.message || $t('resource.task.instance.loadAlgoFailed'));
   } finally {
     loading.value = false;
   }
@@ -153,6 +154,7 @@ watch(
     } else {
       // 新建默认
       analysisFps.value = 25;
+      autoEnable.value = true;
       paramsJson.value = {};
       rulesRaw.value = '[]';
       if (algorithmOptions.value.length > 0 && !selectedAlgorithmId.value) {
@@ -179,12 +181,12 @@ async function handleOk() {
   try {
     await schemaFormRef.value?.validate();
   } catch {
-    message.error('请检查算法参数配置');
+    message.error($t('resource.task.instance.paramsInvalid'));
     return;
   }
 
   // 2. 解析规则 JSON
-  let parsedRules: TaskApi.DetectionRule[] = [];
+  let parsedRules: TaskApi.DetectionRule[];
   try {
     const parsed = JSON.parse(rulesRaw.value || '[]');
     if (!Array.isArray(parsed)) {
@@ -213,7 +215,7 @@ async function handleOk() {
         analysisFps: analysisFps.value,
         paramsJson: paramsJson.value,
         rules: parsedRules,
-        enabled: true, // 新建时默认启用并进入中间态
+        enabled: autoEnable.value,
       });
       message.success($t('system.common.success'));
     }
@@ -250,8 +252,11 @@ async function handleOk() {
           :placeholder="$t('resource.task.instance.algorithmSelectPlaceholder')"
           class="w-full"
         />
-        <div v-if="currentAlgorithm" class="text-muted-foreground mt-1.5 flex items-center gap-2 text-xs">
-          <span>当前激活版本:</span>
+        <div
+          v-if="currentAlgorithm"
+          class="text-muted-foreground mt-1.5 flex items-center gap-2 text-xs"
+        >
+          <span>{{ $t('resource.task.instance.activeVersion') }}:</span>
           <Tag v-if="currentAlgorithm.activeVersion" color="blue">
             {{ currentAlgorithm.activeVersion }}
           </Tag>
@@ -276,9 +281,27 @@ async function handleOk() {
           :placeholder="$t('resource.task.instance.analysisFpsRequired')"
         />
         <div class="text-muted-foreground mt-1 text-xs">
-          <span>{{ $t('resource.task.instance.fpsTiersHint', { tiers: fpsTiersDisplay }) }}</span>
+          <span>{{
+            $t('resource.task.instance.fpsTiersHint', {
+              tiers: fpsTiersDisplay,
+            })
+          }}</span>
           <span v-if="maxFps" class="ml-2">
             ({{ $t('resource.task.instance.maxFpsHint', { max: maxFps }) }})
+          </span>
+        </div>
+      </FormItem>
+
+      <!-- 新建时是否立即启用 -->
+      <FormItem
+        v-if="!isEdit"
+        :label="$t('resource.task.instance.autoEnable')"
+        class="mb-3"
+      >
+        <div class="flex items-center gap-2">
+          <Switch v-model:checked="autoEnable" />
+          <span class="text-xs text-muted-foreground">
+            {{ autoEnable ? $t('resource.task.instance.autoEnableOn') : $t('resource.task.instance.autoEnableOff') }}
           </span>
         </div>
       </FormItem>
@@ -302,7 +325,7 @@ async function handleOk() {
           :placeholder="$t('resource.task.instance.rulesPlaceholder')"
         />
         <div class="text-muted-foreground mt-1 text-xs">
-          <span>支持通过 JSON 数组输入 DetectionRule 规则；可视化画板将在后续版本推出</span>
+          <span>{{ $t('resource.task.instance.rulesHint') }}</span>
         </div>
       </FormItem>
     </Form>

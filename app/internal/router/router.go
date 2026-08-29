@@ -57,6 +57,7 @@ const (
 	taskRoutePath        = "/task"
 	instanceRoutePath    = "/instance"
 	availableCamerasPath = "/available-cameras"
+	statsRoutePath       = "/stats"
 	enabledRoutePath     = "/enabled"
 	listRoutePath        = "/list"
 	openV1RoutePath      = "/v1/open"
@@ -301,7 +302,9 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		taskGroup := apiGroup.Group(taskRoutePath)
 		{
 			taskGroup.GET(listRoutePath, deps.TaskHandler.ListTasks)
+			taskGroup.GET(statsRoutePath, deps.TaskHandler.GetTaskStats)
 			taskGroup.POST("", deps.TaskHandler.CreateTask)
+			taskGroup.DELETE(batchRoutePath, deps.TaskHandler.BatchDeleteTasks)
 			taskGroup.GET(availableCamerasPath, deps.TaskHandler.ListAvailableCameras)
 			taskGroup.PUT("/:cameraId", deps.TaskHandler.UpdateTask)
 			taskGroup.PUT("/:cameraId"+enabledRoutePath, deps.TaskHandler.SetTaskEnabled)
@@ -315,7 +318,9 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		}
 		// 页面权限 resource:task；按钮权限 add/edit/delete（对齐 camera 的权限注册方式）。
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+taskRoutePath+listRoutePath, "resource:task")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+taskRoutePath+statsRoutePath, "resource:task")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+taskRoutePath, "resource:task:add")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+taskRoutePath+batchRoutePath, "resource:task:delete")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+taskRoutePath+availableCamerasPath, "resource:task:add")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+"/:cameraId", "resource:task:edit")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+"/:cameraId"+enabledRoutePath, "resource:task:edit")

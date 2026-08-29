@@ -141,6 +141,7 @@ catalog:
   lefthook: ^2.1.10
   lodash.clonedeep: ^4.5.0
   medium-zoom: ^1.1.0
+  mpegts.js: ^1.8.2
   naive-ui: ^2.44.1
   nitropack: ^2.13.4
   nprogress: ^0.2.0

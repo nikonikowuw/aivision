@@ -5,7 +5,7 @@ defineOptions({
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 
-import { onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { $t } from '@vben/locales';
@@ -23,10 +23,12 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
+  batchDeleteTasksApi,
   deleteInstanceApi,
   deleteTaskApi,
   getInstanceListApi,
   getTaskListApi,
+  getTaskStatsApi,
   setInstanceEnabledApi,
   setTaskEnabledApi,
   type TaskApi,
@@ -35,6 +37,9 @@ import {
 import InstanceDrawer from './components/InstanceDrawer.vue';
 import InstanceFormModal from './components/InstanceFormModal.vue';
 import TaskFormModal from './components/TaskFormModal.vue';
+
+// 选中的任务项（供批量删除）
+const selectedTasks = ref<TaskApi.TaskItem[]>([]);
 
 // 任务新建/编辑弹窗状态
 const formModalOpen = ref(false);
@@ -50,8 +55,26 @@ const instanceFormModalOpen = ref(false);
 const activeTargetCameraId = ref('');
 const currentEditInstance = ref<null | TaskApi.InstanceItem>(null);
 
+// 任务管理概览统计（在线任务/已调度实例/计算单元负载）
+const taskStats = ref<null | TaskApi.TaskStats>(null);
+
+async function loadStats() {
+  try {
+    taskStats.value = await getTaskStatsApi();
+  } catch {
+    // 拦截器已统一报错；统计条保持上次值
+  }
+}
+
+// 计算单元负载百分比：used / total（对齐原型 used/total 口径）
+const loadPercent = computed(() => {
+  const s = taskStats.value;
+  if (!s || s.totalUnits <= 0) return 0;
+  return Math.min(100, Math.round((s.usedUnits / s.totalUnits) * 100));
+});
+
 // 轮询定时器
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: null | ReturnType<typeof setInterval> = null;
 let pollStartTime = 0;
 const MAX_POLL_DURATION_MS = 15000;
 
@@ -81,25 +104,28 @@ onUnmounted(() => {
 function getTaskStatusTag(status: TaskApi.TaskStatusCode) {
   switch (status) {
     case 1: {
-      return { color: 'processing', text: '启动中' };
+      return { color: 'processing', textKey: 'resource.task.status.starting' };
     }
     case 2: {
-      return { color: 'success', text: '运行中' };
+      return { color: 'success', textKey: 'resource.task.status.running' };
     }
     case 3: {
-      return { color: 'warning', text: '降级' };
+      return { color: 'warning', textKey: 'resource.task.status.degraded' };
     }
     case 4: {
-      return { color: 'warning', text: '重连中' };
+      return { color: 'warning', textKey: 'resource.task.status.reconnecting' };
     }
     case 5: {
-      return { color: 'default', text: '已停止' };
+      return { color: 'default', textKey: 'resource.task.status.stopped' };
     }
     case 6: {
-      return { color: 'error', text: '异常' };
+      return { color: 'error', textKey: 'resource.task.status.error' };
     }
     default: {
-      return { color: 'default', text: '未指定' };
+      return {
+        color: 'default',
+        textKey: 'resource.task.status.unspecified',
+      };
     }
   }
 }
@@ -107,22 +133,25 @@ function getTaskStatusTag(status: TaskApi.TaskStatusCode) {
 function getInstanceStatusTag(status: number) {
   switch (status) {
     case 1: {
-      return { color: 'processing', text: '启动中' };
+      return { color: 'processing', textKey: 'resource.task.status.starting' };
     }
     case 2: {
-      return { color: 'success', text: '正常' };
+      return { color: 'success', textKey: 'resource.task.status.running' };
     }
     case 3: {
-      return { color: 'warning', text: '降级' };
+      return { color: 'warning', textKey: 'resource.task.status.degraded' };
     }
     case 4: {
-      return { color: 'default', text: '已停止' };
+      return { color: 'default', textKey: 'resource.task.status.stopped' };
     }
     case 5: {
-      return { color: 'error', text: '异常' };
+      return { color: 'error', textKey: 'resource.task.status.error' };
     }
     default: {
-      return { color: 'default', text: '未就绪' };
+      return {
+        color: 'default',
+        textKey: 'resource.task.status.unspecified',
+      };
     }
   }
 }
@@ -149,10 +178,21 @@ function getInstanceDotClass(status: number, enabled: boolean): string {
 }
 
 const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
+  checkboxConfig: {
+    highlight: true,
+  },
+  rowConfig: {
+    keyField: 'cameraId',
+  },
+  expandConfig: {
+    trigger: 'cell',
+    showIcon: true,
+  },
   columns: [
+    { type: 'checkbox', width: 46, align: 'center' },
     {
       type: 'expand',
-      width: 48,
+      width: 46,
       align: 'center',
       slots: { content: 'expandContent' },
     },
@@ -184,7 +224,7 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
     },
     {
       field: 'instances',
-      title: '算法实例流水线',
+      title: $t('resource.task.instance.pipeline'),
       minWidth: 320,
       slots: { default: 'instances' },
     },
@@ -200,7 +240,7 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
       showOverflow: false,
       slots: { default: 'actions' },
       title: $t('system.common.action'),
-      width: 160,
+      width: 200,
       align: 'center',
     },
   ],
@@ -210,6 +250,9 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
   proxyConfig: {
     ajax: {
       query: async ({ page }, formValues) => {
+        // 统计条与列表同频刷新（首次加载 + 每次 reload + 轮询）
+        loadStats();
+
         let configured: boolean | undefined;
         if (formValues.configured === 'yes') configured = true;
         else if (formValues.configured === 'no') configured = false;
@@ -240,6 +283,14 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
 };
 
 const [Grid, gridApi] = useVbenVxeGrid({
+  gridEvents: {
+    checkboxAll: ({ records }: { records: TaskApi.TaskItem[] }) => {
+      selectedTasks.value = records;
+    },
+    checkboxChange: ({ records }: { records: TaskApi.TaskItem[] }) => {
+      selectedTasks.value = records;
+    },
+  },
   formOptions: {
     schema: [
       {
@@ -298,6 +349,24 @@ async function handleDelete(row: TaskApi.TaskItem) {
   }
 }
 
+function handleClearSelection() {
+  gridApi.grid?.clearCheckboxRow();
+  selectedTasks.value = [];
+}
+
+async function handleBatchDelete() {
+  if (selectedTasks.value.length === 0) return;
+  try {
+    const cameraIds = selectedTasks.value.map((t) => t.cameraId);
+    await batchDeleteTasksApi({ cameraIds });
+    message.success($t('system.common.success'));
+    handleClearSelection();
+    gridApi.reload();
+  } catch {
+    // 拦截器统一报错
+  }
+}
+
 function handleOpenDrawer(row: TaskApi.TaskItem) {
   activeDrawerCameraId.value = row.cameraId;
   activeDrawerTaskName.value = row.name;
@@ -322,10 +391,10 @@ async function handleOpenEditInstance(
       currentEditInstance.value = target;
       instanceFormModalOpen.value = true;
     } else {
-      message.error('未找到对应实例详情');
+      message.error($t('resource.task.instance.detailNotFound'));
     }
   } catch (err: any) {
-    message.error(err.message || '获取实例详情失败');
+    message.error(err.message || $t('resource.task.instance.loadDetailFailed'));
   }
 }
 
@@ -361,6 +430,88 @@ function handleFormSuccess() {
 
 <template>
   <Page :auto-content-height="true">
+    <!-- 概览统计条：在线任务 / 已调度实例 / 计算单元负载 -->
+    <div
+      class="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-card px-4 py-3 text-xs"
+    >
+      <div class="flex items-center gap-2">
+        <span class="text-muted-foreground">
+          {{ $t('resource.task.stats.onlineTasks') }}:
+        </span>
+        <span
+          class="font-mono font-bold text-emerald-600 dark:text-emerald-400"
+        >
+          {{ taskStats?.runningTasks ?? '-' }} /
+          {{ taskStats?.totalTasks ?? '-' }}
+        </span>
+      </div>
+      <div class="h-3 w-px bg-border"></div>
+      <div class="flex items-center gap-2">
+        <span class="text-muted-foreground">
+          {{ $t('resource.task.stats.scheduledInstances') }}:
+        </span>
+        <span
+          class="font-mono font-bold text-blue-600 dark:text-blue-400"
+        >
+          <template v-if="taskStats">
+            {{ taskStats.enabledInstances }}
+            {{ $t('resource.task.stats.instanceUnit') }}
+          </template>
+          <template v-else>-</template>
+        </span>
+      </div>
+      <div class="h-3 w-px bg-border"></div>
+      <div class="flex items-center gap-2">
+        <span class="text-muted-foreground">
+          {{ $t('resource.task.stats.computeLoad') }}:
+        </span>
+        <span class="font-mono font-bold text-amber-600 dark:text-amber-400">
+          <template v-if="taskStats && taskStats.totalUnits > 0">
+            {{ taskStats.usedUnits }} / {{ taskStats.totalUnits }} Units
+            ({{ loadPercent }}%)
+          </template>
+          <template v-else>-</template>
+        </span>
+      </div>
+    </div>
+
+    <!-- 批量操作栏：仅当复选框勾选 > 0 时浮动显示 -->
+    <div
+      v-if="selectedTasks.length > 0"
+      class="mb-3 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-xs"
+    >
+      <div class="flex items-center gap-2">
+        <span class="text-foreground font-medium">
+          {{
+            $t('system.common.selectedCount', { count: selectedTasks.length })
+          }}
+        </span>
+        <Button type="link" size="small" class="p-0 text-xs" @click="handleClearSelection">
+          {{ $t('system.common.clearSelection') }}
+        </Button>
+      </div>
+      <div class="flex items-center gap-2">
+        <Popconfirm
+          :title="
+            $t('system.common.confirmBatchDelete', {
+              count: selectedTasks.length,
+            })
+          "
+          :ok-text="$t('system.common.confirm')"
+          :cancel-text="$t('system.common.cancel')"
+          @confirm="handleBatchDelete"
+        >
+          <Button
+            type="primary"
+            danger
+            size="small"
+          >
+            {{ $t('system.common.batchDelete') }}
+          </Button>
+        </Popconfirm>
+      </div>
+    </div>
+
     <Grid>
       <template #toolbar-tools>
         <Button type="primary" @click="handleAdd">
@@ -371,13 +522,15 @@ function handleFormSuccess() {
       <!-- 任务名称 + 摄像头信息 -->
       <template #taskName="{ row }">
         <div class="py-1">
-          <div class="font-medium text-foreground text-sm flex items-center gap-1.5">
+          <div
+            class="font-medium text-foreground text-sm flex items-center gap-1.5"
+          >
             <span>{{ row.name }}</span>
             <span
               v-if="row.instanceCount !== undefined && row.instanceCount > 0"
               class="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono font-normal"
             >
-              {{ row.instanceCount }} 实例
+              {{ $t('resource.task.instanceBadge', { count: row.instanceCount }) }}
             </span>
           </div>
           <div class="text-xs text-muted-foreground font-mono mt-0.5">
@@ -399,11 +552,11 @@ function handleFormSuccess() {
       <template #actualStatus="{ row }">
         <Tooltip v-if="row.statusMessage" :title="row.statusMessage">
           <Tag :color="getTaskStatusTag(row.actualStatus).color">
-            {{ getTaskStatusTag(row.actualStatus).text }} ⓘ
+            {{ $t(getTaskStatusTag(row.actualStatus).textKey) }} ⓘ
           </Tag>
         </Tooltip>
         <Tag v-else :color="getTaskStatusTag(row.actualStatus).color">
-          {{ getTaskStatusTag(row.actualStatus).text }}
+          {{ $t(getTaskStatusTag(row.actualStatus).textKey) }}
         </Tag>
       </template>
 
@@ -413,14 +566,14 @@ function handleFormSuccess() {
           v-if="!row.instances || row.instances.length === 0"
           class="flex items-center gap-2 py-1 text-xs text-muted-foreground"
         >
-          <span class="italic">未配置算法实例</span>
+          <span class="italic">{{ $t('resource.task.instance.notConfigured') }}</span>
           <Button
             type="link"
             size="small"
             class="p-0 text-xs"
             @click="handleOpenAddInstance(row)"
           >
-            + 立即挂载
+            + {{ $t('resource.task.instance.mountNow') }}
           </Button>
         </div>
 
@@ -445,8 +598,14 @@ function handleFormSuccess() {
               </span>
               <span class="text-[10px] text-muted-foreground font-mono mt-0.5">
                 <span
-                  v-if="inst.currentFps !== null && inst.currentFps !== undefined"
-                  :class="inst.currentFps >= inst.analysisFps ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-amber-600 dark:text-amber-400'"
+                  v-if="
+                    inst.currentFps !== null && inst.currentFps !== undefined
+                  "
+                  :class="
+                    inst.currentFps >= inst.analysisFps
+                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                      : 'text-amber-600 dark:text-amber-400'
+                  "
                 >
                   {{ Number(inst.currentFps).toFixed(1) }}
                 </span>
@@ -473,7 +632,7 @@ function handleFormSuccess() {
             class="h-7 px-2 text-xs flex items-center gap-1 text-muted-foreground hover:text-primary"
             @click="handleOpenAddInstance(row)"
           >
-            + 挂载
+            + {{ $t('resource.task.instance.mount') }}
           </Button>
         </div>
       </template>
@@ -490,9 +649,9 @@ function handleFormSuccess() {
 
       <!-- 操作列 -->
       <template #actions="{ row }">
-        <Space :size="8">
+        <Space :size="4">
           <Button type="link" size="small" @click="handleOpenDrawer(row)">
-            实例抽屉
+            {{ $t('resource.task.instanceDrawer') }}
           </Button>
           <Button type="link" size="small" @click="handleEdit(row)">
             {{ $t('resource.task.edit') }}
@@ -515,10 +674,10 @@ function handleFormSuccess() {
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-2">
               <span class="text-xs font-semibold text-foreground tracking-wide">
-                挂载的算法实例控制台 ({{ row.instances?.length || 0 }})
+                {{ $t('resource.task.instance.console') }} ({{ row.instances?.length || 0 }})
               </span>
               <span class="text-xs text-muted-foreground">
-                · 通道 {{ row.cameraId }} 共享单路 RTSP 拉流与 VPU 硬件解码
+                · {{ $t('resource.task.instance.sharedDecode', { cameraId: row.cameraId }) }}
               </span>
             </div>
             <div class="flex items-center gap-2">
@@ -528,11 +687,19 @@ function handleFormSuccess() {
                 ghost
                 @click="handleOpenAddInstance(row)"
               >
-                + 挂载新算法实例
+                + {{ $t('resource.task.instance.mountNew') }}
               </Button>
               <Button size="small" @click="handleOpenDrawer(row)">
-                进入抽屉管理
+                {{ $t('resource.task.instance.enterDrawer') }}
               </Button>
+              <Popconfirm
+                :title="$t('resource.task.deleteConfirm')"
+                @confirm="handleDelete(row)"
+              >
+                <Button size="small" danger ghost>
+                  {{ $t('resource.task.instance.deleteTask') }}
+                </Button>
+              </Popconfirm>
             </div>
           </div>
 
@@ -541,18 +708,21 @@ function handleFormSuccess() {
             v-if="!row.instances || row.instances.length === 0"
             class="p-6 rounded-lg border border-dashed border-border bg-card text-center text-xs text-muted-foreground"
           >
-            该任务尚未挂载任何算法实例，无法在边缘端执行推理分析。
+            {{ $t('resource.task.instance.noInstanceHint') }}
             <Button
               type="link"
               size="small"
               @click="handleOpenAddInstance(row)"
             >
-              立即挂载首个算法
+              {{ $t('resource.task.instance.mountFirst') }}
             </Button>
           </div>
 
           <!-- 实例卡片横向自适应网格 -->
-          <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div
+            v-else
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"
+          >
             <div
               v-for="inst in row.instances"
               :key="inst.instanceId"
@@ -563,45 +733,75 @@ function handleFormSuccess() {
                 <!-- 卡片头部：算法与状态 -->
                 <div class="flex items-start justify-between mb-2.5">
                   <div>
-                    <div class="font-medium text-sm text-foreground flex items-center gap-2">
+                    <div
+                      class="font-medium text-sm text-foreground flex items-center gap-2"
+                    >
                       <span>{{ inst.algorithmId }}</span>
-                      <span class="text-[10px] font-mono px-1 rounded bg-muted text-muted-foreground">
+                      <span
+                        class="text-[10px] font-mono px-1 rounded bg-muted text-muted-foreground"
+                      >
                         ID: {{ inst.instanceId.slice(0, 8) }}
                       </span>
                     </div>
                   </div>
                   <Tag :color="getInstanceStatusTag(inst.actualStatus).color">
-                    {{ getInstanceStatusTag(inst.actualStatus).text }}
+                    {{ $t(getInstanceStatusTag(inst.actualStatus).textKey) }}
                   </Tag>
                 </div>
 
                 <!-- 性能仪表条：FPS 吞吐与目标 -->
-                <div class="bg-muted/40 rounded-md p-2.5 border border-border/60 mb-2.5 space-y-1.5 text-xs">
+                <div
+                  class="bg-muted/40 rounded-md p-2.5 border border-border/60 mb-2.5 space-y-1.5 text-xs"
+                >
                   <div class="flex justify-between items-center text-[11px]">
-                    <span class="text-muted-foreground">推理帧率 (FPS)</span>
+                    <span class="text-muted-foreground">{{ $t('resource.task.instance.inferenceFps') }}</span>
                     <span class="font-mono font-medium">
                       <span
-                        v-if="inst.currentFps !== null && inst.currentFps !== undefined"
-                        :class="inst.currentFps >= inst.analysisFps ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-amber-600 dark:text-amber-400'"
+                        v-if="
+                          inst.currentFps !== null &&
+                          inst.currentFps !== undefined
+                        "
+                        :class="
+                          inst.currentFps >= inst.analysisFps
+                            ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                            : 'text-amber-600 dark:text-amber-400'
+                        "
                       >
                         {{ Number(inst.currentFps).toFixed(1) }}
                       </span>
                       <span v-else>-</span>
-                      <span class="text-muted-foreground"> / {{ inst.analysisFps }} FPS</span>
+                      <span class="text-muted-foreground">
+                        / {{ inst.analysisFps }} FPS</span>
                     </span>
                   </div>
 
                   <!-- FPS 进度条 -->
                   <Progress
-                    :percent="inst.analysisFps > 0 ? Math.min(100, ((inst.currentFps || 0) / inst.analysisFps) * 100) : 0"
-                    :stroke-color="inst.currentFps && inst.currentFps >= inst.analysisFps ? '#10b981' : '#f59e0b'"
+                    :percent="
+                      inst.analysisFps > 0
+                        ? Math.min(
+                            100,
+                            ((inst.currentFps || 0) / inst.analysisFps) * 100,
+                          )
+                        : 0
+                    "
+                    :stroke-color="
+                      inst.currentFps && inst.currentFps >= inst.analysisFps
+                        ? '#10b981'
+                        : '#f59e0b'
+                    "
                     :show-info="false"
                     size="small"
                   />
 
-                  <div class="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-                    <span>检测规则: <strong>{{ inst.rulesCount }} 处</strong></span>
-                    <span>状态: <strong>{{ inst.enabled ? '已启用' : '已停用' }}</strong></span>
+                  <div
+                    class="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40"
+                  >
+                    <span>{{ $t('resource.task.instance.rulesCountLabel') }}: <strong>{{ inst.rulesCount }}</strong></span>
+                    <span>{{ $t('resource.task.instance.enableLabel') }}:
+                      <strong>{{
+                        inst.enabled ? $t('resource.task.instance.statusEnabled') : $t('resource.task.instance.statusDisabled')
+                      }}</strong></span>
                   </div>
                 </div>
 
@@ -615,13 +815,17 @@ function handleFormSuccess() {
               </div>
 
               <!-- 卡片底部操作 -->
-              <div class="flex items-center justify-between pt-2 border-t border-border/60 text-xs">
+              <div
+                class="flex items-center justify-between pt-2 border-t border-border/60 text-xs"
+              >
                 <div class="flex items-center gap-1.5">
-                  <span class="text-muted-foreground text-xs">使能:</span>
+                  <span class="text-muted-foreground text-xs">{{ $t('resource.task.instance.enableLabel') }}:</span>
                   <Switch
                     :checked="inst.enabled"
                     size="small"
-                    @change="(val) => handleToggleInstanceEnabled(inst, Boolean(val))"
+                    @change="
+                      (val) => handleToggleInstanceEnabled(inst, Boolean(val))
+                    "
                   />
                 </div>
                 <Space :size="4">
@@ -631,20 +835,15 @@ function handleFormSuccess() {
                     class="p-0 text-xs"
                     @click="handleOpenEditInstance(row, inst)"
                   >
-                    参数配置
+                    {{ $t('resource.task.instance.paramConfig') }}
                   </Button>
                   <span class="text-border">|</span>
                   <Popconfirm
                     :title="$t('resource.task.instance.deleteConfirm')"
                     @confirm="handleDeleteInstance(inst)"
                   >
-                    <Button
-                      type="link"
-                      danger
-                      size="small"
-                      class="p-0 text-xs"
-                    >
-                      移除
+                    <Button type="link" danger size="small" class="p-0 text-xs">
+                      {{ $t('resource.task.instance.remove') }}
                     </Button>
                   </Popconfirm>
                 </Space>

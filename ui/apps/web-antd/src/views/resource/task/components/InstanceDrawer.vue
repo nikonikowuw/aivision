@@ -25,9 +25,9 @@ import {
 import InstanceFormModal from './InstanceFormModal.vue';
 
 interface Props {
-  open: boolean;
-  cameraId: string;
-  taskName: string;
+  open?: boolean;
+  cameraId?: string;
+  taskName?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -54,7 +54,7 @@ const formModalOpen = ref(false);
 const currentEditInstance = ref<null | TaskApi.InstanceItem>(null);
 
 // 轮询控制
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: null | ReturnType<typeof setInterval> = null;
 let pollStartTime = 0;
 const MAX_POLL_DURATION_MS = 15000;
 
@@ -81,7 +81,7 @@ async function loadInstances(silent = false) {
     }
   } catch (err: any) {
     if (!silent) {
-      message.error(err.message || '加载算法实例失败');
+      message.error(err.message || $t('resource.task.instance.loadFailed'));
     }
   } finally {
     if (!silent) loading.value = false;
@@ -160,43 +160,43 @@ function handleFormSuccess() {
 
 const columns = [
   {
-    title: '算法',
+    title: $t('resource.task.instance.algorithm'),
     dataIndex: 'algorithmId',
     key: 'algorithmId',
     width: 140,
   },
   {
-    title: '采样帧率',
+    title: $t('resource.task.instance.analysisFps'),
     dataIndex: 'analysisFps',
     key: 'analysisFps',
     width: 90,
   },
   {
-    title: '启用',
+    title: $t('resource.task.instance.enabled'),
     dataIndex: 'enabled',
     key: 'enabled',
     width: 80,
   },
   {
-    title: '状态',
+    title: $t('resource.task.instance.actualStatus'),
     dataIndex: 'actualStatus',
     key: 'actualStatus',
     width: 110,
   },
   {
-    title: '实时 FPS',
+    title: $t('resource.task.instance.currentFps'),
     dataIndex: 'currentFps',
     key: 'currentFps',
     width: 90,
   },
   {
-    title: '上报时间',
+    title: $t('resource.task.instance.reportedAt'),
     dataIndex: 'reportedAt',
     key: 'reportedAt',
     width: 160,
   },
   {
-    title: '操作',
+    title: $t('system.common.action'),
     key: 'action',
     width: 120,
     fixed: 'right' as const,
@@ -206,22 +206,25 @@ const columns = [
 function getStatusTag(status: number) {
   switch (status) {
     case 1: {
-      return { color: 'processing', text: '启动中' };
+      return { color: 'processing', textKey: 'resource.task.status.starting' };
     }
     case 2: {
-      return { color: 'success', text: '运行中' };
+      return { color: 'success', textKey: 'resource.task.status.running' };
     }
     case 3: {
-      return { color: 'warning', text: '降级' };
+      return { color: 'warning', textKey: 'resource.task.status.degraded' };
     }
     case 4: {
-      return { color: 'default', text: '已停止' };
+      return { color: 'default', textKey: 'resource.task.status.stopped' };
     }
     case 5: {
-      return { color: 'error', text: '异常' };
+      return { color: 'error', textKey: 'resource.task.status.error' };
     }
     default: {
-      return { color: 'default', text: '未就绪' };
+      return {
+        color: 'default',
+        textKey: 'resource.task.status.unspecified',
+      };
     }
   }
 }
@@ -230,7 +233,7 @@ function getStatusTag(status: number) {
 <template>
   <Drawer
     v-model:open="visible"
-    :title="`算法实例管理 - ${taskName || cameraId}`"
+    :title="`${$t('resource.task.instance.drawerTitle')} - ${taskName || cameraId}`"
     width="880px"
     destroy-on-close
   >
@@ -238,7 +241,7 @@ function getStatusTag(status: number) {
       <!-- 头部操作区 -->
       <div class="mb-4 flex items-center justify-between">
         <div class="text-muted-foreground text-sm">
-          <span>摄像头: </span>
+          <span>{{ $t('resource.task.instance.camera') }}: </span>
           <span class="font-mono font-medium">{{ cameraId }}</span>
         </div>
         <Button type="primary" @click="handleAdd">
@@ -269,23 +272,36 @@ function getStatusTag(status: number) {
               <Switch
                 :checked="record.enabled"
                 size="small"
-                @change="(val) => handleToggleEnabled(record as TaskApi.InstanceItem, Boolean(val))"
+                @change="
+                  (val) =>
+                    handleToggleEnabled(
+                      record as TaskApi.InstanceItem,
+                      Boolean(val),
+                    )
+                "
               />
             </template>
 
             <template v-else-if="column.key === 'actualStatus'">
-              <Tooltip v-if="record.statusMessage" :title="record.statusMessage">
+              <Tooltip
+                v-if="record.statusMessage"
+                :title="record.statusMessage"
+              >
                 <Tag :color="getStatusTag(record.actualStatus).color">
-                  {{ getStatusTag(record.actualStatus).text }} ⓘ
+                  {{ $t(getStatusTag(record.actualStatus).textKey) }} ⓘ
                 </Tag>
               </Tooltip>
               <Tag v-else :color="getStatusTag(record.actualStatus).color">
-                {{ getStatusTag(record.actualStatus).text }}
+                {{ $t(getStatusTag(record.actualStatus).textKey) }}
               </Tag>
             </template>
 
             <template v-else-if="column.key === 'currentFps'">
-              <span v-if="record.currentFps !== null && record.currentFps !== undefined">
+              <span
+                v-if="
+                  record.currentFps !== null && record.currentFps !== undefined
+                "
+              >
                 {{ Number(record.currentFps).toFixed(1) }}
               </span>
               <span v-else class="text-muted-foreground">-</span>
@@ -295,7 +311,9 @@ function getStatusTag(status: number) {
               <span v-if="record.reportedAt" class="text-xs">
                 {{ new Date(record.reportedAt).toLocaleString() }}
               </span>
-              <span v-else class="text-muted-foreground text-xs">等待上报</span>
+              <span v-else class="text-muted-foreground text-xs">
+                {{ $t('resource.task.status.waiting') }}
+              </span>
             </template>
 
             <template v-else-if="column.key === 'action'">

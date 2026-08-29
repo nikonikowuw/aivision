@@ -302,6 +302,11 @@ func extractZip(r io.Reader, absTargetDir string, maxSizeBytes int64) (int64, er
 		if mode == 0 {
 			mode = 0o644
 		}
+		// 确保所有者、同组和其他用户均具备读取权限（防止 Go 进程与 Engine 进程以不同 UID 运行时权限受阻）
+		mode |= 0o644
+		if file.FileInfo().IsDir() {
+			mode |= 0o755
+		}
 		outFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, mode)
 		if err != nil {
 			rc.Close()

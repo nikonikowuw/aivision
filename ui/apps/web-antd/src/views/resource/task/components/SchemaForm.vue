@@ -3,6 +3,8 @@ import type { Rule } from 'ant-design-vue/es/form';
 
 import { computed, ref, watch } from 'vue';
 
+import { $t } from '@vben/locales';
+
 import {
   Alert,
   Form,
@@ -61,7 +63,7 @@ const properties = computed<PropertyField[]>(() => {
     if (!rawProp || typeof rawProp !== 'object') continue;
 
     const rawType = String(rawProp.type || 'string').toLowerCase();
-    let type: PropertyField['type'] = 'string';
+    let type: PropertyField['type'];
     if (rawType === 'boolean') type = 'boolean';
     else if (rawType === 'integer') type = 'integer';
     else if (rawType === 'number') type = 'number';
@@ -129,19 +131,19 @@ const rules = computed<Record<string, Rule[]>>(() => {
     if (prop.required) {
       fieldRules.push({
         required: true,
-        message: `请输入或选择 ${prop.title}`,
+        message: $t('resource.task.instance.schemaInputRequired', { field: prop.title }),
       });
     }
     if (prop.type === 'string' && prop.minLength) {
       fieldRules.push({
         min: prop.minLength,
-        message: `${prop.title} 最小长度为 ${prop.minLength}`,
+        message: $t('resource.task.instance.schemaMinLength', { field: prop.title, min: prop.minLength }),
       });
     }
     if (prop.type === 'string' && prop.maxLength) {
       fieldRules.push({
         max: prop.maxLength,
-        message: `${prop.title} 最大长度为 ${prop.maxLength}`,
+        message: $t('resource.task.instance.schemaMaxLength', { field: prop.title, max: prop.maxLength }),
       });
     }
     if (fieldRules.length > 0) {
@@ -170,7 +172,7 @@ defineExpose({
 <template>
   <div class="schema-form-wrapper">
     <div v-if="properties.length === 0" class="py-2">
-      <Alert message="该算法无自定义动态参数" type="info" show-icon />
+      <Alert :message="$t('resource.task.instance.schemaNoParams')" type="info" show-icon />
     </div>
     <Form
       v-else
@@ -228,7 +230,7 @@ defineExpose({
           v-model:value="formData[prop.key]"
           :options="prop.enumOptions"
           class="w-full"
-          :placeholder="prop.description || '请选择'"
+          :placeholder="prop.description || $t('resource.task.instance.schemaSelectPlaceholder')"
         />
 
         <!-- 普通单行文本 -->
@@ -247,7 +249,7 @@ defineExpose({
           mode="multiple"
           :options="prop.enumOptions"
           class="w-full"
-          :placeholder="prop.description || '请选择一项或多项'"
+          :placeholder="prop.description || $t('resource.task.instance.schemaMultiSelectPlaceholder')"
         />
 
         <!-- 普通 fallback -->

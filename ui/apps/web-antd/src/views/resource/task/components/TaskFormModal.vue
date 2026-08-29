@@ -21,7 +21,7 @@ import {
 } from '#/api';
 
 interface Props {
-  open: boolean;
+  open?: boolean;
   task?: null | TaskApi.TaskItem;
 }
 
@@ -69,7 +69,7 @@ async function loadAvailableCameras() {
       selectedCameraId.value = availableCameras.value[0]?.cameraId || '';
     }
   } catch (err: any) {
-    message.error(err.message || '加载可用摄像头失败');
+    message.error(err.message || $t('resource.task.loadCamerasFailed'));
   } finally {
     loadingCameras.value = false;
   }

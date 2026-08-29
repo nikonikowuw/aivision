@@ -82,9 +82,12 @@ func (s *algorithmService) UploadAndInstall(ctx context.Context, reader io.Reade
 		return nil, errno.New(errno.CodeEngineUnavailable)
 	}
 
-	// 1. 创建安全临时暂存目录
+	// 1. 创建安全临时暂存目录（使用绝对路径，避免跨进程/跨工作目录通信时相对路径解析错位）
 	stagingID := uuid.New().String()
-	stagingPath := filepath.Join(s.tmpDir, stagingID)
+	stagingPath, err := filepath.Abs(filepath.Join(s.tmpDir, stagingID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve staging path: %w", err)
+	}
 	if err := os.MkdirAll(stagingPath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create staging directory: %w", err)
 	}

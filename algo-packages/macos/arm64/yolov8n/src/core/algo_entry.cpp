@@ -234,8 +234,10 @@ int yolo_library_open_impl(const av_algo_library_args* args, av_algo_library* ou
     lib->log_user = args->log_user;
     std::string model_error;
     if (!resolve_manifest_model_path(lib->package_root, lib->model_path, model_error)) {
+        log_message(lib.get(), 4, "resolve_manifest_model_path failed: " + model_error);
         return fail(lib.get(), AV_ERR_MODEL_LOAD_FAILED, model_error.c_str());
     }
+    log_message(lib.get(), 2, "resolved model_path: " + lib->model_path + " (package_root: " + lib->package_root + ")");
     lib->model_runner = std::make_shared<CoreMLRunner>(lib->log, lib->log_user);
     if (!lib->model_runner->load_model(lib->model_path)) {
         return fail(lib.get(), AV_ERR_MODEL_LOAD_FAILED, "failed to load Core ML model package");

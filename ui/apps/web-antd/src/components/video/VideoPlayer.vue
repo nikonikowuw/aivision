@@ -42,8 +42,15 @@ const decoderType = ref('MSE (Hardware)');
 
 let player: mpegts.Player | null = null;
 let statsTimer: null | number = null;
+let reconnectTimer: null | number = null;
+let retryCount = 0;
+const MAX_RETRY_COUNT = 3;
 
 function destroyPlayer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   if (statsTimer) {
     clearInterval(statsTimer);
     statsTimer = null;
@@ -63,9 +70,13 @@ function destroyPlayer() {
   videoFps.value = null;
 }
 
-function initPlayer() {
+function initPlayer(isRetry = false) {
   destroyPlayer();
   error.value = null;
+
+  if (!isRetry) {
+    retryCount = 0;
+  }
 
   if (!props.url || !videoRef.value) {
     return;
@@ -114,7 +125,24 @@ function initPlayer() {
     }
 
     player.on(mpegts.Events.ERROR, (errType, errDetail, errInfo) => {
-      console.error('Player error:', errType, errDetail, errInfo);
+      console.warn('Player error:', errType, errDetail, errInfo);
+      // 网络建连早期若因首帧或断连触发 NetworkError，且重试次数内，进行平滑延迟重连
+      if (
+        (errType === mpegts.ErrorTypes.NETWORK_ERROR ||
+          errDetail === 'Exception') &&
+        retryCount < MAX_RETRY_COUNT &&
+        props.url
+      ) {
+        retryCount += 1;
+        loading.value = true;
+        reconnectTimer = window.setTimeout(() => {
+          if (props.url) {
+            initPlayer(true);
+          }
+        }, 1000);
+        return;
+      }
+
       loading.value = false;
       error.value = `${errType}: ${errDetail}`;
       emit('error', { type: errType, detail: errDetail, info: errInfo });

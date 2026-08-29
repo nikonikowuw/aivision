@@ -10,7 +10,6 @@ import { $t } from '@vben/locales';
 import {
   getCameraPageApi,
   startLivePreviewApi,
-  stopLivePreviewApi,
 } from '#/api/core/camera';
 import VideoPlayer from '#/components/video/VideoPlayer.vue';
 
@@ -96,15 +95,6 @@ async function playCameraInSlot(
   const targetStreamType: 'main' | 'sub' =
     streamType || (splitMode.value === 1 ? 'main' : 'sub');
 
-  // 如果原卡槽已有运行中的流且不是同一个摄像头/码流，或者需要重新加载，通知后端释放旧流
-  if (slot.camera && slot.streamUrl) {
-    try {
-      await stopLivePreviewApi(slot.camera.id, slot.streamType);
-    } catch (error) {
-      console.warn('Failed to stop previous live stream:', error);
-    }
-  }
-
   try {
     const res = await startLivePreviewApi(camera.id, targetStreamType);
     slot.camera = camera;
@@ -156,13 +146,6 @@ function handleSlotClick(idx: number) {
 async function handleCloseSlot(idx: number) {
   const slot = slots.value[idx];
   if (slot) {
-    if (slot.camera && slot.streamUrl) {
-      try {
-        await stopLivePreviewApi(slot.camera.id, slot.streamType);
-      } catch (error) {
-        console.warn('Failed to stop stream on close:', error);
-      }
-    }
     slot.camera = null;
     slot.streamUrl = '';
   }
@@ -306,12 +289,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  // 卸载视图时主动释放所有已启动的拉流
-  slots.value.forEach((slot) => {
-    if (slot.camera && slot.streamUrl) {
-      stopLivePreviewApi(slot.camera.id, slot.streamType).catch(() => {});
-    }
-  });
+  // 卸载视图时由 ZLMediaKit 无读者机制自动销毁拉流，避免因单页面退出误杀多端共享流
 });
 </script>
 

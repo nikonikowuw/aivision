@@ -5,7 +5,14 @@ defineOptions({
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 
-import { computed, onUnmounted, ref } from 'vue';
+import {
+  computed,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  ref,
+} from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { $t } from '@vben/locales';
@@ -73,10 +80,21 @@ const loadPercent = computed(() => {
   return Math.min(100, Math.round((s.usedUnits / s.totalUnits) * 100));
 });
 
-// 轮询定时器
+// 轮询定时器（静默就地更新，不触发 VxeTable loading 遮罩与全量重排）
 let pollTimer: null | ReturnType<typeof setInterval> = null;
-let pollStartTime = 0;
-const MAX_POLL_DURATION_MS = 15000;
+let isFetchingStatus = false;
+let isViewActive = true;
+const POLL_INTERVAL_MS = 2000;
+
+function hasActiveRunningOrStarting(items?: TaskApi.TaskItem[]): boolean {
+  if (!items || items.length === 0) return false;
+  return items.some(
+    (t) =>
+      t.actualStatus === 1 ||
+      t.actualStatus === 2 ||
+      t.instances?.some((i) => i.actualStatus === 1 || i.actualStatus === 2),
+  );
+}
 
 function stopPolling() {
   if (pollTimer) {
@@ -85,19 +103,123 @@ function stopPolling() {
   }
 }
 
-function startPolling() {
-  if (pollTimer) return;
-  pollStartTime = Date.now();
-  pollTimer = setInterval(async () => {
-    if (Date.now() - pollStartTime > MAX_POLL_DURATION_MS) {
+async function fetchStatusSilently() {
+  if (isFetchingStatus) return;
+  isFetchingStatus = true;
+  try {
+    loadStats();
+    const formValues = (await gridApi.formApi.getValues?.()) ?? {};
+    let configured: boolean | undefined;
+    if (formValues.configured === 'yes') configured = true;
+    else if (formValues.configured === 'no') configured = false;
+
+    // 获取当前分页信息
+    const tablePage = gridApi.grid?.getProxyInfo?.()?.pager || {
+      currentPage: 1,
+      pageSize: 10,
+    };
+
+    const res = await getTaskListApi({
+      page: tablePage.currentPage,
+      pageSize: tablePage.pageSize,
+      name: formValues.name || undefined,
+      configured,
+    });
+
+    // 若当前没有任何任务处于活跃推理或启动状态，自动休眠轮询
+    if (!hasActiveRunningOrStarting(res.items)) {
       stopPolling();
-      return;
     }
-    await gridApi.reload();
-  }, 1000);
+
+    // 获取当前表格响应式数据行（使用 getTableData().tableData 或 getFullData，确保拿到的是响应式 Proxy）
+    const tableDataRes = gridApi.grid?.getTableData?.();
+    const currentRows: TaskApi.TaskItem[] = tableDataRes?.tableData?.length
+      ? tableDataRes.tableData
+      : (gridApi.grid?.getFullData?.() ?? gridApi.grid?.getData?.() ?? []);
+    if (currentRows.length > 0 && res.items?.length > 0) {
+      const freshMap = new Map(res.items.map((item) => [item.cameraId, item]));
+      for (const row of currentRows) {
+        const fresh = freshMap.get(row.cameraId);
+        if (fresh) {
+          row.actualStatus = fresh.actualStatus;
+          row.desiredEnabled = fresh.desiredEnabled;
+          row.statusMessage = fresh.statusMessage;
+          row.lastFrameAt = fresh.lastFrameAt;
+          row.reportedAt = fresh.reportedAt;
+          row.instanceCount = fresh.instanceCount;
+
+          if (row.instances && fresh.instances) {
+            const freshInstMap = new Map(
+              fresh.instances.map((i) => [i.instanceId, i]),
+            );
+            for (const inst of row.instances) {
+              const freshInst = freshInstMap.get(inst.instanceId);
+              if (freshInst) {
+                inst.actualStatus = freshInst.actualStatus;
+                inst.currentFps = freshInst.currentFps;
+                inst.analysisFps = freshInst.analysisFps;
+                inst.enabled = freshInst.enabled;
+                inst.rulesCount = freshInst.rulesCount;
+                inst.statusMessage = freshInst.statusMessage;
+              }
+            }
+            if (row.instances.length !== fresh.instances.length) {
+              row.instances = fresh.instances;
+            }
+          } else {
+            row.instances = fresh.instances;
+          }
+        }
+      }
+    }
+  } catch {
+    // 静默轮询失败不打扰用户
+  } finally {
+    isFetchingStatus = false;
+  }
 }
 
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    await fetchStatusSilently();
+  }, POLL_INTERVAL_MS);
+}
+
+async function refreshAfterResume() {
+  await fetchStatusSilently();
+  const currentRows: TaskApi.TaskItem[] = gridApi.grid?.getData?.() ?? [];
+  if (hasActiveRunningOrStarting(currentRows)) {
+    startPolling();
+  } else {
+    stopPolling();
+  }
+}
+
+async function handleVisibilityChange() {
+  if (document.hidden) {
+    stopPolling();
+  } else if (isViewActive) {
+    await refreshAfterResume();
+  }
+}
+
+onActivated(() => {
+  isViewActive = true;
+  void refreshAfterResume();
+});
+
+onDeactivated(() => {
+  isViewActive = false;
+  stopPolling();
+});
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+});
+
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   stopPolling();
 });
 
@@ -187,6 +309,7 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
   expandConfig: {
     trigger: 'cell',
     showIcon: true,
+    reserve: true,
   },
   columns: [
     { type: 'checkbox', width: 46, align: 'center' },
@@ -264,13 +387,8 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
           configured,
         });
 
-        // 检查是否有任务或实例处于 STARTING 状态
-        const hasStarting = res.items?.some(
-          (t) =>
-            t.actualStatus === 1 ||
-            t.instances?.some((i) => i.actualStatus === 1),
-        );
-        if (hasStarting) {
+        // 检查是否有任务或实例处于活跃状态（STARTING 或 RUNNING），有则保持静默轮询
+        if (hasActiveRunningOrStarting(res.items)) {
           startPolling();
         } else {
           stopPolling();
@@ -332,7 +450,7 @@ async function handleToggleEnabled(row: TaskApi.TaskItem, checked: boolean) {
   try {
     await setTaskEnabledApi(row.cameraId, checked);
     message.success($t('system.common.success'));
-    gridApi.reload();
+    await gridApi.query();
     startPolling();
   } catch {
     // 拦截器已统一报错
@@ -393,8 +511,8 @@ async function handleOpenEditInstance(
     } else {
       message.error($t('resource.task.instance.detailNotFound'));
     }
-  } catch (err: any) {
-    message.error(err.message || $t('resource.task.instance.loadDetailFailed'));
+  } catch {
+    message.error($t('resource.task.instance.loadDetailFailed'));
   }
 }
 
@@ -405,7 +523,7 @@ async function handleToggleInstanceEnabled(
   try {
     await setInstanceEnabledApi(brief.instanceId, checked);
     message.success($t('system.common.success'));
-    gridApi.reload();
+    await gridApi.query();
     startPolling();
   } catch {
     // 拦截器已报错
@@ -450,9 +568,7 @@ function handleFormSuccess() {
         <span class="text-muted-foreground">
           {{ $t('resource.task.stats.scheduledInstances') }}:
         </span>
-        <span
-          class="font-mono font-bold text-blue-600 dark:text-blue-400"
-        >
+        <span class="font-mono font-bold text-blue-600 dark:text-blue-400">
           <template v-if="taskStats">
             {{ taskStats.enabledInstances }}
             {{ $t('resource.task.stats.instanceUnit') }}
@@ -467,8 +583,9 @@ function handleFormSuccess() {
         </span>
         <span class="font-mono font-bold text-amber-600 dark:text-amber-400">
           <template v-if="taskStats && taskStats.totalUnits > 0">
-            {{ taskStats.usedUnits }} / {{ taskStats.totalUnits }} Units
-            ({{ loadPercent }}%)
+            {{ taskStats.usedUnits }} / {{ taskStats.totalUnits }} Units ({{
+              loadPercent
+            }}%)
           </template>
           <template v-else>-</template>
         </span>
@@ -478,6 +595,7 @@ function handleFormSuccess() {
     <!-- 批量操作栏：仅当复选框勾选 > 0 时浮动显示 -->
     <div
       v-if="selectedTasks.length > 0"
+      v-access:code="['resource:task:delete']"
       class="mb-3 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-xs"
     >
       <div class="flex items-center gap-2">
@@ -486,7 +604,12 @@ function handleFormSuccess() {
             $t('system.common.selectedCount', { count: selectedTasks.length })
           }}
         </span>
-        <Button type="link" size="small" class="p-0 text-xs" @click="handleClearSelection">
+        <Button
+          type="link"
+          size="small"
+          class="p-0 text-xs"
+          @click="handleClearSelection"
+        >
           {{ $t('system.common.clearSelection') }}
         </Button>
       </div>
@@ -501,11 +624,7 @@ function handleFormSuccess() {
           :cancel-text="$t('system.common.cancel')"
           @confirm="handleBatchDelete"
         >
-          <Button
-            type="primary"
-            danger
-            size="small"
-          >
+          <Button type="primary" danger size="small">
             {{ $t('system.common.batchDelete') }}
           </Button>
         </Popconfirm>
@@ -514,7 +633,11 @@ function handleFormSuccess() {
 
     <Grid>
       <template #toolbar-tools>
-        <Button type="primary" @click="handleAdd">
+        <Button
+          v-access:code="['resource:task:add']"
+          type="primary"
+          @click="handleAdd"
+        >
           {{ $t('resource.task.add') }}
         </Button>
       </template>
@@ -530,7 +653,9 @@ function handleFormSuccess() {
               v-if="row.instanceCount !== undefined && row.instanceCount > 0"
               class="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono font-normal"
             >
-              {{ $t('resource.task.instanceBadge', { count: row.instanceCount }) }}
+              {{
+                $t('resource.task.instanceBadge', { count: row.instanceCount })
+              }}
             </span>
           </div>
           <div class="text-xs text-muted-foreground font-mono mt-0.5">
@@ -542,6 +667,7 @@ function handleFormSuccess() {
       <!-- 任务期望启停 Switch -->
       <template #desiredEnabled="{ row }">
         <Switch
+          v-access:code="['resource:task:edit']"
           :checked="row.desiredEnabled"
           size="small"
           @change="(val) => handleToggleEnabled(row, Boolean(val))"
@@ -566,8 +692,11 @@ function handleFormSuccess() {
           v-if="!row.instances || row.instances.length === 0"
           class="flex items-center gap-2 py-1 text-xs text-muted-foreground"
         >
-          <span class="italic">{{ $t('resource.task.instance.notConfigured') }}</span>
+          <span class="italic">{{
+            $t('resource.task.instance.notConfigured')
+          }}</span>
           <Button
+            v-access:code="['resource:task:add']"
             type="link"
             size="small"
             class="p-0 text-xs"
@@ -581,52 +710,61 @@ function handleFormSuccess() {
           <div
             v-for="inst in row.instances"
             :key="inst.instanceId"
-            class="flex items-center gap-2 px-2.5 py-1 rounded-md border border-border bg-card shadow-2xs hover:border-primary/60 transition-all cursor-pointer"
+            class="flex items-center gap-2 px-2.5 py-1 rounded-md border border-border bg-card shadow-2xs hover:border-primary/60 transition-all"
             :class="inst.enabled ? 'opacity-100' : 'opacity-60'"
-            @click="handleOpenEditInstance(row, inst)"
           >
-            <!-- 健康指示圆点 -->
-            <span
-              class="inline-block w-2 h-2 rounded-full shrink-0"
-              :class="getInstanceDotClass(inst.actualStatus, inst.enabled)"
-            ></span>
+            <!-- 点击主体区域打开参数配置 -->
+            <div
+              v-access:code="['resource:task:edit']"
+              class="flex items-center gap-2 cursor-pointer"
+              @click="handleOpenEditInstance(row, inst)"
+            >
+              <!-- 健康指示圆点 -->
+              <span
+                class="inline-block w-2 h-2 rounded-full shrink-0"
+                :class="getInstanceDotClass(inst.actualStatus, inst.enabled)"
+              ></span>
 
-            <!-- 算法名与帧率 -->
-            <div class="flex flex-col leading-tight">
-              <span class="font-medium text-xs text-card-foreground">
-                {{ inst.algorithmId }}
-              </span>
-              <span class="text-[10px] text-muted-foreground font-mono mt-0.5">
-                <span
-                  v-if="
-                    inst.currentFps !== null && inst.currentFps !== undefined
-                  "
-                  :class="
-                    inst.currentFps >= inst.analysisFps
-                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                      : 'text-amber-600 dark:text-amber-400'
-                  "
-                >
-                  {{ Number(inst.currentFps).toFixed(1) }}
+              <!-- 算法名与帧率 -->
+              <div class="flex flex-col leading-tight">
+                <span class="font-medium text-xs text-card-foreground">
+                  {{ inst.algorithmId }}
                 </span>
-                <span v-else>-</span>
-                <span class="opacity-60"> / </span>
-                <span>{{ inst.analysisFps }} FPS</span>
-              </span>
+                <span
+                  class="text-[10px] text-muted-foreground font-mono mt-0.5"
+                >
+                  <span
+                    v-if="
+                      inst.currentFps !== null && inst.currentFps !== undefined
+                    "
+                    :class="
+                      inst.currentFps >= inst.analysisFps
+                        ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                        : 'text-amber-600 dark:text-amber-400'
+                    "
+                  >
+                    {{ Number(inst.currentFps).toFixed(1) }}
+                  </span>
+                  <span v-else>-</span>
+                  <span class="opacity-60"> / </span>
+                  <span>{{ inst.analysisFps }} FPS</span>
+                </span>
+              </div>
             </div>
 
             <!-- 轻量启停开关 -->
             <Switch
+              v-access:code="['resource:task:edit']"
               :checked="inst.enabled"
               size="small"
               class="scale-85 origin-right"
-              @click.stop
               @change="(val) => handleToggleInstanceEnabled(inst, Boolean(val))"
             />
           </div>
 
           <!-- 快捷添加实例按钮 -->
           <Button
+            v-access:code="['resource:task:add']"
             type="dashed"
             size="small"
             class="h-7 px-2 text-xs flex items-center gap-1 text-muted-foreground hover:text-primary"
@@ -653,14 +791,24 @@ function handleFormSuccess() {
           <Button type="link" size="small" @click="handleOpenDrawer(row)">
             {{ $t('resource.task.instanceDrawer') }}
           </Button>
-          <Button type="link" size="small" @click="handleEdit(row)">
+          <Button
+            v-access:code="['resource:task:edit']"
+            type="link"
+            size="small"
+            @click="handleEdit(row)"
+          >
             {{ $t('resource.task.edit') }}
           </Button>
           <Popconfirm
             :title="$t('resource.task.deleteConfirm')"
             @confirm="handleDelete(row)"
           >
-            <Button type="link" danger size="small">
+            <Button
+              v-access:code="['resource:task:delete']"
+              type="link"
+              danger
+              size="small"
+            >
               {{ $t('resource.task.delete') }}
             </Button>
           </Popconfirm>
@@ -674,14 +822,22 @@ function handleFormSuccess() {
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-2">
               <span class="text-xs font-semibold text-foreground tracking-wide">
-                {{ $t('resource.task.instance.console') }} ({{ row.instances?.length || 0 }})
+                {{ $t('resource.task.instance.console') }} ({{
+                  row.instances?.length || 0
+                }})
               </span>
               <span class="text-xs text-muted-foreground">
-                · {{ $t('resource.task.instance.sharedDecode', { cameraId: row.cameraId }) }}
+                ·
+                {{
+                  $t('resource.task.instance.sharedDecode', {
+                    cameraId: row.cameraId,
+                  })
+                }}
               </span>
             </div>
             <div class="flex items-center gap-2">
               <Button
+                v-access:code="['resource:task:add']"
                 size="small"
                 type="primary"
                 ghost
@@ -696,7 +852,12 @@ function handleFormSuccess() {
                 :title="$t('resource.task.deleteConfirm')"
                 @confirm="handleDelete(row)"
               >
-                <Button size="small" danger ghost>
+                <Button
+                  v-access:code="['resource:task:delete']"
+                  size="small"
+                  danger
+                  ghost
+                >
                   {{ $t('resource.task.instance.deleteTask') }}
                 </Button>
               </Popconfirm>
@@ -710,6 +871,7 @@ function handleFormSuccess() {
           >
             {{ $t('resource.task.instance.noInstanceHint') }}
             <Button
+              v-access:code="['resource:task:add']"
               type="link"
               size="small"
               @click="handleOpenAddInstance(row)"
@@ -754,7 +916,9 @@ function handleFormSuccess() {
                   class="bg-muted/40 rounded-md p-2.5 border border-border/60 mb-2.5 space-y-1.5 text-xs"
                 >
                   <div class="flex justify-between items-center text-[11px]">
-                    <span class="text-muted-foreground">{{ $t('resource.task.instance.inferenceFps') }}</span>
+                    <span class="text-muted-foreground">{{
+                      $t('resource.task.instance.inferenceFps')
+                    }}</span>
                     <span class="font-mono font-medium">
                       <span
                         v-if="
@@ -771,7 +935,8 @@ function handleFormSuccess() {
                       </span>
                       <span v-else>-</span>
                       <span class="text-muted-foreground">
-                        / {{ inst.analysisFps }} FPS</span>
+                        / {{ inst.analysisFps }} FPS</span
+                      >
                     </span>
                   </div>
 
@@ -797,11 +962,18 @@ function handleFormSuccess() {
                   <div
                     class="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40"
                   >
-                    <span>{{ $t('resource.task.instance.rulesCountLabel') }}: <strong>{{ inst.rulesCount }}</strong></span>
-                    <span>{{ $t('resource.task.instance.enableLabel') }}:
+                    <span
+                      >{{ $t('resource.task.instance.rulesCountLabel') }}:
+                      <strong>{{ inst.rulesCount }}</strong></span
+                    >
+                    <span
+                      >{{ $t('resource.task.instance.enableLabel') }}:
                       <strong>{{
-                        inst.enabled ? $t('resource.task.instance.statusEnabled') : $t('resource.task.instance.statusDisabled')
-                      }}</strong></span>
+                        inst.enabled
+                          ? $t('resource.task.instance.statusEnabled')
+                          : $t('resource.task.instance.statusDisabled')
+                      }}</strong></span
+                    >
                   </div>
                 </div>
 
@@ -819,8 +991,11 @@ function handleFormSuccess() {
                 class="flex items-center justify-between pt-2 border-t border-border/60 text-xs"
               >
                 <div class="flex items-center gap-1.5">
-                  <span class="text-muted-foreground text-xs">{{ $t('resource.task.instance.enableLabel') }}:</span>
+                  <span class="text-muted-foreground text-xs"
+                    >{{ $t('resource.task.instance.enableLabel') }}:</span
+                  >
                   <Switch
+                    v-access:code="['resource:task:edit']"
                     :checked="inst.enabled"
                     size="small"
                     @change="
@@ -830,6 +1005,7 @@ function handleFormSuccess() {
                 </div>
                 <Space :size="4">
                   <Button
+                    v-access:code="['resource:task:edit']"
                     type="link"
                     size="small"
                     class="p-0 text-xs"
@@ -842,7 +1018,13 @@ function handleFormSuccess() {
                     :title="$t('resource.task.instance.deleteConfirm')"
                     @confirm="handleDeleteInstance(inst)"
                   >
-                    <Button type="link" danger size="small" class="p-0 text-xs">
+                    <Button
+                      v-access:code="['resource:task:delete']"
+                      type="link"
+                      danger
+                      size="small"
+                      class="p-0 text-xs"
+                    >
                       {{ $t('resource.task.instance.remove') }}
                     </Button>
                   </Popconfirm>
@@ -874,7 +1056,7 @@ function handleFormSuccess() {
       v-model:open="instanceDrawerOpen"
       :camera-id="activeDrawerCameraId"
       :task-name="activeDrawerTaskName"
-      @change="gridApi.reload()"
+      @change="gridApi.query()"
     />
   </Page>
 </template>

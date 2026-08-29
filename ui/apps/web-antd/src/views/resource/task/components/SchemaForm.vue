@@ -17,145 +17,329 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
+type PrimitiveValue = boolean | number | string;
+type SelectValue = number | string;
+type SchemaValue = PrimitiveValue | PrimitiveValue[] | undefined;
+type SchemaRecord = Record<string, unknown>;
+type PropertyType = 'array' | 'boolean' | 'integer' | 'number' | 'string';
+
 interface Props {
-  schema?: null | Record<string, any>;
+  schema?: null | SchemaRecord;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   schema: null,
 });
 
-const formData = defineModel<Record<string, any>>('value', {
+const formData = defineModel<Record<string, unknown>>('value', {
   default: () => ({}),
 });
 
 const formRef = ref<FormInstance>();
 
 export interface PropertyField {
-  defaultValue?: any;
+  defaultValue?: SchemaValue;
   description?: string;
-  enumOptions?: Array<{ label: string; value: number | string }>;
+  enumOptions?: Array<{ label: string; value: SelectValue }>;
+  itemType: Exclude<PropertyType, 'array'>;
   key: string;
   max?: number;
+  maxItems?: number;
   maxLength?: number;
   min?: number;
+  minItems?: number;
   minLength?: number;
+  multipleOf?: number;
+  pattern?: RegExp;
   required: boolean;
-  step?: number;
   title: string;
-  type: 'array' | 'boolean' | 'integer' | 'number' | 'string';
+  type: PropertyType;
+  uniqueItems: boolean;
+}
+
+function isRecord(value: unknown): value is SchemaRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toPropertyType(value: unknown): PropertyType {
+  switch (String(value || 'string').toLowerCase()) {
+    case 'array':
+    case 'boolean':
+    case 'integer':
+    case 'number':
+      return String(value).toLowerCase() as PropertyType;
+    default:
+      return 'string';
+  }
+}
+
+function toPrimitiveOptions(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const primitives = value.filter(
+    (item): item is SelectValue =>
+      typeof item === 'number' || typeof item === 'string',
+  );
+  return primitives.map((item) => ({ label: String(item), value: item }));
 }
 
 const properties = computed<PropertyField[]>(() => {
-  if (
-    !props.schema ||
-    typeof props.schema !== 'object' ||
-    !props.schema.properties
-  ) {
-    return [];
-  }
+  if (!props.schema || !isRecord(props.schema.properties)) return [];
+
   const requiredKeys = new Set<string>(
-    Array.isArray(props.schema.required) ? props.schema.required : [],
+    Array.isArray(props.schema.required)
+      ? props.schema.required.filter(
+          (item): item is string => typeof item === 'string',
+        )
+      : [],
   );
   const result: PropertyField[] = [];
 
-  for (const [key, rawProp] of Object.entries<any>(props.schema.properties)) {
-    if (!rawProp || typeof rawProp !== 'object') continue;
+  for (const [key, rawValue] of Object.entries(props.schema.properties)) {
+    if (!isRecord(rawValue)) continue;
 
-    const rawType = String(rawProp.type || 'string').toLowerCase();
-    let type: PropertyField['type'];
-    if (rawType === 'boolean') type = 'boolean';
-    else if (rawType === 'integer') type = 'integer';
-    else if (rawType === 'number') type = 'number';
-    else if (rawType === 'array') type = 'array';
-    else type = 'string';
+    const type = toPropertyType(rawValue.type);
+    const items = isRecord(rawValue.items) ? rawValue.items : undefined;
+    const patternSource =
+      typeof rawValue.pattern === 'string' ? rawValue.pattern : undefined;
+    let pattern: RegExp | undefined;
+    if (patternSource) {
+      try {
+        pattern = new RegExp(patternSource);
+      } catch {
+        pattern = undefined;
+      }
+    }
 
-    let enumOptions: PropertyField['enumOptions'];
-    if (Array.isArray(rawProp.enum)) {
-      enumOptions = rawProp.enum.map((v: any) => ({
-        label: String(v),
-        value: v,
-      }));
-    } else if (rawProp.items && Array.isArray(rawProp.items.enum)) {
-      enumOptions = rawProp.items.enum.map((v: any) => ({
-        label: String(v),
-        value: v,
-      }));
+    const itemType = toPropertyType(items?.type) as Exclude<
+      PropertyType,
+      'array'
+    >;
+    let enumOptions = toPrimitiveOptions(
+      type === 'array' ? items?.enum : rawValue.enum,
+    );
+    if (type === 'array' && itemType === 'boolean' && !enumOptions) {
+      enumOptions = [
+        { label: 'true', value: 'true' },
+        { label: 'false', value: 'false' },
+      ];
     }
 
     result.push({
       key,
-      title: rawProp.title || key,
+      title: typeof rawValue.title === 'string' ? rawValue.title : key,
       type,
-      description: rawProp.description || '',
-      defaultValue: rawProp.default,
+      itemType,
+      description:
+        typeof rawValue.description === 'string' ? rawValue.description : '',
+      defaultValue: rawValue.default as SchemaValue,
       required: requiredKeys.has(key),
       enumOptions,
-      min: typeof rawProp.minimum === 'number' ? rawProp.minimum : undefined,
-      max: typeof rawProp.maximum === 'number' ? rawProp.maximum : undefined,
-      step:
-        typeof rawProp.multipleOf === 'number' ? rawProp.multipleOf : undefined,
+      min: typeof rawValue.minimum === 'number' ? rawValue.minimum : undefined,
+      max: typeof rawValue.maximum === 'number' ? rawValue.maximum : undefined,
+      multipleOf:
+        typeof rawValue.multipleOf === 'number'
+          ? rawValue.multipleOf
+          : undefined,
       minLength:
-        typeof rawProp.minLength === 'number' ? rawProp.minLength : undefined,
+        typeof rawValue.minLength === 'number' ? rawValue.minLength : undefined,
       maxLength:
-        typeof rawProp.maxLength === 'number' ? rawProp.maxLength : undefined,
+        typeof rawValue.maxLength === 'number' ? rawValue.maxLength : undefined,
+      minItems:
+        typeof rawValue.minItems === 'number' ? rawValue.minItems : undefined,
+      maxItems:
+        typeof rawValue.maxItems === 'number' ? rawValue.maxItems : undefined,
+      uniqueItems: rawValue.uniqueItems === true,
+      pattern,
     });
   }
 
   return result;
 });
 
-// 初始化默认值
-watch(
-  properties,
-  (propsList) => {
-    const current = { ...(formData.value || {}) };
-    let changed = false;
-    for (const prop of propsList) {
-      if (current[prop.key] === undefined && prop.defaultValue !== undefined) {
-        current[prop.key] = prop.defaultValue;
-        changed = true;
-      }
+// 根据当前 schema 的 default 值，为缺失字段补齐默认值。
+function applyDefaults() {
+  const current = { ...(formData.value || {}) };
+  let changed = false;
+  for (const property of properties.value) {
+    if (
+      (current[property.key] === undefined ||
+        current[property.key] === null ||
+        current[property.key] === '') &&
+      property.defaultValue !== undefined
+    ) {
+      current[property.key] = property.defaultValue;
+      changed = true;
     }
-    if (changed) {
-      formData.value = current;
-    }
-  },
-  { immediate: true },
-);
+  }
+  if (changed) formData.value = current;
+}
+
+watch(() => props.schema, applyDefaults, { immediate: true });
+
+function validationError() {
+  return new Error($t('resource.task.instance.paramsInvalid'));
+}
 
 const rules = computed<Record<string, Rule[]>>(() => {
   const map: Record<string, Rule[]> = {};
-  for (const prop of properties.value) {
-    const fieldRules: Rule[] = [];
-    if (prop.required) {
-      fieldRules.push({
-        required: true,
-        message: $t('resource.task.instance.schemaInputRequired', { field: prop.title }),
-      });
-    }
-    if (prop.type === 'string' && prop.minLength) {
-      fieldRules.push({
-        min: prop.minLength,
-        message: $t('resource.task.instance.schemaMinLength', { field: prop.title, min: prop.minLength }),
-      });
-    }
-    if (prop.type === 'string' && prop.maxLength) {
-      fieldRules.push({
-        max: prop.maxLength,
-        message: $t('resource.task.instance.schemaMaxLength', { field: prop.title, max: prop.maxLength }),
-      });
-    }
-    if (fieldRules.length > 0) {
-      map[prop.key] = fieldRules;
-    }
+  for (const property of properties.value) {
+    map[property.key] = [
+      {
+        validator: async (_rule, value: unknown) => {
+          if (
+            property.required &&
+            (value === undefined ||
+              value === null ||
+              value === '' ||
+              (Array.isArray(value) && value.length === 0))
+          ) {
+            throw new Error(
+              $t('resource.task.instance.schemaInputRequired', {
+                field: property.title,
+              }),
+            );
+          }
+          if (value === undefined || value === null || value === '') return;
+
+          if (typeof value === 'string') {
+            if (
+              property.minLength !== undefined &&
+              value.length < property.minLength
+            ) {
+              throw validationError();
+            }
+            if (
+              property.maxLength !== undefined &&
+              value.length > property.maxLength
+            ) {
+              throw validationError();
+            }
+            if (property.pattern && !property.pattern.test(value)) {
+              throw validationError();
+            }
+          }
+
+          if (typeof value === 'number') {
+            if (!Number.isFinite(value)) throw validationError();
+            if (property.type === 'integer' && !Number.isInteger(value)) {
+              throw validationError();
+            }
+            if (property.min !== undefined && value < property.min) {
+              throw validationError();
+            }
+            if (property.max !== undefined && value > property.max) {
+              throw validationError();
+            }
+            if (property.multipleOf !== undefined) {
+              const quotient = value / property.multipleOf;
+              if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+                throw validationError();
+              }
+            }
+          }
+
+          if (Array.isArray(value)) {
+            if (
+              (property.itemType === 'integer' &&
+                value.some(
+                  (item) => typeof item !== 'number' || !Number.isInteger(item),
+                )) ||
+              (property.itemType === 'number' &&
+                value.some(
+                  (item) => typeof item !== 'number' || !Number.isFinite(item),
+                )) ||
+              (property.itemType === 'boolean' &&
+                value.some((item) => typeof item !== 'boolean')) ||
+              (property.itemType === 'string' &&
+                value.some((item) => typeof item !== 'string'))
+            ) {
+              throw validationError();
+            }
+            if (
+              property.minItems !== undefined &&
+              value.length < property.minItems
+            ) {
+              throw validationError();
+            }
+            if (
+              property.maxItems !== undefined &&
+              value.length > property.maxItems
+            ) {
+              throw validationError();
+            }
+            if (
+              property.uniqueItems &&
+              new Set(value.map((item) => JSON.stringify(item))).size !==
+                value.length
+            ) {
+              throw validationError();
+            }
+          }
+        },
+      },
+    ];
   }
   return map;
 });
 
+function selectValue(key: string): SelectValue | undefined {
+  const value = formData.value[key];
+  return typeof value === 'number' || typeof value === 'string'
+    ? value
+    : undefined;
+}
+
+function booleanValue(key: string): boolean {
+  return formData.value[key] === true;
+}
+
+function numberValue(key: string): number | undefined {
+  const value = formData.value[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function stringValue(key: string): string | undefined {
+  const value = formData.value[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function arraySelectValue(key: string): SelectValue[] {
+  const value = formData.value[key];
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'boolean' ? String(item) : item))
+    .filter(
+      (item): item is SelectValue =>
+        typeof item === 'number' || typeof item === 'string',
+    );
+}
+
+function setValue(key: string, value: unknown) {
+  formData.value[key] = value;
+}
+
+function normalizeArrayValue(property: PropertyField, values: unknown[]) {
+  const primitiveValues = values.filter(
+    (value): value is SelectValue =>
+      typeof value === 'number' || typeof value === 'string',
+  );
+  if (property.itemType === 'integer') {
+    formData.value[property.key] = primitiveValues.map((value) =>
+      Math.trunc(Number(value)),
+    );
+  } else if (property.itemType === 'number') {
+    formData.value[property.key] = primitiveValues.map(Number);
+  } else if (property.itemType === 'boolean') {
+    formData.value[property.key] = primitiveValues.map(
+      (value) => value === 'true',
+    );
+  } else {
+    formData.value[property.key] = primitiveValues.map(String);
+  }
+}
+
 async function validate() {
-  if (properties.value.length === 0) return true;
-  if (!formRef.value) return true;
+  if (properties.value.length === 0 || !formRef.value) return true;
   return formRef.value.validate();
 }
 
@@ -163,16 +347,17 @@ function resetFields() {
   formRef.value?.resetFields();
 }
 
-defineExpose({
-  validate,
-  resetFields,
-});
+defineExpose({ applyDefaults, validate, resetFields });
 </script>
 
 <template>
   <div class="schema-form-wrapper">
     <div v-if="properties.length === 0" class="py-2">
-      <Alert :message="$t('resource.task.instance.schemaNoParams')" type="info" show-icon />
+      <Alert
+        :message="$t('resource.task.instance.schemaNoParams')"
+        type="info"
+        show-icon
+      />
     </div>
     <Form
       v-else
@@ -182,82 +367,73 @@ defineExpose({
       layout="vertical"
     >
       <FormItem
-        v-for="prop in properties"
-        :key="prop.key"
-        :name="prop.key"
-        :required="prop.required"
+        v-for="property in properties"
+        :key="property.key"
+        :name="property.key"
+        :required="property.required"
       >
         <template #label>
           <span>
-            {{ prop.title }}
-            <Tooltip v-if="prop.description" :title="prop.description">
+            {{ property.title }}
+            <Tooltip v-if="property.description" :title="property.description">
               <span class="text-muted-foreground ml-1 cursor-help">ⓘ</span>
             </Tooltip>
           </span>
         </template>
 
-        <!-- boolean 开关 -->
+        <Select
+          v-if="property.type !== 'array' && property.enumOptions"
+          :value="selectValue(property.key)"
+          :options="property.enumOptions"
+          class="w-full"
+          :placeholder="
+            property.description ||
+            $t('resource.task.instance.schemaSelectPlaceholder')
+          "
+          @update:value="(value) => setValue(property.key, value)"
+        />
+
         <Switch
-          v-if="prop.type === 'boolean'"
-          v-model:checked="formData[prop.key]"
+          v-else-if="property.type === 'boolean'"
+          :checked="booleanValue(property.key)"
+          @update:checked="(value) => setValue(property.key, value)"
         />
 
-        <!-- integer 数字 -->
         <InputNumber
-          v-else-if="prop.type === 'integer'"
-          v-model:value="formData[prop.key]"
-          :precision="0"
-          :min="prop.min"
-          :max="prop.max"
+          v-else-if="property.type === 'integer' || property.type === 'number'"
+          :value="numberValue(property.key)"
+          :precision="property.type === 'integer' ? 0 : undefined"
+          :min="property.min"
+          :max="property.max"
+          :step="property.multipleOf"
           class="w-full"
-          :placeholder="prop.description || prop.title"
+          :placeholder="property.description || property.title"
+          @update:value="(value) => setValue(property.key, value)"
         />
 
-        <!-- number 浮点数 -->
-        <InputNumber
-          v-else-if="prop.type === 'number'"
-          v-model:value="formData[prop.key]"
-          :min="prop.min"
-          :max="prop.max"
-          :step="prop.step"
-          class="w-full"
-          :placeholder="prop.description || prop.title"
-        />
-
-        <!-- 枚举下拉选择 -->
-        <Select
-          v-else-if="prop.type === 'string' && prop.enumOptions"
-          v-model:value="formData[prop.key]"
-          :options="prop.enumOptions"
-          class="w-full"
-          :placeholder="prop.description || $t('resource.task.instance.schemaSelectPlaceholder')"
-        />
-
-        <!-- 普通单行文本 -->
         <Input
-          v-else-if="prop.type === 'string'"
-          v-model:value="formData[prop.key]"
-          :maxlength="prop.maxLength"
+          v-else-if="property.type === 'string'"
+          :value="stringValue(property.key)"
+          :maxlength="property.maxLength"
           class="w-full"
-          :placeholder="prop.description || prop.title"
+          :placeholder="property.description || property.title"
+          @update:value="(value) => setValue(property.key, value)"
         />
 
-        <!-- 数组多选 -->
         <Select
-          v-else-if="prop.type === 'array' && prop.enumOptions"
-          v-model:value="formData[prop.key]"
-          mode="multiple"
-          :options="prop.enumOptions"
+          v-else-if="property.type === 'array'"
+          :value="arraySelectValue(property.key)"
+          :mode="property.enumOptions ? 'multiple' : 'tags'"
+          :options="property.enumOptions"
           class="w-full"
-          :placeholder="prop.description || $t('resource.task.instance.schemaMultiSelectPlaceholder')"
-        />
-
-        <!-- 普通 fallback -->
-        <Input
-          v-else
-          v-model:value="formData[prop.key]"
-          class="w-full"
-          :placeholder="prop.description || prop.title"
+          :placeholder="
+            property.description ||
+            $t('resource.task.instance.schemaMultiSelectPlaceholder')
+          "
+          @update:value="
+            (values) =>
+              normalizeArrayValue(property, Array.isArray(values) ? values : [])
+          "
         />
       </FormItem>
     </Form>

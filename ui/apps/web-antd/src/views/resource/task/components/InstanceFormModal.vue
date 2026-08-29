@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { AlgorithmApi } from '#/api';
 
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 import { $t } from '@vben/locales';
 
@@ -13,6 +13,7 @@ import {
   message,
   Modal,
   Select,
+  Switch,
   Tag,
 } from 'ant-design-vue';
 
@@ -62,7 +63,7 @@ const algorithmList = ref<AlgorithmApi.AlgorithmItem[]>([]);
 const selectedAlgorithmId = ref<string>('');
 const analysisFps = ref<number>(25);
 const autoEnable = ref<boolean>(true);
-const paramsJson = ref<Record<string, any>>({});
+const paramsJson = ref<Record<string, unknown>>({});
 const rulesRaw = ref<string>('[]');
 
 // 当前选中的算法对象及其激活版本
@@ -97,8 +98,14 @@ const maxFps = computed(() => {
 });
 
 const fpsTiersDisplay = computed(() => {
-  if (fpsTiers.value.length === 0) return $t('resource.task.instance.noTierConstraint');
-  return fpsTiers.value.map((t) => `${t.fps}fps (${t.units} ${$t('resource.task.instance.tierUnit')})`).join(', ');
+  if (fpsTiers.value.length === 0)
+    return $t('resource.task.instance.noTierConstraint');
+  return fpsTiers.value
+    .map(
+      (t) =>
+        `${t.fps}fps (${t.units} ${$t('resource.task.instance.tierUnit')})`,
+    )
+    .join(', ');
 });
 
 const currentConfigSchema = computed(() => {
@@ -121,8 +128,8 @@ async function loadAlgorithms() {
   try {
     const res = await getAlgorithmList({ page: 1, pageSize: 100 });
     algorithmList.value = res.items || [];
-  } catch (err: any) {
-    message.error(err.message || $t('resource.task.instance.loadAlgoFailed'));
+  } catch {
+    message.error($t('resource.task.instance.loadAlgoFailed'));
   } finally {
     loading.value = false;
   }
@@ -157,17 +164,23 @@ watch(
       autoEnable.value = true;
       paramsJson.value = {};
       rulesRaw.value = '[]';
-      if (algorithmOptions.value.length > 0 && !selectedAlgorithmId.value) {
-        selectedAlgorithmId.value = algorithmOptions.value[0]?.value || '';
-      }
+      // 保证每次新建时都重新选择默认算法并触发 schema 变化
+      selectedAlgorithmId.value = algorithmOptions.value[0]?.value || '';
+      // 显式应用算法 schema 默认值：重新打开弹窗时 schema 引用可能不变，
+      // SchemaForm 的 watcher 不会再次触发，必须主动补齐默认值。
+      await nextTick();
+      schemaFormRef.value?.applyDefaults();
     }
   },
 );
 
-// 算法切换时，FPS 上限联动纠偏
-watch(selectedAlgorithmId, () => {
+// 算法切换时，FPS 上限联动纠偏并重置新建状态下的参数
+watch(selectedAlgorithmId, (newId, oldId) => {
   if (!isEdit.value && maxFps.value && analysisFps.value > maxFps.value) {
     analysisFps.value = maxFps.value;
+  }
+  if (!isEdit.value && newId !== oldId) {
+    paramsJson.value = {};
   }
 });
 
@@ -222,7 +235,7 @@ async function handleOk() {
 
     emit('success');
     visible.value = false;
-  } catch (err: any) {
+  } catch {
     // 拦截器已统一报错
   } finally {
     submitting.value = false;
@@ -301,7 +314,11 @@ async function handleOk() {
         <div class="flex items-center gap-2">
           <Switch v-model:checked="autoEnable" />
           <span class="text-xs text-muted-foreground">
-            {{ autoEnable ? $t('resource.task.instance.autoEnableOn') : $t('resource.task.instance.autoEnableOff') }}
+            {{
+              autoEnable
+                ? $t('resource.task.instance.autoEnableOn')
+                : $t('resource.task.instance.autoEnableOff')
+            }}
           </span>
         </div>
       </FormItem>

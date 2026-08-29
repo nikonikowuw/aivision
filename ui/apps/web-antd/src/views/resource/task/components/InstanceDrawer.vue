@@ -55,8 +55,14 @@ const currentEditInstance = ref<null | TaskApi.InstanceItem>(null);
 
 // 轮询控制
 let pollTimer: null | ReturnType<typeof setInterval> = null;
-let pollStartTime = 0;
-const MAX_POLL_DURATION_MS = 15000;
+let isFetchingInstances = false;
+const POLL_INTERVAL_MS = 2000;
+
+function hasActiveInstances(items: TaskApi.InstanceItem[]): boolean {
+  return items.some(
+    (inst) => inst.actualStatus === 1 || inst.actualStatus === 2,
+  );
+}
 
 function stopPolling() {
   if (pollTimer) {
@@ -67,37 +73,42 @@ function stopPolling() {
 
 async function loadInstances(silent = false) {
   if (!props.cameraId) return;
+  if (silent && isFetchingInstances) return;
   if (!silent) loading.value = true;
+  if (silent) isFetchingInstances = true;
   try {
     const list = await getInstanceListApi(props.cameraId);
     instances.value = list || [];
 
-    // 检查是否有处于 STARTING 中间态的实例
-    const hasStarting = instances.value.some((inst) => inst.actualStatus === 1);
-    if (hasStarting) {
+    // 检查是否有处于活跃运行态或启动中的实例，有则保持轮询
+    if (hasActiveInstances(instances.value)) {
       startPolling();
     } else {
       stopPolling();
     }
-  } catch (err: any) {
+  } catch {
     if (!silent) {
-      message.error(err.message || $t('resource.task.instance.loadFailed'));
+      message.error($t('resource.task.instance.loadFailed'));
     }
   } finally {
     if (!silent) loading.value = false;
+    if (silent) isFetchingInstances = false;
   }
 }
 
 function startPolling() {
   if (pollTimer) return;
-  pollStartTime = Date.now();
   pollTimer = setInterval(async () => {
-    if (Date.now() - pollStartTime > MAX_POLL_DURATION_MS) {
-      stopPolling();
-      return;
-    }
     await loadInstances(true);
-  }, 1000);
+  }, POLL_INTERVAL_MS);
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopPolling();
+  } else if (props.open && props.cameraId) {
+    loadInstances(true);
+  }
 }
 
 // 抽屉开关监听
@@ -106,13 +117,16 @@ watch(
   (isOpen) => {
     if (isOpen && props.cameraId) {
       loadInstances();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
     } else {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopPolling();
     }
   },
 );
 
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   stopPolling();
 });
 
@@ -244,7 +258,11 @@ function getStatusTag(status: number) {
           <span>{{ $t('resource.task.instance.camera') }}: </span>
           <span class="font-mono font-medium">{{ cameraId }}</span>
         </div>
-        <Button type="primary" @click="handleAdd">
+        <Button
+          v-access:code="['resource:task:add']"
+          type="primary"
+          @click="handleAdd"
+        >
           {{ $t('resource.task.instance.add') }}
         </Button>
       </div>
@@ -270,6 +288,7 @@ function getStatusTag(status: number) {
 
             <template v-else-if="column.key === 'enabled'">
               <Switch
+                v-access:code="['resource:task:edit']"
                 :checked="record.enabled"
                 size="small"
                 @change="
@@ -319,6 +338,7 @@ function getStatusTag(status: number) {
             <template v-else-if="column.key === 'action'">
               <Space :size="8">
                 <Button
+                  v-access:code="['resource:task:edit']"
                   type="link"
                   size="small"
                   @click="handleEdit(record as TaskApi.InstanceItem)"
@@ -329,7 +349,12 @@ function getStatusTag(status: number) {
                   :title="$t('resource.task.instance.deleteConfirm')"
                   @confirm="handleDelete(record as TaskApi.InstanceItem)"
                 >
-                  <Button type="link" danger size="small">
+                  <Button
+                    v-access:code="['resource:task:delete']"
+                    type="link"
+                    danger
+                    size="small"
+                  >
                     {{ $t('resource.task.instance.delete') }}
                   </Button>
                 </Popconfirm>

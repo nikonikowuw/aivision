@@ -68,8 +68,8 @@ async function loadAvailableCameras() {
     if (availableCameras.value.length > 0 && !selectedCameraId.value) {
       selectedCameraId.value = availableCameras.value[0]?.cameraId || '';
     }
-  } catch (err: any) {
-    message.error(err.message || $t('resource.task.loadCamerasFailed'));
+  } catch {
+    message.error($t('resource.task.loadCamerasFailed'));
   } finally {
     loadingCameras.value = false;
   }

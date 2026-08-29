@@ -1,6 +1,7 @@
 {
   "dashboard": {
     "analytics": "分析頁",
+    "title": "儀表板",
     "workspace": "工作台"
   },
   "live": {

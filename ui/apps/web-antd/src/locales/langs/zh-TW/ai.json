@@ -42,13 +42,13 @@
     "propNo": "否",
     "noSchema": "目前演算法版本未宣告或無須自訂執行時參數。",
     "uploadTitle": "安裝/升級演算法包",
-    "uploadHint": "支援標準 .tar.gz 壓縮包，根目錄包含 manifest.json、config.schema.json、testimage.jpg 以及宣告的動態庫和模型檔案。上傳後 Engine 將在隔離程序執行冒煙自我檢測。",
+    "uploadHint": "支援標準 .zip / .tar.gz / .tar 壓縮包，根目錄包含 manifest.json、config.schema.json、testimage.jpg 以及宣告的動態庫和模型檔案。上傳後 Engine 將在隔離程序執行冒煙自我檢測。",
     "uploadDragTitle": "點擊或將演算法包檔案拖曳到此區域上傳",
-    "uploadDragHint": "支援 YOLOv8、CoreML、RKNN 等編譯好的標準演算法包（.tar.gz）",
+    "uploadDragHint": "支援 YOLOv8、CoreML、RKNN 等編譯好的標準演算法包（.zip / .tar.gz / .tar）",
     "uploadingTip": "正在上傳演算法包至伺服器暫存區...",
     "validatingTip": "伺服器安全解壓縮完成，正在喚起 Engine 沙箱自我檢測與符號表校驗...",
     "installSuccess": "演算法包驗證自我檢測通過，已成功安裝入庫！",
     "installFailed": "安裝校驗失敗",
-    "onlyTarGz": "只支援上傳 .tar.gz 格式的演算法包！"
+    "onlySupportedFormats": "只支援上傳 .zip、.tar.gz 或 .tar 格式的演算法包！"
   }
 }

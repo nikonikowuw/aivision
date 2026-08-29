@@ -32,13 +32,18 @@ const errorMessage = ref('');
 const beforeUpload: UploadProps['beforeUpload'] = (file) => {
   const name = file.name.toLowerCase();
   const isValidArchive =
+    name.endsWith('.zip') ||
     name.endsWith('.tar.gz') ||
     name.endsWith('.tgz') ||
+    name.endsWith('.tar') ||
+    file.type === 'application/zip' ||
+    file.type === 'application/x-zip-compressed' ||
     file.type === 'application/gzip' ||
-    file.type === 'application/x-gzip';
+    file.type === 'application/x-gzip' ||
+    file.type === 'application/x-tar';
 
   if (!isValidArchive) {
-    message.error($t('ai.algorithm.onlyTarGz'));
+    message.error($t('ai.algorithm.onlySupportedFormats'));
     return false;
   }
 
@@ -88,7 +93,7 @@ async function handleUpload(file: File) {
           :multiple="false"
           :before-upload="beforeUpload"
           :show-upload-list="false"
-          accept=".zip,.tar.gz,.tgz"
+          accept=".zip,.tar.gz,.tgz,.tar"
           class="block py-6"
         >
           <p class="ant-upload-drag-icon text-4xl text-blue-500">

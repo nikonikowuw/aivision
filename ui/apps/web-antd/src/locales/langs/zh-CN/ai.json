@@ -42,13 +42,13 @@
     "propNo": "否",
     "noSchema": "当前算法版本未声明或无需自定义运行时参数。",
     "uploadTitle": "安装/升级算法包",
-    "uploadHint": "支持标准 .tar.gz 压缩包，根目录包含 manifest.json、config.schema.json、testimage.jpg 以及声明的动态库和模型文件。上传后 Engine 将在隔离进程运行冒烟自测。",
+    "uploadHint": "支持标准 .zip / .tar.gz / .tar 压缩包，根目录包含 manifest.json、config.schema.json、testimage.jpg 以及声明的动态库和模型文件。上传后 Engine 将在隔离进程运行冒烟自测。",
     "uploadDragTitle": "点击或将算法包文件拖拽到此区域上传",
-    "uploadDragHint": "支持 YOLOv8、CoreML、RKNN 等编译好的标准算法包（.tar.gz）",
+    "uploadDragHint": "支持 YOLOv8、CoreML、RKNN 等编译好的标准算法包（.zip / .tar.gz / .tar）",
     "uploadingTip": "正在上传算法包至服务器暂存区...",
     "validatingTip": "服务器安全解压完成，正在唤起 Engine 沙箱自测与符号表校验...",
     "installSuccess": "算法包验证自测通过，已成功安装入库！",
     "installFailed": "安装校验失败",
-    "onlyTarGz": "只支持上传 .tar.gz 格式的算法包！"
+    "onlySupportedFormats": "只支持上传 .zip、.tar.gz 或 .tar 格式的算法包！"
   }
 }

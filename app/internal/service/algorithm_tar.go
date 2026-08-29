@@ -2,6 +2,7 @@ package service
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -62,8 +63,8 @@ type ManifestSchema struct {
 	} `json:"self_test"`
 }
 
-// ExtractAndValidateArchive 安全解压算法包（.tar.gz / .tgz）至 targetDir，
-// 严密防御 TarSlip 路径穿越漏洞与解压炸弹。
+// ExtractAndValidateArchive 安全解压算法包（.zip / .tar.gz / .tgz / .tar）至 targetDir，
+// 严密防御 ZipSlip / TarSlip 路径穿越漏洞与解压炸弹。
 func ExtractAndValidateArchive(r io.Reader, targetDir string, maxSizeBytes int64) (*ExtractedPackage, error) {
 	if maxSizeBytes <= 0 {
 		maxSizeBytes = DefaultMaxPackageBytes
@@ -74,7 +75,10 @@ func ExtractAndValidateArchive(r io.Reader, targetDir string, maxSizeBytes int64
 		return nil, fmt.Errorf("cannot resolve target path: %w", err)
 	}
 
-	// 嗅探魔数判断格式：gzip(\x1f\x8b)
+	// 嗅探魔数判断格式：
+	// gzip: \x1f\x8b
+	// zip: PK\x03\x04 / PK\x05\x06 / PK\x07\x08
+	// tar: offset 257 处包含 "ustar" (POSIX/GNU tar)
 	peekBuf := make([]byte, 512)
 	n, err := io.ReadFull(r, peekBuf)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
@@ -90,8 +94,20 @@ func ExtractAndValidateArchive(r io.Reader, targetDir string, maxSizeBytes int64
 		if err != nil {
 			return nil, err
 		}
+	} else if bytes.HasPrefix(peeked, []byte{0x50, 0x4b, 0x03, 0x04}) ||
+		bytes.HasPrefix(peeked, []byte{0x50, 0x4b, 0x05, 0x06}) ||
+		bytes.HasPrefix(peeked, []byte{0x50, 0x4b, 0x07, 0x08}) {
+		writtenBytes, err = extractZip(combinedReader, absTargetDir, maxSizeBytes)
+		if err != nil {
+			return nil, err
+		}
+	} else if len(peeked) >= 262 && string(peeked[257:262]) == "ustar" {
+		writtenBytes, err = extractTarReader(tar.NewReader(combinedReader), absTargetDir, maxSizeBytes)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		return nil, errors.New("unsupported package format: must be a valid .tar.gz archive")
+		return nil, errors.New("unsupported package format: must be a valid .zip, .tar.gz, or .tar archive")
 	}
 
 	// 3. 查找并解析 manifest.json 与 config.schema.json
@@ -164,7 +180,10 @@ func extractTarGz(r io.Reader, absTargetDir string, maxSizeBytes int64) (int64, 
 	}
 	defer gzReader.Close()
 
-	tarReader := tar.NewReader(gzReader)
+	return extractTarReader(tar.NewReader(gzReader), absTargetDir, maxSizeBytes)
+}
+
+func extractTarReader(tarReader *tar.Reader, absTargetDir string, maxSizeBytes int64) (int64, error) {
 	var writtenBytes int64
 
 	for {
@@ -223,3 +242,91 @@ func extractTarGz(r io.Reader, absTargetDir string, maxSizeBytes int64) (int64, 
 	}
 	return writtenBytes, nil
 }
+
+func extractZip(r io.Reader, absTargetDir string, maxSizeBytes int64) (int64, error) {
+	// zip.NewReader 需要 io.ReaderAt 与 size，因此先将 zip 内容安全缓冲到临时文件或内存
+	// 为了防止内存消耗过大，创建临时文件
+	tmpZip, err := os.CreateTemp("", "algo-upload-*.zip")
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp zip file: %w", err)
+	}
+	defer os.Remove(tmpZip.Name())
+	defer tmpZip.Close()
+
+	zipSize, err := io.Copy(tmpZip, io.LimitReader(r, maxSizeBytes+1))
+	if err != nil {
+		return 0, fmt.Errorf("failed to buffer zip package: %w", err)
+	}
+	if zipSize > maxSizeBytes {
+		return 0, fmt.Errorf("archive compressed size exceeds limit of %d bytes", maxSizeBytes)
+	}
+
+	zipReader, err := zip.NewReader(tmpZip, zipSize)
+	if err != nil {
+		return 0, fmt.Errorf("invalid zip archive: %w", err)
+	}
+
+	var writtenBytes int64
+	for _, file := range zipReader.File {
+		cleanName := filepath.Clean(file.Name)
+		if strings.HasPrefix(cleanName, "/") || strings.HasPrefix(cleanName, "\\") || cleanName == ".." || strings.HasPrefix(cleanName, "../") {
+			return 0, fmt.Errorf("illegal relative file path in archive: %s", file.Name)
+		}
+
+		destPath := filepath.Join(absTargetDir, cleanName)
+		if !strings.HasPrefix(destPath, absTargetDir+string(filepath.Separator)) && destPath != absTargetDir {
+			return 0, fmt.Errorf("path traversal attempt detected: %s", file.Name)
+		}
+
+		if file.Mode()&os.ModeSymlink != 0 {
+			return 0, fmt.Errorf("symlinks are not permitted in algorithm package: %s", file.Name)
+		}
+
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(destPath, 0o755); err != nil {
+				return 0, fmt.Errorf("failed to create directory %s: %w", destPath, err)
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return 0, fmt.Errorf("failed to create parent directory for %s: %w", destPath, err)
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			return 0, fmt.Errorf("failed to open file %s in zip: %w", file.Name, err)
+		}
+
+		mode := file.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		outFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, mode)
+		if err != nil {
+			rc.Close()
+			return 0, fmt.Errorf("failed to create file %s: %w", destPath, err)
+		}
+
+		remain := maxSizeBytes - writtenBytes
+		if remain <= 0 {
+			outFile.Close()
+			rc.Close()
+			return 0, fmt.Errorf("archive exceeds maximum uncompressed size limit of %d bytes", maxSizeBytes)
+		}
+
+		copied, err := io.Copy(outFile, io.LimitReader(rc, remain+1))
+		outFile.Close()
+		rc.Close()
+		if err != nil {
+			return 0, fmt.Errorf("failed to write %s: %w", destPath, err)
+		}
+		if copied > remain {
+			return 0, fmt.Errorf("archive exceeds maximum uncompressed size limit of %d bytes", maxSizeBytes)
+		}
+		writtenBytes += copied
+	}
+
+	return writtenBytes, nil
+}
+

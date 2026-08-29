@@ -42,13 +42,13 @@
     "propNo": "No",
     "noSchema": "No custom runtime parameters specified for this version.",
     "uploadTitle": "Install / Upgrade Package",
-    "uploadHint": "Supports standard .tar.gz archives containing manifest.json, config.schema.json, testimage.jpg, and model binaries. Engine will verify with isolated self-test process.",
+    "uploadHint": "Supports standard .zip / .tar.gz / .tar archives containing manifest.json, config.schema.json, testimage.jpg, and model binaries. Engine will verify with isolated self-test process.",
     "uploadDragTitle": "Click or drag algorithm package archive to this area",
-    "uploadDragHint": "Support precompiled algorithm packages (.tar.gz) for YOLOv8, CoreML, RKNN, etc.",
+    "uploadDragHint": "Support precompiled algorithm packages (.zip / .tar.gz / .tar) for YOLOv8, CoreML, RKNN, etc.",
     "uploadingTip": "Uploading archive to server staging area...",
     "validatingTip": "Archive extracted safely. Triggering Engine sandbox self-test and symbol audit...",
     "installSuccess": "Package passed self-test and installed successfully!",
     "installFailed": "Installation validation failed",
-    "onlyTarGz": "Only .tar.gz formats are supported!"
+    "onlySupportedFormats": "Only .zip, .tar.gz, and .tar formats are supported!"
   }
 }

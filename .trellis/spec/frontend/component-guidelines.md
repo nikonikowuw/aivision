@@ -176,10 +176,63 @@ modelPropNameMap: { ApiTreeSelect: 'modelValue' },
 - 批量操作区域采用“选中激活提示条”交互模式：未选中时不展示常驻置灰按钮；勾选 1 项及以上时，在表格上方弹出提示条，展示选中数量、清空操作链接及带 Popconfirm 二次确认的批量操作按钮。
 - `useVbenVxeGrid` 的 `gridEvents` 需绑定 `checkboxAll` 与 `checkboxChange` 事件（显式标注 `{ records }: { records: T[] }` 类型），操作成功或清空时需调用 `gridApi.grid?.clearCheckboxRow()` 保持状态同步。
 
+### 6. VxeGrid 展开行（Expand Row）契约与控制器激活
+
+#### 1. 范围 / 触发
+- **触发条件**：表格需要展开子行呈现复杂下钻信息（如 1:N 实例控制台、日志详情、子参数列表）。
+- **边界**：必须由 `gridOptions` 显式配置 `expandConfig` 与 `rowConfig`，仅在列定义中配置 `type: 'expand'` 无法激活 VxeTable 的展开控制器。
+
+#### 2. 签名与配置
+
+```ts
+const gridOptions: VxeTableGridOptions<T> = {
+  rowConfig: {
+    keyField: 'id', // 或业务唯一键如 cameraId，供 VxeTable 跟踪行展开状态
+  },
+  expandConfig: {
+    trigger: 'cell', // 'cell' 点击展开列单元格触发展开；或 'default' 仅点击箭头
+    showIcon: true,
+  },
+  columns: [
+    {
+      type: 'expand',
+      width: 48,
+      align: 'center',
+      slots: { content: 'expandContent' }, // 插槽名须与 Grid 内部 template #[name] 一致
+    },
+    // ...
+  ],
+};
+```
+
+#### 3. 契约
+- 必须提供 `rowConfig.keyField`，否则 VxeTable 使用动态生成的 `_X_ROW_KEY`，在表格 reload 时会导致展开状态丢失或定位混乱。
+- 必须声明 `expandConfig` 对象；若遗漏，VxeTable 的 `computeExpandOpts` 不会激活展开功能，导致展开箭头不显示或展开插槽内容不渲染。
+- 插槽名称通过 `slots: { content: 'slotName' }` 指定，在 `<Grid>` 内部通过 `<template #slotName="{ row }">` 承载展开容器。
+
+### 7. 1:N 关系的流式管道展示规范 (Pipeline Strip)
+
+- **行内紧凑态 (Compact Pipeline)**：
+  - 避免在列表中使用无信息的纯链接按钮（如单列“算法实例”文字链接）或参差不齐的单纯 Tag 堆叠。
+  - 使用硬件槽位式胶囊（Pipeline Capsule）并排呈现，内置状态呼吸指示灯、算法名、实时性能（如 `当前FPS / 设定FPS`）与就地微型 Switch 启停开关，尾部提供虚线 `+` 快捷挂载入口。
+- **展开沉浸态 (Instance Console)**：
+  - 展开区域采用当前系统语义背景（`bg-muted/25 border-y border-border`），内部使用响应式卡片网格展示子实体详情。
+  - 卡片内部直观展示进度仪表（如 `Progress` FPS 吞吐条）、防区规则数与状态。
+  - 在卡片底部提供直接的就地编辑与删除操作，且在控制台头部右上角提供直接销毁当前父实体的危险动作按钮，消除深层操作路径障碍。
+
+### 8. 操作列防溢出与最小宽度规范
+
+- 当操作列包含 3 个及以上文字链接按钮时，宽度必须精确计算，禁止使用默认的 `120px~160px` 导致最右侧高危按钮（如“删除”）被固定列截断。
+- 文本长度精简规则：使用两字动作动词（如 `编辑`、`删除`、`抽屉`），避免冗余后缀（`编辑任务`、`删除任务`）。
+- 包含 3 个动作（含 Popconfirm 二次确认）的操作列宽度**至少为 `200px`**，并显式指定 `fixed: 'right'` 与 `align: 'center'`。
+
 ---
 
 ## 常见错误
 
+- **VxeTable 配置了 `type: 'expand'` 列却遗漏 `expandConfig`**，导致展开箭头不显示或行展开控制器无法被激活。
+- **操作列过窄导致删除按钮被 `fixed: right` 裁剪**，使运维人员误以为系统不支持直接删除实体。
+- **在工具栏静态硬编码置灰的“批量删除”按钮**，破坏了基于复选框勾选的浮动选中激活条规范。
 - **在本地重新实现 `@vben/*` 基础设施**（认证流程、request client、访问
   控制）——复用这些包。
 - **表格时间列未加 `formatter: 'formatDateTime'`**，导致显示原始 ISO 时间字符串且无法响应系统时区切换。

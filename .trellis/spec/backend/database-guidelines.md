@@ -231,14 +231,64 @@ return db.Transaction(func(tx *gorm.DB) error {
 })
 ```
 
-错误：
+## 1:N 聚合查询与批量加载规避 N+1 契约
+
+### 1. 适用范围
+- 列表接口（如任务列表、摄像头列表）需要返回主实体及其下挂的 1:N 子实体摘要（如任务下挂载的算法实例列表 `instances` 及计数 `instanceCount`）。
+
+### 2. Repository 与 Service 契约签名
 
 ```go
-Status int8 `gorm:"default:1"`
+// TaskRepository 接口定义
+type TaskRepository interface {
+    // 批量加载指定一组 camera_id 对应的一级活跃子实体，单次 IN 查询
+    ListInstancesByCameraIDs(ctx context.Context, cameraIDs []string) ([]model.AlgorithmInstance, error)
+}
 ```
 
-正确：
+SQL 执行特征：
+```sql
+SELECT * FROM algorithm_instances 
+WHERE camera_id IN ($1, $2, ...) AND deleted_at = 0 
+ORDER BY created_at ASC;
+```
+
+### 3. Service 层处理规则
+- 禁止在遍历主实体的循环中调用 `GetInstanceList(cameraID)`（杜绝 N+1 查询瓶颈）。
+- 正确做法：收集主实体切片的全部 `cameraID`，单次调用 `ListInstancesByCameraIDs`，在 Go 内存中用 `map[string][]TaskInstanceBrief` 按 `camera_id` 分组并组装回主实体 DTO。
+
+---
+
+## 资源删除与引用保护契约 (Reference Protect vs Cascade Soft-Delete)
+
+### 1. 语义边界区分
+- **根实体 / 硬件输入源（如摄像头 Camera）**：
+  - 必须采用**引用保护（Reference Protection）**。
+  - 删除摄像头时，若存在关联的未删除分析任务（`CountActiveTasksByCameraID > 0`），必须直接拒绝删除并返回业务错误码 `CodeCameraInUse`，阻止误删运行中的流媒体与算法管线。
+- **复合业务实体（如分析任务 Task）**：
+  - 必须采用**级联软删除（Cascade Soft-Delete）**。
+  - 删除分析任务时，**绝不要求**用户先逐一清空算法实例。
+  - 必须在单数据库事务（`tx`）内执行：
+    1. 软删除分析任务主记录（`deleted_at = nowMs`）；
+    2. 级联软删除该任务关联的全部算法实例（`deleted_at = nowMs`）；
+    3. 调用 `BumpRevisionTx(ctx, tx)` 原子递增系统全局期望版本号，触发推理引擎即时回收算力。
+
+### 2. 正确实现模式
 
 ```go
-Status int8 `gorm:"column:status"` // service 明确填充省略值
+func (s *taskService) DeleteTask(ctx context.Context, cameraID string) error {
+    return s.repo.InTx(ctx, func(txRepo repository.TaskRepository, tx *gorm.DB) error {
+        // 1. 软删除任务主记录
+        if err := txRepo.DeleteTask(ctx, cameraID); err != nil {
+            return err
+        }
+        // 2. 级联软删除挂载的全部算法实例
+        if err := txRepo.DeleteInstancesByCameraID(ctx, cameraID); err != nil {
+            return err
+        }
+        // 3. 同事务递增版本号，触发 Engine 算力释放与流关闭
+        return txRepo.BumpRevision(ctx)
+    })
+}
 ```
+

@@ -136,12 +136,18 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
         *stream_path = path;
     }
 
-    // 1. 检查当前是否已有相同流存在且 URL 相同，若是则直接复用
+    // 1. 检查当前是否已有相同流存在且 URL 相同且未进入失败关闭状态，若是则直接复用
     auto it = impl_->streams.find(stream_id);
     if (it != impl_->streams.end() && it->second.proxy && it->second.rtsp_url == rtsp_url) {
-        LOG_DEBUG("media.stream", "live_stream.reused", "Reusing existing live stream proxy", "",
-                  {{"camera_id", camera_id}, {"stream_id", stream_id}});
-        return "";
+        if (it->second.proxy->getStatus() >= 0) {
+            LOG_DEBUG("media.stream", "live_stream.reused", "Reusing existing live stream proxy", "",
+                      {{"camera_id", camera_id}, {"stream_id", stream_id}});
+            return "";
+        }
+        // 若底层已关闭或失败，则将其移除后重新建立拉流
+        LOG_WARN("media.stream", "live_stream.stale_proxy", "Existing proxy is closed or failed, recreating", "",
+                 {{"camera_id", camera_id}, {"stream_id", stream_id}});
+        impl_->streams.erase(it);
     }
 
     // 2. 若存在但 URL 变更，先销毁旧代理
@@ -188,6 +194,13 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
                              "Live stream player proxy play success", "",
                              {{"camera_id", camera_id}, {"stream_id", stream_id}});
                 }
+            });
+            proxy->setOnClose([camera_id, stream_id](const toolkit::SockException& ex) {
+                LOG_WARN("media.stream", "live_stream.on_close",
+                         "Live stream player proxy closed", "",
+                         {{"camera_id", camera_id}, {"stream_id", stream_id}, {"error", ex.what()}});
+                LiveStreamManager::instance().stop_preview(camera_id, 
+                    stream_id.ends_with("_sub") ? aivision::v1::STREAM_TYPE_SUB : aivision::v1::STREAM_TYPE_MAIN);
             });
             proxy->play(rtsp_url);
         });

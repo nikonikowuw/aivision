@@ -60,8 +60,8 @@ async function handleActivate(record: AlgorithmApi.AlgorithmVersionItem) {
       $t('ai.algorithm.activateSuccess', { version: record.version }),
     );
     emit('refresh');
-  } catch (error: any) {
-    message.error(error?.message || '激活失败');
+  } catch {
+    // request.ts 已展示后端错误，组件不再重复弹出相同提示。
   }
 }
 
@@ -76,8 +76,8 @@ async function handleUninstall(record: AlgorithmApi.AlgorithmVersionItem) {
       $t('ai.algorithm.uninstallSuccess', { version: record.version }),
     );
     emit('refresh');
-  } catch (error: any) {
-    message.error(error?.message || '卸载失败');
+  } catch {
+    // request.ts 已展示后端错误，组件不再重复弹出相同提示。
   }
 }
 

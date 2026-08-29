@@ -32,6 +32,8 @@ type AlgorithmRepository interface {
 	ListVersions(ctx context.Context, algorithmID string) ([]model.AlgorithmVersion, error)
 	ActivateVersion(ctx context.Context, algorithmID, version string) error
 	DeleteVersion(ctx context.Context, algorithmID, version string) error
+	// RestoreVersionState 恢复卸载前的算法主记录和版本记录，仅供跨进程卸载补偿。
+	RestoreVersionState(ctx context.Context, algo *model.Algorithm, version *model.AlgorithmVersion) error
 	CountActiveInstances(ctx context.Context, algorithmID, version string) (int64, error)
 
 	// revision 与事务：改变 DesiredState 内容的写路径（安装/激活/卸载版本）
@@ -264,15 +266,56 @@ func (r *algorithmRepository) DeleteVersion(ctx context.Context, algorithmID, ve
 	})
 }
 
-// CountActiveInstances 统计引用该算法的未软删实例数（软删约定 deleted_at=0 为活跃）。
-// 注意（PRD D11 连带结论）：algorithm_instances 不存版本列，实例经
-// algorithms.active_version 动态绑定版本——卸载任意版本都可能影响运行中实例，
-// 因此仅按 algorithm_id 计数；version 参数保留接口兼容，不参与过滤。
+func (r *algorithmRepository) RestoreVersionState(ctx context.Context, algo *model.Algorithm, version *model.AlgorithmVersion) error {
+	if algo == nil || version == nil {
+		return errors.New("repository: algorithm restore state is nil")
+	}
+	// DeleteVersion 可能软删主记录或切换 active_version；按原主键复活可避免
+	// 生成重复业务键，并完整恢复卸载前的激活关系。
+	if err := r.db.WithContext(ctx).Unscoped().Model(&model.Algorithm{}).
+		Where("id = ?", algo.ID).
+		Updates(map[string]any{
+			"algorithm_id": algo.AlgorithmID, "name": algo.Name,
+			"algorithm_type": algo.AlgorithmType, "alarm_type_id": algo.AlarmTypeID,
+			"active_version": algo.ActiveVersion, "description": algo.Description,
+			"deleted_at": 0,
+		}).Error; err != nil {
+		return err
+	}
+	if err := r.db.WithContext(ctx).Unscoped().Model(&model.AlgorithmVersion{}).
+		Where("id = ?", version.ID).
+		Updates(map[string]any{
+			"algorithm_id": version.AlgorithmID, "version": version.Version,
+			"platform_id": version.PlatformID, "min_adapter_version": version.MinAdapterVersion,
+			"package_root": version.PackageRoot, "fps_tiers": version.FPSTiers,
+			"config_schema": version.ConfigSchema, "manifest_raw": version.ManifestRaw,
+			"package_size_bytes": version.PackageSizeBytes, "is_active": version.IsActive,
+			"deleted_at": 0,
+		}).Error; err != nil {
+		return err
+	}
+	if err := r.db.WithContext(ctx).Model(&model.AlgorithmVersion{}).
+		Where("algorithm_id = ?", algo.AlgorithmID).
+		Update("is_active", false).Error; err != nil {
+		return err
+	}
+	if algo.ActiveVersion != "" {
+		return r.db.WithContext(ctx).Model(&model.AlgorithmVersion{}).
+			Where("algorithm_id = ? AND version = ?", algo.AlgorithmID, algo.ActiveVersion).
+			Update("is_active", true).Error
+	}
+	return nil
+}
+
+// CountActiveInstances 统计仍由启用中的分析任务引用该算法的实例数。
+// 软删任务、停用任务、停用实例和没有对应任务的孤儿实例都不属于当前 DesiredState，
+// 不能阻止算法包卸载；version 参数保留接口兼容，不参与过滤。
 func (r *algorithmRepository) CountActiveInstances(ctx context.Context, algorithmID, version string) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&model.AlgorithmInstance{}).
-		Where("algorithm_id = ?", algorithmID).
+		Joins("JOIN analysis_tasks ON analysis_tasks.camera_id = algorithm_instances.camera_id AND analysis_tasks.deleted_at = 0").
+		Where("algorithm_instances.deleted_at = 0 AND algorithm_instances.algorithm_id = ? AND algorithm_instances.enabled = ? AND analysis_tasks.desired_enabled = ?", algorithmID, true, true).
 		Count(&count).Error
 	return count, err
 }
@@ -289,4 +332,3 @@ func (r *algorithmRepository) InTx(ctx context.Context, fn func(ctx context.Cont
 		return fn(ctx, &algorithmRepository{db: tx})
 	})
 }
-

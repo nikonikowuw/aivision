@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -43,11 +45,11 @@ type TaskRepository interface {
 	// 任务操作
 	CreateTask(ctx context.Context, task *model.AnalysisTask) error
 	UpdateTask(ctx context.Context, task *model.AnalysisTask) error
-	DeleteTaskCascade(ctx context.Context, cameraID string) (bool, error) // 同事务软删任务及其全部实例
+	DeleteTaskCascade(ctx context.Context, cameraID string) (bool, error)      // 同事务软删任务及其全部实例
 	DeleteTasksCascade(ctx context.Context, cameraIDs []string) (int64, error) // 同事务批量软删任务及其全部实例
 	GetTaskByCameraID(ctx context.Context, cameraID string) (*model.AnalysisTask, error)
 	ListTaskPage(ctx context.Context, filter *TaskFilter) ([]model.AnalysisTask, int64, error)
-	// GetTaskStats 统计未软删任务数、在线（RUNNING）任务数、实例总数与已启用实例数，
+	// GetTaskStats 统计未软删任务数、在线（RUNNING）任务数、实例总数与实际调度实例数，
 	// 供任务管理页顶部统计条展示（设计对齐原型 prototype-task.html 的在线任务/实例计数）。
 	GetTaskStats(ctx context.Context) (*TaskStatsRow, error)
 	CountTasksByCameraID(ctx context.Context, cameraID string) (int64, error) // 供删摄像头保护
@@ -62,7 +64,7 @@ type TaskRepository interface {
 	GetInstance(ctx context.Context, instanceID string) (*model.AlgorithmInstance, error)
 	ListInstancesByCameraID(ctx context.Context, cameraID string) ([]model.AlgorithmInstance, error)
 	ListInstancesByCameraIDs(ctx context.Context, cameraIDs []string) ([]model.AlgorithmInstance, error)
-	// ListEnabledInstanceQuotaRows 一次 JOIN 返回全部已启用实例的配额计价行
+	// ListEnabledInstanceQuotaRows 一次 JOIN 返回全部实际调度实例的配额计价行
 	// （实例 + 算法激活版本 + 档位），供 service 层配额累加（避免 N+1）。
 	ListEnabledInstanceQuotaRows(ctx context.Context) ([]EnabledInstanceQuotaRow, error)
 
@@ -80,6 +82,9 @@ type TaskRepository interface {
 
 	// LoadDesiredSnapshot 组装全量期望状态（不含 device_id/revision，由 service 适配器填充）
 	LoadDesiredSnapshot(ctx context.Context) (*aivisionv1.DesiredState, error)
+	// LoadDesiredState 在同一个可重复读事务中返回 revision 与完整快照，避免并发写入
+	// 让任务、实例、激活版本和 revision 来自不同的数据库时点。
+	LoadDesiredState(ctx context.Context) (*aivisionv1.DesiredState, error)
 }
 
 type taskRepository struct {
@@ -105,16 +110,49 @@ func (r *taskRepository) UpdateTask(ctx context.Context, task *model.AnalysisTas
 // 不自行开事务：调用方（service.DeleteTask）已在 InTx 内调用，r.db 绑定事务连接，
 // 两条 Delete 与外层 revision bump 原子提交（design §3.1），避免嵌套事务 savepoint。
 func (r *taskRepository) DeleteTaskCascade(ctx context.Context, cameraID string) (bool, error) {
-	res := r.db.WithContext(ctx).Where("camera_id = ?", cameraID).Delete(&model.AnalysisTask{})
+	var task model.AnalysisTask
+	if err := r.db.WithContext(ctx).Where("camera_id = ?", cameraID).First(&task).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	deletedAt, err := r.nextTaskDeletedAt(ctx, cameraID)
+	if err != nil {
+		return false, err
+	}
+	res := r.db.WithContext(ctx).Model(&model.AnalysisTask{}).
+		Where("id = ? AND deleted_at = 0", task.ID).
+		Update("deleted_at", deletedAt)
 	if res.Error != nil {
 		return false, res.Error
 	}
 	if res.RowsAffected == 0 {
 		return false, nil
 	}
+
 	// 级联软删该任务下全部实例（实例无法脱离任务存在，见 D9）
-	err := r.db.WithContext(ctx).Where("camera_id = ?", cameraID).Delete(&model.AlgorithmInstance{}).Error
+	err = r.db.WithContext(ctx).Where("camera_id = ?", cameraID).Delete(&model.AlgorithmInstance{}).Error
 	return true, err
+}
+
+// nextTaskDeletedAt 为同一 camera_id 生成不会复用历史软删除值的时间戳。
+// 复合唯一索引包含 deleted_at；快速删除并重新创建任务后，单纯使用当前毫秒可能与旧记录冲突。
+func (r *taskRepository) nextTaskDeletedAt(ctx context.Context, cameraID string) (int64, error) {
+	var maxDeletedAt int64
+	if err := r.db.WithContext(ctx).Unscoped().Model(&model.AnalysisTask{}).
+		Select("COALESCE(MAX(deleted_at), 0)").
+		Where("camera_id = ?", cameraID).
+		Scan(&maxDeletedAt).Error; err != nil {
+		return 0, err
+	}
+
+	deletedAt := time.Now().UnixMilli()
+	if deletedAt <= maxDeletedAt {
+		deletedAt = maxDeletedAt + 1
+	}
+	return deletedAt, nil
 }
 
 // DeleteTasksCascade 批量软删除任务及其全部实例，返回受影响的任务数。
@@ -122,15 +160,17 @@ func (r *taskRepository) DeleteTasksCascade(ctx context.Context, cameraIDs []str
 	if len(cameraIDs) == 0 {
 		return 0, nil
 	}
-	res := r.db.WithContext(ctx).Where("camera_id IN ?", cameraIDs).Delete(&model.AnalysisTask{})
-	if res.Error != nil {
-		return 0, res.Error
+	var totalDeleted int64
+	for _, cid := range cameraIDs {
+		deleted, err := r.DeleteTaskCascade(ctx, cid)
+		if err != nil {
+			return totalDeleted, err
+		}
+		if deleted {
+			totalDeleted++
+		}
 	}
-	if res.RowsAffected == 0 {
-		return 0, nil
-	}
-	err := r.db.WithContext(ctx).Where("camera_id IN ?", cameraIDs).Delete(&model.AlgorithmInstance{}).Error
-	return res.RowsAffected, err
+	return totalDeleted, nil
 }
 
 func (r *taskRepository) GetTaskByCameraID(ctx context.Context, cameraID string) (*model.AnalysisTask, error) {
@@ -208,8 +248,10 @@ func (r *taskRepository) GetTaskStats(ctx context.Context) (*TaskStatsRow, error
 	}
 	if err := r.db.WithContext(ctx).Raw(
 		"SELECT COUNT(*) AS total_instances, "+
-			"COUNT(*) FILTER (WHERE enabled = TRUE) AS enabled_instances "+
-			"FROM algorithm_instances WHERE deleted_at = 0",
+			"COUNT(*) FILTER (WHERE ai.enabled = TRUE AND task.desired_enabled = TRUE) AS enabled_instances "+
+			"FROM algorithm_instances ai "+
+			"LEFT JOIN analysis_tasks task ON task.camera_id = ai.camera_id AND task.deleted_at = 0 "+
+			"WHERE ai.deleted_at = 0",
 	).Row().Scan(&row.TotalInstances, &row.EnabledInstances); err != nil {
 		return nil, err
 	}
@@ -287,7 +329,7 @@ type EnabledInstanceQuotaRow struct {
 	FPSTiers      json.RawMessage `gorm:"column:fps_tiers"`
 }
 
-// ListEnabledInstanceQuotaRows 一次 JOIN 返回全部已启用实例的配额计价行，
+// ListEnabledInstanceQuotaRows 一次 JOIN 返回全部实际调度实例的配额计价行，
 // 替代原先「每实例 GetAlgorithmByID + GetVersion」的 N+1 查询（design §5 配额累加）。
 // 算法行用 LEFT JOIN：算法缺失/未激活的实例仍出现在结果中（AlgoExists/ActiveVersion
 // 为空），由 service 层记 warn 并按不占资源跳过——与原 instanceUnits 诊断语义一致。
@@ -296,6 +338,7 @@ func (r *taskRepository) ListEnabledInstanceQuotaRows(ctx context.Context) ([]En
 	err := r.db.WithContext(ctx).
 		Table("algorithm_instances ai").
 		Select("ai.instance_id, ai.algorithm_id, a.algorithm_id AS algo_exists, ai.analysis_fps, a.active_version, av.fps_tiers").
+		Joins("JOIN analysis_tasks task ON task.camera_id = ai.camera_id AND task.deleted_at = 0 AND task.desired_enabled = ?", true).
 		Joins("LEFT JOIN algorithms a ON a.algorithm_id = ai.algorithm_id AND a.deleted_at = 0").
 		Joins("LEFT JOIN algorithm_versions av ON av.algorithm_id = ai.algorithm_id AND av.version = a.active_version AND av.deleted_at = 0").
 		Where("ai.enabled = ? AND ai.deleted_at = 0", true).
@@ -419,6 +462,30 @@ type activeVersionRow struct {
 //     为空（算法包未激活任何版本）时跳过该实例；
 //   - active_package_versions：全部 active_version != ” 的算法。
 func (r *taskRepository) LoadDesiredSnapshot(ctx context.Context) (*aivisionv1.DesiredState, error) {
+	return r.loadDesiredSnapshot(ctx)
+}
+
+// LoadDesiredState 使用 PostgreSQL REPEATABLE READ 读取 revision 与构成 DesiredState
+// 的三组数据。SQLite 单测会忽略隔离级别，但仍验证所有读取共用一个事务连接。
+func (r *taskRepository) LoadDesiredState(ctx context.Context) (*aivisionv1.DesiredState, error) {
+	var state *aivisionv1.DesiredState
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txRepo := &taskRepository{db: tx}
+		revision, err := txRepo.CurrentRevision(ctx)
+		if err != nil {
+			return err
+		}
+		state, err = txRepo.loadDesiredSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		state.Revision = revision
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	return state, err
+}
+
+func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*aivisionv1.DesiredState, error) {
 	var taskRows []taskSnapshotRow
 	if err := r.db.WithContext(ctx).
 		Model(&model.AnalysisTask{}).

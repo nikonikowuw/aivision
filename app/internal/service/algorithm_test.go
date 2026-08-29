@@ -1,6 +1,8 @@
 package service
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"niko-vue-admin/app/internal/model"
+	"niko-vue-admin/app/internal/pkg/engineipc"
 	"niko-vue-admin/app/internal/pkg/errno"
 	aivisionv1 "niko-vue-admin/app/internal/proto/aivision/v1"
 	"niko-vue-admin/app/internal/repository"
@@ -98,6 +101,17 @@ func (r *fakeAlgorithmRepo) DeleteVersion(ctx context.Context, algorithmID, vers
 	return nil
 }
 
+func (r *fakeAlgorithmRepo) RestoreVersionState(ctx context.Context, algo *model.Algorithm, version *model.AlgorithmVersion) error {
+	r.algos[algo.AlgorithmID] = algo
+	r.versions[version.AlgorithmID+":"+version.Version] = version
+	for _, item := range r.versions {
+		if item.AlgorithmID == algo.AlgorithmID {
+			item.IsActive = item.Version == algo.ActiveVersion
+		}
+	}
+	return nil
+}
+
 func (r *fakeAlgorithmRepo) CountActiveInstances(ctx context.Context, algorithmID, version string) (int64, error) {
 	return 0, nil
 }
@@ -113,12 +127,19 @@ func (r *fakeAlgorithmRepo) InTx(ctx context.Context, fn func(ctx context.Contex
 
 // fakeEngineClient 模拟 EngineClient。
 type fakeEngineClient struct {
-	installResp   *aivisionv1.InstallPackageResponse
-	rollbackResp  *aivisionv1.RollbackPackageResponse
-	uninstallResp *aivisionv1.UninstallPackageResponse
+	installResp      *aivisionv1.InstallPackageResponse
+	installErr       error
+	rollbackResp     *aivisionv1.RollbackPackageResponse
+	rollbackErr      error
+	rollbackVersions []string
+	uninstallResp    *aivisionv1.UninstallPackageResponse
+	uninstallErr     error
 }
 
 func (c *fakeEngineClient) InstallPackage(ctx context.Context, req *aivisionv1.InstallPackageRequest, opts ...grpc.CallOption) (*aivisionv1.InstallPackageResponse, error) {
+	if c.installErr != nil {
+		return nil, c.installErr
+	}
 	if c.installResp != nil {
 		return c.installResp, nil
 	}
@@ -130,6 +151,10 @@ func (c *fakeEngineClient) UpgradePackage(ctx context.Context, req *aivisionv1.U
 }
 
 func (c *fakeEngineClient) RollbackPackage(ctx context.Context, req *aivisionv1.RollbackPackageRequest, opts ...grpc.CallOption) (*aivisionv1.RollbackPackageResponse, error) {
+	c.rollbackVersions = append(c.rollbackVersions, req.GetTargetVersion())
+	if c.rollbackErr != nil {
+		return nil, c.rollbackErr
+	}
 	if c.rollbackResp != nil {
 		return c.rollbackResp, nil
 	}
@@ -137,10 +162,154 @@ func (c *fakeEngineClient) RollbackPackage(ctx context.Context, req *aivisionv1.
 }
 
 func (c *fakeEngineClient) UninstallPackage(ctx context.Context, req *aivisionv1.UninstallPackageRequest, opts ...grpc.CallOption) (*aivisionv1.UninstallPackageResponse, error) {
+	if c.uninstallErr != nil {
+		return nil, c.uninstallErr
+	}
 	if c.uninstallResp != nil {
 		return c.uninstallResp, nil
 	}
 	return &aivisionv1.UninstallPackageResponse{Code: ""}, nil
+}
+
+// TestAlgorithmServiceUploadInstallEngineErrorMapping Engine 返回的 validator 结果是业务失败，
+// 不能因为 EngineClient 将响应 code 包装成 error 就误报为 CodeEngineUnavailable。
+func TestAlgorithmServiceUploadInstallEngineErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		engine   error
+		wantCode int
+	}{
+		{
+			name:     "validator result invalid",
+			engine:   &engineipc.RemoteError{Code: "VALIDATOR_RESULT_INVALID", ErrorMessage: "validator stdout is invalid"},
+			wantCode: errno.CodeAlgoInstallFailed,
+		},
+		{
+			name:     "package validation failed",
+			engine:   &engineipc.RemoteError{Code: "PACKAGE_VALIDATION_FAILED", ErrorMessage: "self-test failed"},
+			wantCode: errno.CodeAlgoInstallFailed,
+		},
+		{
+			name:     "transport failure",
+			engine:   errors.New("engine socket unavailable"),
+			wantCode: errno.CodeEngineUnavailable,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeAlgorithmRepo()
+			svc := &algorithmService{
+				repo:         repo,
+				engineClient: &fakeEngineClient{installErr: tt.engine},
+				logger:       zap.NewNop(),
+				tmpDir:       t.TempDir(),
+			}
+
+			_, err := svc.UploadAndInstall(context.Background(), validAlgorithmArchive(t))
+			if !errno.Is(err, tt.wantCode) {
+				t.Fatalf("error = %v, want code %d", err, tt.wantCode)
+			}
+		})
+	}
+}
+
+func validAlgorithmArchive(t *testing.T) *bytes.Reader {
+	t.Helper()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	manifest, err := writer.Create("manifest.json")
+	if err != nil {
+		t.Fatalf("create manifest: %v", err)
+	}
+	if _, err := manifest.Write([]byte(`{"algorithm_id":"yolov8n","version":"1.0.0","platform_id":"mock"}`)); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close archive: %v", err)
+	}
+	return bytes.NewReader(archive.Bytes())
+}
+
+// TestAlgorithmServiceActivateEngineErrorMapping Engine 业务错误不能被误报为服务不可用，
+// 而真正的 IPC 传输失败仍应返回 CodeEngineUnavailable。
+func TestAlgorithmServiceActivateEngineErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		engine   error
+		wantCode int
+	}{
+		{
+			name:     "remote package not found",
+			engine:   &engineipc.RemoteError{Code: "PACKAGE_NOT_FOUND"},
+			wantCode: errno.CodeNotFound,
+		},
+		{
+			name:     "remote restart failed",
+			engine:   &engineipc.RemoteError{Code: "PACKAGE_RESTART_FAILED"},
+			wantCode: errno.CodeAlgoInstallFailed,
+		},
+		{
+			name:     "transport failure",
+			engine:   errors.New("engine socket unavailable"),
+			wantCode: errno.CodeEngineUnavailable,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeAlgorithmRepo()
+			repo.algos["yolov8n"] = &model.Algorithm{AlgorithmID: "yolov8n", ActiveVersion: "1.0.0"}
+			repo.versions["yolov8n:1.0.0"] = &model.AlgorithmVersion{
+				AlgorithmID: "yolov8n",
+				Version:     "1.0.0",
+				IsActive:    true,
+			}
+			repo.versions["yolov8n:1.1.0"] = &model.AlgorithmVersion{
+				AlgorithmID: "yolov8n",
+				Version:     "1.1.0",
+			}
+			engine := &fakeEngineClient{rollbackErr: tt.engine}
+			svc := &algorithmService{
+				repo:         repo,
+				engineClient: engine,
+				logger:       zap.NewNop(),
+			}
+
+			err := svc.ActivateVersion(context.Background(), "yolov8n", "1.1.0")
+			if !errno.Is(err, tt.wantCode) {
+				t.Fatalf("error = %v, want code %d", err, tt.wantCode)
+			}
+			if got := repo.algos["yolov8n"].ActiveVersion; got != "1.0.0" {
+				t.Fatalf("active version after engine failure = %q, want restored 1.0.0", got)
+			}
+		})
+	}
+}
+
+func TestAlgorithmServiceActivateRestoresEmptyPreviousVersion(t *testing.T) {
+	repo := newFakeAlgorithmRepo()
+	repo.algos["yolov8n"] = &model.Algorithm{AlgorithmID: "yolov8n"}
+	repo.versions["yolov8n:1.0.0"] = &model.AlgorithmVersion{
+		AlgorithmID: "yolov8n",
+		Version:     "1.0.0",
+	}
+	svc := &algorithmService{
+		repo:         repo,
+		engineClient: &fakeEngineClient{rollbackErr: errors.New("engine socket unavailable")},
+		logger:       zap.NewNop(),
+	}
+
+	err := svc.ActivateVersion(context.Background(), "yolov8n", "1.0.0")
+	if !errno.Is(err, errno.CodeEngineUnavailable) {
+		t.Fatalf("error = %v, want CodeEngineUnavailable", err)
+	}
+	if got := repo.algos["yolov8n"].ActiveVersion; got != "" {
+		t.Fatalf("active version after compensation = %q, want empty", got)
+	}
+	if repo.versions["yolov8n:1.0.0"].IsActive {
+		t.Fatal("target version remains active after compensation")
+	}
 }
 
 func TestAlgorithmService_ActivateAndUninstall(t *testing.T) {
@@ -182,6 +351,66 @@ func TestAlgorithmService_ActivateAndUninstall(t *testing.T) {
 	err = svc.UninstallVersion(ctx, "yolov8n", "9.9.9")
 	if !errno.Is(err, errno.CodeNotFound) {
 		t.Errorf("expected CodeNotFound on non-existent version, got %v", err)
+	}
+}
+
+// TestAlgorithmServiceUninstallEngineErrorMapping Engine 业务错误不能被误报为服务不可用，
+// 而真正的 IPC 传输失败仍应返回 CodeEngineUnavailable。
+func TestAlgorithmServiceUninstallEngineErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		engine   error
+		wantCode int
+	}{
+		{
+			name:     "remote package in use",
+			engine:   &engineipc.RemoteError{Code: "PACKAGE_IN_USE"},
+			wantCode: errno.CodeAlgoInUse,
+		},
+		{
+			name:     "remote package not found",
+			engine:   &engineipc.RemoteError{Code: "PACKAGE_NOT_FOUND"},
+			wantCode: errno.CodeNotFound,
+		},
+		{
+			name:     "remote invalid argument",
+			engine:   &engineipc.RemoteError{Code: "INVALID_ARG"},
+			wantCode: errno.CodeInvalidParam,
+		},
+		{
+			name:     "transport failure",
+			engine:   errors.New("engine socket unavailable"),
+			wantCode: errno.CodeEngineUnavailable,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeAlgorithmRepo()
+			repo.algos["yolov8n"] = &model.Algorithm{AlgorithmID: "yolov8n"}
+			repo.versions["yolov8n:1.0.0"] = &model.AlgorithmVersion{
+				AlgorithmID: "yolov8n",
+				Version:     "1.0.0",
+			}
+			svc := &algorithmService{
+				repo:         repo,
+				engineClient: &fakeEngineClient{uninstallErr: tt.engine},
+				logger:       zap.NewNop(),
+			}
+
+			err := svc.UninstallVersion(context.Background(), "yolov8n", "1.0.0")
+			if !errno.Is(err, tt.wantCode) {
+				t.Fatalf("error = %v, want code %d", err, tt.wantCode)
+			}
+			var remote *engineipc.RemoteError
+			_, versionRestored := repo.versions["yolov8n:1.0.0"]
+			if errors.As(tt.engine, &remote) && !versionRestored {
+				t.Fatal("version metadata was not restored after engine business rejection")
+			}
+			if !errors.As(tt.engine, &remote) && versionRestored {
+				t.Fatal("version metadata restored after ambiguous transport failure")
+			}
+		})
 	}
 }
 
@@ -244,6 +473,12 @@ func TestAlgorithmServiceUninstallBlockedWhenInstancesExist(t *testing.T) {
 		Enabled:     true,
 		ParamsJSON:  []byte(`{}`),
 		RulesJSON:   []byte(`[]`),
+	})
+
+	mustCreate(&model.AnalysisTask{
+		CameraID:       "cam-a",
+		Name:           "active-task",
+		DesiredEnabled: true,
 	})
 
 	// 1. 存在未软删实例 → 拒绝卸载并返回 CodeAlgoInUse

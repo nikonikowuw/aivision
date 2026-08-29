@@ -43,6 +43,12 @@ type ReportAdapter struct {
 	mu    sync.RWMutex
 	tasks map[string]TaskRuntimeState     // camera_id → 实时状态
 	insts map[string]InstanceRuntimeState // instance_id → 实时状态
+
+	// State reports for the same category share a persistence order. The lock
+	// covers cache mutation and the corresponding repository write so a newer
+	// report cannot be overwritten by an older in-flight write or rollback.
+	taskUpdateMu     sync.Mutex
+	instanceUpdateMu sync.Mutex
 }
 
 // NewReportAdapter 创建 ReportAdapter。
@@ -58,8 +64,8 @@ func NewReportAdapter(repo repository.TaskRepository, log *zap.Logger) *ReportAd
 	}
 }
 
-// AcceptTaskState 缓存任务实时状态；仅状态码变化时写库（D6：16 路 × 每 2 秒全量
-// 上报下，状态码变化是低频事件，逐条落库会产生大量无变化重写）。
+// AcceptTaskState 缓存任务实时状态；仅状态码或状态消息变化时写库（D6：16 路 × 每 2 秒全量
+// 上报下，FPS/最后帧/上报时间等高频字段不逐条落库）。
 // 落库失败时把内存状态码回退为上一值并返回错误（非空 code，Engine 下轮重试），
 // 保证「变化」在下一次上报时仍被判定为变化而再次尝试落库。
 func (a *ReportAdapter) AcceptTaskState(ctx context.Context, state *aivisionv1.TaskState) error {
@@ -70,12 +76,16 @@ func (a *ReportAdapter) AcceptTaskState(ctx context.Context, state *aivisionv1.T
 	if cameraID == "" {
 		return errors.New("task state camera_id is empty")
 	}
+
+	a.taskUpdateMu.Lock()
+	defer a.taskUpdateMu.Unlock()
+
 	status := int8(state.GetStatus())
 	now := time.Now()
 
 	a.mu.Lock()
 	prev, existed := a.tasks[cameraID]
-	changed := !existed || prev.Status != status
+	changed := !existed || prev.Status != status || prev.Message != state.GetMessage()
 	a.tasks[cameraID] = TaskRuntimeState{
 		Status:      status,
 		Message:     state.GetMessage(),
@@ -114,12 +124,16 @@ func (a *ReportAdapter) AcceptInstanceState(ctx context.Context, state *aivision
 	if instanceID == "" {
 		return errors.New("instance state instance_id is empty")
 	}
+
+	a.instanceUpdateMu.Lock()
+	defer a.instanceUpdateMu.Unlock()
+
 	status := int8(state.GetStatus())
 	now := time.Now()
 
 	a.mu.Lock()
 	prev, existed := a.insts[instanceID]
-	changed := !existed || prev.Status != status
+	changed := !existed || prev.Status != status || prev.Message != state.GetMessage()
 	a.insts[instanceID] = InstanceRuntimeState{
 		Status:     status,
 		Message:    state.GetMessage(),

@@ -26,6 +26,7 @@ func newAlgorithmRepoTestDB(t *testing.T) *gorm.DB {
 		&model.Algorithm{},
 		&model.AlgorithmVersion{},
 		&model.AlgorithmInstance{},
+		&model.AnalysisTask{},
 		&model.DesiredStateRevision{},
 	); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
@@ -36,8 +37,8 @@ func newAlgorithmRepoTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// TestAlgorithmRepositoryCountActiveInstances 引用计数只看未软删实例；
-// version 参数不参与过滤（D11：实例不固定版本）。
+// TestAlgorithmRepositoryCountActiveInstances 只计入当前 DesiredState 仍引用算法的实例；
+// 已软删、停用或脱离任务的记录不应阻塞算法包卸载。
 func TestAlgorithmRepositoryCountActiveInstances(t *testing.T) {
 	db := newAlgorithmRepoTestDB(t)
 	repo := NewAlgorithmRepository(db)
@@ -67,6 +68,64 @@ func TestAlgorithmRepositoryCountActiveInstances(t *testing.T) {
 	if err := db.Delete(softDeleted).Error; err != nil {
 		t.Fatalf("soft delete instance: %v", err)
 	}
+	if err := db.Create(&model.AnalysisTask{
+		CameraID:       "cam-a",
+		Name:           "active-task",
+		DesiredEnabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed active task: %v", err)
+	}
+	if err := db.Create(&model.AnalysisTask{
+		CameraID:       "cam-disabled-task",
+		Name:           "disabled-task",
+		DesiredEnabled: false,
+	}).Error; err != nil {
+		t.Fatalf("seed disabled task: %v", err)
+	}
+	deletedTask := &model.AnalysisTask{
+		CameraID:       "cam-deleted-task",
+		Name:           "deleted-task",
+		DesiredEnabled: true,
+	}
+	if err := db.Create(deletedTask).Error; err != nil {
+		t.Fatalf("seed deleted task: %v", err)
+	}
+	if err := db.Delete(deletedTask).Error; err != nil {
+		t.Fatalf("soft delete task: %v", err)
+	}
+	if err := db.Create(&model.AlgorithmInstance{
+		InstanceID:  "i6",
+		CameraID:    "cam-deleted-task",
+		AlgorithmID: "yolov8n",
+		Enabled:     true,
+		ParamsJSON:  []byte(`{}`),
+		RulesJSON:   []byte(`[]`),
+	}).Error; err != nil {
+		t.Fatalf("seed instance for deleted task: %v", err)
+	}
+
+	if err := db.Create(&model.AlgorithmInstance{
+		InstanceID:  "i4",
+		CameraID:    "cam-disabled-task",
+		AlgorithmID: "yolov8n",
+		Enabled:     false,
+		ParamsJSON:  []byte(`{}`),
+		RulesJSON:   []byte(`[]`),
+	}).Error; err != nil {
+		t.Fatalf("seed disabled instance: %v", err)
+	}
+	if err := db.Create(&model.AlgorithmInstance{
+		InstanceID:  "i5",
+		CameraID:    "cam-orphan",
+		AlgorithmID: "yolov8n",
+		Enabled:     true,
+		ParamsJSON:  []byte(`{}`),
+		RulesJSON:   []byte(`[]`),
+	}).Error; err != nil {
+		t.Fatalf("seed orphan instance: %v", err)
+	}
+
+	// version 参数任意值结果一致（D11：实例不固定版本）。
 	if err := db.Create(&model.AlgorithmInstance{
 		InstanceID:  "i3",
 		CameraID:    "cam-a",
@@ -78,7 +137,7 @@ func TestAlgorithmRepositoryCountActiveInstances(t *testing.T) {
 		t.Fatalf("seed instance: %v", err)
 	}
 
-	// 仅 1 个未软删实例引用 yolov8n；version 参数任意值结果一致（不参与过滤）。
+	// 仅 i1 挂在启用中的任务上；停用、孤儿、软删任务和软删实例不应计入占用。
 	for _, ver := range []string{"1.0.0", "9.9.9"} {
 		count, err := repo.CountActiveInstances(ctx, "yolov8n", ver)
 		if err != nil {
@@ -211,5 +270,61 @@ func TestAlgorithmRepositoryInTxCommit(t *testing.T) {
 	}
 	if !ver.IsActive {
 		t.Fatal("v1.1.0 is_active = false, want true")
+	}
+}
+
+// TestAlgorithmRepositoryRestoreLastVersion 验证卸载最后一个版本后，补偿操作能按
+// 原主键复活算法和版本，并恢复卸载前的激活关系。
+func TestAlgorithmRepositoryRestoreLastVersion(t *testing.T) {
+	db := newAlgorithmRepoTestDB(t)
+	repo := NewAlgorithmRepository(db)
+	ctx := context.Background()
+
+	algo := &model.Algorithm{
+		AlgorithmID:   "yolov8n",
+		Name:          "YOLOv8n",
+		AlgorithmType: "object_detection",
+		ActiveVersion: "1.0.0",
+	}
+	version := &model.AlgorithmVersion{
+		AlgorithmID:  "yolov8n",
+		Version:      "1.0.0",
+		IsActive:     true,
+		FPSTiers:     []byte(`[{"fps":25,"units":220}]`),
+		ConfigSchema: []byte(`{"type":"object"}`),
+		ManifestRaw:  []byte(`{"algorithm_id":"yolov8n"}`),
+	}
+	if err := db.Create(algo).Error; err != nil {
+		t.Fatalf("create algorithm: %v", err)
+	}
+	if err := db.Create(version).Error; err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+	algoSnapshot := *algo
+	versionSnapshot := *version
+
+	if err := repo.DeleteVersion(ctx, "yolov8n", "1.0.0"); err != nil {
+		t.Fatalf("delete version: %v", err)
+	}
+	if _, err := repo.GetAlgorithmByID(ctx, "yolov8n"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("algorithm after delete error = %v, want ErrNotFound", err)
+	}
+
+	if err := repo.RestoreVersionState(ctx, &algoSnapshot, &versionSnapshot); err != nil {
+		t.Fatalf("restore version state: %v", err)
+	}
+	restoredAlgo, err := repo.GetAlgorithmByID(ctx, "yolov8n")
+	if err != nil {
+		t.Fatalf("get restored algorithm: %v", err)
+	}
+	if restoredAlgo.ID != algoSnapshot.ID || restoredAlgo.ActiveVersion != "1.0.0" {
+		t.Fatalf("restored algorithm = %+v, want id %d active 1.0.0", restoredAlgo, algoSnapshot.ID)
+	}
+	restoredVersion, err := repo.GetVersion(ctx, "yolov8n", "1.0.0")
+	if err != nil {
+		t.Fatalf("get restored version: %v", err)
+	}
+	if restoredVersion.ID != versionSnapshot.ID || !restoredVersion.IsActive {
+		t.Fatalf("restored version = %+v, want id %d active", restoredVersion, versionSnapshot.ID)
 	}
 }

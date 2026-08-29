@@ -246,6 +246,7 @@ var actionI18nMap = map[string]string{
 	"POST /api/task":                             "resource.task.add",
 	"PUT /api/task/:cameraId":                    "resource.task.edit",
 	"PUT /api/task/:cameraId/enabled":            "resource.task.toggleEnabled",
+	"DELETE /api/task/batch":                     "resource.task.delete",
 	"DELETE /api/task/:cameraId":                 "resource.task.delete",
 	"POST /api/task/instance":                    "resource.task.instanceAdd",
 	"PUT /api/task/instance/:instanceId":         "resource.task.instanceEdit",

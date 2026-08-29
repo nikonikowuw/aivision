@@ -340,10 +340,14 @@ func TestTaskHandlerTaskStats(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	// 建任务 cam-1 + 启用实例 25fps（→220 units）
+	// 建并启用任务 cam-1，再创建启用实例 25fps（→220 units）
 	rec := doJSON(t, engine, http.MethodPost, "/api/task", `{"cameraId":"cam-1","name":"大门任务"}`)
 	if respCode(t, rec.Body.Bytes()) != errno.CodeOK {
 		t.Fatalf("create task failed: %s", rec.Body.String())
+	}
+	rec = doJSON(t, engine, http.MethodPut, "/api/task/cam-1/enabled", `{"enabled":true}`)
+	if respCode(t, rec.Body.Bytes()) != errno.CodeOK {
+		t.Fatalf("enable task failed: %s", rec.Body.String())
 	}
 	rec = doJSON(t, engine, http.MethodPost, "/api/task/instance",
 		`{"cameraId":"cam-1","algorithmId":"yolov8n","analysisFps":25,"paramsJson":{"confidence_threshold":0.5},"enabled":true}`)

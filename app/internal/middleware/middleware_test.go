@@ -631,6 +631,7 @@ func TestOplogActionInference(t *testing.T) {
 		{http.MethodPost, "/api/task", "resource.task.add"},
 		{http.MethodPut, "/api/task/cam-1", "resource.task.edit"},
 		{http.MethodPut, "/api/task/cam-1/enabled", "resource.task.toggleEnabled"},
+		{http.MethodDelete, "/api/task/batch", "resource.task.delete"},
 		{http.MethodDelete, "/api/task/cam-1", "resource.task.delete"},
 		{http.MethodPost, "/api/task/instance", "resource.task.instanceAdd"},
 		{http.MethodPut, "/api/task/instance/inst-1", "resource.task.instanceEdit"},

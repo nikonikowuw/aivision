@@ -37,15 +37,10 @@ func NewDesiredStateAdapter(repo repository.TaskRepository, log *zap.Logger) eng
 // 任何错误直接返回，由 engineipc 归一化为 INTERNAL_ERROR fail closed，
 // 不让 Engine 拿到 revision=0 的「配置被清空」快照。
 func (a *desiredStateAdapter) DesiredState(ctx context.Context, _ uint64) (*aivisionv1.DesiredState, error) {
-	rev, err := a.repo.CurrentRevision(ctx)
-	if err != nil {
-		return nil, err
-	}
-	state, err := a.repo.LoadDesiredSnapshot(ctx)
+	state, err := a.repo.LoadDesiredState(ctx)
 	if err != nil {
 		return nil, err
 	}
 	state.DeviceId = deviceIDPlaceholder
-	state.Revision = rev
 	return state, nil
 }

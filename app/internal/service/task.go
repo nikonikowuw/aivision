@@ -416,6 +416,11 @@ func (s *taskService) mergeTask(task *model.AnalysisTask) *TaskItem {
 		StatusMessage:  task.StatusMessage,
 	}
 	if rt, ok := s.report.TaskRuntime(task.CameraID); ok {
+		// 有效内存上报是最新运行态；DB 仅保留服务重启后的最后已知状态。
+		if rt.Status != 0 {
+			item.ActualStatus = rt.Status
+			item.StatusMessage = rt.Message
+		}
 		// LastFrameAt/ReportedAt 均拷贝时间值，避免列表项与 reportAdapter 内部共享指针
 		// （timePtr 拷贝；LastFrameAt 可能为 nil，须先解引用判断）。
 		if rt.LastFrameAt != nil {

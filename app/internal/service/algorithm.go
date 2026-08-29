@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -110,13 +111,22 @@ func (s *algorithmService) UploadAndInstall(ctx context.Context, reader io.Reade
 		PackagePath: extracted.StagingDir,
 	})
 	if err != nil {
+		// EngineClient 已把 validator/ABI 等业务拒绝包装为 RemoteError；
+		// 只有没有响应的 gRPC/Socket 错误才表示 Engine 服务不可用。
+		var remote *engineipc.RemoteError
+		if errors.As(err, &remote) {
+			s.logger.Warn("engine InstallPackage rejected package",
+				zap.String("code", remote.Code),
+				zap.String("error_message", remote.ErrorMessage))
+			return nil, errno.New(errno.CodeAlgoInstallFailed)
+		}
 		s.logger.Error("engine InstallPackage RPC error", zap.Error(err))
 		return nil, errno.New(errno.CodeEngineUnavailable)
 	}
-	if resp.Code != "" {
+	if resp.GetCode() != "" {
 		s.logger.Warn("engine InstallPackage rejected package",
-			zap.String("code", resp.Code),
-			zap.String("error_message", resp.ErrorMessage))
+			zap.String("code", resp.GetCode()),
+			zap.String("error_message", resp.GetErrorMessage()))
 		return nil, errno.New(errno.CodeAlgoInstallFailed)
 	}
 
@@ -175,37 +185,78 @@ func (s *algorithmService) UploadAndInstall(ctx context.Context, reader io.Reade
 	return versionModel, nil
 }
 
+// mapEngineError 区分 Engine 返回的业务拒绝与 IPC 传输失败：
+// 业务拒绝已由 EngineClient 包装为 *engineipc.RemoteError，交给 mapCode 按业务码映射；
+// 只有没有响应的 gRPC/Socket 错误才表示 Engine 服务不可用。
+func mapEngineError(err error, mapCode func(string) error) error {
+	var remote *engineipc.RemoteError
+	if errors.As(err, &remote) {
+		return mapCode(remote.Code)
+	}
+	return errno.New(errno.CodeEngineUnavailable)
+}
+
 func (s *algorithmService) ActivateVersion(ctx context.Context, algorithmID, version string) error {
 	if s.engineClient == nil {
 		return errno.New(errno.CodeEngineUnavailable)
 	}
 
-	// 1. 查询目标版本是否存在
-	_, err := s.repo.GetVersion(ctx, algorithmID, version)
+	algo, err := s.repo.GetAlgorithmByID(ctx, algorithmID)
 	if err != nil {
-		if err == repository.ErrNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			return errno.New(errno.CodeNotFound)
 		}
 		return err
 	}
+	target, err := s.repo.GetVersion(ctx, algorithmID, version)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return errno.New(errno.CodeNotFound)
+		}
+		return err
+	}
+	previousAlgo := *algo
+	previousTarget := *target
+	previousVersion := previousAlgo.ActiveVersion
+	if previousVersion == version {
+		return nil
+	}
 
-	// 2. 调用 Engine 的 RollbackPackage 将激活版本指向 target_version
-	resp, err := s.engineClient.RollbackPackage(ctx, &aivisionv1.RollbackPackageRequest{
+	// 先提交 Go 侧权威 DesiredState。RPC 失败时再以更高 revision 恢复旧版本，
+	// 即使 Engine 已收到中间状态，后续全量对账也会收敛回原状态。
+	if err := s.activateVersionInTx(ctx, algorithmID, version); err != nil {
+		return err
+	}
+	resp, rpcErr := s.engineClient.RollbackPackage(ctx, &aivisionv1.RollbackPackageRequest{
 		AlgorithmId:   algorithmID,
 		TargetVersion: version,
 	})
-	if err != nil {
-		return errno.New(errno.CodeEngineUnavailable)
-	}
-	if resp.Code != "" {
-		return errno.New(errno.CodeAlgoInstallFailed)
+	if rpcErr == nil && resp.GetCode() == "" {
+		return nil
 	}
 
-	// 3. 更新数据库激活状态并在同一事务内递增 revision：
-	// active_version 变更会改变 DesiredState 内容，bump 与业务写必须原子提交
-	// （design §3.2 / D11），否则 Engine 永不感知版本切换。
+	if restoreErr := s.restoreVersionStateInTx(ctx, &previousAlgo, &previousTarget); restoreErr != nil {
+		return fmt.Errorf("activate engine failed and restore desired version %s failed: %w", previousVersion, restoreErr)
+	}
+	if rpcErr != nil {
+		return mapEngineError(rpcErr, mapActivatePackageCode)
+	}
+	return mapActivatePackageCode(resp.GetCode())
+}
+
+func (s *algorithmService) activateVersionInTx(ctx context.Context, algorithmID, version string) error {
 	return s.repo.InTx(ctx, func(ctx context.Context, r repository.AlgorithmRepository) error {
 		if err := r.ActivateVersion(ctx, algorithmID, version); err != nil {
+			return err
+		}
+		_, err := r.BumpRevision(ctx)
+		return err
+	})
+}
+
+func (s *algorithmService) restoreVersionStateInTx(ctx context.Context, algo *model.Algorithm, version *model.AlgorithmVersion) error {
+	return s.repo.InTx(ctx, func(ctx context.Context, r repository.AlgorithmRepository) error {
+		if err := r.RestoreVersionState(ctx, algo, version); err != nil {
 			return err
 		}
 		_, err := r.BumpRevision(ctx)
@@ -218,16 +269,22 @@ func (s *algorithmService) UninstallVersion(ctx context.Context, algorithmID, ve
 		return errno.New(errno.CodeEngineUnavailable)
 	}
 
-	// 1. 检查是否存在
-	_, err := s.repo.GetVersion(ctx, algorithmID, version)
+	algo, err := s.repo.GetAlgorithmByID(ctx, algorithmID)
 	if err != nil {
-		if err == repository.ErrNotFound {
+		if errors.Is(err, repository.ErrNotFound) {
 			return errno.New(errno.CodeNotFound)
 		}
 		return err
 	}
-
-	// 2. 检查业务层是否有实例引用该版本
+	target, err := s.repo.GetVersion(ctx, algorithmID, version)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return errno.New(errno.CodeNotFound)
+		}
+		return err
+	}
+	previousAlgo := *algo
+	previousTarget := *target
 	activeCount, err := s.repo.CountActiveInstances(ctx, algorithmID, version)
 	if err != nil {
 		return err
@@ -236,29 +293,62 @@ func (s *algorithmService) UninstallVersion(ctx context.Context, algorithmID, ve
 		return errno.New(errno.CodeAlgoInUse)
 	}
 
-	// 3. 调用 Engine 执行卸载（Engine 自身也包含并发引用防护）
-	resp, err := s.engineClient.UninstallPackage(ctx, &aivisionv1.UninstallPackageRequest{
-		AlgorithmId: algorithmID,
-		Version:     version,
-	})
-	if err != nil {
-		return errno.New(errno.CodeEngineUnavailable)
-	}
-	if resp.Code != "" {
-		if resp.Code == "PACKAGE_IN_USE" {
-			return errno.New(errno.CodeAlgoInUse)
-		}
-		return errno.New(errno.CodeInternal)
-	}
-
-	// 4. 清理数据库记录并在同一事务内递增 revision：
-	// 卸载活跃版本会改变 DesiredState（active_version 回退/算法删除），
-	// 与 revision bump 必须原子提交（design §3.2 / D11）。
-	return s.repo.InTx(ctx, func(ctx context.Context, r repository.AlgorithmRepository) error {
+	// 先移除 DesiredState 引用，避免 Engine 物理删除成功后 Go 仍持续下发不存在的包。
+	if err := s.repo.InTx(ctx, func(ctx context.Context, r repository.AlgorithmRepository) error {
 		if err := r.DeleteVersion(ctx, algorithmID, version); err != nil {
 			return err
 		}
 		_, err := r.BumpRevision(ctx)
 		return err
+	}); err != nil {
+		return err
+	}
+
+	resp, rpcErr := s.engineClient.UninstallPackage(ctx, &aivisionv1.UninstallPackageRequest{
+		AlgorithmId: algorithmID,
+		Version:     version,
 	})
+	if rpcErr == nil && resp.GetCode() == "" {
+		return nil
+	}
+
+	// 明确业务拒绝表示 Engine 未删除包，可以安全恢复 DB；传输失败结果不确定，
+	// 保留 DB 已卸载状态，避免恢复出一个可能已不存在的 DesiredState 引用。
+	var remote *engineipc.RemoteError
+	businessRejected := rpcErr == nil || errors.As(rpcErr, &remote)
+	if businessRejected {
+		if restoreErr := s.restoreVersionStateInTx(ctx, &previousAlgo, &previousTarget); restoreErr != nil {
+			return fmt.Errorf("uninstall engine rejected and restore metadata failed: %w", restoreErr)
+		}
+	}
+	if rpcErr != nil {
+		return mapEngineError(rpcErr, mapUninstallPackageCode)
+	}
+	return mapUninstallPackageCode(resp.GetCode())
+}
+
+// mapActivatePackageCode 将激活/回滚 RPC 的稳定业务码映射为 HTTP API 业务错误。
+func mapActivatePackageCode(code string) error {
+	switch code {
+	case "PACKAGE_NOT_FOUND":
+		return errno.New(errno.CodeNotFound)
+	case "INVALID_ARG":
+		return errno.New(errno.CodeInvalidParam)
+	default:
+		return errno.New(errno.CodeAlgoInstallFailed)
+	}
+}
+
+// mapUninstallPackageCode 将卸载 RPC 的稳定业务码映射为 HTTP API 业务错误。
+func mapUninstallPackageCode(code string) error {
+	switch code {
+	case "PACKAGE_IN_USE":
+		return errno.New(errno.CodeAlgoInUse)
+	case "PACKAGE_NOT_FOUND":
+		return errno.New(errno.CodeNotFound)
+	case "INVALID_ARG":
+		return errno.New(errno.CodeInvalidParam)
+	default:
+		return errno.New(errno.CodeInternal)
+	}
 }

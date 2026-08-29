@@ -178,7 +178,15 @@ func TestTaskRepositoryListEnabledInstanceQuotaRows(t *testing.T) {
 		t.Fatalf("create version: %v", err)
 	}
 
-	// 实例：i-a 启用（alg-a 激活+版本行）、i-b 启用（alg-b 无版本行）、i-c 停用
+	// 实例：i-a/i-b 均启用，但只有所属任务启用的 i-a 进入实际调度配额。
+	taskX := newTaskFixture("cam-x", "task-x")
+	taskX.DesiredEnabled = true
+	taskY := newTaskFixture("cam-y", "task-y")
+	for _, task := range []*model.AnalysisTask{taskX, taskY} {
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("create task: %v", err)
+		}
+	}
 	iA := newInstanceFixture("i-a", "cam-x", "alg-a", 25)
 	iA.Enabled = true
 	iB := newInstanceFixture("i-b", "cam-y", "alg-b", 10)
@@ -194,16 +202,12 @@ func TestTaskRepositoryListEnabledInstanceQuotaRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list quota rows: %v", err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("rows = %+v, want 2 (i-a, i-b)", rows)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v, want 1 (only i-a under enabled task)", rows)
 	}
 	// i-a：带 active_version 与档位
 	if rows[0].InstanceID != "i-a" || rows[0].ActiveVersion != "1.0.0" || string(rows[0].FPSTiers) == "" {
 		t.Fatalf("rows[0] = %+v", rows[0])
-	}
-	// i-b：active_version 有但版本行缺失 → fps_tiers 空
-	if rows[1].InstanceID != "i-b" || rows[1].ActiveVersion != "2.0.0" || len(rows[1].FPSTiers) != 0 {
-		t.Fatalf("rows[1] = %+v", rows[1])
 	}
 }
 
@@ -277,6 +281,11 @@ func TestTaskRepositoryInstanceCRUD(t *testing.T) {
 	if err := repo.UpdateInstance(ctx, got); err != nil {
 		t.Fatalf("update: %v", err)
 	}
+	task := newTaskFixture("cam-x", "task-x")
+	task.DesiredEnabled = true
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create enabled task: %v", err)
+	}
 	after, err := repo.GetInstance(ctx, "inst-crud")
 	if err != nil {
 		t.Fatalf("get after update: %v", err)
@@ -285,7 +294,7 @@ func TestTaskRepositoryInstanceCRUD(t *testing.T) {
 		t.Fatalf("after update = %+v", after)
 	}
 
-	// ListEnabledInstanceQuotaRows 只含启用实例（无算法/版本行时 JOIN 带出空档位）
+	// ListEnabledInstanceQuotaRows 只含任务与实例均启用的实际调度实例。
 	rows, err := repo.ListEnabledInstanceQuotaRows(ctx)
 	if err != nil {
 		t.Fatalf("list enabled quota rows: %v", err)
@@ -713,6 +722,8 @@ func TestTaskRepositoryGetTaskStats(t *testing.T) {
 		} else {
 			task.ActualStatus = model.TaskStatusStopped
 		}
+		// 只启用 cam-a；cam-b 即使存在实例也不应计入已调度实例。
+		task.DesiredEnabled = camID == "cam-a"
 		if err := repo.CreateTask(ctx, task); err != nil {
 			t.Fatalf("create task %s: %v", camID, err)
 		}

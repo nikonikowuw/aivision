@@ -65,8 +65,8 @@ bool LiveStreamManager::start_server(uint16_t port, const std::string& listen_ip
         toolkit::mINI::Instance()[mediakit::Protocol::kEnableRtsp] = 0;
         toolkit::mINI::Instance()[mediakit::Protocol::kEnableHls] = 0;
         toolkit::mINI::Instance()[mediakit::Protocol::kEnableMP4] = 0;
-        toolkit::mINI::Instance()[mediakit::General::kStreamNoneReaderDelayMS] = 10000; // 10s 无读者自动关闭
-        toolkit::mINI::Instance()[mediakit::Protocol::kAutoClose] = 1;
+        toolkit::mINI::Instance()[mediakit::General::kStreamNoneReaderDelayMS] = 10000;
+        toolkit::mINI::Instance()[mediakit::Protocol::kAutoClose] = 0;
 
         auto poller = toolkit::EventPollerPool::Instance().getPoller();
         std::exception_ptr server_error;
@@ -136,17 +136,28 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
         *stream_path = path;
     }
 
-    // 1. 检查当前是否已有相同流存在且 URL 相同且未进入失败关闭状态，若是则直接复用
+    // 1. 检查当前是否已有相同流存在且 URL 相同
     auto it = impl_->streams.find(stream_id);
     if (it != impl_->streams.end() && it->second.proxy && it->second.rtsp_url == rtsp_url) {
-        if (it->second.proxy->getStatus() >= 0) {
+        // _live_status: 0 代表 playing, 1 代表 init/connecting
+        const int status = it->second.proxy->getStatus();
+        if (status == 0 || status == 1) {
             LOG_DEBUG("media.stream", "live_stream.reused", "Reusing existing live stream proxy", "",
-                      {{"camera_id", camera_id}, {"stream_id", stream_id}});
+                      {{"camera_id", camera_id}, {"stream_id", stream_id}, {"status", std::to_string(status)}});
             return "";
         }
-        // 若底层已关闭或失败，则将其移除后重新建立拉流
+        // 若底层已断开、失败，销毁旧代理重建
         LOG_WARN("media.stream", "live_stream.stale_proxy", "Existing proxy is closed or failed, recreating", "",
-                 {{"camera_id", camera_id}, {"stream_id", stream_id}});
+                 {{"camera_id", camera_id}, {"stream_id", stream_id}, {"status", std::to_string(status)}});
+        if (it->second.proxy) {
+            auto poller = toolkit::EventPollerPool::Instance().getPoller();
+            auto proxy = it->second.proxy;
+            poller->sync([proxy] {
+                proxy->setPlayCallbackOnce(nullptr);
+                proxy->setOnClose(nullptr);
+                proxy->teardown();
+            });
+        }
         impl_->streams.erase(it);
     }
 
@@ -158,6 +169,8 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
             poller->sync([proxy] {
                 // 显式关闭底层媒体源并触发 PlayerProxy 清理
                 proxy->setPlayCallbackOnce(nullptr);
+                proxy->setOnClose(nullptr);
+                proxy->teardown();
             });
         }
         impl_->streams.erase(it);
@@ -173,7 +186,7 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
         option.enable_ts = false;
         option.enable_fmp4 = false;
         option.modify_stamp = mediakit::ProtocolOption::kModifyStampRelative; // 采用源视频流时间戳相对时间戳并矫正跳跃与回退
-        option.auto_close = true; // 无观看者时自动关闭
+        option.auto_close = false; // 不直接强杀 MediaSource，允许通过无读者机制或上层平滑管理
 
         const mediakit::MediaTuple tuple{"__defaultVhost__", "live", stream_id, ""};
         auto poller = toolkit::EventPollerPool::Instance().getPoller();
@@ -238,8 +251,10 @@ bool LiveStreamManager::stop_preview(const std::string& camera_id, aivision::v1:
         auto poller = toolkit::EventPollerPool::Instance().getPoller();
         auto proxy = it->second.proxy;
         poller->sync([proxy] {
-            // 清空回调并断开拉流
+            // 清空回调并主动关闭拉流代理
             proxy->setPlayCallbackOnce(nullptr);
+            proxy->setOnClose(nullptr);
+            proxy->teardown();
         });
     }
 

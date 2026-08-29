@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>边缘 AI 视频分析任务与多算法实例架构原型 (Prototype)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef8ff',
+              500: '#0080ff',
+              600: '#0066cc',
+              700: '#004d99',
+            },
+            edge: {
+              bg: '#0f172a',
+              card: '#1e293b',
+              border: '#334155',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=PingFang+SC:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* 自定义滚动条 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.3);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-blue-500 selection:text-white">
+  <div id="app" class="flex-1 flex flex-col h-screen overflow-hidden">
+    <!-- 顶部导航栏 -->
+    <header class="h-14 border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+          <i class="fa-solid fa-microchip text-base"></i>
+        </div>
+        <div>
+          <h1 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+            边缘 AI 视频分析任务 · 1:N 交互形态原型
+            <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
+              Prototype v2.0
+            </span>
+          </h1>
+          <p class="text-[11px] text-slate-400">摄像头数据流 (1) 与 多算法推理实例 (N) 的最佳 B 端布局实证</p>
+        </div>
+      </div>
+
+      <!-- 模式切换控制器 -->
+      <div class="flex items-center gap-3">
+        <div class="bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 flex items-center text-xs">
+          <button 
+            @click="currentLayout = 'pipeline'"
+            :class="currentLayout === 'pipeline' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5"
+          >
+            <i class="fa-solid fa-diagram-project"></i>
+            方案 A: 管道折叠栏 (Pipeline Strip)
+          </button>
+          <button 
+            @click="currentLayout = 'split'"
+            :class="currentLayout === 'split' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5"
+          >
+            <i class="fa-solid fa-table-columns"></i>
+            方案 B: 主从分栏联动 (Split Workstation)
+          </button>
+          <button 
+            @click="currentLayout = 'cards'"
+            :class="currentLayout === 'cards' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5"
+          >
+            <i class="fa-solid fa-grip"></i>
+            方案 C: 边缘槽位卡片 (Bento Cards)
+          </button>
+        </div>
+
+        <button 
+          @click="addRandomInstance" 
+          class="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition-colors"
+        >
+          <i class="fa-solid fa-plus text-blue-400"></i>
+          随机挂载新实例
+        </button>
+      </div>
+    </header>
+
+    <!-- 主体区域 -->
+    <main class="flex-1 overflow-hidden p-6 bg-slate-950 flex flex-col">
+
+      <!-- 方案 A：流式管道折叠栏 (Pipeline Strip) -->
+      <section v-if="currentLayout === 'pipeline'" class="flex-1 flex flex-col overflow-hidden bg-slate-900 border border-slate-800 rounded-xl shadow-xl">
+        <!-- 统计指标与搜索栏 -->
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+          <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-400">在线分析任务:</span>
+              <span class="text-sm font-bold font-mono text-emerald-400">{{ runningTaskCount }} / {{ tasks.length }}</span>
+            </div>
+            <div class="h-3 w-[1px] bg-slate-700"></div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-400">已调度算法实例:</span>
+              <span class="text-sm font-bold font-mono text-blue-400">{{ totalInstanceCount }} 个</span>
+            </div>
+            <div class="h-3 w-[1px] bg-slate-700"></div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-400">计算单元负载:</span>
+              <span class="text-sm font-bold font-mono text-amber-400">42 / 64 Units (65%)</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+              <input 
+                v-model="searchQuery" 
+                placeholder="搜索任务、摄像头或算法..." 
+                class="w-64 bg-slate-800/80 border border-slate-700/80 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+            <button class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm">
+              <i class="fa-solid fa-video"></i>
+              新建分析任务
+            </button>
+          </div>
+        </div>
+
+        <!-- 任务列表核心表格（带优雅折叠与流式槽位） -->
+        <div class="flex-1 overflow-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-800/60 sticky top-0 z-10 border-b border-slate-700/80 text-slate-400 font-medium">
+              <tr>
+                <th class="py-3 px-4 w-10 text-center"></th>
+                <th class="py-3 px-4 w-52">任务名称 / 摄像头</th>
+                <th class="py-3 px-4 w-28 text-center">任务状态</th>
+                <th class="py-3 px-4 w-24 text-center">期望启停</th>
+                <th class="py-3 px-4">
+                  <div class="flex items-center justify-between">
+                    <span>算法实例流水线 (Pipeline Slotted View)</span>
+                    <span class="text-[10px] text-slate-500 font-normal">实时吞吐 / 算力占用</span>
+                  </div>
+                </th>
+                <th class="py-3 px-4 w-28 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/70">
+              <template v-for="task in filteredTasks" :key="task.cameraId">
+                <!-- 主任务行 -->
+                <tr 
+                  class="hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                  :class="{ 'bg-slate-800/30': task.expanded }"
+                  @click="task.expanded = !task.expanded"
+                >
+                  <!-- 展开箭头 -->
+                  <td class="py-3.5 px-4 text-center">
+                    <button 
+                      class="w-5 h-5 rounded hover:bg-slate-700/60 text-slate-400 flex items-center justify-center transition-transform"
+                      :class="{ 'rotate-90 text-blue-400': task.expanded }"
+                    >
+                      <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                  </td>
+
+                  <!-- 任务信息 -->
+                  <td class="py-3.5 px-4">
+                    <div class="font-semibold text-slate-200 text-sm flex items-center gap-2">
+                      {{ task.name }}
+                      <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700 font-mono">
+                        {{ task.instances.length }} 实例
+                      </span>
+                    </div>
+                    <div class="text-[11px] text-slate-500 font-mono flex items-center gap-1.5 mt-0.5">
+                      <i class="fa-solid fa-camera text-slate-600"></i>
+                      {{ task.cameraId }}
+                      <span class="text-slate-600">·</span>
+                      <span>{{ task.resolution }} @{{ task.sourceFps }}fps</span>
+                    </div>
+                  </td>
+
+                  <!-- 任务状态 -->
+                  <td class="py-3.5 px-4 text-center">
+                    <span 
+                      class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
+                      :class="getStatusBadgeClass(task.actualStatus)"
+                    >
+                      <span class="w-1.5 h-1.5 rounded-full" :class="getStatusDotClass(task.actualStatus)"></span>
+                      {{ getStatusText(task.actualStatus) }}
+                    </span>
+                  </td>
+
+                  <!-- 期望启停 Switch -->
+                  <td class="py-3.5 px-4 text-center" @click.stop>
+                    <button 
+                      @click="toggleTaskEnabled(task)"
+                      class="w-9 h-5 rounded-full transition-colors relative focus:outline-none p-0.5 border"
+                      :class="task.desiredEnabled ? 'bg-blue-600 border-blue-500' : 'bg-slate-800 border-slate-700'"
+                    >
+                      <span 
+                        class="w-3.5 h-3.5 rounded-full bg-white block transition-transform shadow-sm"
+                        :class="task.desiredEnabled ? 'translate-x-4' : 'translate-x-0'"
+                      ></span>
+                    </button>
+                  </td>
+
+                  <!-- 行内嵌入式实例胶囊管道 (Slotted Pipeline) -->
+                  <td class="py-3.5 px-4">
+                    <div v-if="task.instances.length === 0" class="text-slate-500 text-xs italic flex items-center gap-2">
+                      <i class="fa-solid fa-triangle-exclamation text-amber-500/70 text-xs"></i>
+                      未挂载任何算法实例，无法执行推理分析
+                      <button @click.stop="openAddInstance(task)" class="text-blue-400 hover:text-blue-300 ml-2 font-medium underline">
+                        + 立即挂载
+                      </button>
+                    </div>
+
+                    <!-- 紧凑横向管道：算法卡片串联 -->
+                    <div v-else class="flex flex-wrap items-center gap-2">
+                      <div 
+                        v-for="inst in task.instances" 
+                        :key="inst.instanceId"
+                        class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border bg-slate-800/80 transition-all hover:border-slate-600 hover:shadow-md"
+                        :class="inst.enabled ? 'border-slate-700 text-slate-200' : 'border-slate-800/80 text-slate-500 opacity-60'"
+                        @click.stop="openEditInstance(task, inst)"
+                      >
+                        <!-- 算法健康指示灯 -->
+                        <span class="relative flex h-2 w-2">
+                          <span v-if="inst.actualStatus === 2" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-2 w-2" :class="getInstanceDotClass(inst.actualStatus, inst.enabled)"></span>
+                        </span>
+
+                        <!-- 算法标识 -->
+                        <div class="flex flex-col">
+                          <div class="flex items-center gap-1.5 font-medium leading-tight">
+                            <span>{{ inst.algorithmId }}</span>
+                            <span class="text-[9px] px-1 rounded bg-slate-700/80 text-slate-400 font-mono">{{ inst.version }}</span>
+                          </div>
+                          <!-- 实时帧率与设定帧率 -->
+                          <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                            <span :class="inst.currentFps >= inst.analysisFps ? 'text-emerald-400 font-semibold' : 'text-amber-400'">
+                              {{ inst.currentFps ? inst.currentFps.toFixed(1) : '-' }}
+                            </span>
+                            <span class="text-slate-600">/</span>
+                            <span>{{ inst.analysisFps }} FPS</span>
+                          </div>
+                        </div>
+
+                        <!-- 快捷启停轻触点 -->
+                        <button 
+                          @click.stop="toggleInstanceEnabled(inst)"
+                          class="ml-1 text-xs hover:text-white transition-colors"
+                          :title="inst.enabled ? '停用此算法' : '启用此算法'"
+                        >
+                          <i :class="inst.enabled ? 'fa-solid fa-circle-pause text-blue-400 hover:text-blue-300' : 'fa-regular fa-circle-play text-slate-500 hover:text-slate-300'"></i>
+                        </button>
+                      </div>
+
+                      <!-- 快速追加小按钮 -->
+                      <button 
+                        @click.stop="openAddInstance(task)"
+                        class="h-9 px-2 rounded-lg border border-dashed border-slate-700 hover:border-blue-500 text-slate-500 hover:text-blue-400 flex items-center justify-center text-xs transition-colors"
+                        title="向此任务添加新算法实例"
+                      >
+                        <i class="fa-solid fa-plus text-[10px]"></i>
+                      </button>
+                    </div>
+                  </td>
+
+                  <!-- 操作列 -->
+                  <td class="py-3.5 px-4 text-right space-x-2" @click.stop>
+                    <button 
+                      @click="task.expanded = !task.expanded" 
+                      class="text-slate-400 hover:text-slate-200 transition-colors"
+                      title="展开/收起实例详情"
+                    >
+                      <i :class="task.expanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
+                    </button>
+                    <button class="text-blue-400 hover:text-blue-300 font-medium">配置</button>
+                    <button class="text-rose-400 hover:text-rose-300">删除</button>
+                  </td>
+                </tr>
+
+                <!-- 展开子层：现代化的算法实例控制台 (Instance Console) -->
+                <tr v-if="task.expanded" class="bg-slate-950/70 border-b border-slate-800">
+                  <td colspan="6" class="p-0">
+                    <div class="px-8 py-5 border-l-4 border-blue-500 bg-gradient-to-r from-blue-950/20 to-transparent">
+                      <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                          <i class="fa-solid fa-server text-blue-400 text-xs"></i>
+                          <h4 class="text-xs font-semibold text-slate-200 uppercase tracking-wider">
+                            已挂载的算法实例列表 ({{ task.instances.length }})
+                          </h4>
+                          <span class="text-[11px] text-slate-500">· 共享同一路 RTSP 解码帧缓冲区</span>
+                        </div>
+                        <button 
+                          @click="openAddInstance(task)" 
+                          class="px-2.5 py-1 rounded bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-xs transition-all flex items-center gap-1.5"
+                        >
+                          <i class="fa-solid fa-plus text-[10px]"></i>
+                          挂载新算法实例
+                        </button>
+                      </div>
+
+                      <!-- 实例卡片横向网格 -->
+                      <div class="grid grid-cols-3 gap-4">
+                        <div 
+                          v-for="inst in task.instances" 
+                          :key="inst.instanceId"
+                          class="rounded-xl border bg-slate-900/90 p-4 relative overflow-hidden transition-all hover:border-slate-600 hover:shadow-lg"
+                          :class="inst.actualStatus === 5 ? 'border-rose-900/60' : 'border-slate-800'"
+                        >
+                          <!-- 顶部：算法名与状态 -->
+                          <div class="flex items-start justify-between mb-3">
+                            <div>
+                              <div class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                                {{ inst.algorithmId }}
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono">
+                                  v{{ inst.version }}
+                                </span>
+                              </div>
+                              <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                <span class="font-mono text-slate-500">ID: {{ inst.instanceId.slice(0, 8) }}...</span>
+                              </div>
+                            </div>
+                            <span 
+                              class="text-[10px] px-2 py-0.5 rounded-full font-medium border"
+                              :class="getInstanceStatusBadgeClass(inst.actualStatus)"
+                            >
+                              {{ getInstanceStatusText(inst.actualStatus) }}
+                            </span>
+                          </div>
+
+                          <!-- 核心指标仪表条 -->
+                          <div class="bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80 mb-3 space-y-2">
+                            <!-- 实时 FPS 监控 -->
+                            <div>
+                              <div class="flex justify-between text-[11px] mb-1">
+                                <span class="text-slate-400">推理采样吞吐 (FPS)</span>
+                                <span class="font-mono font-medium" :class="inst.currentFps >= inst.analysisFps ? 'text-emerald-400' : 'text-amber-400'">
+                                  {{ inst.currentFps ? inst.currentFps.toFixed(1) : '0.0' }} / {{ inst.analysisFps }} FPS
+                                </span>
+                              </div>
+                              <!-- FPS 水位指示条 -->
+                              <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                <div 
+                                  class="h-full rounded-full transition-all duration-500"
+                                  :class="inst.currentFps >= inst.analysisFps ? 'bg-emerald-500' : 'bg-amber-500'"
+                                  :style="{ width: Math.min(100, (inst.currentFps / inst.analysisFps) * 100) + '%' }"
+                                ></div>
+                              </div>
+                            </div>
+
+                            <!-- 算力开销与规则 -->
+                            <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/60 font-mono">
+                              <span>NPU 算力: <strong class="text-blue-400">8 Units</strong></span>
+                              <span>检测规则: <strong class="text-slate-300">{{ inst.rulesCount }} 条 (ROI/线)</strong></span>
+                            </div>
+                          </div>
+
+                          <!-- 底部操作与开关 -->
+                          <div class="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                            <div class="flex items-center gap-2">
+                              <span class="text-xs text-slate-400">实例使能:</span>
+                              <button 
+                                @click="toggleInstanceEnabled(inst)"
+                                class="w-8 h-4 rounded-full transition-colors relative focus:outline-none p-0.5 border"
+                                :class="inst.enabled ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-800 border-slate-700'"
+                              >
+                                <span 
+                                  class="w-2.5 h-2.5 rounded-full bg-white block transition-transform shadow-sm"
+                                  :class="inst.enabled ? 'translate-x-4' : 'translate-x-0'"
+                                ></span>
+                              </button>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs">
+                              <button @click="openEditInstance(task, inst)" class="text-blue-400 hover:text-blue-300 font-medium">参数配置</button>
+                              <button @click="deleteInstance(task, inst)" class="text-rose-400 hover:text-rose-300">移除</button>
+                            </div>
+                          </div>
+
+                          <!-- 报错浮层（若发生错误） -->
+                          <div v-if="inst.statusMessage" class="mt-2 text-[11px] bg-rose-950/60 border border-rose-800/60 text-rose-300 rounded p-1.5 flex items-start gap-1.5">
+                            <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
+                            <span class="break-all">{{ inst.statusMessage }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+
+      <!-- 方案 B：主从分栏联动 (Split Workstation) -->
+      <section v-else-if="currentLayout === 'split'" class="flex-1 flex gap-5 overflow-hidden">
+        <!-- 左侧：任务快速巡检列表 (40%) -->
+        <div class="w-[380px] bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden shrink-0">
+          <div class="p-3.5 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-200">通道任务列表 ({{ tasks.length }})</span>
+            <span class="text-[11px] text-slate-500">点击切换右侧工作台</span>
+          </div>
+
+          <div class="flex-1 overflow-auto divide-y divide-slate-800/60">
+            <div 
+              v-for="task in tasks" 
+              :key="task.cameraId"
+              @click="selectedTaskId = task.cameraId"
+              class="p-3.5 cursor-pointer transition-all border-l-4"
+              :class="selectedTaskId === task.cameraId ? 'bg-blue-600/10 border-blue-500 shadow-inner' : 'hover:bg-slate-800/40 border-transparent'"
+            >
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="text-sm font-semibold text-slate-200">{{ task.name }}</div>
+                  <div class="text-[11px] text-slate-500 font-mono mt-0.5">{{ task.cameraId }}</div>
+                </div>
+                <span 
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border"
+                  :class="getStatusBadgeClass(task.actualStatus)"
+                >
+                  {{ getStatusText(task.actualStatus) }}
+                </span>
+              </div>
+
+              <!-- 实例分布微型徽章 -->
+              <div class="mt-3 flex items-center justify-between text-xs">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-slate-400 text-[11px]">挂载算法:</span>
+                  <div class="flex -space-x-1.5 overflow-hidden">
+                    <span 
+                      v-for="inst in task.instances" 
+                      :key="inst.instanceId" 
+                      class="inline-block w-5 h-5 rounded-full bg-slate-800 border border-slate-700 text-[9px] font-bold text-center leading-4 text-blue-400 font-mono shadow"
+                      :title="inst.algorithmId"
+                    >
+                      {{ inst.algorithmId.charAt(0).toUpperCase() }}
+                    </span>
+                  </div>
+                  <span class="text-[11px] font-mono text-slate-500">({{ task.instances.length }})</span>
+                </div>
+
+                <div class="font-mono text-[11px] text-slate-400">
+                  总帧率: {{ calculateTaskFps(task) }} FPS
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：当前选中任务的沉浸式算法实例工作台 (60%) -->
+        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden">
+          <template v-if="currentSelectedTask">
+            <!-- 头部控制栏 -->
+            <div class="p-5 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
+              <div>
+                <div class="flex items-center gap-3">
+                  <h2 class="text-base font-bold text-slate-100">{{ currentSelectedTask.name }}</h2>
+                  <span 
+                    class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border"
+                    :class="getStatusBadgeClass(currentSelectedTask.actualStatus)"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full" :class="getStatusDotClass(currentSelectedTask.actualStatus)"></span>
+                    {{ getStatusText(currentSelectedTask.actualStatus) }}
+                  </span>
+                </div>
+                <p class="text-xs text-slate-400 font-mono mt-1">
+                  摄像头: {{ currentSelectedTask.cameraId }} · {{ currentSelectedTask.resolution }} · 解码延迟 &lt; 15ms
+                </p>
+              </div>
+
+              <div class="flex items-center gap-3">
+                <button 
+                  @click="openAddInstance(currentSelectedTask)"
+                  class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-2 shadow-sm transition-colors"
+                >
+                  <i class="fa-solid fa-plus"></i>
+                  为本通道挂载算法
+                </button>
+              </div>
+            </div>
+
+            <!-- 实例画布区 -->
+            <div class="flex-1 overflow-auto p-6 space-y-4">
+              <div v-if="currentSelectedTask.instances.length === 0" class="h-64 flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-2xl text-slate-500">
+                <i class="fa-solid fa-cubes-stacked text-3xl mb-3 text-slate-600"></i>
+                <p class="text-sm font-medium">当前任务尚未挂载任何算法实例</p>
+                <p class="text-xs text-slate-600 mt-1">您可以挂载 YOLO 目标检测、人脸识别或安全帽分析</p>
+                <button 
+                  @click="openAddInstance(currentSelectedTask)"
+                  class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg font-medium shadow"
+                >
+                  立即挂载首个算法
+                </button>
+              </div>
+
+              <!-- 实例横幅面板（自适应卡片） -->
+              <div 
+                v-for="(inst, idx) in currentSelectedTask.instances" 
+                :key="inst.instanceId"
+                class="rounded-xl border bg-slate-950/60 p-5 transition-all hover:border-slate-700"
+                :class="inst.enabled ? 'border-slate-800' : 'border-slate-800/40 opacity-70'"
+              >
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-mono font-bold text-sm">
+                      0{{ idx + 1 }}
+                    </div>
+                    <div>
+                      <div class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                        {{ inst.algorithmId }}
+                        <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono border border-slate-700">
+                          v{{ inst.version }}
+                        </span>
+                      </div>
+                      <div class="text-xs text-slate-500 font-mono mt-0.5">
+                        Instance UUID: {{ inst.instanceId }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-4">
+                    <!-- 实例状态 -->
+                    <span 
+                      class="text-xs px-3 py-1 rounded-full font-medium border"
+                      :class="getInstanceStatusBadgeClass(inst.actualStatus)"
+                    >
+                      {{ getInstanceStatusText(inst.actualStatus) }}
+                    </span>
+
+                    <!-- 启停开关 -->
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-slate-400">运行:</span>
+                      <button 
+                        @click="toggleInstanceEnabled(inst)"
+                        class="w-9 h-5 rounded-full transition-colors relative focus:outline-none p-0.5 border"
+                        :class="inst.enabled ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-800 border-slate-700'"
+                      >
+                        <span 
+                          class="w-3.5 h-3.5 rounded-full bg-white block transition-transform shadow-sm"
+                          :class="inst.enabled ? 'translate-x-4' : 'translate-x-0'"
+                        ></span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 性能监控与参数横排网格 -->
+                <div class="grid grid-cols-4 gap-3 bg-slate-900/90 rounded-lg p-3 border border-slate-800/80 text-xs">
+                  <div>
+                    <div class="text-slate-500 text-[11px]">采样帧率 (Target)</div>
+                    <div class="font-mono font-semibold text-slate-200 mt-0.5">{{ inst.analysisFps }} FPS</div>
+                  </div>
+                  <div>
+                    <div class="text-slate-500 text-[11px]">实时吞吐 (Current)</div>
+                    <div class="font-mono font-semibold mt-0.5" :class="inst.currentFps >= inst.analysisFps ? 'text-emerald-400' : 'text-amber-400'">
+                      {{ inst.currentFps ? inst.currentFps.toFixed(1) : '-' }} FPS
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-slate-500 text-[11px]">检测规则 (Rules)</div>
+                    <div class="font-mono font-semibold text-slate-200 mt-0.5">{{ inst.rulesCount }} 处设定</div>
+                  </div>
+                  <div>
+                    <div class="text-slate-500 text-[11px]">计算资源预算</div>
+                    <div class="font-mono font-semibold text-blue-400 mt-0.5">8 Units (NPU)</div>
+                  </div>
+                </div>
+
+                <!-- 底部操作按钮 -->
+                <div class="flex justify-end gap-3 mt-4 pt-3 border-t border-slate-800/60 text-xs">
+                  <button @click="openEditInstance(currentSelectedTask, inst)" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors">
+                    <i class="fa-solid fa-sliders mr-1 text-slate-400"></i> 参数与 Schema 配置
+                  </button>
+                  <button class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors">
+                    <i class="fa-solid fa-draw-polygon mr-1 text-slate-400"></i> 几何规则绘制
+                  </button>
+                  <button @click="deleteInstance(currentSelectedTask, inst)" class="px-3 py-1.5 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-900/50 transition-colors">
+                    移除实例
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </section>
+
+
+      <!-- 方案 C：边缘槽位卡片矩阵 (Bento Cards) -->
+      <section v-else-if="currentLayout === 'cards'" class="flex-1 overflow-auto">
+        <div class="grid grid-cols-2 gap-5">
+          <div 
+            v-for="task in tasks" 
+            :key="task.cameraId"
+            class="rounded-xl border border-slate-800 bg-slate-900/90 p-5 flex flex-col justify-between shadow-lg hover:border-slate-700 transition-all"
+          >
+            <!-- 卡片头部：通道流信息 -->
+            <div>
+              <div class="flex items-start justify-between pb-3 border-b border-slate-800">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg bg-blue-600/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <i class="fa-solid fa-video text-sm"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-semibold text-slate-100">{{ task.name }}</h3>
+                    <div class="text-[11px] text-slate-400 font-mono">{{ task.cameraId }} · {{ task.resolution }}</div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span 
+                    class="text-[10px] px-2 py-0.5 rounded-full font-medium border"
+                    :class="getStatusBadgeClass(task.actualStatus)"
+                  >
+                    {{ getStatusText(task.actualStatus) }}
+                  </span>
+                  <button 
+                    @click="toggleTaskEnabled(task)"
+                    class="w-8 h-4 rounded-full transition-colors relative focus:outline-none p-0.5 border"
+                    :class="task.desiredEnabled ? 'bg-blue-600 border-blue-500' : 'bg-slate-800 border-slate-700'"
+                  >
+                    <span 
+                      class="w-2.5 h-2.5 rounded-full bg-white block transition-transform"
+                      :class="task.desiredEnabled ? 'translate-x-4' : 'translate-x-0'"
+                    ></span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 算法实例网格槽位 (Multi-instance Slot Array) -->
+              <div class="mt-4">
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+                  <span>挂载的 AI 算法流水线 ({{ task.instances.length }})</span>
+                  <button @click="openAddInstance(task)" class="text-blue-400 hover:text-blue-300 font-medium text-[11px]">
+                    + 添加算法
+                  </button>
+                </div>
+
+                <div class="space-y-2">
+                  <div 
+                    v-for="inst in task.instances" 
+                    :key="inst.instanceId"
+                    class="flex items-center justify-between p-2.5 rounded-lg border bg-slate-950/60 transition-colors"
+                    :class="inst.enabled ? 'border-slate-800' : 'border-slate-800/40 opacity-60'"
+                  >
+                    <div class="flex items-center gap-2.5">
+                      <span class="w-2 h-2 rounded-full" :class="getInstanceDotClass(inst.actualStatus, inst.enabled)"></span>
+                      <div>
+                        <div class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                          {{ inst.algorithmId }}
+                          <span class="text-[9px] px-1 rounded bg-slate-800 text-slate-400 font-mono">v{{ inst.version }}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+                          实时: <span :class="inst.currentFps >= inst.analysisFps ? 'text-emerald-400' : 'text-amber-400'">{{ inst.currentFps ? inst.currentFps.toFixed(1) : '-' }}</span> / {{ inst.analysisFps }} FPS
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 text-xs">
+                      <button 
+                        @click="toggleInstanceEnabled(inst)" 
+                        class="text-xs"
+                        :title="inst.enabled ? '停用' : '启用'"
+                      >
+                        <i :class="inst.enabled ? 'fa-solid fa-power-off text-emerald-400' : 'fa-solid fa-power-off text-slate-600'"></i>
+                      </button>
+                      <button @click="openEditInstance(task, inst)" class="text-slate-400 hover:text-blue-400">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                      </button>
+                      <button @click="deleteInstance(task, inst)" class="text-slate-500 hover:text-rose-400">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 卡片底部状态栏 -->
+            <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+              <span>最后上报帧: {{ task.lastFrame }}</span>
+              <span class="font-mono text-slate-400">负载合计: {{ task.instances.length * 8 }} Units</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 实例配置弹窗 (模拟) -->
+    <div v-if="editModalOpen" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="w-[540px] bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+          <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-blue-400"></i>
+            {{ isEditingNew ? '挂载新算法实例' : `编辑算法实例 - ${modalForm.algorithmId}` }}
+          </h3>
+          <button @click="editModalOpen = false" class="text-slate-400 hover:text-slate-200">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+
+        <div class="p-5 space-y-4 text-xs">
+          <div>
+            <label class="block text-slate-400 mb-1">选择算法包</label>
+            <select v-model="modalForm.algorithmId" :disabled="!isEditingNew" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500">
+              <option value="yolov8n">YOLOv8n 基础目标检测 (已激活 v1.2.0)</option>
+              <option value="face_detect">FaceNet 人脸抓拍识别 (已激活 v2.0.1)</option>
+              <option value="fire_smoke">FireSmoke 烟火检测告警 (已激活 v1.0.4)</option>
+              <option value="helmet_detect">SafetyHelmet 安全帽穿戴识别 (已激活 v1.1.0)</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">采样推理帧率 (FPS)</label>
+              <input type="number" v-model.number="modalForm.analysisFps" min="1" max="30" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">创建后即刻启用</label>
+              <div class="flex items-center h-9">
+                <input type="checkbox" v-model="modalForm.enabled" class="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0 mr-2" />
+                <span class="text-slate-300">使能并开始对账</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-3 rounded-lg bg-blue-950/30 border border-blue-900/40 text-[11px] text-blue-300 flex items-start gap-2">
+            <i class="fa-solid fa-circle-info mt-0.5 text-blue-400"></i>
+            <div>
+              <strong>资源配额预检通过：</strong> 本次申请 8 个计算单元，系统总余量 22 / 64 Units，允许启动。
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-slate-800 bg-slate-900/90 flex justify-end gap-3 text-xs">
+          <button @click="editModalOpen = false" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">
+            取消
+          </button>
+          <button @click="saveModalForm" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium shadow transition-colors">
+            确认保存配置
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        const currentLayout = ref('pipeline'); // 'pipeline' | 'split' | 'cards'
+        const searchQuery = ref('');
+        const selectedTaskId = ref('cam-01');
+
+        // 模拟数据源：任务与挂载的多实例
+        const tasks = ref([
+          {
+            cameraId: 'cam-01',
+            name: '园区东大门主干道',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 2, // RUNNING
+            expanded: true,
+            lastFrame: '10:42:15',
+            instances: [
+              {
+                instanceId: 'inst-9831a-yolo',
+                algorithmId: 'yolov8n',
+                version: '1.2.0',
+                analysisFps: 15,
+                currentFps: 14.9,
+                enabled: true,
+                actualStatus: 2, // RUNNING
+                rulesCount: 2,
+                statusMessage: ''
+              },
+              {
+                instanceId: 'inst-4521b-helmet',
+                algorithmId: 'helmet_detect',
+                version: '1.1.0',
+                analysisFps: 10,
+                currentFps: 9.8,
+                enabled: true,
+                actualStatus: 2, // RUNNING
+                rulesCount: 1,
+                statusMessage: ''
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-02',
+            name: '生产一号车间危险区',
+            resolution: '2560x1440',
+            sourceFps: 30,
+            desiredEnabled: true,
+            actualStatus: 3, // DEGRADED
+            expanded: false,
+            lastFrame: '10:42:14',
+            instances: [
+              {
+                instanceId: 'inst-1102c-fire',
+                algorithmId: 'fire_smoke',
+                version: '1.0.4',
+                analysisFps: 25,
+                currentFps: 18.2, // 降级丢帧
+                enabled: true,
+                actualStatus: 3, // DEGRADED
+                rulesCount: 3,
+                statusMessage: 'NPU 温度过高，触发动态降频保护'
+              },
+              {
+                instanceId: 'inst-7718d-face',
+                algorithmId: 'face_detect',
+                version: '2.0.1',
+                analysisFps: 10,
+                currentFps: 10.0,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 1,
+                statusMessage: ''
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-03',
+            name: '物资仓库主货架通道',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 2,
+            expanded: false,
+            lastFrame: '10:42:12',
+            instances: [
+              {
+                instanceId: 'inst-3391e-yolo',
+                algorithmId: 'yolov8n',
+                version: '1.2.0',
+                analysisFps: 15,
+                currentFps: 15.0,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 1,
+                statusMessage: ''
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-04',
+            name: '西区周界铁丝网防护线',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: false,
+            actualStatus: 5, // STOPPED
+            expanded: false,
+            lastFrame: '09:30:00',
+            instances: [
+              {
+                instanceId: 'inst-8812f-yolo',
+                algorithmId: 'yolov8n',
+                version: '1.2.0',
+                analysisFps: 10,
+                currentFps: 0,
+                enabled: false,
+                actualStatus: 4, // STOPPED
+                rulesCount: 1,
+                statusMessage: ''
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-05',
+            name: '地下停车场入口道闸',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 1, // STARTING
+            expanded: false,
+            lastFrame: '等待接入',
+            instances: []
+          }
+        ]);
+
+        const filteredTasks = computed(() => {
+          if (!searchQuery.value.trim()) return tasks.value;
+          const q = searchQuery.value.toLowerCase();
+          return tasks.value.filter(t => 
+            t.name.toLowerCase().includes(q) || 
+            t.cameraId.toLowerCase().includes(q) ||
+            t.instances.some(i => i.algorithmId.toLowerCase().includes(q))
+          );
+        });
+
+        const currentSelectedTask = computed(() => {
+          return tasks.value.find(t => t.cameraId === selectedTaskId.value) || tasks.value[0];
+        });
+
+        const runningTaskCount = computed(() => {
+          return tasks.value.filter(t => t.actualStatus === 2).length;
+        });
+
+        const totalInstanceCount = computed(() => {
+          return tasks.value.reduce((acc, t) => acc + t.instances.length, 0);
+        });
+
+        function calculateTaskFps(task) {
+          return task.instances
+            .filter(i => i.enabled)
+            .reduce((sum, i) => sum + (i.currentFps || 0), 0)
+            .toFixed(0);
+        }
+
+        // 弹窗状态
+        const editModalOpen = ref(false);
+        const isEditingNew = ref(false);
+        const modalTargetTask = ref(null);
+        const modalForm = ref({
+          algorithmId: 'yolov8n',
+          analysisFps: 15,
+          enabled: true
+        });
+
+        function openAddInstance(task) {
+          modalTargetTask.value = task;
+          isEditingNew.value = true;
+          modalForm.value = {
+            algorithmId: 'yolov8n',
+            analysisFps: 15,
+            enabled: true
+          };
+          editModalOpen.value = true;
+        }
+
+        function openEditInstance(task, inst) {
+          modalTargetTask.value = task;
+          isEditingNew.value = false;
+          modalForm.value = {
+            algorithmId: inst.algorithmId,
+            analysisFps: inst.analysisFps,
+            enabled: inst.enabled
+          };
+          editModalOpen.value = true;
+        }
+
+        function saveModalForm() {
+          if (!modalTargetTask.value) return;
+          if (isEditingNew.value) {
+            modalTargetTask.value.instances.push({
+              instanceId: 'inst-' + Math.random().toString(36).slice(2, 7),
+              algorithmId: modalForm.value.algorithmId,
+              version: '1.0.0',
+              analysisFps: modalForm.value.analysisFps,
+              currentFps: modalForm.value.enabled ? modalForm.value.analysisFps : 0,
+              enabled: modalForm.value.enabled,
+              actualStatus: modalForm.value.enabled ? 2 : 4,
+              rulesCount: 1,
+              statusMessage: ''
+            });
+            modalTargetTask.value.expanded = true;
+          } else {
+            const inst = modalTargetTask.value.instances.find(i => i.algorithmId === modalForm.value.algorithmId);
+            if (inst) {
+              inst.analysisFps = modalForm.value.analysisFps;
+              inst.enabled = modalForm.value.enabled;
+            }
+          }
+          editModalOpen.value = false;
+        }
+
+        function addRandomInstance() {
+          const target = tasks.value[0];
+          const algos = ['fire_smoke', 'helmet_detect', 'face_detect', 'yolov8n'];
+          const picked = algos[Math.floor(Math.random() * algos.length)];
+          target.instances.push({
+            instanceId: 'inst-' + Math.random().toString(36).slice(2, 7),
+            algorithmId: picked,
+            version: '1.2.0',
+            analysisFps: 10,
+            currentFps: 9.9,
+            enabled: true,
+            actualStatus: 2,
+            rulesCount: 1,
+            statusMessage: ''
+          });
+          target.expanded = true;
+        }
+
+        function toggleTaskEnabled(task) {
+          task.desiredEnabled = !task.desiredEnabled;
+          task.actualStatus = task.desiredEnabled ? 2 : 5;
+        }
+
+        function toggleInstanceEnabled(inst) {
+          inst.enabled = !inst.enabled;
+          inst.actualStatus = inst.enabled ? 2 : 4;
+          inst.currentFps = inst.enabled ? inst.analysisFps : 0;
+        }
+
+        function deleteInstance(task, inst) {
+          const idx = task.instances.findIndex(i => i.instanceId === inst.instanceId);
+          if (idx !== -1) {
+            task.instances.splice(idx, 1);
+          }
+        }
+
+        function getStatusBadgeClass(status) {
+          switch(status) {
+            case 1: return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+            case 2: return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+            case 3: return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+            case 5: return 'bg-slate-800 text-slate-400 border-slate-700';
+            case 6: return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+            default: return 'bg-slate-800 text-slate-400 border-slate-700';
+          }
+        }
+
+        function getStatusDotClass(status) {
+          switch(status) {
+            case 1: return 'bg-blue-400 animate-pulse';
+            case 2: return 'bg-emerald-400';
+            case 3: return 'bg-amber-400';
+            case 5: return 'bg-slate-500';
+            case 6: return 'bg-rose-400';
+            default: return 'bg-slate-500';
+          }
+        }
+
+        function getStatusText(status) {
+          switch(status) {
+            case 1: return '启动中';
+            case 2: return '运行中';
+            case 3: return '降级运行';
+            case 5: return '已停止';
+            case 6: return '异常告警';
+            default: return '未就绪';
+          }
+        }
+
+        function getInstanceStatusBadgeClass(status) {
+          switch(status) {
+            case 1: return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+            case 2: return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+            case 3: return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+            case 4: return 'bg-slate-800 text-slate-400 border-slate-700';
+            case 5: return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+            default: return 'bg-slate-800 text-slate-400 border-slate-700';
+          }
+        }
+
+        function getInstanceStatusText(status) {
+          switch(status) {
+            case 1: return '启动中';
+            case 2: return '运行正常';
+            case 3: return '丢帧降级';
+            case 4: return '已停用';
+            case 5: return '执行报错';
+            default: return '未知';
+          }
+        }
+
+        function getInstanceDotClass(status, enabled) {
+          if (!enabled) return 'bg-slate-500';
+          switch(status) {
+            case 1: return 'bg-blue-400';
+            case 2: return 'bg-emerald-400';
+            case 3: return 'bg-amber-400';
+            case 5: return 'bg-rose-500';
+            default: return 'bg-slate-500';
+          }
+        }
+
+        return {
+          currentLayout,
+          searchQuery,
+          selectedTaskId,
+          tasks,
+          filteredTasks,
+          currentSelectedTask,
+          runningTaskCount,
+          totalInstanceCount,
+          calculateTaskFps,
+          getStatusBadgeClass,
+          getStatusDotClass,
+          getStatusText,
+          getInstanceStatusBadgeClass,
+          getInstanceStatusText,
+          getInstanceDotClass,
+          toggleTaskEnabled,
+          toggleInstanceEnabled,
+          deleteInstance,
+          editModalOpen,
+          isEditingNew,
+          modalForm,
+          openAddInstance,
+          openEditInstance,
+          saveModalForm,
+          addRandomInstance
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

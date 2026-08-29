@@ -153,6 +153,60 @@ func TestTaskRepositoryDuplicateCameraRejected(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryListEnabledInstanceQuotaRows(t *testing.T) {
+	db := newTaskTestDB(t)
+	repo := NewTaskRepository(db)
+	ctx := context.Background()
+
+	// 算法：alg-a 激活 1.0.0（有版本行）、alg-b 激活 2.0.0（无版本行）、alg-c 未激活
+	algA := newAlgorithmTaskFixture("alg-a", "1.0.0")
+	algB := newAlgorithmTaskFixture("alg-b", "2.0.0")
+	algC := newAlgorithmTaskFixture("alg-c", "")
+	for _, alg := range []*model.Algorithm{algA, algB, algC} {
+		if err := db.Create(alg).Error; err != nil {
+			t.Fatalf("create algorithm: %v", err)
+		}
+	}
+	if err := db.Create(&model.AlgorithmVersion{
+		AlgorithmID:  "alg-a",
+		Version:      "1.0.0",
+		PlatformID:   "macos",
+		FPSTiers:     []byte(`[{"fps":5,"units":60},{"fps":25,"units":220}]`),
+		ConfigSchema: []byte(`{}`), // 非空避免 sqlite 把空串扫进 json.RawMessage 报错
+		ManifestRaw:  []byte(`{}`),
+	}).Error; err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+
+	// 实例：i-a 启用（alg-a 激活+版本行）、i-b 启用（alg-b 无版本行）、i-c 停用
+	iA := newInstanceFixture("i-a", "cam-x", "alg-a", 25)
+	iA.Enabled = true
+	iB := newInstanceFixture("i-b", "cam-y", "alg-b", 10)
+	iB.Enabled = true
+	iC := newInstanceFixture("i-c", "cam-z", "alg-c", 10)
+	for _, inst := range []*model.AlgorithmInstance{iA, iB, iC} {
+		if err := repo.CreateInstance(ctx, inst); err != nil {
+			t.Fatalf("create instance: %v", err)
+		}
+	}
+
+	rows, err := repo.ListEnabledInstanceQuotaRows(ctx)
+	if err != nil {
+		t.Fatalf("list quota rows: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v, want 2 (i-a, i-b)", rows)
+	}
+	// i-a：带 active_version 与档位
+	if rows[0].InstanceID != "i-a" || rows[0].ActiveVersion != "1.0.0" || string(rows[0].FPSTiers) == "" {
+		t.Fatalf("rows[0] = %+v", rows[0])
+	}
+	// i-b：active_version 有但版本行缺失 → fps_tiers 空
+	if rows[1].InstanceID != "i-b" || rows[1].ActiveVersion != "2.0.0" || len(rows[1].FPSTiers) != 0 {
+		t.Fatalf("rows[1] = %+v", rows[1])
+	}
+}
+
 func TestTaskRepositoryDeleteTaskCascade(t *testing.T) {
 	db := newTaskTestDB(t)
 	repo := NewTaskRepository(db)
@@ -231,13 +285,13 @@ func TestTaskRepositoryInstanceCRUD(t *testing.T) {
 		t.Fatalf("after update = %+v", after)
 	}
 
-	// ListEnabledInstances 只含启用实例
-	enabled, err := repo.ListEnabledInstances(ctx)
+	// ListEnabledInstanceQuotaRows 只含启用实例（无算法/版本行时 JOIN 带出空档位）
+	rows, err := repo.ListEnabledInstanceQuotaRows(ctx)
 	if err != nil {
-		t.Fatalf("list enabled: %v", err)
+		t.Fatalf("list enabled quota rows: %v", err)
 	}
-	if len(enabled) != 1 || enabled[0].InstanceID != "inst-crud" {
-		t.Fatalf("list enabled = %+v, want [inst-crud]", enabled)
+	if len(rows) != 1 || rows[0].InstanceID != "inst-crud" {
+		t.Fatalf("list enabled quota rows = %+v, want [inst-crud]", rows)
 	}
 
 	deleted, err := repo.DeleteInstance(ctx, "inst-crud")
@@ -602,5 +656,46 @@ func TestTaskRepositoryLoadDesiredSnapshot(t *testing.T) {
 	}
 	if state.ActivePackageVersions[0].AlgorithmId != "alg-a" || state.ActivePackageVersions[0].Version != "1.0.0" {
 		t.Fatalf("active version[0] = %+v", state.ActivePackageVersions[0])
+	}
+}
+
+func TestTaskRepositoryListInstancesByCameraIDs(t *testing.T) {
+	db := newTaskTestDB(t)
+	repo := NewTaskRepository(db)
+	ctx := context.Background()
+
+	// 空入参安全
+	items, err := repo.ListInstancesByCameraIDs(ctx, nil)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("empty cameraIDs got len=%d err=%v, want 0/nil", len(items), err)
+	}
+
+	instA1 := newInstanceFixture("inst-a-1", "cam-1", "alg-a", 10)
+	instA2 := newInstanceFixture("inst-a-2", "cam-1", "alg-b", 15)
+	instB1 := newInstanceFixture("inst-b-1", "cam-2", "alg-a", 20)
+	instC1 := newInstanceFixture("inst-c-1", "cam-3", "alg-c", 25)
+
+	for _, inst := range []*model.AlgorithmInstance{instA1, instA2, instB1, instC1} {
+		if err := repo.CreateInstance(ctx, inst); err != nil {
+			t.Fatalf("create instance: %v", err)
+		}
+	}
+
+	// 查 cam-1 和 cam-2
+	items, err = repo.ListInstancesByCameraIDs(ctx, []string{"cam-1", "cam-2"})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("got len=%d, want 3", len(items))
+	}
+
+	// 软删 inst-a-2 后不再返回
+	if _, err := repo.DeleteInstance(ctx, "inst-a-2"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	items, err = repo.ListInstancesByCameraIDs(ctx, []string{"cam-1", "cam-2"})
+	if err != nil || len(items) != 2 {
+		t.Fatalf("after soft delete got len=%d err=%v, want 2/nil", len(items), err)
 	}
 }

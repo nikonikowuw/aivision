@@ -152,15 +152,29 @@ type TaskListQuery struct {
 	Configured *bool  `form:"configured"` // nil=全部；true=已有实例；false=无实例
 }
 
+// TaskInstanceBrief 任务列表页轻量级实例摘要（供 1:N 管道流水线与展开控制台展示）。
+type TaskInstanceBrief struct {
+	InstanceID    string   `json:"instanceId"`
+	AlgorithmID   string   `json:"algorithmId"`
+	AnalysisFPS   int32    `json:"analysisFps"`
+	CurrentFPS    *float32 `json:"currentFps"`
+	Enabled       bool     `json:"enabled"`
+	ActualStatus  int8     `json:"actualStatus"`
+	StatusMessage string   `json:"statusMessage"`
+	RulesCount    int      `json:"rulesCount"`
+}
+
 // TaskItem 任务列表项：库中配置与状态码为底，内存实时字段合并（design D6）。
 type TaskItem struct {
-	CameraID       string     `json:"cameraId"`
-	Name           string     `json:"name"`
-	DesiredEnabled bool       `json:"desiredEnabled"`
-	ActualStatus   int8       `json:"actualStatus"`
-	StatusMessage  string     `json:"statusMessage"`
-	LastFrameAt    *time.Time `json:"lastFrameAt"` // 实时字段：无上报时为 null（等待上报）
-	ReportedAt     *time.Time `json:"reportedAt"`  // 实时字段：无上报时为 null
+	CameraID       string               `json:"cameraId"`
+	Name           string               `json:"name"`
+	DesiredEnabled bool                 `json:"desiredEnabled"`
+	ActualStatus   int8                 `json:"actualStatus"`
+	StatusMessage  string               `json:"statusMessage"`
+	LastFrameAt    *time.Time           `json:"lastFrameAt"` // 实时字段：无上报时为 null（等待上报）
+	ReportedAt     *time.Time           `json:"reportedAt"`  // 实时字段：无上报时为 null
+	InstanceCount  int                  `json:"instanceCount"`
+	Instances      []*TaskInstanceBrief `json:"instances"`
 }
 
 // TaskPageResult 任务分页查询结果。
@@ -219,7 +233,9 @@ type CreateInstanceInput struct {
 }
 
 // UpdateInstanceInput 整份提交实例配置（analysisFps + paramsJson + rules，design §4.2）。
-// 三个字段都必须出现在请求体中（required），拒绝部分更新。
+// 三个字段都必须出现在请求体中（binding:"required"），拒绝部分更新。
+// 注意 required 对切片只要求非 nil：rules 必须显式传（可为空数组 []），
+// 省略该字段会被视为缺失而 400。
 type UpdateInstanceInput struct {
 	AnalysisFPS *int32                `json:"analysisFps" binding:"required"`
 	ParamsJSON  json.RawMessage       `json:"paramsJson" binding:"required"`
@@ -292,11 +308,63 @@ func (s *taskService) ListTasks(ctx context.Context, query *TaskListQuery) (*Tas
 	if err != nil {
 		return nil, err
 	}
+
+	cameraIDs := make([]string, 0, len(items))
+	for i := range items {
+		cameraIDs = append(cameraIDs, items[i].CameraID)
+	}
+
+	var allInstances []model.AlgorithmInstance
+	if len(cameraIDs) > 0 {
+		allInstances, err = s.repo.ListInstancesByCameraIDs(ctx, cameraIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 按 camera_id 分组
+	instMap := make(map[string][]*TaskInstanceBrief)
+	for i := range allInstances {
+		inst := &allInstances[i]
+		brief := s.mergeInstanceBrief(inst)
+		instMap[inst.CameraID] = append(instMap[inst.CameraID], brief)
+	}
+
 	out := make([]*TaskItem, 0, len(items))
 	for i := range items {
-		out = append(out, s.mergeTask(&items[i]))
+		taskItem := s.mergeTask(&items[i])
+		if briefs, ok := instMap[items[i].CameraID]; ok {
+			taskItem.Instances = briefs
+			taskItem.InstanceCount = len(briefs)
+		} else {
+			taskItem.Instances = []*TaskInstanceBrief{}
+			taskItem.InstanceCount = 0
+		}
+		out = append(out, taskItem)
 	}
 	return &TaskPageResult{Items: out, Total: total}, nil
+}
+
+func (s *taskService) mergeInstanceBrief(inst *model.AlgorithmInstance) *TaskInstanceBrief {
+	rules := s.parseStoredRules(inst)
+	brief := &TaskInstanceBrief{
+		InstanceID:    inst.InstanceID,
+		AlgorithmID:   inst.AlgorithmID,
+		AnalysisFPS:   inst.AnalysisFPS,
+		Enabled:       inst.Enabled,
+		ActualStatus:  inst.ActualStatus,
+		StatusMessage: inst.StatusMessage,
+		RulesCount:    len(rules),
+	}
+	if rt, ok := s.report.InstanceRuntime(inst.InstanceID); ok {
+		fps := rt.CurrentFps
+		brief.CurrentFPS = &fps
+		if rt.Status != 0 {
+			brief.ActualStatus = rt.Status
+			brief.StatusMessage = rt.Message
+		}
+	}
+	return brief
 }
 
 // mergeTask 库中配置/状态码为底，合并内存实时字段（D6）。
@@ -309,7 +377,11 @@ func (s *taskService) mergeTask(task *model.AnalysisTask) *TaskItem {
 		StatusMessage:  task.StatusMessage,
 	}
 	if rt, ok := s.report.TaskRuntime(task.CameraID); ok {
-		item.LastFrameAt = rt.LastFrameAt
+		// LastFrameAt/ReportedAt 均拷贝时间值，避免列表项与 reportAdapter 内部共享指针
+		// （timePtr 拷贝；LastFrameAt 可能为 nil，须先解引用判断）。
+		if rt.LastFrameAt != nil {
+			item.LastFrameAt = timePtr(*rt.LastFrameAt)
+		}
 		item.ReportedAt = timePtr(rt.ReportedAt)
 	}
 	return item
@@ -516,6 +588,23 @@ func (s *taskService) parseStoredRules(inst *model.AlgorithmInstance) []model.De
 	return rules
 }
 
+// parseStoredRulesStrict 解析实例规则 JSON；损坏时返回 CodeInternal（fail closed）。
+// 用于启用校验：损坏的规则绝不能静默降级为空规则后放行——否则与快照组装
+// （LoadDesiredSnapshot 对损坏 rules_json fail closed）语义不一致，会出现
+// 「启用成功但 Engine 拉取快照整体失败、全量不 apply」的假象。
+func (s *taskService) parseStoredRulesStrict(inst *model.AlgorithmInstance) ([]model.DetectionRule, error) {
+	if len(inst.RulesJSON) == 0 {
+		return nil, nil
+	}
+	var rules []model.DetectionRule
+	if err := json.Unmarshal(inst.RulesJSON, &rules); err != nil {
+		s.log.Warn("stored rules_json is corrupted",
+			zap.String("instance_id", inst.InstanceID), zap.Error(err))
+		return nil, errno.New(errno.CodeInternal)
+	}
+	return rules, nil
+}
+
 func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceInput) (*InstanceItem, error) {
 	cameraID := strings.TrimSpace(input.CameraID)
 	algorithmID := strings.TrimSpace(input.AlgorithmID)
@@ -543,8 +632,10 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 		return nil, errno.New(errno.CodeInvalidParam)
 	}
 	// 3-5. 校验顺序固定：schema → 几何 → 配额；任一失败零副作用。
+	// 配额校验仅对「创建即启用」的实例执行：停用实例不占资源，允许 Engine
+	// 离线时先完成编排（design §7「拒绝启用」语义，非拒绝一切实例写入）。
 	if err := s.validateInstanceConfig(ctx, algorithmID, algo.ActiveVersion,
-		input.AnalysisFPS, input.ParamsJSON, input.Rules, ""); err != nil {
+		input.AnalysisFPS, input.ParamsJSON, input.Rules, "", input.Enabled); err != nil {
 		return nil, err
 	}
 
@@ -616,8 +707,9 @@ func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, inp
 	}
 	fps := *input.AnalysisFPS
 	// 整份提交：schema → 几何 → 配额全量复校；配额排除自身旧占用，避免重复计数。
+	// 配额校验仅对已启用实例执行（停用实例不占资源，Engine 离线时仍可修改配置）。
 	if err := s.validateInstanceConfig(ctx, inst.AlgorithmID, algo.ActiveVersion,
-		fps, input.ParamsJSON, input.Rules, inst.InstanceID); err != nil {
+		fps, input.ParamsJSON, input.Rules, inst.InstanceID, inst.Enabled); err != nil {
 		return err
 	}
 
@@ -670,8 +762,14 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 				zap.String("algorithm_id", inst.AlgorithmID))
 			return errno.New(errno.CodeInvalidParam)
 		}
+		// 存储规则损坏时 fail closed 拒绝启用（parseStoredRulesStrict），
+		// 不得静默降级为空规则放行——与快照组装（LoadDesiredSnapshot）语义一致。
+		rules, err := s.parseStoredRulesStrict(inst)
+		if err != nil {
+			return err
+		}
 		if err := s.validateInstanceConfig(ctx, inst.AlgorithmID, algo.ActiveVersion,
-			inst.AnalysisFPS, inst.ParamsJSON, s.parseStoredRules(inst), inst.InstanceID); err != nil {
+			inst.AnalysisFPS, inst.ParamsJSON, rules, inst.InstanceID, true); err != nil {
 			return err
 		}
 		inst.Enabled = true
@@ -714,7 +812,9 @@ func (s *taskService) DeleteInstance(ctx context.Context, instanceID string) err
 // validateInstanceConfig 按固定顺序执行实例配置的三级校验：
 // schema（active version 的 config_schema）→ 几何（rulegeom）→ 配额。
 // exceptInstanceID 非空时配额累计排除该实例自身的旧占用（更新/启用语义）。
-// 任一失败返回 4xx 业务错误，调用方保证零副作用（不写库、不 bump）。
+// needQuota=false 时跳过配额比较（停用实例不占资源，允许 Engine 离线离线编排），
+// 但 schema/几何/FPS 档位校验始终执行——停用实例的配置也必须合法。
+// 任一失败返回业务错误，调用方保证零副作用（不写库、不 bump）。
 func (s *taskService) validateInstanceConfig(
 	ctx context.Context,
 	algorithmID, activeVersion string,
@@ -722,6 +822,7 @@ func (s *taskService) validateInstanceConfig(
 	paramsRaw json.RawMessage,
 	rules []model.DetectionRule,
 	exceptInstanceID string,
+	needQuota bool,
 ) error {
 	version, err := s.algoRepo.GetVersion(ctx, algorithmID, activeVersion)
 	if err != nil {
@@ -764,6 +865,11 @@ func (s *taskService) validateInstanceConfig(
 	if err != nil {
 		return errno.New(errno.CodeFPSTierExceeded)
 	}
+	if !needQuota {
+		// 停用实例不占资源：跳过配额比较（FPS 档位校验已在上方完成），
+		// 使 Engine 离线时仍可创建/修改停用实例做离线编排。
+		return nil
+	}
 	return s.checkQuota(ctx, exceptInstanceID, requested)
 }
 
@@ -795,17 +901,17 @@ func (s *taskService) checkQuota(ctx context.Context, exceptInstanceID string, r
 // 算法缺失/未激活/档位不可解析的实例记 warn 并按不占资源处理：
 // 该类实例本身不会进入 DesiredState、不会被 Engine 运行。
 func (s *taskService) sumUsedUnits(ctx context.Context, exceptInstanceID string) (uint32, error) {
-	instances, err := s.repo.ListEnabledInstances(ctx)
+	rows, err := s.repo.ListEnabledInstanceQuotaRows(ctx)
 	if err != nil {
 		return 0, err
 	}
 	var used uint32
-	for i := range instances {
-		inst := &instances[i]
-		if exceptInstanceID != "" && inst.InstanceID == exceptInstanceID {
+	for i := range rows {
+		row := &rows[i]
+		if exceptInstanceID != "" && row.InstanceID == exceptInstanceID {
 			continue
 		}
-		units, ok := s.instanceUnits(ctx, inst)
+		units, ok := s.instanceRowUnits(ctx, row)
 		if !ok {
 			continue
 		}
@@ -814,38 +920,41 @@ func (s *taskService) sumUsedUnits(ctx context.Context, exceptInstanceID string)
 	return used, nil
 }
 
-// instanceUnits 计算单个已启用实例的 units：经 algorithm.active_version 取档位
-// 并 ResolveUnits（D12）。返回 ok=false 表示该实例当前不可计价。
-func (s *taskService) instanceUnits(ctx context.Context, inst *model.AlgorithmInstance) (uint32, bool) {
-	algo, err := s.algoRepo.GetAlgorithmByID(ctx, inst.AlgorithmID)
-	if err != nil {
+// instanceRowUnits 计算单个配额行的 units：经 JOIN 带出的 active_version 取档位
+// 并 ResolveUnits（D12）。返回 ok=false 表示该实例当前不可计价（不占资源）。
+// 语义与原 N+1 实现一致：算法缺失 / 算法未激活 / version 行缺失 / 档位不可解析 → 跳过。
+func (s *taskService) instanceRowUnits(ctx context.Context, row *repository.EnabledInstanceQuotaRow) (uint32, bool) {
+	if row.AlgoExists == "" {
 		s.log.Warn("quota sum: algorithm missing",
-			zap.String("algorithm_id", inst.AlgorithmID),
-			zap.String("instance_id", inst.InstanceID), zap.Error(err))
+			zap.String("algorithm_id", row.AlgorithmID),
+			zap.String("instance_id", row.InstanceID))
 		return 0, false
 	}
-	if algo.ActiveVersion == "" {
+	if row.ActiveVersion == "" {
 		s.log.Warn("quota sum: algorithm has no active version",
-			zap.String("algorithm_id", inst.AlgorithmID))
+			zap.String("algorithm_id", row.AlgorithmID),
+			zap.String("instance_id", row.InstanceID))
 		return 0, false
 	}
-	version, err := s.algoRepo.GetVersion(ctx, inst.AlgorithmID, algo.ActiveVersion)
-	if err != nil {
-		s.log.Warn("quota sum: active version row missing",
-			zap.String("algorithm_id", inst.AlgorithmID),
-			zap.String("version", algo.ActiveVersion), zap.Error(err))
+	if len(row.FPSTiers) == 0 {
+		// LEFT JOIN 未命中激活版本行（缺失或已软删），或档位列为空。
+		s.log.Warn("quota sum: active version row missing or empty fps tiers",
+			zap.String("algorithm_id", row.AlgorithmID),
+			zap.String("version", row.ActiveVersion),
+			zap.String("instance_id", row.InstanceID))
 		return 0, false
 	}
 	var tiers []model.FPSTier
-	if err := json.Unmarshal(version.FPSTiers, &tiers); err != nil {
+	if err := json.Unmarshal(row.FPSTiers, &tiers); err != nil {
 		s.log.Warn("quota sum: stored fps tiers invalid",
-			zap.String("algorithm_id", inst.AlgorithmID), zap.Error(err))
+			zap.String("algorithm_id", row.AlgorithmID),
+			zap.String("instance_id", row.InstanceID), zap.Error(err))
 		return 0, false
 	}
-	units, err := ResolveUnits(tiers, inst.AnalysisFPS)
+	units, err := ResolveUnits(tiers, row.AnalysisFPS)
 	if err != nil {
 		s.log.Warn("quota sum: instance fps exceeds tiers",
-			zap.String("instance_id", inst.InstanceID), zap.Error(err))
+			zap.String("instance_id", row.InstanceID), zap.Error(err))
 		return 0, false
 	}
 	return units, true

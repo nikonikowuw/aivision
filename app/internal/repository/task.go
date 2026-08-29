@@ -48,7 +48,10 @@ type TaskRepository interface {
 	DeleteInstance(ctx context.Context, instanceID string) (bool, error)
 	GetInstance(ctx context.Context, instanceID string) (*model.AlgorithmInstance, error)
 	ListInstancesByCameraID(ctx context.Context, cameraID string) ([]model.AlgorithmInstance, error)
-	ListEnabledInstances(ctx context.Context) ([]model.AlgorithmInstance, error) // 配额累加 + DesiredState
+	ListInstancesByCameraIDs(ctx context.Context, cameraIDs []string) ([]model.AlgorithmInstance, error)
+	// ListEnabledInstanceQuotaRows 一次 JOIN 返回全部已启用实例的配额计价行
+	// （实例 + 算法激活版本 + 档位），供 service 层配额累加（避免 N+1）。
+	ListEnabledInstanceQuotaRows(ctx context.Context) ([]EnabledInstanceQuotaRow, error)
 
 	// 状态回报：仅状态码变化时调用（design D6）
 	UpdateTaskStatus(ctx context.Context, cameraID string, status int8, msg string) error
@@ -84,22 +87,20 @@ func (r *taskRepository) UpdateTask(ctx context.Context, task *model.AnalysisTas
 	return writeError(r.db.WithContext(ctx).Save(task).Error)
 }
 
-// DeleteTaskCascade 同事务软删除任务及其全部实例；任务不存在或已软删返回 (false, nil)。
+// DeleteTaskCascade 软删除任务及其全部实例；任务不存在或已软删返回 (false, nil)。
+// 不自行开事务：调用方（service.DeleteTask）已在 InTx 内调用，r.db 绑定事务连接，
+// 两条 Delete 与外层 revision bump 原子提交（design §3.1），避免嵌套事务 savepoint。
 func (r *taskRepository) DeleteTaskCascade(ctx context.Context, cameraID string) (bool, error) {
-	deleted := false
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.Where("camera_id = ?", cameraID).Delete(&model.AnalysisTask{})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return nil
-		}
-		deleted = true
-		// 级联软删该任务下全部实例（实例无法脱离任务存在，见 D9）
-		return tx.Where("camera_id = ?", cameraID).Delete(&model.AlgorithmInstance{}).Error
-	})
-	return deleted, err
+	res := r.db.WithContext(ctx).Where("camera_id = ?", cameraID).Delete(&model.AnalysisTask{})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return false, nil
+	}
+	// 级联软删该任务下全部实例（实例无法脱离任务存在，见 D9）
+	err := r.db.WithContext(ctx).Where("camera_id = ?", cameraID).Delete(&model.AlgorithmInstance{}).Error
+	return true, err
 }
 
 func (r *taskRepository) GetTaskByCameraID(ctx context.Context, cameraID string) (*model.AnalysisTask, error) {
@@ -209,13 +210,45 @@ func (r *taskRepository) ListInstancesByCameraID(ctx context.Context, cameraID s
 	return items, err
 }
 
-func (r *taskRepository) ListEnabledInstances(ctx context.Context) ([]model.AlgorithmInstance, error) {
+func (r *taskRepository) ListInstancesByCameraIDs(ctx context.Context, cameraIDs []string) ([]model.AlgorithmInstance, error) {
+	if len(cameraIDs) == 0 {
+		return []model.AlgorithmInstance{}, nil
+	}
 	var items []model.AlgorithmInstance
 	err := r.db.WithContext(ctx).
-		Where("enabled = ?", true).
+		Where("camera_id IN ?", cameraIDs).
 		Order("id asc").
 		Find(&items).Error
 	return items, err
+}
+
+// EnabledInstanceQuotaRow 配额累加行：已启用实例 + 算法激活版本 + FPS 档位。
+// AlgoExists 为空表示算法行缺失（LEFT JOIN 未命中）；ActiveVersion 为空表示算法未激活；
+// FPSTiers 为空表示激活版本行缺失或已软删——service 层均按「不占资源」跳过（与原 N+1 语义一致）。
+type EnabledInstanceQuotaRow struct {
+	InstanceID    string          `gorm:"column:instance_id"`
+	AlgorithmID   string          `gorm:"column:algorithm_id"`
+	AlgoExists    string          `gorm:"column:algo_exists"`
+	ActiveVersion string          `gorm:"column:active_version"`
+	AnalysisFPS   int32           `gorm:"column:analysis_fps"`
+	FPSTiers      json.RawMessage `gorm:"column:fps_tiers"`
+}
+
+// ListEnabledInstanceQuotaRows 一次 JOIN 返回全部已启用实例的配额计价行，
+// 替代原先「每实例 GetAlgorithmByID + GetVersion」的 N+1 查询（design §5 配额累加）。
+// 算法行用 LEFT JOIN：算法缺失/未激活的实例仍出现在结果中（AlgoExists/ActiveVersion
+// 为空），由 service 层记 warn 并按不占资源跳过——与原 instanceUnits 诊断语义一致。
+func (r *taskRepository) ListEnabledInstanceQuotaRows(ctx context.Context) ([]EnabledInstanceQuotaRow, error) {
+	var rows []EnabledInstanceQuotaRow
+	err := r.db.WithContext(ctx).
+		Table("algorithm_instances ai").
+		Select("ai.instance_id, ai.algorithm_id, a.algorithm_id AS algo_exists, ai.analysis_fps, a.active_version, av.fps_tiers").
+		Joins("LEFT JOIN algorithms a ON a.algorithm_id = ai.algorithm_id AND a.deleted_at = 0").
+		Joins("LEFT JOIN algorithm_versions av ON av.algorithm_id = ai.algorithm_id AND av.version = a.active_version AND av.deleted_at = 0").
+		Where("ai.enabled = ? AND ai.deleted_at = 0", true).
+		Order("ai.id ASC").
+		Scan(&rows).Error
+	return rows, err
 }
 
 // ── 状态回报 ──────────────────────────────────────────────────────────

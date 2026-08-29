@@ -213,7 +213,7 @@ func TestTaskServiceUpdateAtomicity(t *testing.T) {
 		AnalysisFPS: 5,
 		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
 		Rules:       nil,
-		Enabled:     false,
+		Enabled:     true, // 启用态：整份更新才触发配额复校（停用实例不占资源，跳过配额，见 design §7）
 	})
 	if err != nil {
 		t.Fatalf("create instance: %v", err)
@@ -470,6 +470,93 @@ func TestTaskServiceEngineUnavailableRejectsEnable(t *testing.T) {
 	}
 }
 
+// TestTaskServiceEngineUnavailableAllowsDisabledWrite Engine 离线（配额从未获取）时：
+// 停用实例的创建与配置更新仍被允许（离线编排），仅启用操作被拒（design §7）。
+func TestTaskServiceEngineUnavailableAllowsDisabledWrite(t *testing.T) {
+	svc, db, profile, taskRepo, _ := newTaskServiceTestEnv(t, 1000, 100)
+	profile.set(nil, errors.New("engine socket missing"))
+	seedTaskFixture(t, db)
+	// 不 waitQuotaReady：配额永不成功。
+	ctx := context.Background()
+
+	// 停用实例创建成功（不触发配额校验）。
+	inst, err := svc.CreateInstance(ctx, &CreateInstanceInput{
+		CameraID:    "cam-a",
+		AlgorithmID: "yolov8n",
+		AnalysisFPS: 15,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
+		Enabled:     false,
+	})
+	if err != nil {
+		t.Fatalf("create disabled instance with engine down: %v", err)
+	}
+	if inst.Enabled || inst.ActualStatus != model.InstanceStatusStopped {
+		t.Fatalf("disabled instance = %+v", inst)
+	}
+
+	// 停用实例整份更新成功（不触发配额校验）。
+	fps := int32(25)
+	if err := svc.UpdateInstance(ctx, inst.InstanceID, &UpdateInstanceInput{
+		AnalysisFPS: &fps,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.8}`),
+		Rules:       nil,
+	}); err != nil {
+		t.Fatalf("update disabled instance with engine down: %v", err)
+	}
+
+	// 启用被拒（CodeEngineUnavailable），且不写库不 bump（零副作用）。
+	rev := currentRevision(t, taskRepo)
+	if err := svc.SetInstanceEnabled(ctx, inst.InstanceID, true); !errno.Is(err, errno.CodeEngineUnavailable) {
+		t.Fatalf("enable with engine down err = %v, want CodeEngineUnavailable", err)
+	}
+	if got := currentRevision(t, taskRepo); got != rev {
+		t.Errorf("rejected enable bumped revision %d -> %d", rev, got)
+	}
+}
+
+// TestTaskServiceEnableRejectsCorruptedRules 存储 rules_json 损坏时启用实例必须
+// fail closed（CodeInternal），不得静默降级为空规则后放行——与快照组装语义一致。
+func TestTaskServiceEnableRejectsCorruptedRules(t *testing.T) {
+	svc, db, _, taskRepo, _ := newTaskServiceTestEnv(t, 1000, 100)
+	seedTaskFixture(t, db)
+	waitQuotaReady(t, svc)
+	ctx := context.Background()
+
+	inst, err := svc.CreateInstance(ctx, &CreateInstanceInput{
+		CameraID:    "cam-a",
+		AlgorithmID: "yolov8n",
+		AnalysisFPS: 5,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
+		Enabled:     false,
+	})
+	if err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	// 直接写坏 rules_json（模拟存储损坏）。
+	if err := db.Model(&model.AlgorithmInstance{}).
+		Where("instance_id = ?", inst.InstanceID).
+		Update("rules_json", []byte(`{"not":"an array"}`)).Error; err != nil {
+		t.Fatalf("corrupt rules_json: %v", err)
+	}
+
+	// 启用被拒：CodeInternal，不写库不 bump（零副作用）。
+	rev := currentRevision(t, taskRepo)
+	if err := svc.SetInstanceEnabled(ctx, inst.InstanceID, true); !errno.Is(err, errno.CodeInternal) {
+		t.Fatalf("enable with corrupted rules err = %v, want CodeInternal", err)
+	}
+	if got := currentRevision(t, taskRepo); got != rev {
+		t.Errorf("rejected enable bumped revision %d -> %d", rev, got)
+	}
+	got, err := taskRepo.GetInstance(ctx, inst.InstanceID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if got.Enabled {
+		t.Fatal("instance should stay disabled after rejected enable")
+	}
+}
+
 // TestTaskServiceFPSTierExceeded 超过最高档位直接拒绝（CodeFPSTierExceeded），不钳位。
 func TestTaskServiceFPSTierExceeded(t *testing.T) {
 	svc, db, _, _, _ := newTaskServiceTestEnv(t, 1000, 100)
@@ -485,6 +572,63 @@ func TestTaskServiceFPSTierExceeded(t *testing.T) {
 	})
 	if !errno.Is(err, errno.CodeFPSTierExceeded) {
 		t.Fatalf("err = %v, want CodeFPSTierExceeded", err)
+	}
+}
+
+// TestTaskServiceListTasksWithInstances 验证 ListTasks 一次查询聚合返回挂载的实例摘要（1:N 管道槽位数据）。
+func TestTaskServiceListTasksWithInstances(t *testing.T) {
+	svc, db, _, _, report := newTaskServiceTestEnv(t, 1000, 100)
+	seedTaskFixture(t, db)
+	waitQuotaReady(t, svc)
+	ctx := context.Background()
+
+	// cam-a 创建一个停用实例
+	inst1, err := svc.CreateInstance(ctx, &CreateInstanceInput{
+		CameraID:    "cam-a",
+		AlgorithmID: "yolov8n",
+		AnalysisFPS: 10,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
+		Enabled:     false,
+	})
+	if err != nil {
+		t.Fatalf("create inst1: %v", err)
+	}
+
+	// 模拟上报 runtime 实时数据
+	report.AcceptInstanceState(context.Background(), &aivisionv1.InstanceState{
+		InstanceId: inst1.InstanceID,
+		Status:     aivisionv1.InstanceStatusCode_INSTANCE_STATUS_RUNNING,
+		CurrentFps: 9.8,
+	})
+
+	res, err := svc.ListTasks(ctx, &TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(res.Items) == 0 {
+		t.Fatal("expected at least 1 task")
+	}
+
+	// 找到 cam-a 的任务
+	var target *TaskItem
+	for _, item := range res.Items {
+		if item.CameraID == "cam-a" {
+			target = item
+			break
+		}
+	}
+	if target == nil {
+		t.Fatal("cam-a task not found")
+	}
+	if target.InstanceCount != 1 || len(target.Instances) != 1 {
+		t.Fatalf("instanceCount=%d, len(instances)=%d, want 1", target.InstanceCount, len(target.Instances))
+	}
+	brief := target.Instances[0]
+	if brief.InstanceID != inst1.InstanceID || brief.AlgorithmID != "yolov8n" {
+		t.Fatalf("unexpected brief: %+v", brief)
+	}
+	if brief.CurrentFPS == nil || *brief.CurrentFPS < 9.0 {
+		t.Fatalf("expected currentFps to be merged, got %+v", brief.CurrentFPS)
 	}
 }
 

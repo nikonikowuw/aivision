@@ -37,6 +37,18 @@ export namespace TaskApi {
     points: DetectionPoint[];
   }
 
+  /** 任务列表页轻量级实例摘要（供 1:N 管道流水线与控制台展示） */
+  export interface TaskInstanceBrief {
+    instanceId: string;
+    algorithmId: string;
+    analysisFps: number;
+    currentFps: null | number;
+    enabled: boolean;
+    actualStatus: number;
+    statusMessage: string;
+    rulesCount: number;
+  }
+
   /** 分析任务项（库中配置 + 内存实时字段合并） */
   export interface TaskItem {
     cameraId: string;
@@ -46,6 +58,8 @@ export namespace TaskApi {
     statusMessage: string;
     lastFrameAt: null | string;
     reportedAt: null | string;
+    instanceCount?: number;
+    instances?: TaskInstanceBrief[];
   }
 
   export interface TaskListQuery {

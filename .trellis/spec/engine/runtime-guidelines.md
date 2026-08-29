@@ -154,6 +154,7 @@ validated
 
 - 摄像头拉流、解码和其他算法实例不得中断。
 - 有任务 desired state 引用 `algorithm_id` 时禁止卸载。
+- `active_package_versions` 仅表示当前激活版本的控制面标记，不等同于任务引用；没有启用中的实例时，允许卸载当前激活版本，随后由 Go 的新 revision 清除或切换该标记。
 - 同一 `algorithm_id + platform_id` 同时只能有一个 active version。
 - 失败回滚也失败时进入明确 `degraded` 状态并逐项上报，禁止假装恢复成功。
 
@@ -175,7 +176,7 @@ validated
 | 图片已不存在 | DeleteImages 返回 `already_absent` |
 | 上报失败 | 图片标记 unreported，不删除 |
 | 新包初始化失败 | 回滚旧版本并恢复受影响实例 |
-| 包仍被 desired state 引用 | `PACKAGE_IN_USE` |
+| 仍有启用实例被 desired state 引用，或仍有运行实例 | `PACKAGE_IN_USE` |
 
 ## 8. Good / Base / Bad Cases
 

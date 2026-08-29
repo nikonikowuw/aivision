@@ -1,6 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
+  "title": "YOLOv8n Object Detection Config",
+  "description": "Configuration schema for YOLOv8n object detection algorithm package",
   "additionalProperties": false,
   "required": [
     "confidence_threshold",
@@ -11,16 +13,16 @@
       "type": "number",
       "title": "置信度阈值",
       "description": "检测框置信度低于该值的检测结果将被过滤",
-      "minimum": 0,
-      "maximum": 1,
-      "default": 0.5
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.50
     },
     "iou_threshold": {
       "type": "number",
       "title": "IoU 阈值",
       "description": "非极大值抑制使用的交并比阈值",
-      "minimum": 0,
-      "maximum": 1,
+      "minimum": 0.0,
+      "maximum": 1.0,
       "default": 0.45
     }
   }

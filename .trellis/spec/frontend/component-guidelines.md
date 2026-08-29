@@ -187,11 +187,12 @@ modelPropNameMap: { ApiTreeSelect: 'modelValue' },
 ```ts
 const gridOptions: VxeTableGridOptions<T> = {
   rowConfig: {
-    keyField: 'id', // 或业务唯一键如 cameraId，供 VxeTable 跟踪行展开状态
+    keyField: 'cameraId', // 必须提供确定唯一的业务字段，供 VxeTable 跟踪行展开状态映射
   },
   expandConfig: {
     trigger: 'cell', // 'cell' 点击展开列单元格触发展开；或 'default' 仅点击箭头
     showIcon: true,
+    reserve: true,   // 必须开启状态保留，配合 query 避免数据更新时展开行意外收起
   },
   columns: [
     {
@@ -205,9 +206,12 @@ const gridOptions: VxeTableGridOptions<T> = {
 };
 ```
 
-#### 3. 契约
-- 必须提供 `rowConfig.keyField`，否则 VxeTable 使用动态生成的 `_X_ROW_KEY`，在表格 reload 时会导致展开状态丢失或定位混乱。
-- 必须声明 `expandConfig` 对象；若遗漏，VxeTable 的 `computeExpandOpts` 不会激活展开功能，导致展开箭头不显示或展开插槽内容不渲染。
+#### 3. 契约与防折叠/防重置规则
+- 必须提供 `rowConfig.keyField`，否则 VxeTable 使用动态生成的 `_X_ROW_KEY`，在表格数据更新时会导致展开状态丢失或定位混乱。
+- 必须声明 `expandConfig: { reserve: true }`，配合 `keyField` 在底层建立持久化展开映射表 `rowExpandedMaps`。
+- **避免 `gridApi.reload()` 导致展开强制清空**：
+  - VxeTable 的 Proxy 机制中，`commitProxy('reload')` 会在发起请求前同步执行 `$xeTable.clearAll()`，该方法会强行重置所有行展开（`clearRowExpand()`）。
+  - 因此，数据保存、开关启停或刷新当前列表时，**必须优先调用 `gridApi.query()` 而非 `gridApi.reload()`**；`reload` 仅用于新增数据返回第一页或重置查询等需要重置全表状态的场景。
 - 插槽名称通过 `slots: { content: 'slotName' }` 指定，在 `<Grid>` 内部通过 `<template #slotName="{ row }">` 承载展开容器。
 
 ### 7. 1:N 关系的流式管道展示规范 (Pipeline Strip)
@@ -225,6 +229,68 @@ const gridOptions: VxeTableGridOptions<T> = {
 - 当操作列包含 3 个及以上文字链接按钮时，宽度必须精确计算，禁止使用默认的 `120px~160px` 导致最右侧高危按钮（如“删除”）被固定列截断。
 - 文本长度精简规则：使用两字动作动词（如 `编辑`、`删除`、`抽屉`），避免冗余后缀（`编辑任务`、`删除任务`）。
 - 包含 3 个动作（含 Popconfirm 二次确认）的操作列宽度**至少为 `200px`**，并显式指定 `fixed: 'right'` 与 `align: 'center'`。
+
+### 9. 瞬态状态高频轮询与静默就地 Patch 规范 (Silent Polling & In-Place Patch)
+
+#### 1. 范围 / 触发
+- **触发条件**：列表中包含异步过渡状态（如任务/实例从 `STARTING` 到 `RUNNING` 的短暂冷启动状态）或实时性能吞吐指标（如动态 FPS），需要在短时间内（如 1s 间隔）高频轮询更新状态。
+
+#### 2. 核心原则
+- **坚决禁止在高频轮询中调用 `gridApi.reload()` 或 `gridApi.query()`**：
+  - VxeTable 的 Proxy 机制在执行 `query` 时，会在前后自动切换 `reactData.tableLoading = true/false` 并调用 `$xeTable.recalculate()` 重新计算容器尺寸。
+  - 高频触发会导致表格出现明显的页面闪烁、Loading 遮罩微动与视觉重绘抖动。
+- **采用静默请求 + 内存就地 Patch (In-Place Patch)**：
+  - 通过独立的 API 函数（如 `getTaskListApi`）发起静默 HTTP 请求。
+  - 通过 `gridApi.grid?.getData()` 获取当前页表格内存中的响应式对象数组。
+  - 遍历匹配唯一键，直接就地更新易变字段（如 `actualStatus`、`currentFps`、`desiredEnabled`、`instances` 等）。
+  - 利用 Vue3 细粒度响应式系统触发局部 DOM 补丁，只有指示灯颜色和 FPS 数值平滑跳动，实现 **零 Loading 遮罩、零布局抖动、零展开行收起**。
+- **自动休眠契约 (Auto Sleep)**：
+  - 轮询函数必须包含终止条件（如当前列表内所有项已脱离 `STARTING` 状态，或超出最大轮询时间如 15 秒）。
+  - 一旦满足终止条件，必须立即调用 `clearInterval` 销毁定时器，避免常驻无意义的边缘网络和 CPU 资源消耗。
+
+#### 3. 示例代码
+
+```ts
+// 轮询拉取并静默就地更新状态
+async function fetchStatusSilently() {
+  try {
+    loadStats(); // 同步更新顶部统计
+    const formValues = (await gridApi.formApi.getValues?.()) ?? {};
+    const tablePage = gridApi.grid?.getProxyInfo?.()?.pager || {
+      currentPage: 1,
+      pageSize: 10,
+    };
+
+    const res = await getTaskListApi({
+      page: tablePage.currentPage,
+      pageSize: tablePage.pageSize,
+      name: formValues.name || undefined,
+    });
+
+    // 检查瞬态是否全部收敛，若是则休眠
+    const hasStarting = res.items?.some((t) => t.actualStatus === 1);
+    if (!hasStarting) {
+      stopPolling();
+    }
+
+    // 就地 Patch 避免触发 VxeTable loading 与全量重排
+    const currentRows = gridApi.grid?.getData?.() ?? [];
+    if (currentRows.length > 0 && res.items?.length > 0) {
+      const freshMap = new Map(res.items.map((item) => [item.cameraId, item]));
+      for (const row of currentRows) {
+        const fresh = freshMap.get(row.cameraId);
+        if (fresh) {
+          row.actualStatus = fresh.actualStatus;
+          row.currentFps = fresh.currentFps;
+          row.instances = fresh.instances;
+        }
+      }
+    }
+  } catch {
+    // 静默轮询错误静默捕获，不打扰用户
+  }
+}
+```
 
 ---
 

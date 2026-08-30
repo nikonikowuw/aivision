@@ -7,7 +7,13 @@ import { ref } from 'vue';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
-import { Button, Descriptions, DescriptionsItem, Tag } from 'ant-design-vue';
+import {
+  Button,
+  Descriptions,
+  DescriptionsItem,
+  Tag,
+  Tooltip,
+} from 'ant-design-vue';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
@@ -24,6 +30,8 @@ import TargetCropCanvas from './components/TargetCropCanvas.vue';
 const currentDetail = ref<AlarmRecordApi.AlarmRecordDetail | null>(null);
 
 const [DetailModal, detailModalApi] = useVbenModal({
+  class: 'w-[1100px] max-w-[95vw]',
+  fullscreenButton: true,
   showCancelButton: false,
   title: $t('record.alarm.detail.title'),
 });
@@ -105,7 +113,6 @@ const gridOptions: VxeTableGridOptions<AlarmRecordApi.AlarmRecordItem> = {
   pagerConfig: {
     enabled: true,
   },
-  // 保持与其他管理页面（camera/user/log/task）一致的标准自适应表格高度，不强制启用会截断视口高度的 scrollY 虚拟滚动
   proxyConfig: {
     ajax: {
       query: async ({ page }, formValues) => {
@@ -287,85 +294,122 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
     </Grid>
 
     <DetailModal>
-      <div v-if="currentDetail" :key="currentDetail.id" class="flex flex-col gap-4 p-4">
-        <!-- 基本事件元数据 -->
-        <Descriptions :column="2" bordered size="small">
-          <DescriptionsItem :label="$t('record.alarm.detail.eventId')" :span="2">
-            <span class="font-mono text-xs">{{ currentDetail.eventId }}</span>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.occurredAt')">
-            {{ currentDetail.occurredAt }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.timeSynced')">
-            <Tag :color="currentDetail.timeSynced ? 'success' : 'warning'">
-              {{ currentDetail.timeSynced ? 'Yes' : 'No' }}
-            </Tag>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.camera')">
-            {{ currentDetail.cameraName || currentDetail.cameraId }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.algorithm')">
-            {{ currentDetail.algorithmName || currentDetail.algorithmId }}
-            <span class="text-muted-foreground"> (v{{ currentDetail.algorithmVersion }})</span>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.alarmType')">
-            <Tag color="blue">{{ currentDetail.alarmTypeId }}</Tag>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.targetLabel')">
-            <span>{{ currentDetail.targetLabel || 'Target' }}</span>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.trackId')">
-            <span class="font-mono">{{ currentDetail.trackId ? `#${currentDetail.trackId}` : '-' }}</span>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.detail.confidence')">
-            <span class="font-bold text-red-500">
-              {{ (currentDetail.confidence * 100).toFixed(1) }}%
-            </span>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.alarm.columns.targetCrop')" :span="2">
-            <div class="flex items-center gap-3">
-              <TargetCropCanvas
-                :image-id="currentDetail.imageId"
-                :bbox="currentDetail.bbox"
-                :width="96"
-                :height="96"
-              />
-              <span class="text-xs text-muted-foreground">
-                (点击目标特写可查看原图 1:1 无损超清放大)
+      <div
+        v-if="currentDetail"
+        :key="currentDetail.id"
+        class="flex flex-col gap-4 p-2 lg:flex-row"
+      >
+        <!-- 左侧：宽幅全景大图与智能图层（占主视觉宽度） -->
+        <div class="flex flex-1 flex-col overflow-hidden">
+          <AlarmAnnotationCanvas :detail="currentDetail" />
+        </div>
+
+        <!-- 右侧：结构化事件与目标侧边栏 (340px 紧凑面板) -->
+        <div class="flex w-full flex-col gap-3.5 lg:w-[340px] lg:shrink-0">
+          <!-- 识别目标特写高亮卡片 -->
+          <div
+            class="flex flex-col gap-3 rounded-lg border border-border/80 bg-card p-3.5 shadow-xs"
+          >
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-foreground">
+                {{ $t('record.alarm.detail.targetCard') }}
               </span>
+              <Tag color="blue" class="m-0 font-medium">
+                {{ currentDetail.alarmTypeId }}
+              </Tag>
             </div>
-          </DescriptionsItem>
-        </Descriptions>
 
-        <!-- 全景底图与叠加标注 -->
-        <div class="flex flex-col gap-2 rounded border border-border bg-card p-3">
-          <span class="font-medium text-xs text-foreground">
-            {{ $t('record.alarm.detail.imageAnnotation') }}
-          </span>
+            <div class="flex items-center gap-3.5">
+              <!-- 高清目标特写（带无损放大） -->
+              <Tooltip :title="$t('record.alarm.detail.cropTip')">
+                <div class="shrink-0">
+                  <TargetCropCanvas
+                    :image-id="currentDetail.imageId"
+                    :bbox="currentDetail.bbox"
+                    :width="80"
+                    :height="80"
+                  />
+                </div>
+              </Tooltip>
 
-          <!-- 图例 -->
-          <div class="flex flex-wrap gap-4 text-xs">
-            <span class="flex items-center gap-1">
-              <span class="inline-block h-3 w-3 border border-yellow-400 bg-yellow-400/30"></span>
-              {{ $t('record.alarm.detail.legendRoi') }}
-            </span>
-            <span class="flex items-center gap-1">
-              <span class="inline-block h-3 w-3 border border-gray-400 bg-gray-600/40"></span>
-              {{ $t('record.alarm.detail.legendMask') }}
-            </span>
-            <span class="flex items-center gap-1">
-              <span class="inline-block h-1 w-3 bg-amber-500"></span>
-              {{ $t('record.alarm.detail.legendLine') }}
-            </span>
-            <span class="flex items-center gap-1">
-              <span class="inline-block h-3 w-3 border border-red-500 bg-red-500/20"></span>
-              {{ $t('record.alarm.detail.legendTarget') }}
-            </span>
+              <div class="flex flex-1 flex-col gap-1.5 overflow-hidden">
+                <div class="flex items-center gap-1.5 truncate">
+                  <span class="text-sm font-bold text-foreground truncate">
+                    {{ currentDetail.targetLabel || 'Target' }}
+                  </span>
+                  <Tag
+                    v-if="currentDetail.trackId"
+                    color="purple"
+                    class="m-0 text-[11px] font-mono px-1 py-0"
+                  >
+                    #{{ currentDetail.trackId }}
+                  </Tag>
+                </div>
+
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-xs text-muted-foreground">
+                    {{ $t('record.alarm.detail.confidence') }}:
+                  </span>
+                  <span class="text-base font-bold text-red-500">
+                    {{ (currentDetail.confidence * 100).toFixed(1) }}%
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <AlarmAnnotationCanvas :detail="currentDetail" />
+          <!-- 事件元数据详细表格 -->
+          <div class="rounded-lg border border-border/80 bg-card p-3.5 shadow-xs">
+            <div class="mb-2.5 font-semibold text-xs text-foreground">
+              {{ $t('record.alarm.detail.eventInfo') }}
+            </div>
+
+            <Descriptions :column="1" size="small" class="alarm-detail-desc" :label-style="{ width: '85px' }">
+              <DescriptionsItem :label="$t('record.alarm.detail.occurredAt')">
+                <span class="text-xs text-foreground">{{ currentDetail.occurredAt }}</span>
+              </DescriptionsItem>
+              <DescriptionsItem :label="$t('record.alarm.detail.camera')">
+                <span class="text-xs font-medium text-foreground truncate" :title="currentDetail.cameraName || currentDetail.cameraId">
+                  {{ currentDetail.cameraName || currentDetail.cameraId }}
+                </span>
+              </DescriptionsItem>
+              <DescriptionsItem :label="$t('record.alarm.detail.algorithm')">
+                <div class="flex flex-wrap items-center gap-1">
+                  <span class="text-xs text-foreground">
+                    {{ currentDetail.algorithmName || currentDetail.algorithmId }}
+                  </span>
+                  <Tag v-if="currentDetail.algorithmVersion" class="m-0 text-[10px] px-1 py-0">
+                    v{{ currentDetail.algorithmVersion }}
+                  </Tag>
+                </div>
+              </DescriptionsItem>
+              <DescriptionsItem :label="$t('record.alarm.detail.timeSynced')">
+                <Tag :color="currentDetail.timeSynced ? 'success' : 'warning'" class="m-0 text-[11px]">
+                  {{ currentDetail.timeSynced ? $t('record.alarm.detail.synced') : $t('record.alarm.detail.notSynced') }}
+                </Tag>
+              </DescriptionsItem>
+              <DescriptionsItem :label="$t('record.alarm.detail.eventId')">
+                <span class="font-mono text-[11px] text-muted-foreground break-all">
+                  {{ currentDetail.eventId }}
+                </span>
+              </DescriptionsItem>
+            </Descriptions>
+          </div>
         </div>
       </div>
     </DetailModal>
   </Page>
 </template>
+
+<style scoped>
+:deep(.alarm-detail-desc .ant-descriptions-item-label) {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.45));
+  padding-bottom: 6px;
+}
+:deep(.alarm-detail-desc .ant-descriptions-item-content) {
+  font-size: 12px;
+  padding-bottom: 6px;
+}
+</style>
+

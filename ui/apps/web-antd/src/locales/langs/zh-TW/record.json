@@ -30,6 +30,7 @@
     "detail": {
       "title": "告警詳情",
       "eventInfo": "事件資訊",
+      "targetCard": "識別目標",
       "eventId": "事件標識",
       "occurredAt": "發生時間",
       "camera": "關聯攝影機",
@@ -40,12 +41,15 @@
       "confidence": "信賴度",
       "trackId": "Track ID",
       "timeSynced": "時間同步",
+      "synced": "已同步",
+      "notSynced": "未同步",
+      "cropTip": "點擊目標圖可查看 1:1 無損高清大圖",
       "imageAnnotation": "全景圖與智慧標註",
       "legendRoi": "檢測區域 (ROI)",
       "legendMask": "屏蔽區域 (Mask)",
       "legendLine": "警戒線 (Line)",
-      "legendTarget": "觸發目標 (Target)",
-      "noImage": "暫無圖片"
+      "legendTarget": "目標邊界框",
+      "noImage": "暫無全景圖片"
     }
   }
 }

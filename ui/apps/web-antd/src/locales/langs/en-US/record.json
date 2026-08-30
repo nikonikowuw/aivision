@@ -28,8 +28,9 @@
       "action": "Action"
     },
     "detail": {
-      "title": "Alarm Detail",
-      "eventInfo": "Event Info",
+      "title": "Alarm Details",
+      "eventInfo": "Event Information",
+      "targetCard": "Identified Target",
       "eventId": "Event ID",
       "occurredAt": "Occurred At",
       "camera": "Camera",
@@ -40,11 +41,14 @@
       "confidence": "Confidence",
       "trackId": "Track ID",
       "timeSynced": "Time Synced",
-      "imageAnnotation": "Panorama & Annotation",
+      "synced": "Synced",
+      "notSynced": "Not Synced",
+      "cropTip": "Click target image to view 1:1 lossless HD target",
+      "imageAnnotation": "Panorama & Annotations",
       "legendRoi": "ROI Area",
       "legendMask": "Mask Area",
       "legendLine": "Warning Line",
-      "legendTarget": "Target",
+      "legendTarget": "Target BBox",
       "noImage": "No Image Available"
     }
   }

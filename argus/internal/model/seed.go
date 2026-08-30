@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -79,6 +80,14 @@ var seedMenuTree = []seedMenuItem{
 		Icon: "ant-design:tool-outlined",
 		Children: []seedMenuItem{
 			{
+				Type: MenuTypeMenu, Name: "Time", Title: "routes.ops.time", Path: "/ops/time", Component: "/ops/time/index",
+				Icon: "ant-design:field-time-outlined", Permission: "ops:time",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "ops.time.read", Permission: "ops:time:read"},
+					{Type: MenuTypeButton, Name: "ops.time.edit", Permission: "ops:time:edit"},
+				},
+			},
+			{
 				Type: MenuTypeMenu, Name: "Network", Title: "routes.ops.network", Path: "/ops/network", Component: "/ops/network/index",
 				Icon: "ant-design:global-outlined", Permission: "ops:network",
 				Children: []seedMenuItem{
@@ -86,8 +95,79 @@ var seedMenuTree = []seedMenuItem{
 					{Type: MenuTypeButton, Name: "ops.network.confirm", Permission: "ops:network:confirm"},
 					{Type: MenuTypeButton, Name: "ops.network.cancel", Permission: "ops:network:cancel"},
 					{Type: MenuTypeButton, Name: "ops.network.reset", Permission: "ops:network:reset"},
+					{Type: MenuTypeButton, Name: "ops.network.mode", Permission: "ops:network:mode"},
 				},
 			},
+		},
+	},
+	{
+		Type: MenuTypeCatalog, Name: "Resource", Title: "routes.resource.resource", Path: "/resource", Component: "BasicLayout",
+		Icon: "ant-design:database-outlined",
+		Children: []seedMenuItem{
+			{
+				Type: MenuTypeMenu, Name: "Camera", Title: "routes.resource.camera", Path: "/resource/camera", Component: "/resource/camera/index",
+				Icon: "ant-design:video-camera-outlined", Permission: "resource:camera",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "resource.camera.add", Permission: "resource:camera:add"},
+					{Type: MenuTypeButton, Name: "resource.camera.edit", Permission: "resource:camera:edit"},
+					{Type: MenuTypeButton, Name: "resource.camera.delete", Permission: "resource:camera:delete"},
+					{Type: MenuTypeButton, Name: "resource.camera.probe", Permission: "resource:camera:probe"},
+				},
+			},
+			{
+				Type: MenuTypeMenu, Name: "ResourcePerson", Title: "routes.resource.person", Path: "/resource/person", Component: "/resource/person/index",
+				Icon: "ant-design:idcard-outlined", Permission: "resource:person", KeepAlive: true,
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "resource.person.add", Permission: "resource:person:add"},
+					{Type: MenuTypeButton, Name: "resource.person.edit", Permission: "resource:person:edit"},
+					{Type: MenuTypeButton, Name: "resource.person.delete", Permission: "resource:person:delete"},
+				},
+			},
+			{
+				Type: MenuTypeMenu, Name: "ResourceTask", Title: "routes.resource.task", Path: "/resource/task", Component: "/resource/task/index",
+				Icon: "ant-design:profile-outlined", Permission: "resource:task", KeepAlive: true,
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "resource.task.add", Permission: "resource:task:add"},
+					{Type: MenuTypeButton, Name: "resource.task.edit", Permission: "resource:task:edit"},
+					{Type: MenuTypeButton, Name: "resource.task.delete", Permission: "resource:task:delete"},
+				},
+			},
+		},
+	},
+	{
+		Type: MenuTypeCatalog, Name: "AI", Title: "routes.ai.ai", Path: "/ai", Component: "BasicLayout",
+		Icon: "ant-design:robot-outlined",
+		Children: []seedMenuItem{
+			{
+				Type: MenuTypeMenu, Name: "AiAlgorithm", Title: "routes.ai.algorithm", Path: "/ai/algorithm", Component: "/ai/algorithm/index",
+				Icon: "ant-design:appstore-outlined", Permission: "ai:algorithm", KeepAlive: true,
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "ai.algorithm.upload", Permission: "ai:algorithm:upload"},
+					{Type: MenuTypeButton, Name: "ai.algorithm.activate", Permission: "ai:algorithm:activate"},
+					{Type: MenuTypeButton, Name: "ai.algorithm.uninstall", Permission: "ai:algorithm:uninstall"},
+				},
+			},
+		},
+	},
+	{
+		Type: MenuTypeCatalog, Name: "Record", Title: "routes.record.record", Path: "/record", Component: "BasicLayout",
+		Icon: "ant-design:history-outlined",
+		Children: []seedMenuItem{
+			{
+				Type: MenuTypeMenu, Name: "RecordAlarm", Title: "routes.record.alarm", Path: "/record/alarm", Component: "/record/alarm/index",
+				Icon: "ant-design:alert-outlined", Permission: "record:alarm", KeepAlive: true,
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "record.alarm.query", Permission: "record:alarm:query"},
+					{Type: MenuTypeButton, Name: "record.alarm.export", Permission: "record:alarm:export"},
+				},
+			},
+		},
+	},
+	{
+		Type: MenuTypeMenu, Name: "LivePreview", Title: "routes.live.live", Path: "/live", Component: "/live/index",
+		Icon: "ant-design:video-camera-outlined", Permission: "live:preview", Affix: true,
+		Children: []seedMenuItem{
+			{Type: MenuTypeButton, Name: "live.preview.stream", Permission: "live:preview:stream"},
 		},
 	},
 	{
@@ -144,8 +224,17 @@ func seedAll(tx *gorm.DB) error {
 		return fmt.Errorf("seed role: %w", err)
 	}
 
-	// admin 用户（bcrypt）
-	hash, err := bcrypt.GenerateFromPassword([]byte(seedAdminPassword), bcrypt.DefaultCost)
+	// 菜单树 + super 角色全量绑定
+	if err := seedMenuBranch(tx, role.ID, 0, seedMenuTree); err != nil {
+		return err
+	}
+
+	// admin 用户（bcrypt，仅在指定密码或非空时创建，若环境未设则通过 cmd/bootstrap 手动初始化）
+	adminPassword := os.Getenv("APP_BOOTSTRAP_ADMIN_PASSWORD")
+	if adminPassword == "" {
+		adminPassword = seedAdminPassword
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("hash admin password: %w", err)
 	}
@@ -168,7 +257,27 @@ func seedAll(tx *gorm.DB) error {
 	}
 
 	// 菜单树 + super 角色全量绑定
-	return seedMenuBranch(tx, role.ID, 0, seedMenuTree)
+	if err := seedMenuBranch(tx, role.ID, 0, seedMenuTree); err != nil {
+		return err
+	}
+
+	// 基础系统配置 (system:time)
+	timeCfg := SystemConfig{
+		Key:    ConfigKeyTime,
+		Value:  `{"mode":"ntp","servers":["pool.ntp.org","ntp.aliyun.com"]}`,
+		Remark: "系统对时配置",
+	}
+	if err := tx.Where("key = ?", timeCfg.Key).FirstOrCreate(&timeCfg).Error; err != nil {
+		return fmt.Errorf("seed system config (%s): %w", timeCfg.Key, err)
+	}
+
+	// 任务版本计数器单行初始化 (id=1, revision=0)
+	rev := DesiredStateRevision{ID: 1, Revision: 0}
+	if err := tx.Where("id = ?", 1).FirstOrCreate(&rev).Error; err != nil {
+		return fmt.Errorf("seed desired_state_revision: %w", err)
+	}
+
+	return nil
 }
 
 func seedMenuBranch(tx *gorm.DB, roleID, parentID uint64, items []seedMenuItem) error {

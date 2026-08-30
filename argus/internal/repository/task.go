@@ -234,13 +234,13 @@ func (r *taskRepository) CountTasksByCameraID(ctx context.Context, cameraID stri
 }
 
 // GetTaskStats 聚合统计未软删任务/实例计数。
-// 使用 PostgreSQL COUNT FILTER 条件聚合，2 次查询替代原先 4 次独立 COUNT，
-// 减少 DB round-trip；deleted_at = 0 手动指定以匹配 soft_delete 插件语义。
+// 使用条件聚合 SUM(CASE WHEN ... THEN 1 ELSE 0 END)，2 次查询替代原先 4 次独立 COUNT，
+// 减少 DB round-trip 并兼容 SQLite / PostgreSQL 标准 SQL；deleted_at = 0 手动指定以匹配 soft_delete 插件语义。
 func (r *taskRepository) GetTaskStats(ctx context.Context) (*TaskStatsRow, error) {
 	row := &TaskStatsRow{}
 	if err := r.db.WithContext(ctx).Raw(
 		"SELECT COUNT(*) AS total_tasks, "+
-			"COUNT(*) FILTER (WHERE actual_status = ?) AS running_tasks "+
+			"COALESCE(SUM(CASE WHEN actual_status = ? THEN 1 ELSE 0 END), 0) AS running_tasks "+
 			"FROM analysis_tasks WHERE deleted_at = 0",
 		model.TaskStatusRunning,
 	).Row().Scan(&row.TotalTasks, &row.RunningTasks); err != nil {
@@ -248,7 +248,7 @@ func (r *taskRepository) GetTaskStats(ctx context.Context) (*TaskStatsRow, error
 	}
 	if err := r.db.WithContext(ctx).Raw(
 		"SELECT COUNT(*) AS total_instances, "+
-			"COUNT(*) FILTER (WHERE ai.enabled = TRUE AND task.desired_enabled = TRUE) AS enabled_instances "+
+			"COALESCE(SUM(CASE WHEN ai.enabled = 1 AND task.desired_enabled = 1 THEN 1 ELSE 0 END), 0) AS enabled_instances "+
 			"FROM algorithm_instances ai "+
 			"LEFT JOIN analysis_tasks task ON task.camera_id = ai.camera_id AND task.deleted_at = 0 "+
 			"WHERE ai.deleted_at = 0",

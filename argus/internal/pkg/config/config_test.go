@@ -23,12 +23,8 @@ func TestLoadFull(t *testing.T) {
 server:
   port: 9000
 db:
-  host: 10.0.0.1
-  port: 5432
-  user: app
-  password: secret
-  name: demo_db
-  time_zone: Asia/Tokyo
+  path: /tmp/custom.db
+  busy_timeout: 8000
   max_open: 50
   max_idle: 5
   max_lifetime: 15m
@@ -63,8 +59,7 @@ ipc:
 	if cfg.Server.Port != 9000 {
 		t.Errorf("server.port = %d, want 9000", cfg.Server.Port)
 	}
-	if cfg.DB.Host != "10.0.0.1" || cfg.DB.Port != 5432 || cfg.DB.User != "app" ||
-		cfg.DB.Password != "secret" || cfg.DB.Name != "demo_db" || cfg.DB.TimeZone != "Asia/Tokyo" {
+	if cfg.DB.Path != "/tmp/custom.db" || cfg.DB.BusyTimeout != 8000 {
 		t.Errorf("db = %+v", cfg.DB)
 	}
 	if cfg.DB.MaxOpen != 50 || cfg.DB.MaxIdle != 5 || cfg.DB.MaxLifetime != 15*time.Minute {
@@ -103,7 +98,7 @@ ipc:
 }
 
 func TestLoadDefaultsForMissingKeys(t *testing.T) {
-	path := writeConfig(t, "db:\n  name: only_name\n")
+	path := writeConfig(t, "jwt:\n  secret: dev\n")
 	cfg, err := load(path)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -111,17 +106,11 @@ func TestLoadDefaultsForMissingKeys(t *testing.T) {
 	if cfg.Server.Port != 8000 {
 		t.Errorf("server.port = %d, want default 8000", cfg.Server.Port)
 	}
-	if cfg.DB.Host != "127.0.0.1" || cfg.DB.Port != 5432 || cfg.DB.User != "postgres" {
+	if cfg.DB.Path != "data/argus.db" || cfg.DB.BusyTimeout != 5000 {
 		t.Errorf("db defaults not applied: %+v", cfg.DB)
 	}
-	if cfg.DB.Name != "only_name" {
-		t.Errorf("db.name = %q, want only_name", cfg.DB.Name)
-	}
-	if cfg.DB.MaxOpen != 100 || cfg.DB.MaxIdle != 10 || cfg.DB.MaxLifetime != 30*time.Minute {
+	if cfg.DB.MaxOpen != 20 || cfg.DB.MaxIdle != 5 || cfg.DB.MaxLifetime != 1*time.Hour {
 		t.Errorf("db pool defaults not applied: %+v", cfg.DB)
-	}
-	if cfg.DB.TimeZone != "Asia/Shanghai" {
-		t.Errorf("db.time_zone default = %q, want Asia/Shanghai", cfg.DB.TimeZone)
 	}
 	if cfg.JWT.AccessTTL != 2*time.Hour || cfg.JWT.RefreshTTL != 168*time.Hour {
 		t.Errorf("jwt ttl defaults not applied: %v %v", cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
@@ -152,12 +141,7 @@ func TestLoadEnvOverride(t *testing.T) {
 server:
   port: 8000
 db:
-  host: 127.0.0.1
-  port: 5432
-  user: postgres
-  password: "postgres"
-  name: niko_vue_admin
-  time_zone: Asia/Shanghai
+  path: data/argus.db
 jwt:
   secret: dev
   access_ttl: 2h
@@ -165,8 +149,8 @@ jwt:
 log:
   level: info
 `)
-	t.Setenv("APP_DB_HOST", "10.20.30.40")
-	t.Setenv("APP_DB_TIME_ZONE", "UTC")
+	t.Setenv("APP_DB_PATH", "var/db/app.db")
+	t.Setenv("APP_DB_BUSY_TIMEOUT", "10000")
 	t.Setenv("APP_JWT_SECRET", "env-secret")
 	t.Setenv("APP_JWT_ACCESS_TTL", "30m")
 	t.Setenv("APP_JWT_SECURE_COOKIE", "true")
@@ -185,11 +169,11 @@ log:
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.DB.Host != "10.20.30.40" {
-		t.Errorf("db.host = %q, want env override 10.20.30.40", cfg.DB.Host)
+	if cfg.DB.Path != "var/db/app.db" {
+		t.Errorf("db.path = %q, want env override var/db/app.db", cfg.DB.Path)
 	}
-	if cfg.DB.TimeZone != "UTC" {
-		t.Errorf("db.time_zone = %q, want env override UTC", cfg.DB.TimeZone)
+	if cfg.DB.BusyTimeout != 10000 {
+		t.Errorf("db.busy_timeout = %d, want env override 10000", cfg.DB.BusyTimeout)
 	}
 	if cfg.JWT.Secret != "env-secret" {
 		t.Errorf("jwt.secret = %q, want env-secret", cfg.JWT.Secret)
@@ -202,9 +186,6 @@ log:
 	}
 	if cfg.Server.Port != 9001 {
 		t.Errorf("server.port = %d, want 9001", cfg.Server.Port)
-	}
-	if cfg.DB.Name != "niko_vue_admin" {
-		t.Errorf("db.name = %q, want niko_vue_admin", cfg.DB.Name)
 	}
 	if cfg.Storage.MaxSize != 2097152 || cfg.Storage.Local.Root != "/var/lib/uploads" ||
 		cfg.Storage.Local.URLPrefix != "/public-files" {
@@ -318,10 +299,18 @@ func TestLoadInvalidMinIOStorageConfig(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidTimeZone(t *testing.T) {
-	path := writeConfig(t, "db:\n  time_zone: Mars/Olympus\n")
-	if _, err := load(path); err == nil {
-		t.Fatal("load should fail for invalid db.time_zone")
+func TestLoadInvalidDBConfig(t *testing.T) {
+	cases := map[string]string{
+		"empty path":        "db:\n  path: \"\"\n",
+		"zero busy_timeout": "db:\n  busy_timeout: 0\n",
+		"zero max_open":     "db:\n  max_open: 0\n",
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := load(writeConfig(t, content)); err == nil {
+				t.Fatalf("load should fail for %q", content)
+			}
+		})
 	}
 }
 
@@ -354,8 +343,6 @@ func TestLoadInvalidPort(t *testing.T) {
 	for _, content := range []string{
 		"server:\n  port: 0\n",
 		"server:\n  port: 65536\n",
-		"db:\n  port: 0\n",
-		"db:\n  port: 70000\n",
 	} {
 		if _, err := load(writeConfig(t, content)); err == nil {
 			t.Errorf("load should fail for %q", content)

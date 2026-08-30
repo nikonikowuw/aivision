@@ -1,55 +1,64 @@
 package db
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
-	"github.com/jackc/pgx/v5"
-	gormpostgres "gorm.io/driver/postgres"
-	"gorm.io/gorm"
+	"go.uber.org/zap"
 
 	"argus/app/internal/pkg/config"
 )
 
-func TestPostgresDSNInitializesGORM(t *testing.T) {
+func TestSqliteDSN(t *testing.T) {
 	d := config.DB{
-		Host: "127.0.0.1", Port: 5432,
-		User: "app", Password: "secret", Name: "niko_db", TimeZone: "Asia/Shanghai",
+		Path:        "data/test.db",
+		BusyTimeout: 5000,
 	}
-	dsn, err := postgresDSN(d)
+	dsn, err := sqliteDSN(d)
 	if err != nil {
-		t.Fatalf("postgresDSN: %v", err)
+		t.Fatalf("sqliteDSN: %v", err)
 	}
-	if _, err := gorm.Open(gormpostgres.Open(dsn), &gorm.Config{DisableAutomaticPing: true}); err != nil {
-		t.Fatalf("gorm.Open: %v", err)
+	if !strings.HasPrefix(dsn, "file:data/test.db?") {
+		t.Errorf("dsn prefix mismatch: %s", dsn)
+	}
+	if !strings.Contains(dsn, "_journal_mode=WAL") {
+		t.Errorf("dsn missing WAL mode: %s", dsn)
+	}
+	if !strings.Contains(dsn, "_busy_timeout=5000") {
+		t.Errorf("dsn missing busy timeout: %s", dsn)
 	}
 }
 
-func TestPostgresDSNRoundTrip(t *testing.T) {
-	d := config.DB{
-		Host: "10.0.0.1", Port: 5432,
-		User: "app", Password: `pa ss@/word (x)`, Name: "niko_db", TimeZone: "Asia/Shanghai",
+func TestNewSQLiteConnectsAndCreatesDir(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "sub", "test.db")
+
+	cfg := &config.Config{
+		DB: config.DB{
+			Path:        dbPath,
+			BusyTimeout: 3000,
+			MaxOpen:     5,
+			MaxIdle:     2,
+			MaxLifetime: 10 * time.Minute,
+		},
 	}
-	dsn, err := postgresDSN(d)
+
+	logger := zap.NewNop()
+	gdb, err := New(cfg, logger)
 	if err != nil {
-		t.Fatalf("postgresDSN: %v", err)
+		t.Fatalf("New failed: %v", err)
 	}
-	cfg, err := pgx.ParseConfig(dsn)
+
+	sqlDB, err := gdb.DB()
 	if err != nil {
-		t.Fatalf("ParseConfig: %v", err)
+		t.Fatalf("get sql.DB: %v", err)
 	}
-	if cfg.User != d.User {
-		t.Errorf("user = %q, want %q", cfg.User, d.User)
-	}
-	if cfg.Password != d.Password {
-		t.Errorf("password = %q, want %q", cfg.Password, d.Password)
-	}
-	if cfg.Database != d.Name {
-		t.Errorf("dbname = %q, want %q", cfg.Database, d.Name)
-	}
-	if cfg.Host != d.Host {
-		t.Errorf("host = %q, want %q", cfg.Host, d.Host)
-	}
-	if got := cfg.RuntimeParams["TimeZone"]; got != "Asia/Shanghai" {
-		t.Errorf("TimeZone = %q, want Asia/Shanghai", got)
+	defer sqlDB.Close()
+
+	if err := sqlDB.Ping(); err != nil {
+		t.Fatalf("ping failed: %v", err)
 	}
 }
+

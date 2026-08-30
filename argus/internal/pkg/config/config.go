@@ -32,17 +32,13 @@ type Server struct {
 	Port int `mapstructure:"port"`
 }
 
-// DB 数据库连接配置（PostgreSQL）。
+// DB 数据库连接配置（SQLite 嵌入式）。
 type DB struct {
-	Host        string        `mapstructure:"host"`
-	Port        int           `mapstructure:"port"`
-	User        string        `mapstructure:"user"`
-	Password    string        `mapstructure:"password"`
-	Name        string        `mapstructure:"name"`
-	TimeZone    string        `mapstructure:"time_zone"`    // 数据库时区，例如 Asia/Shanghai
-	MaxOpen     int           `mapstructure:"max_open"`     // 最大打开连接数（默认 100）
-	MaxIdle     int           `mapstructure:"max_idle"`     // 最大空闲连接数（默认 10）
-	MaxLifetime time.Duration `mapstructure:"max_lifetime"` // 连接最大生命周期（默认 30m）
+	Path        string        `mapstructure:"path"`         // SQLite 数据库文件路径（默认 data/argus.db）
+	BusyTimeout int           `mapstructure:"busy_timeout"` // 忙等待超时毫秒（默认 5000）
+	MaxOpen     int           `mapstructure:"max_open"`     // 最大打开连接数（默认 20）
+	MaxIdle     int           `mapstructure:"max_idle"`     // 最大空闲连接数（默认 5）
+	MaxLifetime time.Duration `mapstructure:"max_lifetime"` // 连接最大生命周期（默认 1h）
 }
 
 // JWT 认证配置，TTL 已解析为 time.Duration。
@@ -106,15 +102,11 @@ const (
 	defaultConfigPath = "configs/config.yaml"
 
 	defaultServerPort      = 8000
-	defaultDBHost          = "127.0.0.1"
-	defaultDBPort          = 5432
-	defaultDBUser          = "postgres"
-	defaultDBPassword      = "postgres" // 开发默认；生产用 APP_DB_PASSWORD 覆盖
-	defaultDBName          = "niko_vue_admin_go"
-	defaultDBTimeZone      = "Asia/Shanghai"
-	defaultDBMaxOpen       = 100
-	defaultDBMaxIdle       = 10
-	defaultDBMaxLifetime   = 30 * time.Minute
+	defaultDBPath          = "data/argus.db"
+	defaultDBBusyTimeout   = 5000
+	defaultDBMaxOpen       = 20
+	defaultDBMaxIdle       = 5
+	defaultDBMaxLifetime   = 1 * time.Hour
 	defaultJWTSecret       = "dev-secret-change-me"
 	defaultAccessTTL       = 2 * time.Hour
 	defaultRefreshTTL      = 168 * time.Hour
@@ -196,12 +188,8 @@ type keyValue struct {
 func defaults() []keyValue {
 	return []keyValue{
 		{"server.port", defaultServerPort},
-		{"db.host", defaultDBHost},
-		{"db.port", defaultDBPort},
-		{"db.user", defaultDBUser},
-		{"db.password", defaultDBPassword},
-		{"db.name", defaultDBName},
-		{"db.time_zone", defaultDBTimeZone},
+		{"db.path", defaultDBPath},
+		{"db.busy_timeout", defaultDBBusyTimeout},
 		{"db.max_open", defaultDBMaxOpen},
 		{"db.max_idle", defaultDBMaxIdle},
 		{"db.max_lifetime", defaultDBMaxLifetime},
@@ -240,14 +228,14 @@ func validate(cfg *Config) error {
 	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
 		return fmt.Errorf("invalid server.port: %d", cfg.Server.Port)
 	}
-	if cfg.DB.Port <= 0 || cfg.DB.Port > 65535 {
-		return fmt.Errorf("invalid db.port: %d", cfg.DB.Port)
+	if strings.TrimSpace(cfg.DB.Path) == "" {
+		return fmt.Errorf("db.path cannot be empty")
 	}
-	if strings.TrimSpace(cfg.DB.TimeZone) == "" {
-		return fmt.Errorf("db.time_zone cannot be empty")
+	if cfg.DB.BusyTimeout <= 0 {
+		return fmt.Errorf("db.busy_timeout must be greater than zero")
 	}
-	if _, err := time.LoadLocation(cfg.DB.TimeZone); err != nil {
-		return fmt.Errorf("invalid db.time_zone %q: %w", cfg.DB.TimeZone, err)
+	if cfg.DB.MaxOpen <= 0 {
+		return fmt.Errorf("db.max_open must be greater than zero")
 	}
 	if strings.TrimSpace(cfg.JWT.Secret) == "" {
 		return fmt.Errorf("jwt.secret cannot be empty")

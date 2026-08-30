@@ -37,7 +37,7 @@ app/
 │   ├── service/         # 业务逻辑编排层（密码校验、权限判定、Token 生成等）
 │   └── pkg/
 │       ├── config/      # viper：configs/config.yaml + APP_* 环境变量覆盖
-│       ├── db/          # gorm 连接（mysql/postgres，重试 3 次/2s）
+│       ├── db/          # gorm 连接（sqlite WAL 模式、忙超时、连接池）
 │       ├── engineipc/   # 与 C++ engine 的 gRPC-over-UDS 通信：Runtime(入站 server)、EngineClient(出站)、adapter 契约
 │       ├── errno/       # 业务错误码与多语言文案的唯一来源
 │       ├── logger/      # zap logger（结构化日志输出）

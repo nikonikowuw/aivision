@@ -42,10 +42,15 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Go (app/)
+# Go (app/ & argus/)
 app/bin/
 app/tmp/
 app/uploads/
+app/data/
+argus/bin/
+argus/tmp/
+argus/uploads/
+argus/data/
 coverage.out
 *.test
 *.exe

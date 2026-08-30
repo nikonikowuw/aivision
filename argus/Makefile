@@ -1,4 +1,4 @@
-.PHONY: wire dev dev-raw build test vet swagger air migrate-up migrate-down migrate-version bootstrap-admin proto proto-check grpc-e2e
+.PHONY: wire dev dev-raw build test vet swagger air migrate-up migrate-version bootstrap-admin proto proto-check grpc-e2e
 
 # 从 engine/proto/aivision/v1 权威 proto 重新生成 Go protobuf/gRPC 代码（提交目录）
 proto:
@@ -20,9 +20,6 @@ swagger:
 
 migrate-up:
 	go run ./cmd/migrate up
-
-migrate-down:
-	go run ./cmd/migrate down
 
 migrate-version:
 	go run ./cmd/migrate version

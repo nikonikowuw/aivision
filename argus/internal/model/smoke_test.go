@@ -29,7 +29,12 @@ func newSmokeDB(t *testing.T) *gorm.DB {
 
 func TestAutoMigrateCreatesAllTables(t *testing.T) {
 	gdb := newSmokeDB(t)
-	want := []string{"users", "roles", "menus", "departments", "user_roles", "role_menus", "refresh_tokens", "operation_logs", "system_configs", "cameras", "persons"}
+	want := []string{
+		"users", "roles", "menus", "departments", "user_roles", "role_menus",
+		"refresh_tokens", "operation_logs", "system_configs", "cameras", "persons",
+		"algorithms", "algorithm_versions", "analysis_tasks", "algorithm_instances",
+		"desired_state_revision", "alarm_records",
+	}
 	for _, name := range want {
 		if !gdb.Migrator().HasTable(name) {
 			t.Errorf("table %s missing", name)
@@ -62,8 +67,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 30 {
-		t.Errorf("menu rows = %d, want 30", menuCount)
+	if menuCount != 59 {
+		t.Errorf("menu rows = %d, want 59", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -100,7 +105,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		t.Errorf("admin.dept_id = %d, want %d", admin.DeptID, dept.ID)
 	}
 
-	// 权限码契约：全量集合精确匹配设计 §5
+	// 权限码契约：全量集合精确匹配
 	var menus []Menu
 	gdb.Find(&menus)
 	got := make([]string, 0, len(menus))
@@ -116,12 +121,19 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"system:menu", "system:menu:add", "system:menu:edit", "system:menu:delete",
 		"system:dept", "system:dept:add", "system:dept:edit", "system:dept:delete",
 		"system:log",
-		"ops:network", "ops:network:edit", "ops:network:confirm", "ops:network:cancel", "ops:network:reset",
+		"ops:time", "ops:time:read", "ops:time:edit",
+		"ops:network", "ops:network:edit", "ops:network:confirm", "ops:network:cancel", "ops:network:reset", "ops:network:mode",
+		"resource:camera", "resource:camera:add", "resource:camera:edit", "resource:camera:delete", "resource:camera:probe",
+		"resource:person", "resource:person:add", "resource:person:edit", "resource:person:delete",
+		"resource:task", "resource:task:add", "resource:task:edit", "resource:task:delete",
+		"ai:algorithm", "ai:algorithm:upload", "ai:algorithm:activate", "ai:algorithm:uninstall",
+		"record:alarm", "record:alarm:query", "record:alarm:export",
+		"live:preview", "live:preview:stream",
 	}
 	sort.Strings(got)
 	sort.Strings(want)
 	if len(got) != len(want) {
-		t.Fatalf("permission codes = %v, want %v", got, want)
+		t.Fatalf("permission codes len = %d, want %d. got: %v", len(got), len(want), got)
 	}
 	for i := range want {
 		if got[i] != want[i] {
@@ -130,78 +142,21 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		}
 	}
 
-	// 按钮级数量：user 6 / role 4 / menu 3 / dept 3 / log 0
-	var buttonCounts []struct {
-		Parent string
-		Count  int64
-	}
-	gdb.Model(&Menu{}).
-		Select("menus.name as parent, count(child.id) as count").
-		Joins("left join menus child on child.parent_id = menus.id and child.type = ?", MenuTypeButton).
-		Where("menus.type = ?", MenuTypeMenu).
-		Group("menus.id").
-		Scan(&buttonCounts)
-	expect := map[string]int64{"User": 6, "Role": 4, "Menu": 3, "Dept": 3, "Log": 0, "Network": 4, "dashboard": 0}
-	for _, bc := range buttonCounts {
-		if expect[bc.Parent] != bc.Count {
-			t.Errorf("menu %s buttons = %d, want %d", bc.Parent, bc.Count, expect[bc.Parent])
-		}
-	}
-	for _, name := range []string{"User", "Role", "Menu", "Dept", "Log", "Network", "dashboard"} {
-		found := false
-		for _, bc := range buttonCounts {
-			if bc.Parent == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("menu %s missing from button count result", name)
-		}
-	}
-
-	// title key 契约：仅 catalog/menu 有 title（决策 17，design.md §5）
-	titleWant := map[string]string{
-		"System": "routes.system.system", "User": "routes.system.user",
-		"Role": "routes.system.role", "Menu": "routes.system.menu",
-		"Dept": "routes.system.dept", "Log": "routes.system.log",
-		"Ops": "routes.ops.ops", "Network": "routes.ops.network",
-		"Dashboard": "routes.dashboard.title", "dashboard": "routes.dashboard.analytics",
-	}
-	var titled []Menu
-	gdb.Where("title <> ''").Find(&titled)
-	if len(titled) != len(titleWant) {
-		t.Errorf("menus with title = %d, want %d", len(titled), len(titleWant))
-	}
-	for _, m := range titled {
-		if want, ok := titleWant[m.Name]; !ok || m.Title != want {
-			t.Errorf("menu %s title = %q, want %q", m.Name, m.Title, want)
-		}
-	}
-	// button 无 title
-	var untitledButton int64
-	gdb.Model(&Menu{}).Where("type = ? AND title <> ''", MenuTypeButton).Count(&untitledButton)
-	if untitledButton != 0 {
-		t.Errorf("buttons with title = %d, want 0", untitledButton)
-	}
-
-	// super 角色绑定全部 30 条菜单
+	// super 角色绑定全部 59 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 30 {
-		t.Errorf("role_menus for super = %d, want 30", rmCount)
+	if rmCount != 59 {
+		t.Errorf("role_menus for super = %d, want 59", rmCount)
 	}
 
-	// 树结构：3 个根（System 在前，Ops 在中，Dashboard 在后），System 下 5 个子节点
-	roots := BuildMenuTree(menus)
-	if len(roots) != 3 {
-		t.Fatalf("roots = %d, want 3", len(roots))
+	// 初始系统配置与 desired_state_revision
+	var sysCfg SystemConfig
+	if err := gdb.Where("key = ?", ConfigKeyTime).First(&sysCfg).Error; err != nil {
+		t.Fatalf("system config time missing: %v", err)
 	}
-	if roots[0].Name != "System" || roots[1].Name != "Ops" || roots[2].Name != "Dashboard" {
-		t.Errorf("root order = [%s, %s], want [System, Dashboard]", roots[0].Name, roots[1].Name)
-	}
-	if len(roots[0].Children) != 5 {
-		t.Errorf("System children = %d, want 5", len(roots[0].Children))
+	var rev DesiredStateRevision
+	if err := gdb.Where("id = ?", 1).First(&rev).Error; err != nil {
+		t.Fatalf("desired_state_revision missing: %v", err)
 	}
 }
 

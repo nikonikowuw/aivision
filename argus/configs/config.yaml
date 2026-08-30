@@ -1,17 +1,12 @@
-# 应用配置：APP_* 环境变量可覆盖（如 APP_DB_PASSWORD、APP_JWT_SECRET、APP_JWT_SECURE_COOKIE）
+# 应用配置：APP_* 环境变量可覆盖（如 APP_DB_PATH、APP_JWT_SECRET、APP_JWT_SECURE_COOKIE）
 server:
   port: 8000
-# 数据库 schema 由 `go run ./cmd/migrate up` 管理，API 启动不会自动建表
 db:
-  host: 127.0.0.1
-  port: 5432
-  user: postgres
-  password: "postgres" # 开发默认；生产用 APP_DB_PASSWORD 覆盖
-  name: aivision
-  time_zone: Asia/Shanghai
-  max_open: 100
-  max_idle: 10
-  max_lifetime: 30m
+  path: data/argus.db
+  busy_timeout: 5000 # 毫秒
+  max_open: 20
+  max_idle: 5
+  max_lifetime: 1h
 jwt:
   secret: "dev-secret-change-me" # 生产用 APP_JWT_SECRET 覆盖
   access_ttl: 2h
@@ -40,7 +35,7 @@ network:
 # gRPC over Unix Domain Socket：app.sock 由本进程监听（Engine 回调），engine.sock 供本进程调用 C++ Engine
 # 开发默认可用 APP_IPC_APP_SOCKET/APP_IPC_ENGINE_SOCKET 覆盖；生产使用唯一的 AIVISION_ENGINE_PROFILE。
 ipc:
-  app_socket: /tmp/aivision-app.sock
-  engine_socket: /tmp/aivision-engine.sock
+  app_socket: /tmp/argus-app.sock
+  engine_socket: /tmp/argus-engine.sock
 open:
   person_sync_allowed_ips: []

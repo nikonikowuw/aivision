@@ -99,7 +99,7 @@ func main() {
 		log.Warn("仍在使用默认 JWT 密钥（dev-secret-change-me），生产环境请通过 APP_JWT_SECRET 覆盖")
 	}
 
-	// 数据库 schema 与数据迁移状态检查：生产/运行期不再自动建表或 seed 数据
+	// 数据库 schema 自动迁移与种子数据就绪检查
 	migRunner, err := migration.New(app.DB)
 	if err != nil {
 		log.Error("initialize migration runner failed", zap.Error(err))
@@ -107,11 +107,11 @@ func main() {
 		os.Exit(1)
 	}
 	if err := migRunner.CheckSchemaReady(); err != nil {
-		log.Error("database schema check failed; please run `make migrate-up` or `go run ./cmd/migrate up` first", zap.Error(err))
+		log.Error("database schema and seed check failed", zap.Error(err))
 		app.CleanupStartupResources(shutdownTimeout)
 		os.Exit(1)
 	}
-	log.Info("database schema ready", zap.Uint("version", migRunner.LatestVersion()))
+	log.Info("database schema and seed ready")
 
 	// 开机重放对时配置（从 DB 恢复并应用到底层系统）
 	if app.NTPService != nil {

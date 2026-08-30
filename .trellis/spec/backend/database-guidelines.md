@@ -6,12 +6,11 @@
 
 ## 概览
 
-- ORM：GORM（`gorm.io/gorm` v1.31），仅使用 `postgres` 驱动；单元测试使用 sqlite 内存库。
-- Schema 管理采用 `golang-migrate` 版本化迁移（`app/migrations/` 下嵌入式 `.sql` 文件）。
-- 生产环境禁止在 API 启动时运行 GORM `AutoMigrate` 或自动 Seed；API 启动只做迁移版本就绪校验。
-- `model.AutoMigrate` 与 `model.Seed` 仅保留给开发/测试本地 fixture 和 sqlite 单元测试使用。
+- ORM：GORM（`gorm.io/gorm` v1.31），后端全面采用纯嵌入式 `sqlite` 驱动（支持 WAL 模式、忙超时重试与连接池控制）。
+- Schema 与初始数据管理采用统一的 GORM `AutoMigrate` 与 `model.Seed`（幂等播种初始部门、角色、全量菜单树及系统默认配置）。
+- 启动与部署：API 启动或 `cmd/migrate up` 自动执行 `AutoMigrate` 与 `Seed` 校验/就绪检查。
 - **不建外键。** 关系纯为逻辑关系（连接表 `user_roles`、`role_menus` 使用复合唯一索引）。
-- 默认管理员不硬编码在源码中；通过 `cmd/bootstrap` 独立创建，密码通过环境变量注入。
+- 默认管理员可通过环境变量 `APP_BOOTSTRAP_ADMIN_PASSWORD` 首次自动播种或通过 `cmd/bootstrap` 独立创建/重置。
 
 ---
 

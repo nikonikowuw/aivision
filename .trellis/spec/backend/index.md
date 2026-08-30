@@ -6,7 +6,7 @@
 
 ## 概览
 
-`app/` 下 Go 后端的规范。技术栈为 Gin + GORM（mysql/postgres），由 google/wire
+`app/` 下 Go 后端的规范。技术栈为 Gin + GORM（sqlite WAL 模式），由 google/wire
 装配；业务路由由功能任务按增量方式逐步添加。项目事实（命令、目录职责、架构）见
 `AGENTS.md`；本目录文件描述**如何编写后端代码**。
 

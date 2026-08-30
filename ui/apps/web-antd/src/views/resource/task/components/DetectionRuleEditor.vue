@@ -116,7 +116,6 @@ const roleOptions: Array<{ icon: string; role: RuleRole }> = [
   { icon: 'lucide:move-right', role: ROLE.LINE },
 ];
 
-const stageRef = ref<HTMLDivElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const canvasSize = ref({ height: 0, width: 0 });
 const devicePixelRatio = ref(1);
@@ -478,10 +477,25 @@ function removeSelectedVertex() {
   selectedVertex.value = null;
 }
 
+function getCanvasMetrics() {
+  const canvas = canvasRef.value;
+  if (!canvas) return null;
+
+  const rect = canvas.getBoundingClientRect();
+  const width = canvas.offsetWidth || rect.width;
+  const height = canvas.offsetHeight || rect.height;
+  if (width <= 0 || height <= 0 || rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+
+  return { height, rect, width };
+}
+
 function getViewport(): VideoViewport {
+  const metrics = getCanvasMetrics();
   return {
-    elementHeight: canvasSize.value.height,
-    elementWidth: canvasSize.value.width,
+    elementHeight: metrics?.height ?? canvasSize.value.height,
+    elementWidth: metrics?.width ?? canvasSize.value.width,
     videoHeight: mediaHeight.value,
     videoWidth: mediaWidth.value,
   };
@@ -494,12 +508,14 @@ function getPointerState(
   const canvas = canvasRef.value;
   if (!canvas || !canDraw.value) return null;
 
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
+  const metrics = getCanvasMetrics();
+  if (!metrics) return null;
 
+  const scaleX = metrics.width / metrics.rect.width;
+  const scaleY = metrics.height / metrics.rect.height;
   const local = {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
+    x: (event.clientX - metrics.rect.left) * scaleX,
+    y: (event.clientY - metrics.rect.top) * scaleY,
   };
   return {
     local,
@@ -877,14 +893,12 @@ function renderCanvas() {
 
 function resizeCanvas() {
   const canvas = canvasRef.value;
-  const stage = stageRef.value;
-  if (!canvas || !stage) return;
+  if (!canvas) return;
 
-  const rect = canvas.getBoundingClientRect();
-  const width = rect.width || stage.clientWidth;
-  const height = rect.height || stage.clientHeight;
-  if (width <= 0 || height <= 0) return;
+  const metrics = getCanvasMetrics();
+  if (!metrics) return;
 
+  const { height, width } = metrics;
   canvasSize.value = { height, width };
   devicePixelRatio.value = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.floor(width * devicePixelRatio.value));
@@ -1023,9 +1037,9 @@ watch([mediaWidth, mediaHeight, streamUrl], () => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
-  if (typeof ResizeObserver !== 'undefined' && stageRef.value) {
+  if (typeof ResizeObserver !== 'undefined' && canvasRef.value) {
     resizeObserver = new ResizeObserver(() => resizeCanvas());
-    resizeObserver.observe(stageRef.value);
+    resizeObserver.observe(canvasRef.value);
   }
   void nextTick(resizeCanvas);
 });
@@ -1125,7 +1139,6 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      ref="stageRef"
       class="relative min-h-[240px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-950 shadow-inner aspect-video"
     >
       <VideoPlayer

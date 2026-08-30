@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 #include "argus/core/algo_manager.hpp"
+#include "argus/core/frame_pool.hpp"
+#include "argus/core/image_manager.hpp"
 #include "argus/core/resource_ledger.hpp"
 #include "argus/core/task_scheduler.hpp"
 #include "argus/core/uds_ipc.hpp"
@@ -14,10 +16,13 @@
 #include "argus/media/media_api.hpp"
 
 #include <nlohmann/json.hpp>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifndef ARGUS_FIXTURE_PACKAGE_DIR
@@ -50,7 +55,7 @@ public:
 };
 
 // CaptureReportService 在 app.sock 上扮演 Go 侧 ReportService，
-// 捕获 Engine 主动上报的 InstanceState 供断言（其余方法 fail-closed）。
+// 捕获 Engine 主动上报的 InstanceState 和 AlarmEvent 供断言（其余方法 fail-closed）。
 class CaptureReportService final : public argus::v1::ReportService::Service {
 public:
     grpc::Status ReportInstanceState(grpc::ServerContext*,
@@ -64,9 +69,18 @@ public:
         states_.push_back(request->instance_state());
         return grpc::Status::OK; // code 留空 = 接受
     }
-    grpc::Status ReportAlarm(grpc::ServerContext*, const argus::v1::ReportAlarmRequest*,
-                             argus::v1::ReportAlarmResponse*) override {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not used in this test");
+    grpc::Status ReportAlarm(grpc::ServerContext*, const argus::v1::ReportAlarmRequest* request,
+                             argus::v1::ReportAlarmResponse* response) override {
+        if (!request || !request->has_alarm()) {
+            response->set_code("INVALID_ARG");
+            return grpc::Status::OK;
+        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        alarms_.push_back(request->alarm());
+        alarm_started_ = true;
+        alarm_cv_.notify_all();
+        alarm_cv_.wait(lock, [this] { return !block_alarm_ || release_alarm_; });
+        return grpc::Status::OK; // code 留空 = 接受
     }
     grpc::Status ReportTaskState(grpc::ServerContext*, const argus::v1::ReportTaskStateRequest*,
                                  argus::v1::ReportTaskStateResponse*) override {
@@ -81,6 +95,30 @@ public:
         return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not used in this test");
     }
 
+    void block_alarm() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        block_alarm_ = true;
+        release_alarm_ = false;
+        alarm_started_ = false;
+    }
+
+    bool wait_for_alarm(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return alarm_cv_.wait_for(lock, timeout, [this] { return alarm_started_; });
+    }
+
+    void release_alarm() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        release_alarm_ = true;
+        block_alarm_ = false;
+        alarm_cv_.notify_all();
+    }
+
+    std::vector<argus::v1::AlarmEvent> alarms() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return alarms_;
+    }
+
     std::vector<argus::v1::InstanceState> captured() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return states_;
@@ -88,7 +126,12 @@ public:
 
 private:
     mutable std::mutex mutex_;
+    std::condition_variable alarm_cv_;
     std::vector<argus::v1::InstanceState> states_;
+    std::vector<argus::v1::AlarmEvent> alarms_;
+    bool block_alarm_ = false;
+    bool release_alarm_ = false;
+    bool alarm_started_ = false;
 };
 
 // StubAppServer 承载 CaptureReportService 的 gRPC UDS 服务端。
@@ -313,6 +356,398 @@ TEST(UdsReconcileTest, RebuildsInstanceWhenAnalysisFpsChanges) {
     argus::core::ResourceLedger::instance().clear();
     ::unsetenv("ARGUS_PACKAGE_DIR");
     std::filesystem::remove_all(package_dir);
+}
+
+TEST(UdsReconcileTest, AlarmCaptureRunsOffAlgorithmWorker) {
+    const std::string package_dir = "var/async-alarm-packages";
+    const std::string image_dir = "build/async-alarm-images";
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+    std::filesystem::create_directories(package_dir + "/mock-detector");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        ARGUS_FIXTURE_PACKAGE_DIR,
+        package_dir + "/mock-detector/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    argus::core::ResourceLedger::instance().clear();
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
+        return uint64_t{2} * 1024 * 1024 * 1024;
+    });
+    argus::core::ImageManager::instance().init(
+        image_dir, std::shared_ptr<argus::platform::IImageProcessor>(adapter, adapter->get_image_processor()));
+
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start("/tmp/argus-test-app-alarm.sock"));
+    app_server.service().block_alarm();
+    argus::core::UdsServer server("/tmp/argus-test-alarm.sock", adapter, backend,
+                                  "/tmp/argus-test-app-alarm.sock");
+    ASSERT_TRUE(server.start());
+
+    argus::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* task = desired.add_tasks();
+    task->set_camera_id("alarm-camera");
+    task->set_rtsp_url("rtsp://unused");
+    task->set_enabled(true);
+    add_instance(&desired, "alarm-instance", "alarm-camera", "mock-detector", "1.0.0", 1);
+
+    argus::v1::ApplyDesiredStateResponse response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &response));
+    ASSERT_TRUE(response.code().empty()) << response.error_message();
+    const auto instance = argus::core::AlgoManager::instance().get("alarm-instance");
+    ASSERT_NE(instance, nullptr);
+
+    auto& pool = argus::core::FramePool::instance();
+    for (uint64_t frame_id = 1; frame_id <= 2; ++frame_id) {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->frame_id = frame_id;
+        frame->wall_time_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->pts_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->memory_type = AV_MEM_HOST;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->width = 1920;
+        frame->height = 1080;
+        instance->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+        if (frame_id == 1) {
+            ASSERT_TRUE(app_server.service().wait_for_alarm(std::chrono::seconds(2)));
+        }
+    }
+
+    const auto alarms = app_server.service().alarms();
+    ASSERT_EQ(alarms.size(), 1);
+    EXPECT_FALSE(alarms[0].image_id().empty());
+    EXPECT_TRUE(std::filesystem::exists(image_dir + "/" + alarms[0].image_rel_path()));
+    EXPECT_GE(pool.active_frame_count(), 1U);
+
+    for (int attempt = 0; attempt < 400 && instance->get_processed_frames() < 2; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    // ReportAlarm 仍被阻塞时，第二帧也应已完成 instance_process。
+    EXPECT_GE(instance->get_processed_frames(), 2U);
+
+    app_server.service().release_alarm();
+    for (int attempt = 0; attempt < 400 && pool.active_frame_count() != 0; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(pool.active_frame_count(), 0U);
+    EXPECT_EQ(app_server.service().alarms().size(), 2U);
+
+    server.stop();
+    app_server.stop();
+    argus::core::ResourceLedger::instance().clear();
+    ::unsetenv("ARGUS_PACKAGE_DIR");
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+}
+
+TEST(UdsReconcileTest, AlarmQueueDropsOldestWhenFullAndReleasesFrames) {
+    const std::string package_dir = "var/async-alarm-drop-packages";
+    const std::string image_dir = "build/async-alarm-drop-images";
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+    std::filesystem::create_directories(package_dir + "/mock-detector");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        ARGUS_FIXTURE_PACKAGE_DIR,
+        package_dir + "/mock-detector/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    argus::core::ResourceLedger::instance().clear();
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
+        return uint64_t{2} * 1024 * 1024 * 1024;
+    });
+    argus::core::ImageManager::instance().init(
+        image_dir, std::shared_ptr<argus::platform::IImageProcessor>(adapter, adapter->get_image_processor()));
+
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start("/tmp/argus-test-app-drop.sock"));
+    app_server.service().block_alarm();
+    argus::core::UdsServer server("/tmp/argus-test-drop.sock", adapter, backend,
+                                  "/tmp/argus-test-app-drop.sock");
+    ASSERT_TRUE(server.start());
+
+    argus::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* task = desired.add_tasks();
+    task->set_camera_id("drop-camera");
+    task->set_rtsp_url("rtsp://unused");
+    task->set_enabled(true);
+    add_instance(&desired, "drop-instance", "drop-camera", "mock-detector", "1.0.0", 1);
+
+    argus::v1::ApplyDesiredStateResponse response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &response));
+    ASSERT_TRUE(response.code().empty()) << response.error_message();
+    const auto instance = argus::core::AlgoManager::instance().get("drop-instance");
+    ASSERT_NE(instance, nullptr);
+
+    auto& pool = argus::core::FramePool::instance();
+
+    // 1. 发送第 1 帧，让 worker 进入 ReportAlarm 并被阻塞
+    {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->frame_id = 1;
+        frame->wall_time_ns = 1'000'000'000;
+        frame->pts_ns = 1'000'000'000;
+        frame->memory_type = AV_MEM_HOST;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->width = 1920;
+        frame->height = 1080;
+        instance->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+        ASSERT_TRUE(app_server.service().wait_for_alarm(std::chrono::seconds(2)));
+    }
+
+    // 2. 推入 257 帧（frame_id 2 ~ 258），队列上限为 256，必定触发最旧帧丢弃与释放
+    constexpr size_t kTotalFrames = 258;
+    for (uint64_t frame_id = 2; frame_id <= kTotalFrames; ++frame_id) {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->frame_id = frame_id;
+        frame->wall_time_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->pts_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->memory_type = AV_MEM_HOST;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->width = 1920;
+        frame->height = 1080;
+        instance->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+        // 等待算法实例消费该帧，避免塞满长度为 5 的算法内部输入队列
+        for (int attempt = 0; attempt < 200 && instance->get_processed_frames() < frame_id; ++attempt) {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+    }
+
+    for (int attempt = 0; attempt < 400 && instance->get_processed_frames() < kTotalFrames; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(instance->get_processed_frames(), kTotalFrames);
+
+    // 释放阻塞的 ReportAlarm，让队列消费完毕
+    app_server.service().release_alarm();
+    for (int attempt = 0; attempt < 400 && pool.active_frame_count() != 0; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    EXPECT_EQ(pool.active_frame_count(), 0U);
+
+    const auto alarms = app_server.service().alarms();
+    // 总共收到 1（第1帧） + 256（第3~258帧） = 257 条告警，第 2 帧被 drop
+    EXPECT_EQ(alarms.size(), 257U);
+    for (const auto& alarm : alarms) {
+        EXPECT_FALSE(alarm.event_id().ends_with("/mock-event-2"));
+    }
+
+    server.stop();
+    app_server.stop();
+    argus::core::ResourceLedger::instance().clear();
+    ::unsetenv("ARGUS_PACKAGE_DIR");
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+}
+
+TEST(UdsReconcileTest, AlarmQueueDiscardsOnStopReleasesFrames) {
+    const std::string package_dir = "var/async-alarm-stop-packages";
+    const std::string image_dir = "build/async-alarm-stop-images";
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+    std::filesystem::create_directories(package_dir + "/mock-detector");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        ARGUS_FIXTURE_PACKAGE_DIR,
+        package_dir + "/mock-detector/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    argus::core::ResourceLedger::instance().clear();
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
+        return uint64_t{2} * 1024 * 1024 * 1024;
+    });
+    argus::core::ImageManager::instance().init(
+        image_dir, std::shared_ptr<argus::platform::IImageProcessor>(adapter, adapter->get_image_processor()));
+
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start("/tmp/argus-test-app-stop.sock"));
+    app_server.service().block_alarm();
+    argus::core::UdsServer server("/tmp/argus-test-stop.sock", adapter, backend,
+                                  "/tmp/argus-test-app-stop.sock");
+    ASSERT_TRUE(server.start());
+
+    argus::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* task = desired.add_tasks();
+    task->set_camera_id("stop-camera");
+    task->set_rtsp_url("rtsp://unused");
+    task->set_enabled(true);
+    add_instance(&desired, "stop-instance", "stop-camera", "mock-detector", "1.0.0", 1);
+
+    argus::v1::ApplyDesiredStateResponse response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &response));
+    ASSERT_TRUE(response.code().empty()) << response.error_message();
+    const auto instance = argus::core::AlgoManager::instance().get("stop-instance");
+    ASSERT_NE(instance, nullptr);
+
+    auto& pool = argus::core::FramePool::instance();
+
+    // 1. 发送第 1 帧阻塞 worker
+    {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->frame_id = 1;
+        frame->wall_time_ns = 1'000'000'000;
+        frame->pts_ns = 1'000'000'000;
+        frame->memory_type = AV_MEM_HOST;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->width = 1920;
+        frame->height = 1080;
+        instance->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+        ASSERT_TRUE(app_server.service().wait_for_alarm(std::chrono::seconds(2)));
+    }
+
+    // 2. 再推入 5 帧，排队在 capture_queue_ 中
+    for (uint64_t frame_id = 2; frame_id <= 6; ++frame_id) {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->frame_id = frame_id;
+        frame->wall_time_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->pts_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->memory_type = AV_MEM_HOST;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->width = 1920;
+        frame->height = 1080;
+        instance->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+    }
+
+    for (int attempt = 0; attempt < 400 && instance->get_processed_frames() < 6; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(instance->get_processed_frames(), 6U);
+    EXPECT_GE(pool.active_frame_count(), 5U);
+
+    // 3. 解除阻塞，同时调用 server.stop() 触发停机清理
+    app_server.service().release_alarm();
+    server.stop();
+
+    // 停机完成后，残留队列中的帧引用必须被全部释放
+    EXPECT_EQ(pool.active_frame_count(), 0U);
+
+    app_server.stop();
+    argus::core::ResourceLedger::instance().clear();
+    ::unsetenv("ARGUS_PACKAGE_DIR");
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+}
+
+TEST(UdsReconcileTest, AlarmReportedEvenWhenFrameRetainFails) {
+    const std::string package_dir = "var/async-alarm-retainfail-packages";
+    const std::string image_dir = "build/async-alarm-retainfail-images";
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+    std::filesystem::create_directories(package_dir + "/mock-detector");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        ARGUS_FIXTURE_PACKAGE_DIR,
+        package_dir + "/mock-detector/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    argus::core::ResourceLedger::instance().clear();
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
+        return uint64_t{2} * 1024 * 1024 * 1024;
+    });
+    argus::core::ImageManager::instance().init(
+        image_dir, std::shared_ptr<argus::platform::IImageProcessor>(adapter, adapter->get_image_processor()));
+
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start("/tmp/argus-test-app-retainfail.sock"));
+    argus::core::UdsServer server("/tmp/argus-test-retainfail.sock", adapter, backend,
+                                  "/tmp/argus-test-app-retainfail.sock");
+    ASSERT_TRUE(server.start());
+
+    argus::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* task = desired.add_tasks();
+    task->set_camera_id("retainfail-camera");
+    task->set_rtsp_url("rtsp://unused");
+    task->set_enabled(true);
+    add_instance(&desired, "retainfail-instance", "retainfail-camera", "mock-detector", "1.0.0", 1);
+
+    argus::v1::ApplyDesiredStateResponse response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &response));
+    ASSERT_TRUE(response.code().empty()) << response.error_message();
+    const auto instance = argus::core::AlgoManager::instance().get("retainfail-instance");
+    ASSERT_NE(instance, nullptr);
+
+    // 从 FramePool 申请合法帧，mock_algo 会在 frame_id == 42 时提前释放 token，
+    // 导致 on_result_bridge 处 retain 失败，测试告警元数据降级递送
+    auto& pool = argus::core::FramePool::instance();
+    av_frame_desc* frame = pool.acquire_frame();
+    ASSERT_NE(frame, nullptr);
+    frame->frame_id = 42;
+    frame->wall_time_ns = 1'000'000'000;
+    frame->pts_ns = 1'000'000'000;
+    frame->memory_type = AV_MEM_HOST;
+    frame->pixel_format = AV_PIX_NV12;
+    frame->width = 1920;
+    frame->height = 1080;
+
+    instance->push_frame(*frame);
+    EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+
+    // 等待告警上报到 StubAppServer
+    ASSERT_TRUE(app_server.service().wait_for_alarm(std::chrono::seconds(2)));
+
+    const auto alarms = app_server.service().alarms();
+    ASSERT_EQ(alarms.size(), 1U);
+    // 告警元数据正常上报，但因为 retain 失败，抓拍图像为空
+    EXPECT_TRUE(alarms[0].image_id().empty());
+    EXPECT_TRUE(alarms[0].image_rel_path().empty());
+    EXPECT_TRUE(alarms[0].event_id().ends_with("/mock-event-42"));
+
+    server.stop();
+    app_server.stop();
+    argus::core::ResourceLedger::instance().clear();
+    ::unsetenv("ARGUS_PACKAGE_DIR");
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
 }
 
 TEST(UdsReconcileTest, ReconcilesExactDetectionRuleFromUI) {

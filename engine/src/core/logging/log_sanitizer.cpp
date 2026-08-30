@@ -31,7 +31,10 @@ const std::unordered_set<std::string_view> ALLOWED_FIELDS = {
     "encoded_queue_depth", "encoded_queue_drops", "packet_parse_drops", "packet_gate_drops",
     "decoder_send_errors", "last_decoder_send_status", "last_process_status", "last_packet_pts_us", "last_packet_pts_delta_us",
     "last_decoded_pts_ns", "last_decoded_pts_delta_ns", "frame_width", "frame_height", "memory_type",
-    "keyframe_ready", "decoder_waiting_for_output", "instance_count", "total_decoded_frames"
+    "keyframe_ready", "decoder_waiting_for_output", "instance_count", "total_decoded_frames",
+    "capture_queued_fps", "capture_processed_fps", "capture_queue_depth", "capture_queue_drops",
+    "capture_retain_failures", "capture_image_failures", "capture_report_failures", "capture_mark_failures",
+    "capture_processing_failures"
 };
 
 constexpr std::array<std::string_view, 6> SENSITIVE_PATTERNS = {

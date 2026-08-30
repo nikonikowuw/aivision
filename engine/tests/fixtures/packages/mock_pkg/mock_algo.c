@@ -4,6 +4,7 @@
  */
 
 #include "argus/algo.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -14,6 +15,7 @@ typedef struct mock_instance_state {
     uint32_t mode;
     av_algo_result_cb on_result;
     void* result_user;
+    const av_frame_ops* frame_ops;
     int emitted;
 } mock_instance_state;
 
@@ -45,6 +47,7 @@ static int mock_instance_create(av_algo_library lib, const av_algo_instance_args
     st->mode = args ? args->mode : AV_INSTANCE_NORMAL;
     st->on_result = args ? args->on_result : NULL;
     st->result_user = args ? args->result_user : NULL;
+    st->frame_ops = args ? args->frame_ops : NULL;
     *out = st;
     return AV_OK;
 }
@@ -81,15 +84,27 @@ static int mock_instance_process(av_algo_instance inst, const av_frame_desc* fra
         st->emitted = 1;
         st->on_result(&res, st->result_user);
     } else if (st->mode == AV_INSTANCE_NORMAL && st->on_result) {
-        static const char kAlarmJson[] = "{\"object_count\":0}";
+        if (frame && frame->frame_id == 42 && st->frame_ops && st->frame_ops->release) {
+            // 特意提前释放 frame_token，模拟帧在捕获阶段 retain 失败但告警事件仍须正常递送的容错场景
+            st->frame_ops->release(st->frame_ops->ctx, frame->frame_token);
+        }
+        char alarm_json[128];
+        snprintf(alarm_json, sizeof(alarm_json),
+                 "{\"event_id\":\"mock-event-%llu\",\"alarm_type_id\":\"mock_alarm\",\"objects\":[]}",
+                 frame ? (unsigned long long)frame->frame_id : 0ULL);
+        static const av_algo_image_req kImageRequest = {
+            sizeof(av_algo_image_req), AV_ALGO_API_VERSION, 0.1f, 0.1f, 0.8f, 0.8f, 0, 0
+        };
         av_algo_result res;
         memset(&res, 0, sizeof(res));
         res.size = sizeof(av_algo_result);
         res.api_version = AV_ALGO_API_VERSION;
         res.kind = AV_RESULT_ALARM;
         res.frame_id = frame ? frame->frame_id : 0;
-        res.json = kAlarmJson;
-        res.json_len = (uint32_t)(sizeof(kAlarmJson) - 1);
+        res.json = alarm_json;
+        res.json_len = (uint32_t)strlen(alarm_json);
+        res.image_count = 1;
+        res.images = &kImageRequest;
         st->on_result(&res, st->result_user);
     }
     return AV_OK;

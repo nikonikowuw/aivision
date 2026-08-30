@@ -10,6 +10,7 @@
 
 #include "argus/core/uds_ipc.hpp"
 #include "argus/core/image_manager.hpp"
+#include "argus/core/frame_pool.hpp"
 #include "argus/core/algo_manager.hpp"
 #include "argus/core/algo_sandbox.hpp"
 #include "argus/core/live_stream_manager.hpp"
@@ -26,10 +27,13 @@
 #include <atomic>
 #include <algorithm>
 #include <array>
+#include <condition_variable>
 #include <cstring>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <nlohmann/json.hpp>
+#include <deque>
 #include <filesystem>
 #include <dlfcn.h>
 #include <fstream>
@@ -39,6 +43,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 #include <utility>
@@ -293,11 +298,17 @@ public:
           media_backend_(std::move(media_backend)),
           app_client_(std::make_shared<UdsClient>(
               app_socket_path.empty() ? env_or_default("ARGUS_APP_SOCKET", "/tmp/argus-app.sock")
-                                      : app_socket_path)) {}
+                                      : app_socket_path)) {
+        // 告警抓拍/上报 worker 与算法实例线程分离；回调线程只负责校验和非阻塞入队。
+        capture_worker_thread_ = std::thread(&EngineServiceImpl::capture_worker_loop, this);
+    }
 
     ~EngineServiceImpl() override {
+        // 先阻止新的结果进入队列，再停止实例，保证正在执行的 ABI 回调仍能安全返回。
+        capture_accepting_.store(false, std::memory_order_release);
         TaskScheduler::instance().stop_all();
         AlgoManager::instance().stop_all();
+        stop_capture_worker();
         loaded_packages_.clear();
     }
 
@@ -870,6 +881,187 @@ public:
         return grpc::Status::OK;
     }
 private:
+    // 告警异步任务拥有一份 protobuf 副本；有抓拍时额外持有对应帧 token，直到图片处理结束。
+    struct PendingAlarm {
+        argus::v1::AlarmEvent alarm;
+        av_frame_desc frame{};
+        av_rect image_roi{};
+        const av_frame_ops* frame_ops = nullptr;
+        bool has_image = false;
+        bool frame_retained = false;
+
+        PendingAlarm() = default;
+        PendingAlarm(const PendingAlarm&) = delete;
+        PendingAlarm& operator=(const PendingAlarm&) = delete;
+
+        PendingAlarm(PendingAlarm&& other) noexcept
+            : alarm(std::move(other.alarm)), frame(other.frame), image_roi(other.image_roi),
+              frame_ops(other.frame_ops), has_image(other.has_image), frame_retained(other.frame_retained) {
+            other.frame_retained = false;
+            other.frame.frame_token = nullptr;
+        }
+
+        PendingAlarm& operator=(PendingAlarm&& other) noexcept {
+            if (this == &other) return *this;
+            release_frame();
+            alarm = std::move(other.alarm);
+            frame = other.frame;
+            image_roi = other.image_roi;
+            frame_ops = other.frame_ops;
+            has_image = other.has_image;
+            frame_retained = other.frame_retained;
+            other.frame_retained = false;
+            other.frame.frame_token = nullptr;
+            return *this;
+        }
+
+        ~PendingAlarm() noexcept { release_frame(); }
+
+        void release_frame() noexcept {
+            if (!frame_retained || !frame_ops || !frame.frame_token) return;
+            const av_frame_ops* ops = frame_ops;
+            void* token = frame.frame_token;
+            frame_retained = false;
+            frame.frame_token = nullptr;
+            try {
+                if (ops->release) ops->release(ops->ctx, token);
+            } catch (...) {
+                // C ABI release 不应抛出异常；即使第三方实现违规，也不能让 worker 线程退出。
+            }
+        }
+    };
+
+    static constexpr size_t kMaxPendingAlarmQueueSize = 256;
+
+    void enqueue_pending_alarm(PendingAlarm pending) {
+        PendingAlarm dropped;
+        bool accepted = false;
+        {
+            std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+            if (capture_accepting_.load(std::memory_order_acquire) && capture_worker_running_) {
+                // 去重与入队在同一临界区完成，避免两个结果回调同时接受同一个 event_id。
+                if (reported_events_.insert(pending.alarm.event_id()).second) {
+                    if (capture_queue_.size() >= kMaxPendingAlarmQueueSize) {
+                        dropped = std::move(capture_queue_.front());
+                        capture_queue_.pop_front();
+                        capture_queue_dropped_.fetch_add(1, std::memory_order_relaxed);
+                    }
+                    capture_queue_.push_back(std::move(pending));
+                    capture_enqueued_.fetch_add(1, std::memory_order_relaxed);
+                    accepted = true;
+                }
+            }
+        }
+        // 释放被丢弃的旧帧和未入队（重复/停机）的当前帧，均不在队列锁内执行平台回调。
+        dropped.release_frame();
+        if (!accepted) pending.release_frame();
+        if (accepted) capture_cv_.notify_one();
+    }
+
+    void process_pending_alarm(PendingAlarm& pending) noexcept {
+        try {
+            if (pending.has_image) {
+                ImageRecord record;
+                const av_status image_status = ImageManager::instance().save_detection_image(
+                    &pending.frame, &pending.image_roi, pending.alarm.event_id(), &record);
+                // 图片编码落盘后立即归还帧缓冲，避免持有帧引用跨越同步 IPC 阻塞等待。
+                pending.release_frame();
+                if (image_status == AV_OK) {
+                    pending.alarm.set_image_id(record.image_id);
+                    pending.alarm.set_image_rel_path(record.rel_path);
+                } else {
+                    capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                }
+            } else {
+                pending.release_frame();
+            }
+
+            const bool reported = app_client_ && app_client_->report_alarm(pending.alarm);
+            if (!reported) {
+                capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
+            } else if (!pending.alarm.image_id().empty() &&
+                       ImageManager::instance().mark_reported(pending.alarm.image_id()) != AV_OK) {
+                capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+            }
+        } catch (...) {
+            capture_processing_failures_.fetch_add(1, std::memory_order_relaxed);
+        }
+        pending.release_frame();
+        capture_processed_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void log_capture_metrics() {
+        const auto now = std::chrono::steady_clock::now();
+        if (last_capture_debug_log_.time_since_epoch().count() == 0) {
+            last_capture_debug_log_ = now;
+            return;
+        }
+        const double elapsed_seconds = std::chrono::duration<double>(now - last_capture_debug_log_).count();
+        if (elapsed_seconds < 1.0) return;
+        last_capture_debug_log_ = now;
+
+        const uint64_t enqueued = capture_enqueued_.exchange(0, std::memory_order_relaxed);
+        const uint64_t processed = capture_processed_.exchange(0, std::memory_order_relaxed);
+        const uint64_t queue_drops = capture_queue_dropped_.exchange(0, std::memory_order_relaxed);
+        const uint64_t image_failures = capture_image_failures_.exchange(0, std::memory_order_relaxed);
+        const uint64_t report_failures = capture_report_failures_.exchange(0, std::memory_order_relaxed);
+        const uint64_t mark_failures = capture_mark_failures_.exchange(0, std::memory_order_relaxed);
+        const uint64_t processing_failures = capture_processing_failures_.exchange(0, std::memory_order_relaxed);
+        size_t queue_depth = 0;
+        {
+            std::lock_guard<std::mutex> lock(capture_mutex_);
+            queue_depth = capture_queue_.size();
+        }
+        LOG_DEBUG(
+            "engine.result", "alarm.capture_pipeline_metrics", "asynchronous alarm capture metrics", "",
+            {{"capture_queued_fps", static_cast<double>(enqueued) / elapsed_seconds},
+             {"capture_processed_fps", static_cast<double>(processed) / elapsed_seconds},
+             {"capture_queue_depth", static_cast<int64_t>(queue_depth)},
+             {"capture_queue_drops", static_cast<int64_t>(queue_drops)},
+             {"capture_retain_failures", static_cast<int64_t>(
+                  capture_retain_failures_.exchange(0, std::memory_order_relaxed))},
+             {"capture_image_failures", static_cast<int64_t>(image_failures)},
+             {"capture_report_failures", static_cast<int64_t>(report_failures)},
+             {"capture_mark_failures", static_cast<int64_t>(mark_failures)},
+             {"capture_processing_failures", static_cast<int64_t>(processing_failures)}});
+    }
+
+    void capture_worker_loop() {
+        for (;;) {
+            PendingAlarm pending;
+            {
+                std::unique_lock<std::mutex> lock(capture_mutex_);
+                const bool notified = capture_cv_.wait_for(lock, std::chrono::seconds(1), [this] {
+                    return !capture_queue_.empty() || !capture_worker_running_;
+                });
+                if (!notified) {
+                    lock.unlock();
+                    log_capture_metrics();
+                    continue;
+                }
+                if (!capture_worker_running_) break;
+                if (capture_queue_.empty()) continue;
+                pending = std::move(capture_queue_.front());
+                capture_queue_.pop_front();
+            }
+            // 所有 JPEG、文件系统和 ReportAlarm 操作均在该线程执行，不阻塞算法 worker。
+            process_pending_alarm(pending);
+            log_capture_metrics();
+        }
+    }
+
+    void stop_capture_worker() {
+        std::deque<PendingAlarm> discarded;
+        {
+            std::lock_guard<std::mutex> lock(capture_mutex_);
+            capture_worker_running_ = false;
+            discarded.swap(capture_queue_);
+        }
+        for (auto& pending : discarded) pending.release_frame();
+        capture_cv_.notify_one();
+        if (capture_worker_thread_.joinable()) capture_worker_thread_.join();
+    }
+
     struct RuntimeSnapshot {
         std::unordered_map<std::string, argus::v1::CameraTaskConfig> task_configs;
         std::unordered_map<std::string, argus::v1::AlgorithmInstanceConfig> instance_configs;
@@ -1267,11 +1459,10 @@ private:
             }
 
             const std::string event_id = instance->get_run_id() + "/" + algorithm_event_id;
-            {
-                std::lock_guard<std::mutex> lock(result_mutex_);
-                if (!reported_events_.insert(event_id).second) return;
-            }
             alarm.set_event_id(event_id);
+
+            PendingAlarm pending;
+            pending.alarm = std::move(alarm);
             if (result.image_count > 0) {
                 const auto& request = result.images[0];
                 if (request.size < sizeof(av_algo_image_req) || request.api_version != AV_ALGO_API_VERSION ||
@@ -1279,22 +1470,27 @@ private:
                     !std::isfinite(request.w) || !std::isfinite(request.h) || request.x < 0.0f ||
                     request.y < 0.0f || request.w <= 0.0f || request.h <= 0.0f ||
                     request.x + request.w > 1.0f || request.y + request.h > 1.0f) return;
-                av_rect roi{};
-                roi.size = sizeof(av_rect);
-                roi.api_version = AV_ALGO_API_VERSION;
-                roi.x = request.x;
-                roi.y = request.y;
-                roi.width = request.w;
-                roi.height = request.h;
-                ImageRecord record;
-                if (ImageManager::instance().save_detection_image(&frame, &roi, event_id, &record) == AV_OK) {
-                    alarm.set_image_id(record.image_id);
-                    alarm.set_image_rel_path(record.rel_path);
+                pending.has_image = true;
+                pending.frame = frame;
+                pending.image_roi.size = sizeof(av_rect);
+                pending.image_roi.api_version = AV_ALGO_API_VERSION;
+                pending.image_roi.x = request.x;
+                pending.image_roi.y = request.y;
+                pending.image_roi.width = request.w;
+                pending.image_roi.height = request.h;
+                pending.frame_ops = FramePool::instance().get_frame_ops();
+                if (!pending.frame_ops || !pending.frame_ops->retain || !pending.frame_ops->release ||
+                    pending.frame_ops->retain(pending.frame_ops->ctx, pending.frame.frame_token) != AV_OK) {
+                    capture_retain_failures_.fetch_add(1, std::memory_order_relaxed);
+                    pending.has_image = false;
+                    pending.frame_ops = nullptr;
+                    pending.frame.frame_token = nullptr;
+                } else {
+                    pending.frame_retained = true;
                 }
             }
-            if (app_client_ && app_client_->report_alarm(alarm) && !alarm.image_id().empty()) {
-                ImageManager::instance().mark_reported(alarm.image_id());
-            }
+            // 仅在任务成功进入有界队列后记录 event_id；满队列/停机丢弃不会阻塞算法线程。
+            enqueue_pending_alarm(std::move(pending));
         } catch (...) {
             // Malformed plugin output is isolated to this result callback.
         }
@@ -1580,6 +1776,21 @@ private:
     std::shared_ptr<platform::IPlatformAdapter> platform_adapter_;
     std::shared_ptr<media::IMediaBackend> media_backend_;
     std::shared_ptr<UdsClient> app_client_;
+    std::deque<PendingAlarm> capture_queue_;
+    std::mutex capture_mutex_;
+    std::condition_variable capture_cv_;
+    std::thread capture_worker_thread_;
+    bool capture_worker_running_ = true;
+    std::atomic<bool> capture_accepting_{true};
+    std::atomic<uint64_t> capture_enqueued_{0};
+    std::atomic<uint64_t> capture_processed_{0};
+    std::atomic<uint64_t> capture_queue_dropped_{0};
+    std::atomic<uint64_t> capture_retain_failures_{0};
+    std::atomic<uint64_t> capture_image_failures_{0};
+    std::atomic<uint64_t> capture_report_failures_{0};
+    std::atomic<uint64_t> capture_mark_failures_{0};
+    std::atomic<uint64_t> capture_processing_failures_{0};
+    std::chrono::steady_clock::time_point last_capture_debug_log_{};
     std::unordered_map<std::string, std::shared_ptr<LoadedPackage>> loaded_packages_;
     std::unordered_map<std::string, ResourceRequirement> instance_resources_;
     std::unordered_map<std::string, argus::v1::CameraTaskConfig> task_configs_;
@@ -1587,7 +1798,6 @@ private:
     bool runtime_degraded_ = false;
     std::unordered_set<std::string> degraded_instance_ids_;
     std::unordered_map<std::string, std::string> restart_failures_;
-    std::mutex result_mutex_;
     std::unordered_set<std::string> reported_events_;
     std::mutex reconcile_mutex_;
     std::atomic<uint64_t> applied_revision_{0};

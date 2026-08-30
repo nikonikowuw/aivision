@@ -160,7 +160,7 @@ validated
 
 ## 6. 上报与断线语义
 
-`ReportAlarm` 使用 Engine 生成的全局 event ID，Go 必须幂等。RPC 失败时图片保持 `unreported` 并成为 orphan candidate；任务继续本地分析。
+`ReportAlarm` 使用 Engine 生成的全局 event ID，Go 必须幂等。算法结果回调只负责校验结果、复制 `AlarmEvent`，并在包含抓拍时通过 `av_frame_ops.retain` 持有帧；图片编码、原子写盘、catalog 更新、IPC 上报和 ACK 后的 `mark_reported` 都在固定容量为 `256` 的独立 worker 队列中执行。队列满时丢弃最旧任务并释放其帧引用，不得阻塞算法 worker；停机时先停止接收新结果，再停止实例，最后释放未处理任务的帧引用。RPC 失败时图片保持 `unreported` 并成为 orphan candidate；任务继续本地分析。
 
 当前规范不承诺跨 Engine 进程崩溃的告警消息可靠投递。若产品要求告警零丢失，必须单独引入有容量、fsync 和磁盘水位策略的 durable outbox，并增加对应 PRD/AC；禁止把无界内存队列描述为可靠缓存。
 
@@ -191,6 +191,7 @@ validated
 - 合法与非法配置、插件拒绝、资源拒绝及 applied/desired revision 测试。
 - 图片写入各失败点、fsync/rename、catalog 恢复、双删和路径逃逸测试。
 - 上报 ACK、断线 orphan、对账确认和幂等 event ID 测试。
+- 告警回调与抓拍上报异步隔离、队列满时丢弃旧任务并释放 `frame_token`、阻塞 `ReportAlarm` 时算法 worker 仍可继续处理，以及停机清理测试。
 - 升级只影响目标算法、初始化失败回滚、回滚失败 degraded 和引用卸载保护测试。
 - Proto lint：任何常规 message 不得出现 frame/tensor/image bytes 字段。
 

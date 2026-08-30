@@ -25,6 +25,10 @@ TEST(ImageManagerTest, AtomicSaveCatalogAndBatchDelete) {
     EXPECT_EQ(mgr.save_detection_image(&frame, nullptr, "test-event-123", &record), AV_OK);
     EXPECT_EQ(record.event_id, "test-event-123");
     EXPECT_TRUE(std::filesystem::exists("build/test_images/" + record.rel_path));
+    // 验证硬件缩略图 _thumb.jpg 同步生成
+    const auto dot_pos = record.rel_path.rfind('.');
+    const std::string thumb_rel = record.rel_path.substr(0, dot_pos) + "_thumb" + record.rel_path.substr(dot_pos);
+    EXPECT_TRUE(std::filesystem::exists("build/test_images/" + thumb_rel));
     EXPECT_TRUE(std::filesystem::exists("build/test_images/catalog/catalog.json"));
     EXPECT_TRUE(record.rel_path.find(".tmp") == std::string::npos);
 
@@ -35,4 +39,5 @@ TEST(ImageManagerTest, AtomicSaveCatalogAndBatchDelete) {
     EXPECT_TRUE(del_res[0].second);
     EXPECT_TRUE(del_res[1].second);
     EXPECT_FALSE(std::filesystem::exists("build/test_images/" + record.rel_path));
+    EXPECT_FALSE(std::filesystem::exists("build/test_images/" + thumb_rel));
 }

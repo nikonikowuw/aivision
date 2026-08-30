@@ -12,6 +12,10 @@
     "ops": "維運管理",
     "time": "時間管理"
   },
+  "record": {
+    "alarm": "告警記錄",
+    "record": "智能記錄"
+  },
   "resource": {
     "camera": "攝影機",
     "person": "人員管理",

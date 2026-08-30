@@ -9,6 +9,7 @@ const I18N_KEY_PREFIXES = [
   'resource.',
   'live.',
   'ai.',
+  'record.',
 ];
 
 /**

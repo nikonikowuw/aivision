@@ -392,6 +392,66 @@ definitions:
       updatedAt:
         type: string
     type: object
+  niko-vue-admin_app_internal_model.DetectionLineDirection:
+    enum:
+    - 0
+    - 1
+    - 2
+    format: int32
+    type: integer
+    x-enum-comments:
+      DetectionLineDirectionAToB: 沿折线方向跨越
+      DetectionLineDirectionBToA: 逆折线方向跨越
+      DetectionLineDirectionBoth: 双向跨越
+    x-enum-descriptions:
+    - 双向跨越
+    - 沿折线方向跨越
+    - 逆折线方向跨越
+    x-enum-varnames:
+    - DetectionLineDirectionBoth
+    - DetectionLineDirectionAToB
+    - DetectionLineDirectionBToA
+  niko-vue-admin_app_internal_model.DetectionPoint:
+    properties:
+      x:
+        type: number
+      "y":
+        type: number
+    type: object
+  niko-vue-admin_app_internal_model.DetectionRule:
+    properties:
+      lineDirection:
+        $ref: '#/definitions/niko-vue-admin_app_internal_model.DetectionLineDirection'
+      points:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.DetectionPoint'
+        type: array
+      role:
+        $ref: '#/definitions/niko-vue-admin_app_internal_model.DetectionRuleRole'
+    type: object
+  niko-vue-admin_app_internal_model.DetectionRuleRole:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-comments:
+      DetectionRuleRoleLine: 分界线：目标跨线触发
+      DetectionRuleRoleMask: 屏蔽/遮罩区域：此区域内目标忽略
+      DetectionRuleRoleROI: 布防/检测区域：只在此区域内检测
+      DetectionRuleRoleUnspecified: 未指定（非法）
+    x-enum-descriptions:
+    - 未指定（非法）
+    - 布防/检测区域：只在此区域内检测
+    - 屏蔽/遮罩区域：此区域内目标忽略
+    - 分界线：目标跨线触发
+    x-enum-varnames:
+    - DetectionRuleRoleUnspecified
+    - DetectionRuleRoleROI
+    - DetectionRuleRoleMask
+    - DetectionRuleRoleLine
   niko-vue-admin_app_internal_model.Menu:
     properties:
       affix:
@@ -569,6 +629,103 @@ definitions:
       data: {}
       message:
         type: string
+    type: object
+  niko-vue-admin_app_internal_service.AlarmRecordDetail:
+    properties:
+      alarmTypeId:
+        type: string
+      algorithmId:
+        type: string
+      algorithmName:
+        type: string
+      algorithmVersion:
+        type: string
+      bbox:
+        description: '[x1, y1, x2, y2]'
+        items:
+          type: number
+        type: array
+      cameraId:
+        type: string
+      cameraName:
+        type: string
+      confidence:
+        type: number
+      createdAt:
+        type: string
+      eventId:
+        type: string
+      id:
+        type: integer
+      imageId:
+        type: string
+      imageUrl:
+        type: string
+      instanceId:
+        type: string
+      occurredAt:
+        type: string
+      rules:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_model.DetectionRule'
+        type: array
+      targetLabel:
+        type: string
+      timeSynced:
+        type: boolean
+      trackId:
+        type: integer
+    type: object
+  niko-vue-admin_app_internal_service.AlarmRecordItem:
+    properties:
+      alarmTypeId:
+        type: string
+      algorithmId:
+        type: string
+      algorithmName:
+        type: string
+      algorithmVersion:
+        type: string
+      bbox:
+        description: '[x1, y1, x2, y2]'
+        items:
+          type: number
+        type: array
+      cameraId:
+        type: string
+      cameraName:
+        type: string
+      confidence:
+        type: number
+      createdAt:
+        type: string
+      eventId:
+        type: string
+      id:
+        type: integer
+      imageId:
+        type: string
+      imageUrl:
+        type: string
+      instanceId:
+        type: string
+      occurredAt:
+        type: string
+      targetLabel:
+        type: string
+      timeSynced:
+        type: boolean
+      trackId:
+        type: integer
+    type: object
+  niko-vue-admin_app_internal_service.AlarmRecordPageResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/niko-vue-admin_app_internal_service.AlarmRecordItem'
+        type: array
+      total:
+        type: integer
     type: object
   niko-vue-admin_app_internal_service.CameraLiveStreamResult:
     properties:
@@ -1743,6 +1900,145 @@ paths:
       summary: 分页获取操作日志列表
       tags:
       - 操作日志模块
+  /api/record/alarms:
+    get:
+      description: 支持按发生时间区间、摄像头、算法、告警类型、置信度区间组合分页查询
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数
+        in: query
+        name: pageSize
+        type: integer
+      - description: 开始时间
+        in: query
+        name: startTime
+        type: string
+      - description: 结束时间
+        in: query
+        name: endTime
+        type: string
+      - description: 摄像头ID
+        in: query
+        name: cameraId
+        type: string
+      - description: 算法ID
+        in: query
+        name: algorithmId
+        type: string
+      - description: 告警类型ID
+        in: query
+        name: alarmTypeId
+        type: string
+      - description: 最低置信度
+        in: query
+        name: minConfidence
+        type: number
+      - description: 最高置信度
+        in: query
+        name: maxConfidence
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 告警分页数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/niko-vue-admin_app_internal_service.AlarmRecordPageResult'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 分页查询告警记录
+      tags:
+      - 告警记录
+  /api/record/alarms/{id}:
+    get:
+      description: 获取单条告警详细信息，含检测规则与目标框
+      parameters:
+      - description: 告警记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 告警详情数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/niko-vue-admin_app_internal_service.AlarmRecordDetail'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "404":
+          description: 记录不存在
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 查询告警记录详情
+      tags:
+      - 告警记录
+  /api/record/images/{id}:
+    get:
+      description: 校验 Bearer Token 并在后端代理读取 Engine var/images 下的安全图片流，支持 type=thumb
+        缩略图
+      parameters:
+      - description: 图片唯一标识 image_id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '图片类型: thumb 缩略图, 默认原图'
+        in: query
+        name: type
+        type: string
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: 图片文件流
+          schema:
+            type: file
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+        "404":
+          description: 图片不存在
+          schema:
+            $ref: '#/definitions/niko-vue-admin_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 受控读取告警图片
+      tags:
+      - 告警记录
   /api/role:
     post:
       consumes:

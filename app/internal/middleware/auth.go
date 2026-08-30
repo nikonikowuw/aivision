@@ -91,6 +91,13 @@ func (m *AuthMiddleware) Handler(c *gin.Context) {
 
 	rawToken, ok := bearerToken(c.GetHeader("Authorization"))
 	if !ok {
+		// 允许图片等静态媒体请求通过 URL query token (如 ?token=xxx) 传递凭证
+		if qToken := c.Query("token"); qToken != "" {
+			rawToken = qToken
+			ok = true
+		}
+	}
+	if !ok {
 		c.Error(errno.NewError(errno.CodeUnauthorized)) //nolint:errcheck // 交给统一错误处理中间件
 		c.Abort()
 		return

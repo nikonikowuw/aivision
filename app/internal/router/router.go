@@ -60,6 +60,9 @@ const (
 	statsRoutePath       = "/stats"
 	enabledRoutePath     = "/enabled"
 	listRoutePath        = "/list"
+	recordRoutePath      = "/record"
+	alarmsRoutePath      = "/alarms"
+	imagesRoutePath      = "/images"
 	openV1RoutePath      = "/v1/open"
 )
 
@@ -84,6 +87,7 @@ type Deps struct {
 	PersonHandler          *api.PersonHandler
 	AlgorithmHandler       *api.AlgorithmHandler
 	TaskHandler            *api.TaskHandler
+	AlarmRecordHandler     *api.AlarmRecordHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -330,6 +334,16 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+instanceRoutePath+"/:instanceId", "resource:task:edit")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+taskRoutePath+instanceRoutePath+"/:instanceId"+enabledRoutePath, "resource:task:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+taskRoutePath+instanceRoutePath+"/:instanceId", "resource:task:delete")
+
+		recordGroup := apiGroup.Group(recordRoutePath)
+		{
+			recordGroup.GET(alarmsRoutePath, deps.AlarmRecordHandler.ListPage)
+			recordGroup.GET(alarmsRoutePath+idRoutePath, deps.AlarmRecordHandler.GetDetail)
+			recordGroup.GET(imagesRoutePath+idRoutePath, deps.AlarmRecordHandler.ReadImageStream)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath, "record:alarm")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath+idRoutePath, "record:alarm")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+imagesRoutePath+idRoutePath, middleware.PermCodeAuthenticated)
 	}
 
 	// 外部开放同步 API：位于认证与权限中间件之外，使用受控 IP 白名单保护

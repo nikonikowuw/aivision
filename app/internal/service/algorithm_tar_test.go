@@ -226,5 +226,3 @@ func TestExtractAndValidateArchive_ValidTar(t *testing.T) {
 		t.Errorf("manifest.json should exist on disk: %v", err)
 	}
 }
-
-

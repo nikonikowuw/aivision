@@ -50,7 +50,7 @@ bool fsync_directory(const fs::path& directory) {
 bool write_atomic_file(const fs::path& temporary, const fs::path& final_path,
                        const std::string& bytes, bool exclusive) {
     const int flags = O_WRONLY | O_CREAT | (exclusive ? O_EXCL : O_TRUNC);
-    const int fd = ::open(temporary.c_str(), flags, 0600);
+    const int fd = ::open(temporary.c_str(), flags, 0644);
     if (fd < 0) return false;
 
     const bool ok = write_fd(fd, reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()) &&
@@ -221,13 +221,20 @@ av_status ImageManager::save_detection_image(
     if (encode_status != AV_OK) return encode_status;
     if (jpeg_data.empty()) return AV_ERR_INTERNAL;
 
+    // 1.1 并行利用硬件图像处理器编码生成低带宽轻量缩略图（宽度 360px，Q=70）
+    std::vector<uint8_t> thumb_jpeg_data;
+    processor_->encode_thumbnail_jpeg(frame, 360, 70, thumb_jpeg_data);
+
     // 2. 生成安全 image_id 并按 UTC 日期构建存储子目录（如 2025-05-18/img-xxx.jpg）
     const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     const std::string image_id = make_image_id(event_id, now_ns);
     const std::string relative_path = date_directory(now_ns) + "/" + image_id + ".jpg";
+    const std::string thumb_rel_path = date_directory(now_ns) + "/" + image_id + "_thumb.jpg";
     const fs::path final_path = fs::path(base_dir_) / relative_path;
+    const fs::path thumb_final_path = fs::path(base_dir_) / thumb_rel_path;
     const fs::path temporary = fs::path(base_dir_) / ".tmp" / (image_id + ".jpg.part");
+    const fs::path thumb_temporary = fs::path(base_dir_) / ".tmp" / (image_id + "_thumb.jpg.part");
 
     // 3. 校验路径安全性，防止目录穿越
     std::error_code ec;
@@ -236,10 +243,14 @@ av_status ImageManager::save_detection_image(
     fs::create_directories(temporary.parent_path(), ec);
     if (ec) return AV_ERR_INTERNAL;
 
-    // 4. 原子持久化 JPEG 文件（临时文件写入 + fsync + rename）
+    // 4. 原子持久化 JPEG 原图与缩略图文件（临时文件写入 + fsync + rename）
     if (!write_atomic_file(temporary, final_path,
                            std::string(reinterpret_cast<const char*>(jpeg_data.data()), jpeg_data.size()), true)) {
         return AV_ERR_INTERNAL;
+    }
+    if (!thumb_jpeg_data.empty()) {
+        write_atomic_file(thumb_temporary, thumb_final_path,
+                          std::string(reinterpret_cast<const char*>(thumb_jpeg_data.data()), thumb_jpeg_data.size()), true);
     }
 
     // 5. 更新本地内存 Catalog 记录并原子刷盘 catalog.json
@@ -294,6 +305,17 @@ ImageDeleteStatus ImageManager::delete_image_with_status(const std::string& imag
     if (ec) return ImageDeleteStatus::FAILED;
     if (existed && !fs::remove(path, ec)) return ImageDeleteStatus::FAILED;
     if (ec) return ImageDeleteStatus::FAILED;
+
+    // 级联删除对应的缩略图文件（若存在）
+    std::string thumb_rel = it->second.rel_path;
+    const auto dot_pos = thumb_rel.rfind('.');
+    if (dot_pos != std::string::npos) {
+        thumb_rel = thumb_rel.substr(0, dot_pos) + "_thumb" + thumb_rel.substr(dot_pos);
+        const fs::path thumb_path = fs::path(base_dir_) / thumb_rel;
+        if (is_path_within_base(thumb_path)) {
+            fs::remove(thumb_path, ec);
+        }
+    }
 
     const ImageRecord record = it->second;
     catalog_.erase(it);

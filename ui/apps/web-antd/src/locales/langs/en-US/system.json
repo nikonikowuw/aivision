@@ -22,7 +22,8 @@
     "confirmBatchDisable": "Are you sure to disable {count} selected user(s)?",
     "success": "Operation Succeeded",
     "confirm": "Confirm",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "detail": "Detail"
   },
   "user": {
     "title": "User Management",

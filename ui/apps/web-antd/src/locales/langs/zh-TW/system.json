@@ -22,7 +22,8 @@
     "confirmBatchDisable": "確定要批次停用選取的 {count} 位使用者嗎？",
     "success": "操作成功",
     "confirm": "確認",
-    "cancel": "取消"
+    "cancel": "取消",
+    "detail": "詳情"
   },
   "user": {
     "title": "使用者管理",

@@ -11,7 +11,7 @@ func TestCalculateLatestVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("calculateLatestVersion: %v", err)
 	}
-	if ver != 20 {
-		t.Errorf("latest version = %d, want 20", ver)
+	if ver != 22 {
+		t.Errorf("latest version = %d, want 22", ver)
 	}
 }

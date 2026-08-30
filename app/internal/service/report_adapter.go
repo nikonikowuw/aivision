@@ -2,15 +2,25 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"niko-vue-admin/app/internal/model"
 	"niko-vue-admin/app/internal/pkg/engineipc"
 	aivisionv1 "niko-vue-admin/app/internal/proto/aivision/v1"
 	"niko-vue-admin/app/internal/repository"
+)
+
+const (
+	// orphanRetentionGracePeriod 孤儿图片保留保护期（5分钟），防止刚生成的图片被误删。
+	orphanRetentionGracePeriod = 5 * time.Minute
 )
 
 // TaskRuntimeState 任务实时运行状态（驻内存，供列表状态合并读取，design D6）。
@@ -31,14 +41,13 @@ type InstanceRuntimeState struct {
 
 // ReportAdapter 实现 engineipc.ReportAdapter：
 //   - AcceptTaskState / AcceptInstanceState 更新内存缓存，仅状态码变化时落库（D6）；
-//   - AcceptAlarm / AcceptMetrics / ReconcileOrphanImages 保持 fail-closed。
-//
-// 说明：engineipc.unavailableReportAdapter 类型未导出，无法嵌入复用其默认实现，
-// 因此三个未实现方法显式返回 IPC_UNAVAILABLE，与 unavailable 语义完全一致
-// （PRD Non-Goals：告警落库/遥测/孤儿图片对账属后续任务）。
+//   - AcceptAlarm 幂等持久化到 alarm_records 表；
+//   - ReconcileOrphanImages 针对已落库图片保留（retain），超期未落库图片删除（delete）；
+//   - AcceptMetrics 保持 fail-closed。
 type ReportAdapter struct {
-	repo repository.TaskRepository
-	log  *zap.Logger
+	repo      repository.TaskRepository
+	alarmRepo repository.AlarmRecordRepository
+	log       *zap.Logger
 
 	mu    sync.RWMutex
 	tasks map[string]TaskRuntimeState     // camera_id → 实时状态
@@ -51,16 +60,26 @@ type ReportAdapter struct {
 	instanceUpdateMu sync.Mutex
 }
 
-// NewReportAdapter 创建 ReportAdapter。
+// NewReportAdapter 创建 ReportAdapter（保持原有两参数构造函数签名，兼容既有单测与调用者）。
 func NewReportAdapter(repo repository.TaskRepository, log *zap.Logger) *ReportAdapter {
+	return NewReportAdapterWithAlarm(repo, nil, log)
+}
+
+// NewReportAdapterWithAlarm 具备告警落库与孤儿图片对账能力的完整构造函数。
+func NewReportAdapterWithAlarm(
+	repo repository.TaskRepository,
+	alarmRepo repository.AlarmRecordRepository,
+	log *zap.Logger,
+) *ReportAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &ReportAdapter{
-		repo:  repo,
-		log:   log,
-		tasks: make(map[string]TaskRuntimeState),
-		insts: make(map[string]InstanceRuntimeState),
+		repo:      repo,
+		alarmRepo: alarmRepo,
+		log:       log,
+		tasks:     make(map[string]TaskRuntimeState),
+		insts:     make(map[string]InstanceRuntimeState),
 	}
 }
 
@@ -163,21 +182,145 @@ func (a *ReportAdapter) AcceptInstanceState(ctx context.Context, state *aivision
 	return nil
 }
 
-// AcceptAlarm 告警落库属后续任务（PRD Non-Goals），保持 fail-closed，
-// 禁止对未持久化的告警返回成功 ACK（engineipc 稳定错误契约）。
-func (a *ReportAdapter) AcceptAlarm(context.Context, *aivisionv1.AlarmEvent) error {
-	return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "report service unavailable")
+// AcceptAlarm 告警事件持久化：根据 event_id 幂等落库。
+func (a *ReportAdapter) AcceptAlarm(ctx context.Context, event *aivisionv1.AlarmEvent) error {
+	if a.alarmRepo == nil {
+		return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "alarm report service unavailable")
+	}
+	if event == nil {
+		return errors.New("alarm event is nil")
+	}
+	eventID := strings.TrimSpace(event.GetEventId())
+	if eventID == "" {
+		return errors.New("alarm event_id is empty")
+	}
+
+	// 检查图片相对路径安全性（防止极端注入）
+	imgRelPath := event.GetImageRelPath()
+	if imgRelPath != "" {
+		cleanPath := filepath.Clean(imgRelPath)
+		if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+			return errors.New("alarm image_rel_path is invalid")
+		}
+	}
+
+	// 提取单个检测目标信息（1 Target = 1 Record）
+	var targetLabel string
+	var confidence float32
+	var trackID int64
+	var bbox []float32
+
+	if len(event.GetObjects()) > 0 && event.GetObjects()[0] != nil {
+		firstObj := event.GetObjects()[0]
+		targetLabel = firstObj.GetLabel()
+		confidence = firstObj.GetConfidence()
+		trackID = firstObj.GetTrackId()
+		if pbBBox := firstObj.GetBbox(); pbBBox != nil {
+			bbox = []float32{pbBBox.GetXMin(), pbBBox.GetYMin(), pbBBox.GetXMax(), pbBBox.GetYMax()}
+		}
+	}
+
+	bboxJSON, err := json.Marshal(bbox)
+	if err != nil {
+		return fmt.Errorf("marshal alarm bbox: %w", err)
+	}
+
+	occurredAt := time.Now()
+	if event.GetWallTimeNs() > 0 {
+		occurredAt = time.Unix(0, event.GetWallTimeNs())
+	}
+
+	record := &model.AlarmRecord{
+		EventID:          eventID,
+		InstanceID:       event.GetInstanceId(),
+		CameraID:         event.GetCameraId(),
+		AlgorithmID:      event.GetAlgorithmId(),
+		AlgorithmVersion: event.GetAlgorithmVersion(),
+		AlarmTypeID:      event.GetAlarmTypeId(),
+		OccurredAt:       occurredAt,
+		TimeSynced:       event.GetTimeSynced(),
+		TargetLabel:      targetLabel,
+		Confidence:       confidence,
+		TrackID:          trackID,
+		BBoxJSON:         bboxJSON,
+		ImageID:          event.GetImageId(),
+		ImageRelPath:     imgRelPath,
+	}
+
+	if err := a.alarmRepo.Create(ctx, record); err != nil {
+		if errors.Is(err, repository.ErrDuplicateKey) {
+			// 幂等处理：若 event_id 已存在，视为成功处理
+			a.log.Info("duplicate alarm event received, treated as idempotent success", zap.String("event_id", eventID))
+			return nil
+		}
+		a.log.Error("persist alarm record failed", zap.String("event_id", eventID), zap.Error(err))
+		return err
+	}
+
+	return nil
 }
 
-// AcceptMetrics 设备遥测时序落库属后续任务，语义同 AcceptAlarm。
+// AcceptMetrics 设备遥测时序落库属后续任务，语义保持 fail-closed。
 func (a *ReportAdapter) AcceptMetrics(context.Context, *aivisionv1.DeviceTelemetry) error {
-	return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "report service unavailable")
+	return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "metrics report service unavailable")
 }
 
-// ReconcileOrphanImages 孤儿图片对账属后续任务，语义同 AcceptAlarm。
-// 失败时不得返回空 code，否则 Engine 会删除图片（quality-guidelines）。
-func (a *ReportAdapter) ReconcileOrphanImages(context.Context, []*aivisionv1.OrphanImageEntry) (engineipc.OrphanDisposition, error) {
-	return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "report service unavailable")
+// ReconcileOrphanImages 孤儿图片对账：
+// 1. 批量反查数据库中的 image_id；
+// 2. 命中者放入 RetainImageIDs；
+// 3. 未命中且生成时间超过保护期（5分钟）放入 DeleteImageIDs；
+// 4. 未命中但在保护期内的图片不做处理（等待下轮对账或落库）。
+func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*aivisionv1.OrphanImageEntry) (engineipc.OrphanDisposition, error) {
+	if a.alarmRepo == nil {
+		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "reconcile orphan images service unavailable")
+	}
+
+	if len(entries) == 0 {
+		return engineipc.OrphanDisposition{}, nil
+	}
+
+	allImageIDs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry != nil && entry.GetImageId() != "" {
+			allImageIDs = append(allImageIDs, entry.GetImageId())
+		}
+	}
+
+	existingIDs, err := a.alarmRepo.FindExistingImageIDs(ctx, allImageIDs)
+	if err != nil {
+		a.log.Error("find existing image ids failed during orphan reconciliation", zap.Error(err))
+		return engineipc.OrphanDisposition{}, err
+	}
+
+	existingMap := make(map[string]struct{}, len(existingIDs))
+	for _, id := range existingIDs {
+		existingMap[id] = struct{}{}
+	}
+
+	now := time.Now()
+	var retainIDs []string
+	var deleteIDs []string
+
+	for _, entry := range entries {
+		if entry == nil || entry.GetImageId() == "" {
+			continue
+		}
+		imgID := entry.GetImageId()
+		if _, ok := existingMap[imgID]; ok {
+			retainIDs = append(retainIDs, imgID)
+		} else {
+			// 未落库：检查是否超过保护期
+			createdAt := time.Unix(0, entry.GetCreatedAtNs())
+			if entry.GetCreatedAtNs() > 0 && now.Sub(createdAt) > orphanRetentionGracePeriod {
+				deleteIDs = append(deleteIDs, imgID)
+			}
+		}
+	}
+
+	return engineipc.OrphanDisposition{
+		RetainImageIDs: retainIDs,
+		DeleteImageIDs: deleteIDs,
+	}, nil
 }
 
 // TaskRuntime 返回 camera_id 对应的内存实时状态；未上报过返回 ok=false。

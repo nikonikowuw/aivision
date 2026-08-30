@@ -1,0 +1,51 @@
+{
+  "alarm": {
+    "title": "Alarm Records",
+    "filter": {
+      "camera": "Camera",
+      "cameraPlaceholder": "Select camera",
+      "algorithm": "Algorithm",
+      "algorithmPlaceholder": "Select algorithm",
+      "alarmType": "Alarm Type",
+      "alarmTypePlaceholder": "Input alarm type",
+      "timeRange": "Time Range",
+      "minConfidence": "Min Confidence",
+      "maxConfidence": "Max Confidence",
+      "search": "Search",
+      "reset": "Reset"
+    },
+    "columns": {
+      "id": "ID",
+      "targetCrop": "Target Image",
+      "panorama": "Panorama",
+      "occurredAt": "Occurred At",
+      "cameraName": "Camera",
+      "algorithmName": "Algorithm",
+      "alarmTypeId": "Alarm Type",
+      "targetLabel": "Target Label",
+      "confidence": "Confidence",
+      "trackId": "Track ID",
+      "action": "Action"
+    },
+    "detail": {
+      "title": "Alarm Detail",
+      "eventInfo": "Event Info",
+      "eventId": "Event ID",
+      "occurredAt": "Occurred At",
+      "camera": "Camera",
+      "algorithm": "Algorithm",
+      "algorithmVersion": "Version",
+      "alarmType": "Alarm Type",
+      "targetLabel": "Target Label",
+      "confidence": "Confidence",
+      "trackId": "Track ID",
+      "timeSynced": "Time Synced",
+      "imageAnnotation": "Panorama & Annotation",
+      "legendRoi": "ROI Area",
+      "legendMask": "Mask Area",
+      "legendLine": "Warning Line",
+      "legendTarget": "Target",
+      "noImage": "No Image Available"
+    }
+  }
+}

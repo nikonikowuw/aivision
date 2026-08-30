@@ -84,9 +84,12 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	algorithmRepository := repository.NewAlgorithmRepository(gormDB)
 	algorithmService := service.NewAlgorithmService(algorithmRepository, engineClient, zapLogger)
 	algorithmHandler := api.NewAlgorithmHandler(algorithmService)
-	reportAdapter := service.NewReportAdapter(taskRepository, zapLogger)
+	alarmRecordRepository := repository.NewAlarmRecordRepository(gormDB)
+	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, zapLogger)
 	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
 	taskHandler := api.NewTaskHandler(taskService)
+	alarmRecordService := service.NewAlarmRecordService(alarmRecordRepository, cameraRepository, algorithmRepository, taskRepository, cfg)
+	alarmRecordHandler := api.NewAlarmRecordHandler(alarmRecordService)
 	deps := router.Deps{
 		ErrorHandler:           handlerFunc,
 		AuthMiddleware:         authMiddleware,
@@ -106,6 +109,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		PersonHandler:          personHandler,
 		AlgorithmHandler:       algorithmHandler,
 		TaskHandler:            taskHandler,
+		AlarmRecordHandler:     alarmRecordHandler,
 	}
 	engine := router.New(cfg, deps)
 	desiredStateAdapter := service.NewDesiredStateAdapter(taskRepository, zapLogger)

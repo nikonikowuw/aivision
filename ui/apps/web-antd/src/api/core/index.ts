@@ -1,3 +1,4 @@
+export * from './alarm';
 export * from './algorithm';
 export * from './auth';
 export * from './camera';

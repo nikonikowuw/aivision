@@ -12,6 +12,10 @@
     "ops": "运维管理",
     "time": "时间管理"
   },
+  "record": {
+    "alarm": "告警记录",
+    "record": "智能记录"
+  },
   "resource": {
     "camera": "摄像头",
     "person": "人员管理",

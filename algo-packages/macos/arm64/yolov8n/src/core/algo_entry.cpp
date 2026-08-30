@@ -59,6 +59,7 @@ struct InstanceContext {
     std::string last_error_msg;
     uint32_t event_counter = 0;
     bool self_test_emitted = false;
+    std::unordered_map<int64_t, int64_t> track_alarm_cooldown_;
     aivision::cv::SimpleTracker tracker;
 };
 
@@ -451,38 +452,50 @@ int yolo_instance_process_impl(av_algo_instance inst_handle, const av_frame_desc
     }
 
     if (objects.empty() || !inst->on_result) return AV_OK;
-    if (inst->event_counter == std::numeric_limits<uint32_t>::max()) {
-        return fail(inst, AV_ERR_INTERNAL, "event counter exhausted");
-    }
-    ++inst->event_counter;
-    const std::string event_id = aivision::utils::EventIdGenerator::next_event_id(inst->event_counter);
-    const std::string result_json = aivision::utils::serialize_alarm_json(event_id, kAlarmTypeId, objects);
-    if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "alarm result is too large");
 
-    std::vector<av_algo_image_req> image_requests;
-    image_requests.reserve(objects.size());
+    const int64_t current_time_ns = frame->wall_time_ns > 0 ? frame->wall_time_ns : frame->pts_ns;
+    constexpr int64_t kCooldownNs = 5LL * 1000 * 1000 * 1000; // 默认 5 秒冷却
+
     for (const auto& object : objects) {
+        if (object.track_id > 0) {
+            auto it = inst->track_alarm_cooldown_.find(object.track_id);
+            if (it != inst->track_alarm_cooldown_.end() && (current_time_ns - it->second) < kCooldownNs) {
+                // 处于冷却期内，跳过该目标的告警触发
+                continue;
+            }
+            inst->track_alarm_cooldown_[object.track_id] = current_time_ns;
+        }
+
+        if (inst->event_counter == std::numeric_limits<uint32_t>::max()) {
+            return fail(inst, AV_ERR_INTERNAL, "event counter exhausted");
+        }
+        ++inst->event_counter;
+        const std::string event_id = aivision::utils::EventIdGenerator::next_event_id(inst->event_counter);
+        std::vector<aivision::cv::DetectionBox> single_object = {object};
+        const std::string result_json = aivision::utils::serialize_alarm_json(event_id, kAlarmTypeId, single_object);
+        if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "alarm result is too large");
+
+        // 请求全景大图 [0, 0, 1, 1]
         av_algo_image_req request{};
         request.size = sizeof(request);
         request.api_version = AV_ALGO_API_VERSION;
-        request.x = object.x;
-        request.y = object.y;
-        request.w = object.w;
-        request.h = object.h;
-        request.purpose = 1;
-        image_requests.push_back(request);
-    }
+        request.x = 0.0f;
+        request.y = 0.0f;
+        request.w = 1.0f;
+        request.h = 1.0f;
+        request.purpose = 0; // 0: 全景大图
 
-    av_algo_result result{};
-    result.size = sizeof(result);
-    result.api_version = AV_ALGO_API_VERSION;
-    result.kind = AV_RESULT_ALARM;
-    result.frame_id = frame->frame_id;
-    result.json = result_json.c_str();
-    result.json_len = static_cast<uint32_t>(result_json.size());
-    result.image_count = static_cast<uint32_t>(image_requests.size());
-    result.images = image_requests.data();
-    inst->on_result(&result, inst->result_user);
+        av_algo_result result{};
+        result.size = sizeof(result);
+        result.api_version = AV_ALGO_API_VERSION;
+        result.kind = AV_RESULT_ALARM;
+        result.frame_id = frame->frame_id;
+        result.json = result_json.c_str();
+        result.json_len = static_cast<uint32_t>(result_json.size());
+        result.image_count = 1;
+        result.images = &request;
+        inst->on_result(&result, inst->result_user);
+    }
     return AV_OK;
 }
 
@@ -498,6 +511,7 @@ int yolo_instance_flush_impl(av_algo_instance inst_handle) {
     inst->tracker.reset();
     inst->previous_points.clear();
     inst->missed_frames.clear();
+    inst->track_alarm_cooldown_.clear();
     return AV_OK;
 }
 

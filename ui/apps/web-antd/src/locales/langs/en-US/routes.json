@@ -12,6 +12,10 @@
     "ops": "Operations",
     "time": "Time Sync"
   },
+  "record": {
+    "alarm": "Alarm Records",
+    "record": "AI Records"
+  },
   "resource": {
     "camera": "Camera",
     "person": "Person Management",

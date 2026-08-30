@@ -12,6 +12,7 @@
     "astro",
     "axios",
     "brotli",
+    "bbox",
     "cascader",
     "chatcmpl",
     "clsx",

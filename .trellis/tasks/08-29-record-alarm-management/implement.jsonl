@@ -1,0 +1,6 @@
+{"step": "phase-1-algo-package", "detail": "Add per-track 5s cooldown, single-target alarm emission, and [0,0,1,1] panorama image request in macOS and RKNN YOLOv8n algo packages"}
+{"step": "phase-2-db-model-repo-service", "detail": "Add 000021 alarm_records and 000022 seed menu migrations, AlarmRecord model, repository, service, and SQLite unit tests"}
+{"step": "phase-3-report-adapter-ipc", "detail": "Implement ReportAdapter.AcceptAlarm with idempotent persistence and ReconcileOrphanImages with 5min grace period"}
+{"step": "phase-4-api-router-wire", "detail": "Implement AlarmRecordHandler, secure image stream reader, router permissions, and regenerate Wire DI code"}
+{"step": "phase-5-frontend-views-locales", "detail": "Add alarm API client, /record/alarm list view, AlarmDetailDrawer, AlarmAnnotationCanvas, and zh-CN/en-US/zh-TW locales"}
+{"step": "phase-6-hardware-dual-image-pipeline", "detail": "Implement zero-CPU hardware thumbnail pipeline in C++ Engine, Go API thumbnail stream route, and Vue multi-tier instant rendering"}

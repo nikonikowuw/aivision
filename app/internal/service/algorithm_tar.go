@@ -334,4 +334,3 @@ func extractZip(r io.Reader, absTargetDir string, maxSizeBytes int64) (int64, er
 
 	return writtenBytes, nil
 }
-

@@ -1,0 +1,5 @@
+{"check": "make -C app test", "passed": true, "detail": "All Go backend unit tests pass"}
+{"check": "make -C app vet", "passed": true, "detail": "Go vet passes with 0 issues"}
+{"check": "make -C app proto-check", "passed": true, "detail": "Protobuf definitions and generated code are in sync with 0 drift"}
+{"check": "make -C algo-packages/macos/arm64/yolov8n test", "passed": true, "detail": "All 4 C++ ABI and core tests pass"}
+{"check": "cd ui && pnpm --filter @vben/web-antd typecheck", "passed": true, "detail": "TypeScript typecheck passes for Vue components and API bindings"}

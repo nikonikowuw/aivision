@@ -1,0 +1,51 @@
+{
+  "alarm": {
+    "title": "告警記錄",
+    "filter": {
+      "camera": "攝影機",
+      "cameraPlaceholder": "請選擇攝影機",
+      "algorithm": "演算法",
+      "algorithmPlaceholder": "請選擇演算法",
+      "alarmType": "告警類型",
+      "alarmTypePlaceholder": "輸入告警類型",
+      "timeRange": "發生時間",
+      "minConfidence": "最低信賴度",
+      "maxConfidence": "最高信賴度",
+      "search": "查詢",
+      "reset": "重設"
+    },
+    "columns": {
+      "id": "ID",
+      "targetCrop": "目標圖",
+      "panorama": "全景圖",
+      "occurredAt": "發生時間",
+      "cameraName": "攝影機",
+      "algorithmName": "演算法",
+      "alarmTypeId": "告警類型",
+      "targetLabel": "目標類型",
+      "confidence": "信賴度",
+      "trackId": "Track ID",
+      "action": "操作"
+    },
+    "detail": {
+      "title": "告警詳情",
+      "eventInfo": "事件資訊",
+      "eventId": "事件標識",
+      "occurredAt": "發生時間",
+      "camera": "關聯攝影機",
+      "algorithm": "識別演算法",
+      "algorithmVersion": "演算法版本",
+      "alarmType": "告警類型",
+      "targetLabel": "目標類型",
+      "confidence": "信賴度",
+      "trackId": "Track ID",
+      "timeSynced": "時間同步",
+      "imageAnnotation": "全景圖與智慧標註",
+      "legendRoi": "檢測區域 (ROI)",
+      "legendMask": "屏蔽區域 (Mask)",
+      "legendLine": "警戒線 (Line)",
+      "legendTarget": "觸發目標 (Target)",
+      "noImage": "暫無圖片"
+    }
+  }
+}

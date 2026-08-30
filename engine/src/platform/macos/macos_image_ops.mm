@@ -352,6 +352,59 @@ public:
             return finalized ? AV_OK : AV_ERR_INTERNAL;
         }
     }
+    av_status encode_thumbnail_jpeg(const av_frame_desc* src, int max_width, int quality,
+                                    std::vector<uint8_t>& out_jpeg) override {
+        if (!src || !src->opaque || src->opaque_kind != AV_OPAQUE_CVPIXELBUFFER) return AV_ERR_INVALID_ARG;
+        @autoreleasepool {
+            auto buffer = static_cast<CVPixelBufferRef>(src->opaque);
+            CIImage* input = [CIImage imageWithCVPixelBuffer:buffer];
+            if (!input) return AV_ERR_INTERNAL;
+
+            // 依据指定最大宽度（默认 360px）使用 CoreImage / GPU 进行高保真等比降采样
+            const float orig_w = static_cast<float>(input.extent.size.width);
+            if (orig_w > static_cast<float>(max_width) && max_width > 0) {
+                const float scale = static_cast<float>(max_width) / orig_w;
+                CIFilter* resize_filter = [CIFilter filterWithName:@"CILanczosScaleTransform"];
+                [resize_filter setValue:input forKey:kCIInputImageKey];
+                [resize_filter setValue:@(scale) forKey:kCIInputScaleKey];
+                [resize_filter setValue:@(1.0) forKey:kCIInputAspectRatioKey];
+                CIImage* scaled = [resize_filter outputImage];
+                if (scaled) {
+                    input = scaled;
+                }
+            }
+
+            CIContext* context = [CIContext contextWithOptions:nil];
+            CGImageRef image = [context createCGImage:input fromRect:input.extent];
+            if (!image) return AV_ERR_INTERNAL;
+            CFMutableDataRef data = CFDataCreateMutable(kCFAllocatorDefault, 0);
+            CGImageDestinationRef destination = CGImageDestinationCreateWithData(data, CFSTR("public.jpeg"), 1, nullptr);
+            if (!destination) {
+                CGImageRelease(image);
+                CFRelease(data);
+                return AV_ERR_INTERNAL;
+            }
+            const float compression = std::clamp(quality, 1, 100) / 100.0f;
+            CFNumberRef number = CFNumberCreate(kCFAllocatorDefault, kCFNumberFloatType, &compression);
+            const void* keys[] = {kCGImageDestinationLossyCompressionQuality};
+            const void* values[] = {number};
+            CFDictionaryRef options = CFDictionaryCreate(kCFAllocatorDefault, keys, values, 1,
+                                                         &kCFTypeDictionaryKeyCallBacks,
+                                                         &kCFTypeDictionaryValueCallBacks);
+            CGImageDestinationAddImage(destination, image, options);
+            const bool finalized = CGImageDestinationFinalize(destination);
+            if (finalized) {
+                const auto* bytes = CFDataGetBytePtr(data);
+                out_jpeg.assign(bytes, bytes + CFDataGetLength(data));
+            }
+            CFRelease(options);
+            CFRelease(number);
+            CFRelease(destination);
+            CFRelease(data);
+            CGImageRelease(image);
+            return finalized ? AV_OK : AV_ERR_INTERNAL;
+        }
+    }
 };
 
 static MacosImageProcessor g_macos_image_processor;

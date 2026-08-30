@@ -66,10 +66,10 @@ target_include_directories(unit_tests PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../src>
 )
 target_compile_definitions(unit_tests PRIVATE
-    AIVISION_FIXTURE_PACKAGE_DIR="${MOCK_FIXTURE_DIR}"
-    AIVISION_PACKAGE_VALIDATOR_PATH="${CMAKE_BINARY_DIR}/package_validator"
-    AIVISION_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
-    AIVISION_BINARY_DIR="${CMAKE_BINARY_DIR}"
+    ARGUS_FIXTURE_PACKAGE_DIR="${MOCK_FIXTURE_DIR}"
+    ARGUS_PACKAGE_VALIDATOR_PATH="${CMAKE_BINARY_DIR}/package_validator"
+    ARGUS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
+    ARGUS_BINARY_DIR="${CMAKE_BINARY_DIR}"
 )
 target_link_libraries(unit_tests PRIVATE
     engine_core
@@ -77,25 +77,25 @@ target_link_libraries(unit_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
 )
-aivision_enable_strict_warnings(unit_tests)
+argus_enable_strict_warnings(unit_tests)
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
-    target_compile_definitions(unit_tests PRIVATE AIVISION_PLATFORM_MACOS=1)
+    target_compile_definitions(unit_tests PRIVATE ARGUS_PLATFORM_MACOS=1)
     target_link_libraries(unit_tests PRIVATE platform_macos)
 endif()
-if(AIVISION_USE_ZLM)
-    target_compile_definitions(unit_tests PRIVATE AIVISION_USE_ZLM=1)
+if(ARGUS_USE_ZLM)
+    target_compile_definitions(unit_tests PRIVATE ARGUS_USE_ZLM=1)
     target_link_libraries(unit_tests PRIVATE media_zlm)
 endif()
 
 if(ENGINE_ENABLE_ASAN OR ENGINE_ENABLE_TSAN)
     target_compile_definitions(unit_tests PRIVATE
-        AIVISION_SKIP_IPC_TESTS=1
-        AIVISION_SKIP_REAL_MEDIA_TESTS=1
+        ARGUS_SKIP_IPC_TESTS=1
+        ARGUS_SKIP_REAL_MEDIA_TESTS=1
     )
 elseif(PLATFORM_TARGET STREQUAL "mock")
     target_compile_definitions(unit_tests PRIVATE
-        AIVISION_RUN_SANDBOX_CHILD_TEST=1
-        AIVISION_RUN_PACKAGE_RPC_TEST=1
+        ARGUS_RUN_SANDBOX_CHILD_TEST=1
+        ARGUS_RUN_PACKAGE_RPC_TEST=1
     )
 endif()
 add_dependencies(unit_tests mock_algo_fixture)
@@ -121,11 +121,11 @@ target_link_libraries(contract_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
 )
-aivision_enable_strict_warnings(contract_tests)
+argus_enable_strict_warnings(contract_tests)
 add_dependencies(contract_tests mock_algo_fixture)
 add_test(NAME contract_tests COMMAND contract_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
-if(AIVISION_USE_ZLM)
+if(ARGUS_USE_ZLM)
     add_executable(test_rtsp_server media/rtsp_server.cpp)
     target_include_directories(test_rtsp_server PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
@@ -140,6 +140,6 @@ if(AIVISION_USE_ZLM)
     target_link_libraries(test_rtsp_server PRIVATE
         ext-codec
     )
-    aivision_enable_strict_warnings(test_rtsp_server)
+    argus_enable_strict_warnings(test_rtsp_server)
     add_dependencies(unit_tests test_rtsp_server)
 endif()

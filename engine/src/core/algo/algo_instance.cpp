@@ -3,12 +3,12 @@
  * @brief 算法实例处理线程、帧流控与 ABI 结果桥接实现
  */
 
-#include "aivision/core/algo_instance.hpp"
+#include "argus/core/algo_instance.hpp"
 
 #include <algorithm>
 #include <limits>
 
-namespace aivision::core {
+namespace argus::core {
 
 AlgorithmInstance::AlgorithmInstance(
     const std::string& instance_id,
@@ -367,4 +367,4 @@ bool AlgorithmInstance::should_throttle_sample(int64_t pts_ns) {
     return false;
 }
 
-} // namespace aivision::core
+} // namespace argus::core

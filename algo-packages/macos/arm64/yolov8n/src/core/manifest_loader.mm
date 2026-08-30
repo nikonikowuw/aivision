@@ -1,7 +1,7 @@
 #import <Foundation/Foundation.h>
 
 #include "manifest_loader.hpp"
-#include "aivision/utils/env.hpp"
+#include "argus/utils/env.hpp"
 
 #include <filesystem>
 #include <string>
@@ -146,7 +146,7 @@ bool resolve_manifest_model_path(const std::string& package_root,
                 error = ".env is not a regular file";
                 return false;
             }
-            const auto local_env = aivision::utils::EnvReader::load_file(env_path.string());
+            const auto local_env = argus::utils::EnvReader::load_file(env_path.string());
             const auto model_path_value = local_env.find("MODEL_PATH");
             fs::path canonical_package;
             if (model_path_value != local_env.end() && !model_path_value->second.empty()) {

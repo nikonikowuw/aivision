@@ -1,5 +1,5 @@
 # Media backend module
-if(AIVISION_USE_ZLM)
+if(ARGUS_USE_ZLM)
     add_library(media_zlm STATIC
         zlm/zlm_source.cpp
     )
@@ -16,7 +16,7 @@ if(AIVISION_USE_ZLM)
         ZLToolKit
         ext-codec
     )
-    aivision_enable_strict_warnings(media_zlm)
+    argus_enable_strict_warnings(media_zlm)
 else()
     add_library(media_mock STATIC
         mock/mock_source.cpp
@@ -25,5 +25,5 @@ else()
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
     )
     target_link_libraries(media_mock PUBLIC media_api)
-    aivision_enable_strict_warnings(media_mock)
+    argus_enable_strict_warnings(media_mock)
 endif()

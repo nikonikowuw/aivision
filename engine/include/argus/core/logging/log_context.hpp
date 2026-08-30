@@ -4,11 +4,11 @@
  */
 #pragma once
 
-#include "aivision/core/logging/log_record.hpp"
+#include "argus/core/logging/log_record.hpp"
 #include <string>
 #include <vector>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief 线程级日志上下文管理器 (基于 thread_local 栈)
@@ -55,4 +55,4 @@ private:
     bool active_{false};
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging

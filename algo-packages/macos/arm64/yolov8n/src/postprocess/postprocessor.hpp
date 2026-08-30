@@ -3,13 +3,13 @@
 #include <vector>
 #include <cstdint>
 #include <string>
-#include "aivision/cv/nms.hpp"
+#include "argus/cv/nms.hpp"
 
 namespace yolov8n {
 
 class Postprocessor {
 public:
-    static std::vector<aivision::cv::DetectionBox> postprocess(
+    static std::vector<argus::cv::DetectionBox> postprocess(
         const std::vector<float>& net_out,
         float conf_thresh,
         float iou_thresh,

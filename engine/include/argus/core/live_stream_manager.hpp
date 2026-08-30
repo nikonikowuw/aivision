@@ -18,9 +18,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "aivision/v1/engine.pb.h"
+#include "argus/v1/engine.pb.h"
 
-namespace aivision::core {
+namespace argus::core {
 
 class LiveStreamManager {
 public:
@@ -54,7 +54,7 @@ public:
      * @return 错误码（空表示成功）
      */
     std::string start_preview(const std::string& camera_id,
-                              aivision::v1::StreamType stream_type,
+                              argus::v1::StreamType stream_type,
                               const std::string& rtsp_url,
                               std::string* stream_path,
                               std::string* error_message);
@@ -65,12 +65,12 @@ public:
      * @param stream_type 码流类型
      * @return 是否停止成功
      */
-    bool stop_preview(const std::string& camera_id, aivision::v1::StreamType stream_type);
+    bool stop_preview(const std::string& camera_id, argus::v1::StreamType stream_type);
 
     /**
      * @brief 获取指定流当前的活跃状态（供诊断或测试）
      */
-    bool is_streaming(const std::string& camera_id, aivision::v1::StreamType stream_type) const;
+    bool is_streaming(const std::string& camera_id, argus::v1::StreamType stream_type) const;
 
     /**
      * @brief 重置并清空所有预览流（供单测与销毁）
@@ -83,7 +83,7 @@ private:
     LiveStreamManager(const LiveStreamManager&) = delete;
     LiveStreamManager& operator=(const LiveStreamManager&) = delete;
 
-    static std::string make_stream_id(const std::string& camera_id, aivision::v1::StreamType stream_type);
+    static std::string make_stream_id(const std::string& camera_id, argus::v1::StreamType stream_type);
 
     mutable std::mutex mutex_;
     uint16_t http_port_ = 8080;
@@ -93,4 +93,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core

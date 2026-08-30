@@ -4,11 +4,11 @@
  */
 
 #include <gtest/gtest.h>
-#include "aivision/core/frame_pool.hpp"
+#include "argus/core/frame_pool.hpp"
 
 
 TEST(FramePoolTest, AcquireRetainRelease) {
-    auto& pool = aivision::core::FramePool::instance();
+    auto& pool = argus::core::FramePool::instance();
     ASSERT_EQ(pool.reset(), AV_OK);
 
     EXPECT_EQ(pool.active_frame_count(), 0);
@@ -29,7 +29,7 @@ TEST(FramePoolTest, AcquireRetainRelease) {
 }
 
 TEST(FramePoolTest, ResetPreservesActiveToken) {
-    auto& pool = aivision::core::FramePool::instance();
+    auto& pool = argus::core::FramePool::instance();
     ASSERT_EQ(pool.reset(), AV_OK);
 
     auto* frame = pool.acquire_frame();

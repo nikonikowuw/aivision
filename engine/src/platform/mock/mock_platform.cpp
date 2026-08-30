@@ -6,7 +6,7 @@
  * 内存分配释放、模拟视频帧生成及引用计数生命周期。
  */
 
-#include "aivision/platform/mock_platform.hpp"
+#include "argus/platform/mock_platform.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -18,7 +18,7 @@
 #include <unordered_map>
 
 
-namespace aivision::platform {
+namespace argus::platform {
 namespace {
 
 struct MockFrameStorage {
@@ -326,4 +326,4 @@ OpaqueReleaseFn MockPlatformAdapter::get_opaque_release() const {
     return mock_release_opaque;
 }
 
-} // namespace aivision::platform
+} // namespace argus::platform

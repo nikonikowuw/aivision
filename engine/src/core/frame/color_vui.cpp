@@ -8,13 +8,13 @@
  * 3. parse_h265_sps：解析 HEVC profile_tier_level 及 vui_parameters。
  */
 
-#include "aivision/core/color_vui.hpp"
+#include "argus/core/color_vui.hpp"
 
 #include <optional>
 #include <vector>
 
 
-namespace aivision::core {
+namespace argus::core {
 namespace {
 
 class BitReader {
@@ -358,4 +358,4 @@ ColorVUIInfo ColorVUIParser::parse_h265_sps(const uint8_t* sps_data, size_t size
     return info;
 }
 
-} // namespace aivision::core
+} // namespace argus::core

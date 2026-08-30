@@ -8,7 +8,7 @@
 #import <ImageIO/ImageIO.h>
 
 
-#include "aivision/types.h"
+#include "argus/types.h"
 
 #include <algorithm>
 #include <chrono>
@@ -60,7 +60,7 @@ CVPixelBufferRef image_to_bgra(CGImageRef image, size_t width, size_t height) {
 
 } // namespace
 
-extern "C" bool aivision_validator_create_test_frame(const char* package_root,
+extern "C" bool argus_validator_create_test_frame(const char* package_root,
                                                        const char* test_image_file,
                                                        av_frame_desc* out_frame,
                                                        void** owner) {
@@ -165,6 +165,6 @@ extern "C" bool aivision_validator_create_test_frame(const char* package_root,
     return true;
 }
 
-extern "C" void aivision_validator_release_test_frame(void* owner) {
+extern "C" void argus_validator_release_test_frame(void* owner) {
     if (owner) CVPixelBufferRelease(static_cast<CVPixelBufferRef>(owner));
 }

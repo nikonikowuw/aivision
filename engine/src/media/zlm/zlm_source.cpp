@@ -7,7 +7,7 @@
  * 原始帧包（EncodedPacket）组装与连接中断/恢复事件广播。
  */
 
-#include "aivision/media/media_api.hpp"
+#include "argus/media/media_api.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -23,7 +23,7 @@
 #include "Rtsp/Rtsp.h"
 
 
-namespace aivision::media {
+namespace argus::media {
 namespace {
 
 // 将 ZLMediaKit 的播放/断开错误归类为测活稳定失败码。
@@ -416,4 +416,4 @@ std::shared_ptr<IMediaBackend> create_zlm_backend() {
     return std::make_shared<ZlmMediaBackend>();
 }
 
-} // namespace aivision::media
+} // namespace argus::media

@@ -3,8 +3,8 @@ add_executable(face_recognition_runner
 )
 target_compile_options(face_recognition_runner PRIVATE ${ALGO_WARNING_FLAGS} -fobjc-arc)
 target_include_directories(face_recognition_runner PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/aivision-sdk/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/aivision-sdk/toolkit/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/argus-sdk/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/argus-sdk/toolkit/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
 )

@@ -1,14 +1,14 @@
 #pragma once
 
-#include "aivision/cv/letterbox.hpp"
-#include "aivision/cv/nms.hpp"
+#include "argus/cv/letterbox.hpp"
+#include "argus/cv/nms.hpp"
 #include <cstdint>
 #include <vector>
 #include <string>
 
 namespace yolov8n {
 
-using DetectionBox = aivision::cv::DetectionBox;
+using DetectionBox = argus::cv::DetectionBox;
 
 struct RknnOutputBuffer {
     void* data{nullptr};
@@ -22,7 +22,7 @@ class Postprocessor {
 public:
     static std::vector<DetectionBox> decode(
         const std::vector<RknnOutputBuffer>& outputs,
-        const aivision::cv::LetterboxInfo& letterbox,
+        const argus::cv::LetterboxInfo& letterbox,
         float conf_threshold,
         float nms_threshold,
         int src_w,

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(aivision_engine VERSION 1.0.0 LANGUAGES C CXX)
+project(argus_engine VERSION 1.0.0 LANGUAGES C CXX)
 
 set(PLATFORM_TARGET "macos" CACHE STRING "Target platform (macos or mock)")
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
@@ -26,7 +26,7 @@ option(ENGINE_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ENGINE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(ENGINE_BUILD_TESTS "Build test suite" ON)
 
-function(aivision_enable_strict_warnings target)
+function(argus_enable_strict_warnings target)
     target_compile_options(${target} PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-Wall>
         $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
@@ -63,9 +63,9 @@ if(ENGINE_BUILD_TESTS)
 endif()
 
 # ZLMediaKit configuration
-set(AIVISION_USE_ZLM OFF)
+set(ARGUS_USE_ZLM OFF)
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
-    set(AIVISION_USE_ZLM ON)
+    set(ARGUS_USE_ZLM ON)
     set(ENABLE_OPENSSL OFF CACHE BOOL "" FORCE)
     set(ENABLE_WEBRTC OFF CACHE BOOL "" FORCE)
     set(ENABLE_SRT OFF CACHE BOOL "" FORCE)
@@ -76,7 +76,7 @@ if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
     set(ENABLE_API OFF CACHE BOOL "" FORCE)
     set(ENABLE_SERVER OFF CACHE BOOL "" FORCE)
     set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-    set(AIVISION_ZLM_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/zlm_release" CACHE PATH "ZLMediaKit output directory")
+    set(ARGUS_ZLM_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/zlm_release" CACHE PATH "ZLMediaKit output directory")
 
     include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ZLMediaKit/3rdpart/media-server/libflv/include)
     add_subdirectory(third_party/ZLMediaKit zlm_build EXCLUDE_FROM_ALL)

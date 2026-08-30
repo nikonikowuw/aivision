@@ -15,9 +15,9 @@
 #include <mutex>
 #include <cstdint>
 #include <functional>
-#include "aivision/types.h"
+#include "argus/types.h"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 算法实例资源需求描述
@@ -96,5 +96,5 @@ private:
     std::unordered_map<std::string, ResourceRequirement> allocations_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

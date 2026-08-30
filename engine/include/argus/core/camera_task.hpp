@@ -20,13 +20,13 @@
 #include <deque>
 #include <mutex>
 #include <chrono>
-#include "aivision/types.h"
-#include "aivision/media/media_api.hpp"
-#include "aivision/platform/platform_api.hpp"
-#include "aivision/core/algo_instance.hpp"
-#include "aivision/core/frame_pool.hpp"
+#include "argus/types.h"
+#include "argus/media/media_api.hpp"
+#include "argus/platform/platform_api.hpp"
+#include "argus/core/algo_instance.hpp"
+#include "argus/core/frame_pool.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 摄像头任务状态机
@@ -150,5 +150,5 @@ private:
     std::thread watchdog_thread_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

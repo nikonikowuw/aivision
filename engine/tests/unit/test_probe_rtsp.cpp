@@ -17,14 +17,14 @@
 #include <utility>
 #include <vector>
 
-#include "aivision/core/probe_rtsp.hpp"
+#include "argus/core/probe_rtsp.hpp"
 
 
 namespace {
 
-aivision::media::ProbeOutcome make_success(const std::string& codec = "H264", uint32_t width = 1920,
+argus::media::ProbeOutcome make_success(const std::string& codec = "H264", uint32_t width = 1920,
                                            uint32_t height = 1080, double fps = 25.0) {
-    aivision::media::ProbeOutcome outcome;
+    argus::media::ProbeOutcome outcome;
     outcome.success = true;
     outcome.codec = codec;
     outcome.width = width;
@@ -33,8 +33,8 @@ aivision::media::ProbeOutcome make_success(const std::string& codec = "H264", ui
     return outcome;
 }
 
-aivision::media::ProbeOutcome make_failure(const std::string& code) {
-    aivision::media::ProbeOutcome outcome;
+argus::media::ProbeOutcome make_failure(const std::string& code) {
+    argus::media::ProbeOutcome outcome;
     outcome.failure_code = code;
     return outcome;
 }
@@ -45,32 +45,32 @@ struct FakeProbeState {
     std::atomic<int> stop_count{0};
 };
 
-class FakeProbeSource final : public aivision::media::IMediaSource {
+class FakeProbeSource final : public argus::media::IMediaSource {
 public:
-    std::function<aivision::media::ProbeOutcome(aivision::media::Transport)> on_probe;
+    std::function<argus::media::ProbeOutcome(argus::media::Transport)> on_probe;
     std::shared_ptr<FakeProbeState> state;
 
-    av_status start(const std::string&, aivision::media::PacketCallback,
-                    aivision::media::StatusCallback) override {
+    av_status start(const std::string&, argus::media::PacketCallback,
+                    argus::media::StatusCallback) override {
         return AV_OK;
     }
     void stop() override { ++state->stop_count; }
     bool is_connected() const override { return false; }
 
-    aivision::media::ProbeOutcome probe(const std::string&, aivision::media::Transport transport,
+    argus::media::ProbeOutcome probe(const std::string&, argus::media::Transport transport,
                                         std::chrono::milliseconds) override {
         ++state->probe_count;
-        return on_probe ? on_probe(transport) : aivision::media::ProbeOutcome{};
+        return on_probe ? on_probe(transport) : argus::media::ProbeOutcome{};
     }
 };
 
-class FakeProbeBackend final : public aivision::media::IMediaBackend {
+class FakeProbeBackend final : public argus::media::IMediaBackend {
 public:
-    std::function<aivision::media::ProbeOutcome(aivision::media::Transport)> on_probe;
+    std::function<argus::media::ProbeOutcome(argus::media::Transport)> on_probe;
     std::shared_ptr<FakeProbeState> state = std::make_shared<FakeProbeState>();
     int created_count = 0;
 
-    std::unique_ptr<aivision::media::IMediaSource> create_source(const std::string&) override {
+    std::unique_ptr<argus::media::IMediaSource> create_source(const std::string&) override {
         ++created_count;
         auto source = std::make_unique<FakeProbeSource>();
         source->state = state;
@@ -84,9 +84,9 @@ public:
 
 TEST(ProbeRtspTest, SuccessOnTcpWithMetadata) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    backend->on_probe = [](aivision::media::Transport) { return make_success(); };
+    backend->on_probe = [](argus::media::Transport) { return make_success(); };
 
-    const auto result = aivision::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live",
+    const auto result = argus::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live",
                                                      std::chrono::seconds(5));
 
     EXPECT_EQ(result.status, "success");
@@ -106,9 +106,9 @@ TEST(ProbeRtspTest, SuccessOnTcpWithMetadata) {
 
 TEST(ProbeRtspTest, NoVideoTrackFailsBothTransports) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    backend->on_probe = [](aivision::media::Transport) { return make_failure("RTSP_NO_VIDEO_TRACK"); };
+    backend->on_probe = [](argus::media::Transport) { return make_failure("RTSP_NO_VIDEO_TRACK"); };
 
-    const auto result = aivision::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
+    const auto result = argus::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
 
     EXPECT_EQ(result.status, "failed");
     EXPECT_EQ(result.failure_code, "RTSP_NO_VIDEO_TRACK");
@@ -124,9 +124,9 @@ TEST(ProbeRtspTest, NoVideoTrackFailsBothTransports) {
 
 TEST(ProbeRtspTest, NoFirstFrameTimeoutFails) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    backend->on_probe = [](aivision::media::Transport) { return make_failure("RTSP_NO_FIRST_FRAME"); };
+    backend->on_probe = [](argus::media::Transport) { return make_failure("RTSP_NO_FIRST_FRAME"); };
 
-    const auto result = aivision::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
+    const auto result = argus::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
 
     EXPECT_EQ(result.status, "failed");
     EXPECT_EQ(result.failure_code, "RTSP_NO_FIRST_FRAME");
@@ -136,13 +136,13 @@ TEST(ProbeRtspTest, NoFirstFrameTimeoutFails) {
 
 TEST(ProbeRtspTest, TcpFailThenUdpSuccessFallback) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    backend->on_probe = [](aivision::media::Transport transport) {
-        return transport == aivision::media::Transport::UDP
+    backend->on_probe = [](argus::media::Transport transport) {
+        return transport == argus::media::Transport::UDP
                    ? make_success("H265", 1280, 720, 30.0)
                    : make_failure("RTSP_CONNECT_FAILED");
     };
 
-    const auto result = aivision::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
+    const auto result = argus::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
 
     EXPECT_EQ(result.status, "success");
     EXPECT_EQ(result.selected_transport, "udp");
@@ -161,13 +161,13 @@ TEST(ProbeRtspTest, TcpFailThenUdpSuccessFallback) {
 
 TEST(ProbeRtspTest, BothTransportsFailUsesLastFailureCode) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    backend->on_probe = [](aivision::media::Transport transport) {
-        return transport == aivision::media::Transport::TCP
+    backend->on_probe = [](argus::media::Transport transport) {
+        return transport == argus::media::Transport::TCP
                    ? make_failure("RTSP_CONNECT_FAILED")
                    : make_failure("RTSP_PLAY_TIMEOUT");
     };
 
-    const auto result = aivision::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
+    const auto result = argus::core::probe_camera(backend, "rtsp", "rtsp://127.0.0.1/live");
 
     EXPECT_EQ(result.status, "failed");
     EXPECT_EQ(result.failure_code, "RTSP_PLAY_TIMEOUT");
@@ -178,9 +178,9 @@ TEST(ProbeRtspTest, BothTransportsFailUsesLastFailureCode) {
 
 TEST(ProbeRtspTest, CancelBeforeAnyAttemptReturnsCancelled) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    backend->on_probe = [](aivision::media::Transport) { return make_success(); };
+    backend->on_probe = [](argus::media::Transport) { return make_success(); };
 
-    const auto result = aivision::core::probe_camera(
+    const auto result = argus::core::probe_camera(
         backend, "rtsp", "rtsp://127.0.0.1/live", std::chrono::seconds(5),
         [] { return true; });
 
@@ -193,11 +193,11 @@ TEST(ProbeRtspTest, CancelBeforeAnyAttemptReturnsCancelled) {
 
 TEST(ProbeRtspTest, CancelBetweenAttemptsReleasesSource) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    backend->on_probe = [](aivision::media::Transport) { return make_failure("RTSP_CONNECT_FAILED"); };
+    backend->on_probe = [](argus::media::Transport) { return make_failure("RTSP_CONNECT_FAILED"); };
     int cancel_calls = 0;
     const auto is_cancelled = [&] { return ++cancel_calls >= 2; };
 
-    const auto result = aivision::core::probe_camera(
+    const auto result = argus::core::probe_camera(
         backend, "rtsp", "rtsp://127.0.0.1/live", std::chrono::seconds(5), is_cancelled);
 
     EXPECT_EQ(result.status, "failed");
@@ -212,7 +212,7 @@ TEST(ProbeRtspTest, CancelBetweenAttemptsReleasesSource) {
 
 TEST(ProbeRtspTest, UnsupportedProtocol) {
     auto backend = std::make_shared<FakeProbeBackend>();
-    const auto result = aivision::core::probe_camera(backend, "onvif", "rtsp://127.0.0.1/live");
+    const auto result = argus::core::probe_camera(backend, "onvif", "rtsp://127.0.0.1/live");
     EXPECT_EQ(result.status, "failed");
     EXPECT_EQ(result.failure_code, "RTSP_UNSUPPORTED_PROTOCOL");
     EXPECT_TRUE(result.attempts.empty());
@@ -220,7 +220,7 @@ TEST(ProbeRtspTest, UnsupportedProtocol) {
 }
 
 TEST(ProbeRtspTest, NullBackendReturnsMediaError) {
-    const auto result = aivision::core::probe_camera(nullptr, "rtsp", "rtsp://127.0.0.1/live");
+    const auto result = argus::core::probe_camera(nullptr, "rtsp", "rtsp://127.0.0.1/live");
     EXPECT_EQ(result.status, "failed");
     EXPECT_EQ(result.failure_code, "RTSP_MEDIA_ERROR");
 }

@@ -14,13 +14,13 @@
 #include <memory>
 #include <vector>
 #include <grpcpp/grpcpp.h>
-#include "aivision/v1/engine.grpc.pb.h"
-#include "aivision/v1/app.grpc.pb.h"
-#include "aivision/v1/person.grpc.pb.h"
-#include "aivision/platform/platform_api.hpp"
-#include "aivision/media/media_api.hpp"
+#include "argus/v1/engine.grpc.pb.h"
+#include "argus/v1/app.grpc.pb.h"
+#include "argus/v1/person.grpc.pb.h"
+#include "argus/platform/platform_api.hpp"
+#include "argus/media/media_api.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief UDS gRPC 客户端（Engine -> App）
@@ -37,38 +37,38 @@ public:
     /**
      * @brief 上报检测告警事件
      */
-    bool report_alarm(const aivision::v1::AlarmEvent& alarm);
+    bool report_alarm(const argus::v1::AlarmEvent& alarm);
 
     /**
      * @brief 上报设备性能与健康遥测数据
      */
-    bool report_telemetry(const aivision::v1::DeviceTelemetry& telemetry);
+    bool report_telemetry(const argus::v1::DeviceTelemetry& telemetry);
 
     /**
      * @brief 上报摄像头任务状态变更
      */
-    bool report_task_state(const aivision::v1::TaskState& task_state);
+    bool report_task_state(const argus::v1::TaskState& task_state);
 
     /**
      * @brief 上报算法实例状态变更
      */
-    bool report_instance_state(const aivision::v1::InstanceState& instance_state);
+    bool report_instance_state(const argus::v1::InstanceState& instance_state);
 
     /**
      * @brief 主动上报本地扫描出的孤儿图片记录
      */
-    bool report_orphan_images(const std::vector<aivision::v1::OrphanImageEntry>& orphan_images,
-                              aivision::v1::ReportOrphanImagesResponse* out_response);
+    bool report_orphan_images(const std::vector<argus::v1::OrphanImageEntry>& orphan_images,
+                              argus::v1::ReportOrphanImagesResponse* out_response);
 
     /**
      * @brief 向 App 拉取指定 revision 的期望配置（DesiredState）
      */
-    bool get_desired_state(uint64_t current_revision, aivision::v1::DesiredState* out_state);
+    bool get_desired_state(uint64_t current_revision, argus::v1::DesiredState* out_state);
 
 private:
     std::shared_ptr<grpc::Channel> channel_;
-    std::unique_ptr<aivision::v1::ReportService::Stub> report_stub_;
-    std::unique_ptr<aivision::v1::ControlPlaneService::Stub> control_plane_stub_;
+    std::unique_ptr<argus::v1::ReportService::Stub> report_stub_;
+    std::unique_ptr<argus::v1::ControlPlaneService::Stub> control_plane_stub_;
 };
 
 /**
@@ -98,8 +98,8 @@ public:
     /**
      * @brief 应用全量期望配置状态（增量比对、任务与实例对账调整）
      */
-    bool apply_desired_state(const aivision::v1::DesiredState& desired_state,
-                             aivision::v1::ApplyDesiredStateResponse* response);
+    bool apply_desired_state(const argus::v1::DesiredState& desired_state,
+                             argus::v1::ApplyDesiredStateResponse* response);
 
     /**
      * @brief 停止服务端并解除 socket 绑定
@@ -120,5 +120,5 @@ private:
     bool socket_identity_valid_ = false;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

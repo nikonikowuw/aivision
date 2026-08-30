@@ -11,18 +11,18 @@
  * 6. 停机时安全注销全部任务与实例，清理 socket 文件。
  */
 
-#include "aivision/core/uds_ipc.hpp"
-#include "aivision/core/algo_manager.hpp"
-#include "aivision/core/image_manager.hpp"
-#include "aivision/core/live_stream_manager.hpp"
-#include "aivision/core/logging/logger.hpp"
-#include "aivision/core/resource_ledger.hpp"
-#include "aivision/core/task_scheduler.hpp"
-#include "aivision/core/telemetry_collector.hpp"
-#include "aivision/media/media_api.hpp"
-#include "aivision/platform/mock_platform.hpp"
-#if defined(AIVISION_PLATFORM_MACOS)
-#include "aivision/platform/macos_platform.hpp"
+#include "argus/core/uds_ipc.hpp"
+#include "argus/core/algo_manager.hpp"
+#include "argus/core/image_manager.hpp"
+#include "argus/core/live_stream_manager.hpp"
+#include "argus/core/logging/logger.hpp"
+#include "argus/core/resource_ledger.hpp"
+#include "argus/core/task_scheduler.hpp"
+#include "argus/core/telemetry_collector.hpp"
+#include "argus/media/media_api.hpp"
+#include "argus/platform/mock_platform.hpp"
+#if defined(ARGUS_PLATFORM_MACOS)
+#include "argus/platform/macos_platform.hpp"
 #endif
 
 
@@ -61,11 +61,11 @@ struct IpcEndpoints {
 
 // load_ipc_endpoints 从唯一的部署 Profile 解析两个 UDS；未配置 Profile 时保留开发环境变量。
 std::optional<IpcEndpoints> load_ipc_endpoints() {
-    const char* profile_env = std::getenv("AIVISION_ENGINE_PROFILE");
+    const char* profile_env = std::getenv("ARGUS_ENGINE_PROFILE");
     if (!profile_env) {
         return IpcEndpoints{
-            env_or_default("AIVISION_ENGINE_SOCKET", "/tmp/aivision-engine.sock"),
-            env_or_default("AIVISION_APP_SOCKET", "/tmp/aivision-app.sock"),
+            env_or_default("ARGUS_ENGINE_SOCKET", "/tmp/argus-engine.sock"),
+            env_or_default("ARGUS_APP_SOCKET", "/tmp/argus-app.sock"),
         };
     }
 
@@ -77,13 +77,13 @@ std::optional<IpcEndpoints> load_ipc_endpoints() {
     const std::string profile_path = profile_env;
     if (profile_path.empty() || has_outer_whitespace(profile_path) ||
         !std::filesystem::path(profile_path).is_absolute()) {
-        LOG_ERROR("engine.app", "engine.profile_invalid", "AIVISION_ENGINE_PROFILE must be an absolute path",
+        LOG_ERROR("engine.app", "engine.profile_invalid", "ARGUS_ENGINE_PROFILE must be an absolute path",
                   "ENGINE_PROFILE_INVALID");
         return std::nullopt;
     }
-    if (std::getenv("AIVISION_ENGINE_SOCKET") || std::getenv("AIVISION_APP_SOCKET")) {
+    if (std::getenv("ARGUS_ENGINE_SOCKET") || std::getenv("ARGUS_APP_SOCKET")) {
         LOG_ERROR("engine.app", "engine.profile_env_conflict",
-                  "AIVISION_ENGINE_PROFILE cannot be combined with per-socket environment variables",
+                  "ARGUS_ENGINE_PROFILE cannot be combined with per-socket environment variables",
                   "ENGINE_PROFILE_ENV_CONFLICT");
         return std::nullopt;
     }
@@ -91,7 +91,7 @@ std::optional<IpcEndpoints> load_ipc_endpoints() {
     try {
         std::ifstream input(profile_path);
         if (!input) {
-            LOG_ERROR("engine.app", "engine.profile_read_failed", "cannot read AIVISION_ENGINE_PROFILE",
+            LOG_ERROR("engine.app", "engine.profile_read_failed", "cannot read ARGUS_ENGINE_PROFILE",
                       "ENGINE_PROFILE_READ_FAILED");
             return std::nullopt;
         }
@@ -150,20 +150,20 @@ std::optional<IpcEndpoints> load_ipc_endpoints() {
 
 int main() {
     // 0. 初始化结构化日志系统并读取环境变量配置
-    aivision::logging::Level log_lvl = aivision::logging::Level::Info;
+    argus::logging::Level log_lvl = argus::logging::Level::Info;
     bool invalid_log_level = false;
-    const char* env_log_level = std::getenv("AIVISION_LOG_LEVEL");
+    const char* env_log_level = std::getenv("ARGUS_LOG_LEVEL");
     if (env_log_level) {
-        auto parsed = aivision::logging::parse_level(env_log_level);
+        auto parsed = argus::logging::parse_level(env_log_level);
         if (parsed.has_value()) {
             log_lvl = *parsed;
         } else {
             invalid_log_level = true;
         }
     }
-    aivision::logging::Logger::initialize(log_lvl);
+    argus::logging::Logger::initialize(log_lvl);
     if (invalid_log_level) {
-        LOG_WARN("engine.app", "engine.log_level_invalid", "Invalid AIVISION_LOG_LEVEL; falling back to INFO",
+        LOG_WARN("engine.app", "engine.log_level_invalid", "Invalid ARGUS_LOG_LEVEL; falling back to INFO",
                  "ENGINE_LOG_LEVEL_INVALID");
     }
 
@@ -172,19 +172,19 @@ int main() {
     std::signal(SIGTERM, request_stop);
 
     // 1. 初始化平台适配器并配置资源账本上限
-    std::shared_ptr<aivision::platform::IPlatformAdapter> platform_adapter;
-#if defined(AIVISION_PLATFORM_MACOS)
-    platform_adapter = std::make_shared<aivision::platform::MacosPlatformAdapter>();
+    std::shared_ptr<argus::platform::IPlatformAdapter> platform_adapter;
+#if defined(ARGUS_PLATFORM_MACOS)
+    platform_adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
     const std::string platform_id = "macos-arm64-coreml";
 #else
-    platform_adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
+    platform_adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
     const std::string platform_id = "mock";
 #endif
-    auto& registry = aivision::platform::PlatformRegistry::instance();
+    auto& registry = argus::platform::PlatformRegistry::instance();
     registry.register_adapter(platform_id, platform_adapter);
     registry.set_active_platform(platform_id);
     const auto& profile = platform_adapter->get_profile();
-    aivision::core::ResourceLedger::instance().set_limits(
+    argus::core::ResourceLedger::instance().set_limits(
         profile.total_compute_units, profile.reserved_compute_units, profile.min_free_memory_bytes);
 
     // 2. 初始化抓拍图片管理器
@@ -192,59 +192,59 @@ int main() {
     if (!image_processor) {
         LOG_ERROR("engine.app", "engine.image_processor_init_failed",
                   "failed to create image processor", "ENGINE_IMAGE_PROCESSOR_INIT_FAILED");
-        aivision::logging::Logger::shutdown();
+        argus::logging::Logger::shutdown();
         return 1;
     }
-    std::shared_ptr<aivision::platform::IImageProcessor> image_processor_owner(
+    std::shared_ptr<argus::platform::IImageProcessor> image_processor_owner(
         platform_adapter, image_processor);
-    aivision::core::ImageManager::instance().init(
-        env_or_default("AIVISION_IMAGE_DIR", "var/images"), std::move(image_processor_owner));
+    argus::core::ImageManager::instance().init(
+        env_or_default("ARGUS_IMAGE_DIR", "var/images"), std::move(image_processor_owner));
 
     // 3. 初始化媒体拉流后端
     auto media_backend =
-#if defined(AIVISION_PLATFORM_MACOS)
-        aivision::media::create_zlm_backend();
+#if defined(ARGUS_PLATFORM_MACOS)
+        argus::media::create_zlm_backend();
 #else
-        aivision::media::create_mock_backend();
+        argus::media::create_mock_backend();
 #endif
     if (!media_backend) {
         LOG_ERROR("engine.app", "engine.media_backend_init_failed",
                   "failed to create media backend", "MEDIA_BACKEND_INIT_FAILED");
-        aivision::logging::Logger::shutdown();
+        argus::logging::Logger::shutdown();
         return 1;
     }
 
     // 3.5 启动流媒体 HTTP/WebSocket 服务（默认 8080）
     const auto live_http_port = static_cast<uint16_t>(
-        std::strtoul(env_or_default("AIVISION_LIVE_HTTP_PORT", "8080"), nullptr, 10));
-    aivision::core::LiveStreamManager::instance().start_server(live_http_port);
+        std::strtoul(env_or_default("ARGUS_LIVE_HTTP_PORT", "8080"), nullptr, 10));
+    argus::core::LiveStreamManager::instance().start_server(live_http_port);
 
     // 4. 解析统一的 UDS Profile（未配置 Profile 时保留开发环境变量兼容）
     const auto ipc_endpoints = load_ipc_endpoints();
     if (!ipc_endpoints) {
-        aivision::logging::Logger::shutdown();
+        argus::logging::Logger::shutdown();
         return 1;
     }
-    aivision::core::UdsServer server(ipc_endpoints->engine_socket, platform_adapter, media_backend,
+    argus::core::UdsServer server(ipc_endpoints->engine_socket, platform_adapter, media_backend,
                                      ipc_endpoints->app_socket);
     if (!server.start()) {
         LOG_ERROR("engine.app", "engine.uds_start_failed",
                   "failed to start engine UDS server", "ENGINE_UDS_START_FAILED",
                   {{"platform_id", platform_id}});
-        aivision::logging::Logger::shutdown();
+        argus::logging::Logger::shutdown();
         return 1;
     }
 
     // 5. 启动控制面心跳、期望状态同步与遥测指标上报后台线程
     const std::string app_socket = ipc_endpoints->app_socket;
     std::thread control_plane_thread([&server, platform_adapter, app_socket] {
-        aivision::core::UdsClient client(app_socket);
+        argus::core::UdsClient client(app_socket);
         uint64_t applied_revision = 0;
         auto last_telemetry = std::chrono::steady_clock::now() - std::chrono::seconds(10);
         while (!g_stop_requested.load(std::memory_order_acquire)) {
             // 拉取并应用控制面的期望状态（DesiredState）
-            aivision::v1::DesiredState desired;
-            aivision::v1::ApplyDesiredStateResponse response;
+            argus::v1::DesiredState desired;
+            argus::v1::ApplyDesiredStateResponse response;
             const bool desired_received = client.get_desired_state(applied_revision, &desired);
             if (desired_received && desired.revision() > applied_revision &&
                 server.apply_desired_state(desired, &response) && response.code().empty()) {
@@ -252,39 +252,39 @@ int main() {
             }
             // 运行态上报独立于 DesiredState 拉取：控制面短暂不可用时仍需刷新 FPS/状态，
             // 上报失败由下一轮重试，避免 Go 侧长期停留在旧的 STARTING/0。
-            for (const auto& camera_id : aivision::core::TaskScheduler::instance().task_ids()) {
-                const auto task = aivision::core::TaskScheduler::instance().get_task(camera_id);
+            for (const auto& camera_id : argus::core::TaskScheduler::instance().task_ids()) {
+                const auto task = argus::core::TaskScheduler::instance().get_task(camera_id);
                 if (!task) continue;
-                aivision::v1::TaskState state;
+                argus::v1::TaskState state;
                 state.set_camera_id(camera_id);
                 state.set_last_frame_wall_time_ns(task->get_last_frame_wall_time_ns());
                 switch (task->get_state()) {
-                    case aivision::core::CameraState::CONNECTING:
-                        state.set_status(aivision::v1::TASK_STATUS_STARTING);
+                    case argus::core::CameraState::CONNECTING:
+                        state.set_status(argus::v1::TASK_STATUS_STARTING);
                         break;
-                    case aivision::core::CameraState::RUNNING:
-                        state.set_status(aivision::v1::TASK_STATUS_RUNNING);
+                    case argus::core::CameraState::RUNNING:
+                        state.set_status(argus::v1::TASK_STATUS_RUNNING);
                         break;
-                    case aivision::core::CameraState::RECONNECTING:
-                        state.set_status(aivision::v1::TASK_STATUS_RECONNECTING);
+                    case argus::core::CameraState::RECONNECTING:
+                        state.set_status(argus::v1::TASK_STATUS_RECONNECTING);
                         break;
-                    case aivision::core::CameraState::ERROR:
-                        state.set_status(aivision::v1::TASK_STATUS_ERROR);
+                    case argus::core::CameraState::ERROR:
+                        state.set_status(argus::v1::TASK_STATUS_ERROR);
                         break;
                     default:
-                        state.set_status(aivision::v1::TASK_STATUS_STOPPED);
+                        state.set_status(argus::v1::TASK_STATUS_STOPPED);
                         break;
                 }
                 client.report_task_state(state);
             }
-            for (const auto& instance_id : aivision::core::AlgoManager::instance().instance_ids()) {
-                const auto instance = aivision::core::AlgoManager::instance().get(instance_id);
+            for (const auto& instance_id : argus::core::AlgoManager::instance().instance_ids()) {
+                const auto instance = argus::core::AlgoManager::instance().get(instance_id);
                 if (!instance) continue;
-                aivision::v1::InstanceState state;
+                argus::v1::InstanceState state;
                 state.set_instance_id(instance_id);
                 state.set_status(instance->is_running()
-                    ? aivision::v1::INSTANCE_STATUS_RUNNING
-                    : aivision::v1::INSTANCE_STATUS_STOPPED);
+                    ? argus::v1::INSTANCE_STATUS_RUNNING
+                    : argus::v1::INSTANCE_STATUS_STOPPED);
                 // 上报 1s 滑动窗口结算的推理帧率；未满窗口或未运行时为 0
                 state.set_current_fps(static_cast<float>(instance->get_current_fps()));
                 client.report_instance_state(state);
@@ -293,8 +293,8 @@ int main() {
             // 定期（每 10 秒）采集并向 Go 后端上报宿主机遥测指标
             const auto now = std::chrono::steady_clock::now();
             if (now - last_telemetry >= std::chrono::seconds(10)) {
-                const auto metrics = aivision::core::TelemetryCollector(platform_adapter).collect();
-                aivision::v1::DeviceTelemetry telemetry;
+                const auto metrics = argus::core::TelemetryCollector(platform_adapter).collect();
+                argus::v1::DeviceTelemetry telemetry;
                 telemetry.set_uptime_seconds(metrics.uptime_seconds);
                 telemetry.set_cpu_usage_percent(metrics.cpu_usage_percent);
                 telemetry.set_memory_usage_percent(metrics.memory_usage_percent);
@@ -316,21 +316,21 @@ int main() {
         }
     });
 
-    LOG_INFO("engine.app", "engine.started", "aivision-engine started successfully", "",
+    LOG_INFO("engine.app", "engine.started", "argus-engine started successfully", "",
              {{"platform_id", platform_id}});
     // 主线程等待退出信号
     while (!g_stop_requested.load(std::memory_order_acquire)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    LOG_INFO("engine.app", "engine.stopping", "Shutting down aivision-engine");
+    LOG_INFO("engine.app", "engine.stopping", "Shutting down argus-engine");
 
     // 优雅停机并清理资源
     if (control_plane_thread.joinable()) control_plane_thread.join();
-    aivision::core::TaskScheduler::instance().stop_all();
-    aivision::core::AlgoManager::instance().stop_all();
+    argus::core::TaskScheduler::instance().stop_all();
+    argus::core::AlgoManager::instance().stop_all();
     server.stop();
 
-    aivision::logging::Logger::shutdown();
+    argus::logging::Logger::shutdown();
     return 0;
 }

@@ -2,9 +2,9 @@
  * @file log_context.cpp
  * @brief 线程局部日志上下文栈的实现
  */
-#include "aivision/core/logging/log_context.hpp"
+#include "argus/core/logging/log_context.hpp"
 
-namespace aivision::logging {
+namespace argus::logging {
 
 namespace {
 
@@ -60,4 +60,4 @@ void LogContext::clear() noexcept {
     tl_context_stack.clear();
 }
 
-} // namespace aivision::logging
+} // namespace argus::logging

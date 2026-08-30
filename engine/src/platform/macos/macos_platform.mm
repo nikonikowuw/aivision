@@ -3,11 +3,11 @@
  * @brief macOS 平台适配器主实现与能力档案配置
  */
 
-#import "aivision/platform/macos_platform.hpp"
+#import "argus/platform/macos_platform.hpp"
 #import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
 
-namespace aivision::platform {
+namespace argus::platform {
 
 MacosPlatformAdapter::MacosPlatformAdapter() {
     // 初始化 macOS Apple Silicon 平台能力档案
@@ -31,4 +31,4 @@ OpaqueReleaseFn MacosPlatformAdapter::get_opaque_release() const {
     };
 }
 
-} // namespace aivision::platform
+} // namespace argus::platform

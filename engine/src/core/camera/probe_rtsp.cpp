@@ -9,12 +9,12 @@
  * 4. 收到首帧即成功；全部尝试失败时以最后一次失败码作为整体失败码。
  */
 
-#include "aivision/core/probe_rtsp.hpp"
+#include "argus/core/probe_rtsp.hpp"
 
 #include <chrono>
 #include <utility>
 
-namespace aivision::core {
+namespace argus::core {
 namespace {
 
 // 单次尝试的媒体源 RAII 释放守卫：任何退出路径都保证 stop + 析构。
@@ -120,4 +120,4 @@ CameraProbeResult probe_camera(const std::shared_ptr<media::IMediaBackend>& back
     return result;
 }
 
-} // namespace aivision::core
+} // namespace argus::core

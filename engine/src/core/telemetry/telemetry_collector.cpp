@@ -3,11 +3,11 @@
  * @brief 遥测指标收集器实现
  */
 
-#include "aivision/core/telemetry_collector.hpp"
+#include "argus/core/telemetry_collector.hpp"
 
 #include <utility>
 
-namespace aivision::core {
+namespace argus::core {
 
 TelemetryCollector::TelemetryCollector(std::shared_ptr<platform::IPlatformAdapter> adapter)
     : adapter_(std::move(adapter)) {}
@@ -21,5 +21,5 @@ bool TelemetryCollector::available() const {
     return adapter_ && adapter_->get_telemetry() != nullptr;
 }
 
-} // namespace aivision::core
+} // namespace argus::core
 

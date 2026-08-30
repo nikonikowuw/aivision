@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package aivision.v1;
+package argus.v1;
 
-import "aivision/v1/common.proto";
-import "aivision/v1/engine.proto";
+import "argus/v1/common.proto";
+import "argus/v1/engine.proto";
 
-option go_package = "niko-vue-admin/app/internal/proto/aivision/v1;aivisionv1";
+option go_package = "argus/app/internal/proto/argus/v1;argusv1";
 
 // 告警事件上报
 message AlarmEvent {

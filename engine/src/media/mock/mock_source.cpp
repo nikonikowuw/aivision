@@ -3,13 +3,13 @@
  * @brief 单元测试专用的 Mock 流媒体源与后端实现
  */
 
-#include "aivision/media/media_api.hpp"
+#include "argus/media/media_api.hpp"
 
 #include <atomic>
 #include <utility>
 
 
-namespace aivision::media {
+namespace argus::media {
 namespace {
 
 class MockMediaSource final : public IMediaSource {
@@ -63,4 +63,4 @@ std::shared_ptr<IMediaBackend> create_mock_backend() {
     return std::make_shared<MockMediaBackend>();
 }
 
-} // namespace aivision::media
+} // namespace argus::media

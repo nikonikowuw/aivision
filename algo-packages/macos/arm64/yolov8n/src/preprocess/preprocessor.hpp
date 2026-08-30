@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aivision/types.h"
+#include "argus/types.h"
 #include <vector>
 
 namespace yolov8n {

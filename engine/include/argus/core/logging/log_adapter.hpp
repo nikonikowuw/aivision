@@ -4,13 +4,13 @@
  */
 #pragma once
 
-#include "aivision/algo.h"
-#include "aivision/core/logging/logger.hpp"
+#include "argus/algo.h"
+#include "argus/core/logging/logger.hpp"
 #include <algorithm>
 #include <string>
 #include <string_view>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief 将 C ABI av_algo_status 状态码映射为 Engine 全局稳定错误码字符串
@@ -122,4 +122,4 @@ inline void sdk_algo_log_bridge(void* user, int level, const char* msg, uint32_t
     }
 }
 
-} // namespace aivision::logging
+} // namespace argus::logging

@@ -2,10 +2,10 @@
  * @file log_record.cpp
  * @brief 日志级别解析与字符串表示实现
  */
-#include "aivision/core/logging/log_record.hpp"
+#include "argus/core/logging/log_record.hpp"
 #include "log_text_utils.hpp"
 
-namespace aivision::logging {
+namespace argus::logging {
 
 std::optional<Level> parse_level(std::string_view str) noexcept {
     try {
@@ -23,4 +23,4 @@ std::optional<Level> parse_level(std::string_view str) noexcept {
     return std::nullopt;
 }
 
-} // namespace aivision::logging
+} // namespace argus::logging

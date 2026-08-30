@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include "aivision/core/logging/log_record.hpp"
+#include "argus/core/logging/log_record.hpp"
 #include <cstddef>
 #include <memory>
 #include <mutex>
@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief 日志输出目标抽象基类
@@ -60,4 +60,4 @@ private:
     std::vector<std::string> lines_;
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging

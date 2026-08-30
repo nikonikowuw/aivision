@@ -1,4 +1,4 @@
-#include "aivision/algo.h"
+#include "argus/algo.h"
 
 #include <cstdint>
 #include <cstdlib>

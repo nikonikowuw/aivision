@@ -4,9 +4,9 @@
  */
 #pragma once
 
-#include "aivision/core/logging/log_record.hpp"
-#include "aivision/core/logging/log_sink.hpp"
-#include "aivision/core/logging/log_stats.hpp"
+#include "argus/core/logging/log_record.hpp"
+#include "argus/core/logging/log_sink.hpp"
+#include "argus/core/logging/log_stats.hpp"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief 双有界队列与异步日志写入引擎
@@ -81,4 +81,4 @@ private:
     std::thread worker_thread_;
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging

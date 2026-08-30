@@ -27,7 +27,7 @@ bool Preprocessor::prepare_input(
 ) {
     if (!frame) return false;
 
-    out.letterbox = aivision::cv::compute_letterbox(
+    out.letterbox = argus::cv::compute_letterbox(
         frame->width, frame->height,
         net_width, net_height
     );

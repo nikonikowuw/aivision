@@ -65,7 +65,7 @@ int main() {
         std::unordered_map<int64_t, uint32_t> missed_frames;
         previous_points.emplace(99, av_point{0.1f, 0.1f});
         previous_points.emplace(7, av_point{0.4f, 0.1f});
-        std::vector<aivision::cv::DetectionBox> objects = {
+        std::vector<argus::cv::DetectionBox> objects = {
             {.label = "person", .class_id = 0, .confidence = 0.9f,
              .x = 0.6f, .y = 0.1f, .w = 0.1f, .h = 0.1f, .track_id = 7}
         };
@@ -74,7 +74,7 @@ int main() {
         require_condition(previous_points.contains(99));
         require_condition(previous_points.contains(7));
 
-        const std::vector<aivision::cv::DetectionBox> empty_objects;
+        const std::vector<argus::cv::DetectionBox> empty_objects;
         for (uint32_t i = 0; i < yolov8n::kMaxRuleTrackMissedFrames - 1; ++i) {
             (void)yolov8n::apply_rules(rules, previous_points, missed_frames, empty_objects);
         }

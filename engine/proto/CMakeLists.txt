@@ -1,29 +1,29 @@
 # Protobuf & gRPC codegen module
 set(PROTO_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(PROTO_FILES
-    ${PROTO_SRC_DIR}/aivision/v1/common.proto
-    ${PROTO_SRC_DIR}/aivision/v1/engine.proto
-    ${PROTO_SRC_DIR}/aivision/v1/app.proto
-    ${PROTO_SRC_DIR}/aivision/v1/person.proto
+    ${PROTO_SRC_DIR}/argus/v1/common.proto
+    ${PROTO_SRC_DIR}/argus/v1/engine.proto
+    ${PROTO_SRC_DIR}/argus/v1/app.proto
+    ${PROTO_SRC_DIR}/argus/v1/person.proto
 )
 set(PROTO_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
 
 set(PROTO_SRCS
-    ${PROTO_GEN_DIR}/aivision/v1/common.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/common.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/engine.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/engine.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/engine.grpc.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/engine.grpc.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/app.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/app.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/app.grpc.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/app.grpc.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/person.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/person.pb.h
-    ${PROTO_GEN_DIR}/aivision/v1/person.grpc.pb.cc
-    ${PROTO_GEN_DIR}/aivision/v1/person.grpc.pb.h
+    ${PROTO_GEN_DIR}/argus/v1/common.pb.cc
+    ${PROTO_GEN_DIR}/argus/v1/common.pb.h
+    ${PROTO_GEN_DIR}/argus/v1/engine.pb.cc
+    ${PROTO_GEN_DIR}/argus/v1/engine.pb.h
+    ${PROTO_GEN_DIR}/argus/v1/engine.grpc.pb.cc
+    ${PROTO_GEN_DIR}/argus/v1/engine.grpc.pb.h
+    ${PROTO_GEN_DIR}/argus/v1/app.pb.cc
+    ${PROTO_GEN_DIR}/argus/v1/app.pb.h
+    ${PROTO_GEN_DIR}/argus/v1/app.grpc.pb.cc
+    ${PROTO_GEN_DIR}/argus/v1/app.grpc.pb.h
+    ${PROTO_GEN_DIR}/argus/v1/person.pb.cc
+    ${PROTO_GEN_DIR}/argus/v1/person.pb.h
+    ${PROTO_GEN_DIR}/argus/v1/person.grpc.pb.cc
+    ${PROTO_GEN_DIR}/argus/v1/person.grpc.pb.h
 )
 
 find_program(GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin REQUIRED)

@@ -1,7 +1,7 @@
 #import <Accelerate/Accelerate.h>
 #import <CoreVideo/CoreVideo.h>
 
-#include "aivision/types.h"
+#include "argus/types.h"
 #include "preprocess/preprocessor.hpp"
 
 #include <algorithm>

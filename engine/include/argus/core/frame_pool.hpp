@@ -14,9 +14,9 @@
 #include <unordered_map>
 #include <cstdint>
 #include <cstring>
-#include "aivision/types.h"
+#include "argus/types.h"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 帧对象池与生命周期管理器（单例）
@@ -83,5 +83,5 @@ private:
     av_frame_ops frame_ops_{};
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

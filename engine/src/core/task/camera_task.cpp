@@ -9,7 +9,7 @@
  * 4. 看门狗巡检（watchdog_loop）监控拉流断流与解码卡死，执行指数退避重连。
  */
 
-#include "aivision/core/camera_task.hpp"
+#include "argus/core/camera_task.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -17,7 +17,7 @@
 #include <utility>
 
 
-namespace aivision::core {
+namespace argus::core {
 namespace {
 
 std::string canonical_codec(std::string codec) {
@@ -510,4 +510,4 @@ void CameraTask::watchdog_loop() {
     }
 }
 
-} // namespace aivision::core
+} // namespace argus::core

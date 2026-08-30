@@ -1,7 +1,7 @@
-#include "aivision/algo.h"
-#include "aivision/utils/event_id.hpp"
-#include "aivision/utils/json.hpp"
-#include "aivision/cv/tracker.hpp"
+#include "argus/algo.h"
+#include "argus/utils/event_id.hpp"
+#include "argus/utils/json.hpp"
+#include "argus/cv/tracker.hpp"
 #include "../preprocess/preprocessor.hpp"
 #include "../inference/coreml_runner.hpp"
 #include "../postprocess/postprocessor.hpp"
@@ -60,7 +60,7 @@ struct InstanceContext {
     uint32_t event_counter = 0;
     bool self_test_emitted = false;
     std::unordered_map<int64_t, int64_t> track_alarm_cooldown_;
-    aivision::cv::SimpleTracker tracker;
+    argus::cv::SimpleTracker tracker;
 };
 
 } // namespace yolov8n
@@ -190,7 +190,7 @@ void log_color_fallback_once(InstanceContext* inst, const av_frame_desc* frame) 
 }
 
 bool run_pipeline(InstanceContext* inst, const av_frame_desc* frame,
-                  std::vector<aivision::cv::DetectionBox>& objects) {
+                  std::vector<argus::cv::DetectionBox>& objects) {
     log_color_fallback_once(inst, frame);
     void* input_pixelbuffer = Preprocessor::create_input_pixelbuffer(frame, inst->image_ops, 640, 640);
     if (!input_pixelbuffer) {
@@ -429,13 +429,13 @@ int yolo_instance_process_impl(av_algo_instance inst_handle, const av_frame_desc
         return fail(static_cast<InstanceContext*>(inst_handle), AV_ERR_INVALID_ARG, "frame descriptor is invalid or unsupported");
     }
     auto* inst = static_cast<InstanceContext*>(inst_handle);
-    std::vector<aivision::cv::DetectionBox> objects;
+    std::vector<argus::cv::DetectionBox> objects;
     if (!run_pipeline(inst, frame, objects)) return AV_ERR_INFERENCE_FAILED;
 
     if (inst->mode == AV_INSTANCE_INSTALL_SELF_TEST) {
         if (inst->self_test_emitted) return fail(inst, AV_ERR_INVALID_ARG, "self-test instance was processed more than once");
         const std::vector<std::string> stages = {"preprocess", "inference", "postprocess", "serialize"};
-        const std::string result_json = aivision::utils::serialize_self_test_json(stages, static_cast<uint32_t>(objects.size()));
+        const std::string result_json = argus::utils::serialize_self_test_json(stages, static_cast<uint32_t>(objects.size()));
         if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "self-test result is too large");
         av_algo_result result{};
         result.size = sizeof(result);
@@ -470,9 +470,9 @@ int yolo_instance_process_impl(av_algo_instance inst_handle, const av_frame_desc
             return fail(inst, AV_ERR_INTERNAL, "event counter exhausted");
         }
         ++inst->event_counter;
-        const std::string event_id = aivision::utils::EventIdGenerator::next_event_id(inst->event_counter);
-        std::vector<aivision::cv::DetectionBox> single_object = {object};
-        const std::string result_json = aivision::utils::serialize_alarm_json(event_id, kAlarmTypeId, single_object);
+        const std::string event_id = argus::utils::EventIdGenerator::next_event_id(inst->event_counter);
+        std::vector<argus::cv::DetectionBox> single_object = {object};
+        const std::string result_json = argus::utils::serialize_alarm_json(event_id, kAlarmTypeId, single_object);
         if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "alarm result is too large");
 
         // 请求全景大图 [0, 0, 1, 1]

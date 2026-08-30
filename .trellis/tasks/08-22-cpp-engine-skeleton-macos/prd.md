@@ -26,7 +26,7 @@
 仓库现状（已核实）：
 
 - 无任何 C/C++ 源码、`CMakeLists.txt` 或 `.proto` 文件 —— 本任务从零开始。
-- Go 服务位于 `app/`（Gin + GORM + wire，module `niko-vue-admin/app`），**未引入 gRPC 依赖**；本任务不修改 `app/`。
+- Go 服务位于 `app/`（Gin + GORM + wire，module `argus/app`），**未引入 gRPC 依赖**；本任务不修改 `app/`。
 - 前端位于 `ui/`（vben admin 脚手架），本任务不涉及。
 - `.trellis/spec/` 仅有 `backend`(Go) / `frontend` / `guides`，尚无 C++ 编码规范。
 

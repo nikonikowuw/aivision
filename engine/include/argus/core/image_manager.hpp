@@ -16,10 +16,10 @@
 #include <filesystem>
 #include <cstdint>
 #include <unordered_map>
-#include "aivision/types.h"
-#include "aivision/platform/platform_api.hpp"
+#include "argus/types.h"
+#include "argus/platform/platform_api.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 图片删除操作的状态结果
@@ -116,5 +116,5 @@ private:
     std::mutex mutex_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

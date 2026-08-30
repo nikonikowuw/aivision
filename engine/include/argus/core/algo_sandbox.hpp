@@ -18,9 +18,9 @@
 #include <string_view>
 #include <vector>
 #include <nlohmann/json.hpp>
-#include "aivision/types.h"
+#include "argus/types.h"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 算法包类型（manifest.algorithm_type / ABI info.algorithm_type 的内部枚举表示）
@@ -111,5 +111,5 @@ public:
     static ValidationResult run_sandbox_validator(const std::string& validator_bin_path, const std::string& package_path, const std::string& install_base_dir);
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

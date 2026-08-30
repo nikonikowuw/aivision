@@ -8,18 +8,18 @@
  * 3. 算法库动态装载管理（LibraryContext）与 C ABI 句柄持有。
  */
 
-#include "aivision/core/uds_ipc.hpp"
-#include "aivision/core/image_manager.hpp"
-#include "aivision/core/algo_manager.hpp"
-#include "aivision/core/algo_sandbox.hpp"
-#include "aivision/core/live_stream_manager.hpp"
-#include "aivision/core/logging/log_adapter.hpp"
-#include "aivision/core/probe_rtsp.hpp"
-#include "aivision/core/resource_ledger.hpp"
-#include "aivision/core/task_scheduler.hpp"
-#include "aivision/core/telemetry_collector.hpp"
-#include "aivision/platform/platform_api.hpp"
-#include "aivision/utils/package_layout.hpp"
+#include "argus/core/uds_ipc.hpp"
+#include "argus/core/image_manager.hpp"
+#include "argus/core/algo_manager.hpp"
+#include "argus/core/algo_sandbox.hpp"
+#include "argus/core/live_stream_manager.hpp"
+#include "argus/core/logging/log_adapter.hpp"
+#include "argus/core/probe_rtsp.hpp"
+#include "argus/core/resource_ledger.hpp"
+#include "argus/core/task_scheduler.hpp"
+#include "argus/core/telemetry_collector.hpp"
+#include "argus/platform/platform_api.hpp"
+#include "argus/utils/package_layout.hpp"
 
 
 #include <cerrno>
@@ -47,7 +47,7 @@
 
 namespace fs = std::filesystem;
 
-namespace aivision::core {
+namespace argus::core {
 namespace {
 
 std::string env_or_default(const char* name, const char* fallback) {
@@ -64,7 +64,7 @@ bool safe_package_component(const std::string& value) {
 }
 
 fs::path package_root() {
-    return fs::path(env_or_default("AIVISION_PACKAGE_DIR", "var/packages"));
+    return fs::path(env_or_default("ARGUS_PACKAGE_DIR", "var/packages"));
 }
 
 bool write_active_version(const std::string& algorithm_id, const std::string& version, std::string& error) {
@@ -241,7 +241,7 @@ void set_package_validation_failure(const ValidationResult& result, const char* 
 struct LoadedPackage {
     std::string package_root;
     std::string platform_id;
-    aivision::logging::AlgoLogContext log_context;
+    argus::logging::AlgoLogContext log_context;
     void* dynamic_library = nullptr;
     const av_algo_abi* abi = nullptr;
     av_algo_library library = nullptr;
@@ -284,7 +284,7 @@ bool prepare_socket_path(const std::string& path) {
     return ::unlink(path.c_str()) == 0 || errno == ENOENT;
 }
 
-class EngineServiceImpl final : public aivision::v1::EngineService::Service {
+class EngineServiceImpl final : public argus::v1::EngineService::Service {
 public:
     EngineServiceImpl(std::shared_ptr<platform::IPlatformAdapter> platform_adapter,
                       std::shared_ptr<media::IMediaBackend> media_backend,
@@ -292,7 +292,7 @@ public:
         : platform_adapter_(std::move(platform_adapter)),
           media_backend_(std::move(media_backend)),
           app_client_(std::make_shared<UdsClient>(
-              app_socket_path.empty() ? env_or_default("AIVISION_APP_SOCKET", "/tmp/aivision-app.sock")
+              app_socket_path.empty() ? env_or_default("ARGUS_APP_SOCKET", "/tmp/argus-app.sock")
                                       : app_socket_path)) {}
 
     ~EngineServiceImpl() override {
@@ -301,8 +301,8 @@ public:
         loaded_packages_.clear();
     }
 
-    grpc::Status ApplyDesiredState(grpc::ServerContext*, const aivision::v1::ApplyDesiredStateRequest* request,
-                                   aivision::v1::ApplyDesiredStateResponse* response) override {
+    grpc::Status ApplyDesiredState(grpc::ServerContext*, const argus::v1::ApplyDesiredStateRequest* request,
+                                   argus::v1::ApplyDesiredStateResponse* response) override {
         if (!request || !request->has_desired_state()) {
             response->set_code("INVALID_ARG");
             response->set_error_message("desired_state is required");
@@ -317,8 +317,8 @@ public:
     // 3. 逐项应用任务（Task）与算法实例（Instance）配置；
     // 4. 若出现失败，执行事务性回滚（rollback_runtime_state），回滚失败则标记降级（RUNTIME_DEGRADED）；
     // 5. 成功后原子更新应用版本号与期望状态缓存。
-    grpc::Status apply_desired_state(const aivision::v1::DesiredState* desired_ptr,
-                                     aivision::v1::ApplyDesiredStateResponse* response) {
+    grpc::Status apply_desired_state(const argus::v1::DesiredState* desired_ptr,
+                                     argus::v1::ApplyDesiredStateResponse* response) {
         if (!desired_ptr || !response) return grpc::Status::OK;
         const auto& desired = *desired_ptr;
         std::lock_guard<std::mutex> reconcile_lock(reconcile_mutex_);
@@ -364,14 +364,14 @@ public:
         // 增量更新或新建摄像头任务
         for (const auto& task_config : desired.tasks()) {
             auto* item = response->add_results();
-            item->set_kind(aivision::v1::RECONCILE_ITEM_KIND_TASK);
+            item->set_kind(argus::v1::RECONCILE_ITEM_KIND_TASK);
             item->set_id(task_config.camera_id());
             const std::string error = upsert_task(task_config);
             if (error.empty()) {
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_OK);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_OK);
             } else {
                 failed = true;
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
                 item->set_code(error);
                 item->set_error_message(error);
             }
@@ -383,20 +383,20 @@ public:
             TaskScheduler::instance().stop_task(camera_id);
             task_configs_.erase(camera_id);
             auto* item = response->add_results();
-            item->set_kind(aivision::v1::RECONCILE_ITEM_KIND_TASK);
+            item->set_kind(argus::v1::RECONCILE_ITEM_KIND_TASK);
             item->set_id(camera_id);
-            item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_OK);
+            item->set_status(argus::v1::RECONCILE_ITEM_STATUS_OK);
         }
 
         for (const auto& instance : desired.instances()) {
             auto* item = response->add_results();
-            item->set_kind(aivision::v1::RECONCILE_ITEM_KIND_INSTANCE);
+            item->set_kind(argus::v1::RECONCILE_ITEM_KIND_INSTANCE);
             item->set_id(instance.instance_id());
             const std::string error = reconcile_instance(instance);
             if (error.empty()) {
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_OK);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_OK);
             } else {
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
                 item->set_code(error);
                 item->set_error_message(error);
                 failed = true;
@@ -410,10 +410,10 @@ public:
 
         for (const auto& package : desired.active_package_versions()) {
             auto* item = response->add_results();
-            item->set_kind(aivision::v1::RECONCILE_ITEM_KIND_PACKAGE);
+            item->set_kind(argus::v1::RECONCILE_ITEM_KIND_PACKAGE);
             item->set_id(package.algorithm_id());
             if (!safe_package_component(package.algorithm_id()) || !safe_package_component(package.version())) {
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
                 item->set_code("PACKAGE_ID_INVALID");
                 item->set_error_message("package identity contains unsafe characters");
                 failed = true;
@@ -424,17 +424,17 @@ public:
             const auto target_status = fs::symlink_status(target, package_error);
             std::string activation_error;
             if (package_error || !fs::is_directory(target_status) || fs::is_symlink(target_status)) {
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
                 item->set_code("PACKAGE_NOT_FOUND");
                 item->set_error_message("package version is not installed");
                 failed = true;
             } else if (!write_active_version(package.algorithm_id(), package.version(), activation_error)) {
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
                 item->set_code("PACKAGE_ACTIVATION_FAILED");
                 item->set_error_message(activation_error);
                 failed = true;
             } else {
-                item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_OK);
+                item->set_status(argus::v1::RECONCILE_ITEM_STATUS_OK);
             }
         }
         if (failed) {
@@ -442,8 +442,8 @@ public:
             const bool rolled_back = restore_runtime_state(snapshot, rollback_error);
             for (int index = 0; index < response->results_size(); ++index) {
                 auto* item = response->mutable_results(index);
-                if (item->status() == aivision::v1::RECONCILE_ITEM_STATUS_OK) {
-                    item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+                if (item->status() == argus::v1::RECONCILE_ITEM_STATUS_OK) {
+                    item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
                     item->set_code("RECONCILE_ROLLED_BACK");
                     item->set_error_message("item was rolled back after another desired-state item failed");
                 }
@@ -454,13 +454,13 @@ public:
             // restart_failures_（对齐 mark_package_degraded 模式），下一轮上报会重试。
             for (int index = 0; index < response->results_size(); ++index) {
                 const auto& item = response->results(index);
-                if (item.kind() != aivision::v1::RECONCILE_ITEM_KIND_INSTANCE ||
-                    item.status() != aivision::v1::RECONCILE_ITEM_STATUS_FAILED) {
+                if (item.kind() != argus::v1::RECONCILE_ITEM_KIND_INSTANCE ||
+                    item.status() != argus::v1::RECONCILE_ITEM_STATUS_FAILED) {
                     continue;
                 }
-                aivision::v1::InstanceState state;
+                argus::v1::InstanceState state;
                 state.set_instance_id(item.id());
-                state.set_status(aivision::v1::INSTANCE_STATUS_ERROR);
+                state.set_status(argus::v1::INSTANCE_STATUS_ERROR);
                 state.set_message(item.code() + ": " + item.error_message());
                 if (app_client_ && !app_client_->report_instance_state(state)) {
                     auto& report_error = restart_failures_[item.id()];
@@ -491,8 +491,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status UpsertTask(grpc::ServerContext*, const aivision::v1::UpsertTaskRequest* request,
-                            aivision::v1::UpsertTaskResponse* response) override {
+    grpc::Status UpsertTask(grpc::ServerContext*, const argus::v1::UpsertTaskRequest* request,
+                            argus::v1::UpsertTaskResponse* response) override {
         std::lock_guard<std::mutex> reconcile_lock(reconcile_mutex_);
         if (!request || !request->has_task()) {
             response->set_code("INVALID_ARG");
@@ -507,8 +507,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status SetInstanceState(grpc::ServerContext*, const aivision::v1::SetInstanceStateRequest* request,
-                                   aivision::v1::SetInstanceStateResponse* response) override {
+    grpc::Status SetInstanceState(grpc::ServerContext*, const argus::v1::SetInstanceStateRequest* request,
+                                   argus::v1::SetInstanceStateResponse* response) override {
         std::lock_guard<std::mutex> reconcile_lock(reconcile_mutex_);
         if (!request || request->instance_id().empty()) {
             response->set_code("INVALID_ARG");
@@ -528,8 +528,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status UpdateInstanceConfig(grpc::ServerContext*, const aivision::v1::UpdateInstanceConfigRequest* request,
-                                      aivision::v1::UpdateInstanceConfigResponse* response) override {
+    grpc::Status UpdateInstanceConfig(grpc::ServerContext*, const argus::v1::UpdateInstanceConfigRequest* request,
+                                      argus::v1::UpdateInstanceConfigResponse* response) override {
         std::lock_guard<std::mutex> reconcile_lock(reconcile_mutex_);
         if (!request || request->instance_id().empty()) {
             response->set_code("INVALID_ARG");
@@ -552,8 +552,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status InstallPackage(grpc::ServerContext*, const aivision::v1::InstallPackageRequest* request,
-                                aivision::v1::InstallPackageResponse* response) override {
+    grpc::Status InstallPackage(grpc::ServerContext*, const argus::v1::InstallPackageRequest* request,
+                                argus::v1::InstallPackageResponse* response) override {
         if (!request || request->package_path().empty()) {
             response->set_code("INVALID_ARG");
             response->set_error_message("package_path is required");
@@ -563,8 +563,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status UpgradePackage(grpc::ServerContext*, const aivision::v1::UpgradePackageRequest* request,
-                                aivision::v1::UpgradePackageResponse* response) override {
+    grpc::Status UpgradePackage(grpc::ServerContext*, const argus::v1::UpgradePackageRequest* request,
+                                argus::v1::UpgradePackageResponse* response) override {
         if (!request || request->package_path().empty()) {
             response->set_code("INVALID_ARG");
             response->set_error_message("package_path is required");
@@ -574,8 +574,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status RollbackPackage(grpc::ServerContext*, const aivision::v1::RollbackPackageRequest* request,
-                                 aivision::v1::RollbackPackageResponse* response) override {
+    grpc::Status RollbackPackage(grpc::ServerContext*, const argus::v1::RollbackPackageRequest* request,
+                                 argus::v1::RollbackPackageResponse* response) override {
         std::lock_guard<std::mutex> lifecycle_lock(reconcile_mutex_);
         if (!request || !safe_package_component(request->algorithm_id()) ||
             !safe_package_component(request->target_version())) {
@@ -627,8 +627,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status UninstallPackage(grpc::ServerContext*, const aivision::v1::UninstallPackageRequest* request,
-                                  aivision::v1::UninstallPackageResponse* response) override {
+    grpc::Status UninstallPackage(grpc::ServerContext*, const argus::v1::UninstallPackageRequest* request,
+                                  argus::v1::UninstallPackageResponse* response) override {
         std::lock_guard<std::mutex> lifecycle_lock(reconcile_mutex_);
         if (!request || !safe_package_component(request->algorithm_id()) ||
             !safe_package_component(request->version())) {
@@ -665,8 +665,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status DeleteImages(grpc::ServerContext*, const aivision::v1::DeleteImagesRequest* request,
-                              aivision::v1::DeleteImagesResponse* response) override {
+    grpc::Status DeleteImages(grpc::ServerContext*, const argus::v1::DeleteImagesRequest* request,
+                              argus::v1::DeleteImagesResponse* response) override {
         if (!request) {
             response->set_code("INVALID_ARG");
             response->set_error_message("request is required");
@@ -678,10 +678,10 @@ public:
             item->set_image_id(id);
             const auto status = ImageManager::instance().delete_image_with_status(id);
             item->set_status(status == ImageDeleteStatus::DELETED
-                ? aivision::v1::IMAGE_DELETE_STATUS_DELETED
+                ? argus::v1::IMAGE_DELETE_STATUS_DELETED
                 : status == ImageDeleteStatus::ALREADY_ABSENT
-                    ? aivision::v1::IMAGE_DELETE_STATUS_ALREADY_ABSENT
-                    : aivision::v1::IMAGE_DELETE_STATUS_FAILED);
+                    ? argus::v1::IMAGE_DELETE_STATUS_ALREADY_ABSENT
+                    : argus::v1::IMAGE_DELETE_STATUS_FAILED);
             if (status == ImageDeleteStatus::FAILED) {
                 failed = true;
                 item->set_error_message("IMAGE_DELETE_FAILED");
@@ -691,8 +691,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status ReconcileImages(grpc::ServerContext*, const aivision::v1::ReconcileImagesRequest* request,
-                                 aivision::v1::ReconcileImagesResponse* response) override {
+    grpc::Status ReconcileImages(grpc::ServerContext*, const argus::v1::ReconcileImagesRequest* request,
+                                 argus::v1::ReconcileImagesResponse* response) override {
         if (!request) {
             response->set_code("INVALID_ARG");
             response->set_error_message("request is required");
@@ -705,10 +705,10 @@ public:
             auto* item = response->add_results();
             item->set_image_id(image_id);
             item->set_status(status == ImageDeleteStatus::DELETED
-                ? aivision::v1::IMAGE_DELETE_STATUS_DELETED
+                ? argus::v1::IMAGE_DELETE_STATUS_DELETED
                 : status == ImageDeleteStatus::ALREADY_ABSENT
-                    ? aivision::v1::IMAGE_DELETE_STATUS_ALREADY_ABSENT
-                    : aivision::v1::IMAGE_DELETE_STATUS_FAILED);
+                    ? argus::v1::IMAGE_DELETE_STATUS_ALREADY_ABSENT
+                    : argus::v1::IMAGE_DELETE_STATUS_FAILED);
             if (status == ImageDeleteStatus::FAILED) {
                 failed = true;
                 item->set_error_message("IMAGE_DELETE_FAILED");
@@ -718,8 +718,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status QueryProfile(grpc::ServerContext*, const aivision::v1::QueryProfileRequest*,
-                              aivision::v1::QueryProfileResponse* response) override {
+    grpc::Status QueryProfile(grpc::ServerContext*, const argus::v1::QueryProfileRequest*,
+                              argus::v1::QueryProfileResponse* response) override {
         const auto adapter = platform::PlatformRegistry::instance().get_active_adapter();
         if (!adapter) {
             response->set_code("PLATFORM_UNAVAILABLE");
@@ -735,9 +735,9 @@ public:
         profile->set_os_or_bsp(source.platform_id.find("macos") != std::string::npos ? "macOS" : "mock");
         profile->set_media_backend(media_backend_ ? media_backend_->name() : "unavailable");
         profile->set_inference_runtime(source.platform_id.find("coreml") != std::string::npos ? "coreml" : "none");
-        profile->add_frame_caps(aivision::v1::FRAME_PIX_NV12);
-        profile->add_frame_caps(aivision::v1::FRAME_PIX_BGRA);
-        profile->add_frame_caps(aivision::v1::FRAME_PIX_RGB24);
+        profile->add_frame_caps(argus::v1::FRAME_PIX_NV12);
+        profile->add_frame_caps(argus::v1::FRAME_PIX_BGRA);
+        profile->add_frame_caps(argus::v1::FRAME_PIX_RGB24);
         profile->set_max_cameras(static_cast<int32_t>(source.total_compute_units > source.reserved_compute_units ? 16 : 0));
         profile->set_max_instances(32);
         profile->set_total_compute_units(static_cast<int32_t>(source.total_compute_units));
@@ -747,13 +747,13 @@ public:
             capability->set_id(id);
             switch (status) {
                 case platform::CapabilityStatus::AVAILABLE:
-                    capability->set_status(aivision::v1::CAPABILITY_STATUS_AVAILABLE);
+                    capability->set_status(argus::v1::CAPABILITY_STATUS_AVAILABLE);
                     break;
                 case platform::CapabilityStatus::DEGRADED:
-                    capability->set_status(aivision::v1::CAPABILITY_STATUS_DEGRADED);
+                    capability->set_status(argus::v1::CAPABILITY_STATUS_DEGRADED);
                     break;
                 default:
-                    capability->set_status(aivision::v1::CAPABILITY_STATUS_UNSUPPORTED);
+                    capability->set_status(argus::v1::CAPABILITY_STATUS_UNSUPPORTED);
                     break;
             }
             if (status != platform::CapabilityStatus::AVAILABLE) capability->set_reason(reason);
@@ -764,8 +764,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status QueryMetrics(grpc::ServerContext*, const aivision::v1::QueryMetricsRequest*,
-                              aivision::v1::QueryMetricsResponse* response) override {
+    grpc::Status QueryMetrics(grpc::ServerContext*, const argus::v1::QueryMetricsRequest*,
+                              argus::v1::QueryMetricsResponse* response) override {
         const auto adapter = platform::PlatformRegistry::instance().get_active_adapter();
         if (!adapter) {
             response->set_code("PLATFORM_UNAVAILABLE");
@@ -795,8 +795,8 @@ public:
     }
 
     grpc::Status ProbeCamera(grpc::ServerContext* context,
-                             const aivision::v1::ProbeCameraRequest* request,
-                             aivision::v1::ProbeCameraResponse* response) override {
+                             const argus::v1::ProbeCameraRequest* request,
+                             argus::v1::ProbeCameraResponse* response) override {
         if (!request || request->protocol().empty() || request->url().empty()) {
             response->set_code("INVALID_ARG");
             response->set_error_message("protocol and url are required");
@@ -833,8 +833,8 @@ public:
     }
 
     grpc::Status StartCameraPreview(grpc::ServerContext*,
-                                   const aivision::v1::StartCameraPreviewRequest* request,
-                                   aivision::v1::StartCameraPreviewResponse* response) override {
+                                   const argus::v1::StartCameraPreviewRequest* request,
+                                   argus::v1::StartCameraPreviewResponse* response) override {
         if (!request || request->camera_id().empty() || request->url().empty()) {
             response->set_code("INVALID_ARGUMENT");
             response->set_error_message("camera_id and url must not be empty");
@@ -857,8 +857,8 @@ public:
     }
 
     grpc::Status StopCameraPreview(grpc::ServerContext*,
-                                  const aivision::v1::StopCameraPreviewRequest* request,
-                                  aivision::v1::StopCameraPreviewResponse* response) override {
+                                  const argus::v1::StopCameraPreviewRequest* request,
+                                  argus::v1::StopCameraPreviewResponse* response) override {
         if (!request || request->camera_id().empty()) {
             response->set_code("INVALID_ARGUMENT");
             response->set_error_message("camera_id must not be empty");
@@ -871,8 +871,8 @@ public:
     }
 private:
     struct RuntimeSnapshot {
-        std::unordered_map<std::string, aivision::v1::CameraTaskConfig> task_configs;
-        std::unordered_map<std::string, aivision::v1::AlgorithmInstanceConfig> instance_configs;
+        std::unordered_map<std::string, argus::v1::CameraTaskConfig> task_configs;
+        std::unordered_map<std::string, argus::v1::AlgorithmInstanceConfig> instance_configs;
         std::unordered_map<std::string, std::shared_ptr<LoadedPackage>> loaded_packages;
         std::unordered_map<std::string, std::string> active_versions;
     };
@@ -974,9 +974,9 @@ private:
             error = "PLATFORM_MISMATCH";
             return nullptr;
         }
-        aivision::utils::PackageLibraryEntry library_entry;
+        argus::utils::PackageLibraryEntry library_entry;
         std::string library_error;
-        if (!aivision::utils::resolve_conventional_package_library(root, manifest_algorithm_id,
+        if (!argus::utils::resolve_conventional_package_library(root, manifest_algorithm_id,
                                                                    library_entry, library_error)) {
             error = library_error == "conventional library entry is not a regular file"
                 ? "PACKAGE_LIBRARY_INVALID"
@@ -1038,7 +1038,7 @@ private:
         args.package_root = package->package_root.c_str();
         args.platform_id = package->platform_id.c_str();
         args.platform_tag = adapter->get_profile().platform_tag;
-        args.log = aivision::logging::sdk_algo_log_bridge;
+        args.log = argus::logging::sdk_algo_log_bridge;
         args.log_user = &package->log_context;
         if (package->abi->library_open(&args, &package->library) != AV_OK || !package->library) {
             error = "PACKAGE_LIBRARY_OPEN_FAILED";
@@ -1057,7 +1057,7 @@ private:
         return package;
     }
 
-    std::string make_rules(const aivision::v1::AlgorithmInstanceConfig& config,
+    std::string make_rules(const argus::v1::AlgorithmInstanceConfig& config,
                            std::vector<av_rule>& rules,
                            std::vector<std::vector<av_point>>& points) const {
         rules.clear();
@@ -1115,7 +1115,7 @@ private:
         if (forget_config) instance_configs_.erase(instance_id);
     }
 
-    std::string reconcile_instance(const aivision::v1::AlgorithmInstanceConfig& config) {
+    std::string reconcile_instance(const argus::v1::AlgorithmInstanceConfig& config) {
         if (config.instance_id().empty() || config.camera_id().empty() || config.algorithm_id().empty() ||
             config.algorithm_version().empty()) return "CONFIG_INVALID";
         const auto task = TaskScheduler::instance().get_task(config.camera_id());
@@ -1226,7 +1226,7 @@ private:
             if (!is_safe_component(algorithm_event_id) || !is_safe_component(alarm_type_id) ||
                 (!instance->get_alarm_type_id().empty() && alarm_type_id != instance->get_alarm_type_id())) return;
 
-            aivision::v1::AlarmEvent alarm;
+            argus::v1::AlarmEvent alarm;
             alarm.set_instance_id(instance->get_instance_id());
             alarm.set_camera_id(instance->get_camera_id());
             alarm.set_algorithm_id(instance->get_algorithm_id());
@@ -1296,7 +1296,7 @@ private:
         }
     }
 
-    void mark_package_degraded(const std::vector<aivision::v1::AlgorithmInstanceConfig>& affected,
+    void mark_package_degraded(const std::vector<argus::v1::AlgorithmInstanceConfig>& affected,
                                const std::string& reason) {
         runtime_degraded_ = true;
         for (const auto& config : affected) {
@@ -1304,9 +1304,9 @@ private:
             std::string message = reason;
             const auto failure = restart_failures_.find(config.instance_id());
             if (failure != restart_failures_.end()) message += ": " + failure->second;
-            aivision::v1::InstanceState state;
+            argus::v1::InstanceState state;
             state.set_instance_id(config.instance_id());
-            state.set_status(aivision::v1::INSTANCE_STATUS_DEGRADED);
+            state.set_status(argus::v1::INSTANCE_STATUS_DEGRADED);
             state.set_message(message);
             if (app_client_ && !app_client_->report_instance_state(state)) {
                 auto& report_error = restart_failures_[config.instance_id()];
@@ -1318,7 +1318,7 @@ private:
 
     void mark_package_degraded_for_algorithm(const std::string& algorithm_id,
                                               const std::string& reason) {
-        std::vector<aivision::v1::AlgorithmInstanceConfig> affected;
+        std::vector<argus::v1::AlgorithmInstanceConfig> affected;
         for (const auto& [instance_id, config] : instance_configs_) {
             (void)instance_id;
             if (config.algorithm_id() == algorithm_id) affected.push_back(config);
@@ -1327,11 +1327,11 @@ private:
     }
 
     void append_degraded_results(const RuntimeSnapshot& snapshot,
-                                 const aivision::v1::DesiredState& desired,
+                                 const argus::v1::DesiredState& desired,
                                  const std::string& reason,
-                                 aivision::v1::ApplyDesiredStateResponse* response) const {
+                                 argus::v1::ApplyDesiredStateResponse* response) const {
         if (!response) return;
-        const auto item_key = [](aivision::v1::ReconcileItemKind kind, const std::string& id) {
+        const auto item_key = [](argus::v1::ReconcileItemKind kind, const std::string& id) {
             return std::to_string(static_cast<int>(kind)) + ":" + id;
         };
         std::unordered_set<std::string> seen;
@@ -1339,50 +1339,50 @@ private:
             auto* item = response->mutable_results(index);
             seen.insert(item_key(item->kind(), item->id()));
             const std::string original_code = item->code();
-            item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+            item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
             item->set_code("RECONCILE_ROLLBACK_FAILED");
             std::string message = "runtime is degraded; desired-state item was not confirmed restored: " + reason;
             if (!original_code.empty()) message += " (original result: " + original_code + ")";
             item->set_error_message(message);
         }
-        const auto add_item = [&](aivision::v1::ReconcileItemKind kind, const std::string& id,
+        const auto add_item = [&](argus::v1::ReconcileItemKind kind, const std::string& id,
                                   const std::string& detail) {
             if (!seen.insert(item_key(kind, id)).second) return;
             auto* item = response->add_results();
             item->set_kind(kind);
             item->set_id(id);
-            item->set_status(aivision::v1::RECONCILE_ITEM_STATUS_FAILED);
+            item->set_status(argus::v1::RECONCILE_ITEM_STATUS_FAILED);
             item->set_code("RECONCILE_ROLLBACK_FAILED");
             item->set_error_message("runtime is degraded; desired-state item was not confirmed restored: " + detail);
         };
         for (const auto& [camera_id, config] : snapshot.task_configs) {
             (void)camera_id;
-            add_item(aivision::v1::RECONCILE_ITEM_KIND_TASK, config.camera_id(), reason);
+            add_item(argus::v1::RECONCILE_ITEM_KIND_TASK, config.camera_id(), reason);
         }
         for (const auto& [instance_id, config] : snapshot.instance_configs) {
             (void)instance_id;
-            add_item(aivision::v1::RECONCILE_ITEM_KIND_INSTANCE, config.instance_id(), reason);
+            add_item(argus::v1::RECONCILE_ITEM_KIND_INSTANCE, config.instance_id(), reason);
         }
         for (const auto& [algorithm_id, version] : snapshot.active_versions) {
-            add_item(aivision::v1::RECONCILE_ITEM_KIND_PACKAGE, algorithm_id,
+            add_item(argus::v1::RECONCILE_ITEM_KIND_PACKAGE, algorithm_id,
                      reason + " (previous version: " + version + ")");
         }
         for (const auto& config : desired.tasks()) {
-            add_item(aivision::v1::RECONCILE_ITEM_KIND_TASK, config.camera_id(), reason);
+            add_item(argus::v1::RECONCILE_ITEM_KIND_TASK, config.camera_id(), reason);
         }
         for (const auto& config : desired.instances()) {
-            add_item(aivision::v1::RECONCILE_ITEM_KIND_INSTANCE, config.instance_id(), reason);
+            add_item(argus::v1::RECONCILE_ITEM_KIND_INSTANCE, config.instance_id(), reason);
         }
         for (const auto& package : desired.active_package_versions()) {
-            add_item(aivision::v1::RECONCILE_ITEM_KIND_PACKAGE, package.algorithm_id(), reason);
+            add_item(argus::v1::RECONCILE_ITEM_KIND_PACKAGE, package.algorithm_id(), reason);
         }
     }
 
     void report_runtime_degraded(const RuntimeSnapshot& snapshot,
-                                 const aivision::v1::DesiredState& desired,
+                                 const argus::v1::DesiredState& desired,
                                  const std::string& reason,
-                                 aivision::v1::ApplyDesiredStateResponse* response) {
-        std::unordered_map<std::string, aivision::v1::AlgorithmInstanceConfig> affected_instances;
+                                 argus::v1::ApplyDesiredStateResponse* response) {
+        std::unordered_map<std::string, argus::v1::AlgorithmInstanceConfig> affected_instances;
         for (const auto& [instance_id, config] : snapshot.instance_configs) {
             affected_instances.emplace(instance_id, config);
         }
@@ -1392,7 +1392,7 @@ private:
         for (const auto& config : desired.instances()) {
             if (config.enabled()) affected_instances.emplace(config.instance_id(), config);
         }
-        std::vector<aivision::v1::AlgorithmInstanceConfig> affected;
+        std::vector<argus::v1::AlgorithmInstanceConfig> affected;
         affected.reserve(affected_instances.size());
         for (const auto& [instance_id, config] : affected_instances) {
             (void)instance_id;
@@ -1400,7 +1400,7 @@ private:
         }
         mark_package_degraded(affected, reason);
 
-        std::unordered_map<std::string, aivision::v1::CameraTaskConfig> affected_tasks;
+        std::unordered_map<std::string, argus::v1::CameraTaskConfig> affected_tasks;
         for (const auto& [camera_id, config] : snapshot.task_configs) {
             affected_tasks.emplace(camera_id, config);
         }
@@ -1412,9 +1412,9 @@ private:
         }
         for (const auto& [camera_id, config] : affected_tasks) {
             (void)config;
-            aivision::v1::TaskState state;
+            argus::v1::TaskState state;
             state.set_camera_id(camera_id);
-            state.set_status(aivision::v1::TASK_STATUS_DEGRADED);
+            state.set_status(argus::v1::TASK_STATUS_DEGRADED);
             state.set_message(reason);
             if (app_client_ && !app_client_->report_task_state(state)) {
                 // The degraded state remains authoritative locally; the next report retries it.
@@ -1425,7 +1425,7 @@ private:
 
     std::string restart_package_instances(const std::string& algorithm_id, const std::string& version) {
         restart_failures_.clear();
-        std::vector<aivision::v1::AlgorithmInstanceConfig> previous_configs;
+        std::vector<argus::v1::AlgorithmInstanceConfig> previous_configs;
         for (const auto& [instance_id, config] : instance_configs_) {
             (void)instance_id;
             if (config.algorithm_id() == algorithm_id && config.algorithm_version() != version) {
@@ -1467,7 +1467,7 @@ private:
             restart_failures_[instance_id] = error;
         }
         if (!restore_failures.empty()) {
-            std::vector<aivision::v1::AlgorithmInstanceConfig> degraded_configs;
+            std::vector<argus::v1::AlgorithmInstanceConfig> degraded_configs;
             degraded_configs.reserve(restore_failures.size());
             for (const auto& previous : previous_configs) {
                 if (restore_failures.contains(previous.instance_id())) degraded_configs.push_back(previous);
@@ -1482,8 +1482,8 @@ private:
     template <typename Response>
     void install_package(const std::string& package_path, const char* operation, Response* response) {
         std::lock_guard<std::mutex> lifecycle_lock(reconcile_mutex_);
-        const std::string validator_bin = env_or_default("AIVISION_PACKAGE_VALIDATOR_PATH",
-            env_or_default("AIVISION_PACKAGE_VALIDATOR", "package_validator").c_str());
+        const std::string validator_bin = env_or_default("ARGUS_PACKAGE_VALIDATOR_PATH",
+            env_or_default("ARGUS_PACKAGE_VALIDATOR", "package_validator").c_str());
         const auto validation = PackageValidator::run_sandbox_validator(
             validator_bin,
             package_path, package_root().string());
@@ -1542,7 +1542,7 @@ private:
         }
     }
 
-    std::string upsert_task(const aivision::v1::CameraTaskConfig& config) {
+    std::string upsert_task(const argus::v1::CameraTaskConfig& config) {
         if (config.camera_id().empty() || config.rtsp_url().empty()) return "INVALID_ARG";
         if (!config.enabled()) {
             TaskScheduler::instance().stop_task(config.camera_id());
@@ -1569,8 +1569,8 @@ private:
     std::shared_ptr<UdsClient> app_client_;
     std::unordered_map<std::string, std::shared_ptr<LoadedPackage>> loaded_packages_;
     std::unordered_map<std::string, ResourceRequirement> instance_resources_;
-    std::unordered_map<std::string, aivision::v1::CameraTaskConfig> task_configs_;
-    std::unordered_map<std::string, aivision::v1::AlgorithmInstanceConfig> instance_configs_;
+    std::unordered_map<std::string, argus::v1::CameraTaskConfig> task_configs_;
+    std::unordered_map<std::string, argus::v1::AlgorithmInstanceConfig> instance_configs_;
     bool runtime_degraded_ = false;
     std::unordered_set<std::string> degraded_instance_ids_;
     std::unordered_map<std::string, std::string> restart_failures_;
@@ -1578,14 +1578,14 @@ private:
     std::unordered_set<std::string> reported_events_;
     std::mutex reconcile_mutex_;
     std::atomic<uint64_t> applied_revision_{0};
-    aivision::v1::DesiredState applied_desired_state_;
+    argus::v1::DesiredState applied_desired_state_;
     std::string applied_desired_state_serialized_;
 };
 
-class PersonServiceImpl final : public aivision::v1::PersonService::Service {
+class PersonServiceImpl final : public argus::v1::PersonService::Service {
 public:
-    grpc::Status SyncPersons(grpc::ServerContext*, const aivision::v1::SyncPersonsRequest*,
-                             aivision::v1::SyncPersonsResponse*) override {
+    grpc::Status SyncPersons(grpc::ServerContext*, const argus::v1::SyncPersonsRequest*,
+                             argus::v1::SyncPersonsResponse*) override {
         return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
                             "Person synchronization is not implemented in this phase");
     }
@@ -1606,8 +1606,8 @@ UdsServer::~UdsServer() {
     stop();
 }
 
-bool UdsServer::apply_desired_state(const aivision::v1::DesiredState& desired_state,
-                                     aivision::v1::ApplyDesiredStateResponse* response) {
+bool UdsServer::apply_desired_state(const argus::v1::DesiredState& desired_state,
+                                     argus::v1::ApplyDesiredStateResponse* response) {
     if (!response || !engine_service_) return false;
     auto* service = dynamic_cast<EngineServiceImpl*>(engine_service_.get());
     if (!service) return false;
@@ -1666,4 +1666,4 @@ void UdsServer::stop() {
     }
 }
 
-} // namespace aivision::core
+} // namespace argus::core

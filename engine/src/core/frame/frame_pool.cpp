@@ -3,11 +3,11 @@
  * @brief 帧对象池（FramePool）与引用计数管理实现
  */
 
-#include "aivision/core/frame_pool.hpp"
+#include "argus/core/frame_pool.hpp"
 #include <limits>
 
 
-namespace aivision::core {
+namespace argus::core {
 
 static int retain_frame_thunk(void* ctx, void* token) {
     auto* pool = static_cast<FramePool*>(ctx);
@@ -147,4 +147,4 @@ av_status FramePool::reset() {
     return AV_OK;
 }
 
-} // namespace aivision::core
+} // namespace argus::core

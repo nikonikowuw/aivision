@@ -7,14 +7,14 @@
  * 提供不依赖真实解码器或硬件图像加速的桩实现（MockDecoder, MockImageProcessor, MockTelemetry, MockPlatformAdapter）。
  */
 
-#include "aivision/platform/platform_api.hpp"
+#include "argus/platform/platform_api.hpp"
 #include <string>
 #include <cstring>
 #include <vector>
 #include <chrono>
 #include <cstdint>
 
-namespace aivision::platform {
+namespace argus::platform {
 
 /**
  * @brief 模拟解码器，按时间戳递增直接生成测试帧
@@ -120,5 +120,5 @@ private:
     av_image_ops c_image_ops_{};
 };
 
-} // namespace aivision::platform
+} // namespace argus::platform
 

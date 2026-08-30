@@ -17,9 +17,9 @@
 #include <string>
 #include <vector>
 
-#include "aivision/media/media_api.hpp"
+#include "argus/media/media_api.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /// 单次传输尝试结果（对齐 proto ProbeAttempt）
 struct ProbeAttempt {
@@ -59,4 +59,4 @@ CameraProbeResult probe_camera(const std::shared_ptr<media::IMediaBackend>& back
                                std::chrono::milliseconds per_attempt_timeout = std::chrono::seconds(5),
                                const ProbeCancelFn& is_cancelled = {});
 
-} // namespace aivision::core
+} // namespace argus::core

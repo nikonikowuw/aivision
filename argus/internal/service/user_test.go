@@ -1,0 +1,382 @@
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+
+	"argus/app/internal/model"
+	"argus/app/internal/pkg/errno"
+	"argus/app/internal/repository"
+)
+
+func newTestUserService(db *gorm.DB) UserService {
+	userRepo := repository.NewUserRepository(db)
+	deptRepo := repository.NewDepartmentRepository(db)
+	roleRepo := repository.NewRoleRepository(db)
+	return NewUserService(userRepo, deptRepo, roleRepo)
+}
+
+func TestUserServiceCRUD(t *testing.T) {
+	db := setupTestDB(t)
+	srv := newTestUserService(db)
+	ctx := context.Background()
+	admin := model.User{BaseModel: model.BaseModel{ID: model.AdminUserID}, Username: model.AdminUsername, Status: model.StatusEnabled}
+	if err := db.Create(&admin).Error; err != nil {
+		t.Fatalf("create reserved admin: %v", err)
+	}
+
+	dept := model.Department{Name: "研发部", Status: model.StatusEnabled}
+	if err := db.Create(&dept).Error; err != nil {
+		t.Fatalf("create dept failed: %v", err)
+	}
+
+	role := model.Role{Name: "管理员", Code: "admin_role", Status: model.StatusEnabled}
+	if err := db.Create(&role).Error; err != nil {
+		t.Fatalf("create role failed: %v", err)
+	}
+
+	// 1. 创建用户
+	statusEnabled := model.StatusEnabled
+	u, err := srv.CreateUser(ctx, &SaveUserInput{
+		Username: " testuser ",
+		Password: "password",
+		Nickname: " Test User ",
+		DeptID:   dept.ID,
+		Status:   &statusEnabled,
+	})
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+	if u.Username != "testuser" {
+		t.Errorf("username = %q, want testuser", u.Username)
+	}
+	if u.Nickname != "Test User" {
+		t.Errorf("nickname = %q, want 'Test User'", u.Nickname)
+	}
+
+	// 2. 创建重复用户 → 1003
+	// 在 sqlite 中，使用复合唯一索引 (`username`, `deleted_at`) 时，插入重复的 username 且 deleted_at 为 NULL 不会抛出唯一键冲突，
+	// 因为 SQLite 认为 NULL != NULL。但为了测试能通过或至少提示一下：
+	_, err = srv.CreateUser(ctx, &SaveUserInput{
+		Username: "testuser",
+	})
+	wantErrCode(t, err, errno.CodeUsernameTaken)
+
+	// 3. 创建用户时绑定不存在的部门 → 1011
+	_, err = srv.CreateUser(ctx, &SaveUserInput{
+		Username: "invalid_dept_user",
+		DeptID:   99999,
+	})
+	wantErrCode(t, err, errno.CodeNotFound)
+
+	// 4. 列表可见（包含部门名称）
+	res, err := srv.GetPage(ctx, &UserPageQuery{Username: "testuser"})
+	if err != nil {
+		t.Fatalf("GetPage failed: %v", err)
+	}
+	if res.Total < 1 {
+		t.Errorf("GetPage expected >= 1 item with username testuser, got %d", res.Total)
+	}
+	foundDept := false
+	for _, item := range res.Items {
+		if item.DeptName == "研发部" {
+			foundDept = true
+			break
+		}
+	}
+	if !foundDept {
+		t.Errorf("expected deptName '研发部', got %q", res.Items[0].DeptName)
+	}
+
+	// 5. 编辑用户
+	updated, err := srv.UpdateUser(ctx, u.ID, &SaveUserInput{
+		Username: "testuser_updated",
+		Nickname: "Test User Updated",
+	})
+	if err != nil {
+		t.Fatalf("UpdateUser failed: %v", err)
+	}
+	if updated.Username != "testuser_updated" {
+		t.Errorf("updated username = %q, want testuser_updated", updated.Username)
+	}
+	if updated.Nickname != "Test User Updated" {
+		t.Errorf("updated nickname = %q, want Test User Updated", updated.Nickname)
+	}
+
+	// 6. 更新为重复用户名 → 1003
+	u2, _ := srv.CreateUser(ctx, &SaveUserInput{
+		Username: "anotheruser",
+	})
+	_, err = srv.UpdateUser(ctx, u2.ID, &SaveUserInput{
+		Username: "testuser_updated",
+	})
+	wantErrCode(t, err, errno.CodeUsernameTaken)
+
+	// 7. 分配角色（成功与失败）与查询绑定的角色 ID
+	if err := srv.AssignRoles(ctx, u.ID, []uint64{role.ID}); err != nil {
+		t.Fatalf("AssignRoles failed: %v", err)
+	}
+	roleIDs, err := srv.GetRoleIDs(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("GetRoleIDs failed: %v", err)
+	}
+	if len(roleIDs) != 1 || roleIDs[0] != role.ID {
+		t.Errorf("GetRoleIDs = %v, want [%d]", roleIDs, role.ID)
+	}
+
+	err = srv.AssignRoles(ctx, u.ID, []uint64{99999})
+	wantErrCode(t, err, errno.CodeNotFound)
+
+	// 8. 重置密码
+	if err := srv.ResetPassword(ctx, u.ID, "654321"); err != nil {
+		t.Fatalf("ResetPassword failed: %v", err)
+	}
+
+	// 9. 更新状态
+	if err := srv.UpdateStatus(ctx, u.ID, model.StatusDisabled); err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+
+	// 10. 软删用户与重复删除 1011
+	if err := srv.DeleteUser(ctx, u.ID); err != nil {
+		t.Fatalf("DeleteUser failed: %v", err)
+	}
+	wantErrCode(t, srv.DeleteUser(ctx, u.ID), errno.CodeNotFound)
+
+	// 11. 删除后不可见
+	// 由于前面测试（Create重复用户）可能导致 "testuser_updated" 和 "anotheruser" 或者 "testuser" 都存在。
+	// 这里我们需要保证过滤条件精确或者只看 total （实际上如果是根据 username 查询应该只有 0）。
+	// 用 UpdateStatus 试图再去改一个已删除的用户就会报 1011
+	err = srv.UpdateStatus(ctx, u.ID, model.StatusDisabled)
+	wantErrCode(t, err, errno.CodeNotFound)
+
+	// 12. admin 账号保护（不可删、不可停用、不可改用户名、UpdateUser 时不可禁用）
+	err = srv.UpdateStatus(ctx, admin.ID, model.StatusDisabled)
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
+	err = srv.DeleteUser(ctx, admin.ID)
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
+
+	// UpdateUser 改名 admin 失败
+	_, err = srv.UpdateUser(ctx, admin.ID, &SaveUserInput{Username: "admin_renamed"})
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
+
+	// UpdateUser 禁用 admin 失败
+	statusDisabled := model.StatusDisabled
+	_, err = srv.UpdateUser(ctx, admin.ID, &SaveUserInput{Username: "admin", Status: &statusDisabled})
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
+}
+
+func TestUserServiceProfileAndPassword(t *testing.T) {
+	db := setupTestDB(t)
+	srv := newTestUserService(db)
+	ctx := context.Background()
+
+	rawPassword := "oldPassword123"
+	hashed, err := hashPassword(rawPassword)
+	if err != nil {
+		t.Fatalf("hashPassword: %v", err)
+	}
+
+	user := model.User{
+		Username: "profile_user",
+		Password: hashed,
+		Nickname: "原始昵称",
+		Email:    "old@example.com",
+		Phone:    "13800000000",
+		Avatar:   "https://example.com/avatar.png",
+		Remark:   "原始备注",
+		Status:   model.StatusEnabled,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	// 插入两条 Refresh Token（一条有效，一条已撤销）
+	validToken := model.RefreshToken{
+		UserID:    user.ID,
+		Token:     "valid-refresh-token",
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Revoked:   false,
+	}
+	revokedToken := model.RefreshToken{
+		UserID:    user.ID,
+		Token:     "already-revoked-token",
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Revoked:   true,
+	}
+	if err := db.Create(&validToken).Error; err != nil {
+		t.Fatalf("create valid token: %v", err)
+	}
+	if err := db.Create(&revokedToken).Error; err != nil {
+		t.Fatalf("create revoked token: %v", err)
+	}
+
+	// 1. 获取本人资料
+	profile, err := srv.GetCurrentProfile(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetCurrentProfile failed: %v", err)
+	}
+	if profile.Username != "profile_user" || profile.Nickname != "原始昵称" || profile.Avatar != "https://example.com/avatar.png" {
+		t.Fatalf("unexpected profile: %+v", profile)
+	}
+
+	// 2. 更新本人资料（只允许白名单字段）
+	updatedProfile, err := srv.UpdateCurrentProfile(ctx, user.ID, &UpdateCurrentProfileInput{
+		Nickname: " 新昵称 ",
+		Email:    " new@example.com ",
+		Phone:    " 13900000000 ",
+		Avatar:   " /uploads/avatar/new-avatar.png ",
+		Remark:   " 新备注 ",
+	})
+	if err != nil {
+		t.Fatalf("UpdateCurrentProfile failed: %v", err)
+	}
+	if updatedProfile.Nickname != "新昵称" || updatedProfile.Email != "new@example.com" || updatedProfile.Phone != "13900000000" || updatedProfile.Avatar != "/uploads/avatar/new-avatar.png" || updatedProfile.Remark != "新备注" {
+		t.Fatalf("unexpected updated profile: %+v", updatedProfile)
+	}
+
+	// 验证数据库中 username / status 未被改变，avatar 已更新
+	var persistedUser model.User
+	if err := db.First(&persistedUser, user.ID).Error; err != nil {
+		t.Fatalf("find persisted user: %v", err)
+	}
+	if persistedUser.Username != "profile_user" || persistedUser.Avatar != "/uploads/avatar/new-avatar.png" || persistedUser.Status != model.StatusEnabled {
+		t.Fatalf("tampered protected fields in user: %+v", persistedUser)
+	}
+
+	// 3. 错误旧密码改密 → CodeWrongOldPassword
+	err = srv.ChangeCurrentPassword(ctx, user.ID, &ChangeCurrentPasswordInput{
+		OldPassword: "wrongPassword",
+		NewPassword: "newPassword123",
+	})
+	wantErrCode(t, err, errno.CodeWrongOldPassword)
+
+	// 4. 正确旧密码改密成功
+	err = srv.ChangeCurrentPassword(ctx, user.ID, &ChangeCurrentPasswordInput{
+		OldPassword: rawPassword,
+		NewPassword: "newPassword123",
+	})
+	if err != nil {
+		t.Fatalf("ChangeCurrentPassword failed: %v", err)
+	}
+
+	// 验证数据库中密码已更新且旧密码无法匹配
+	if err := db.First(&persistedUser, user.ID).Error; err != nil {
+		t.Fatalf("find persisted user: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(persistedUser.Password), []byte("newPassword123")); err != nil {
+		t.Fatalf("new password does not match: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(persistedUser.Password), []byte(rawPassword)); err == nil {
+		t.Fatal("old password still matches after password change")
+	}
+
+	// 验证所有 Refresh Token 均已 revoked
+	var tokens []model.RefreshToken
+	if err := db.Where("user_id = ?", user.ID).Find(&tokens).Error; err != nil {
+		t.Fatalf("find tokens: %v", err)
+	}
+	for _, tok := range tokens {
+		if !tok.Revoked {
+			t.Fatalf("token %s was not revoked after password change", tok.Token)
+		}
+	}
+
+	// 5. 头像地址校验：危险 scheme 与非法格式拒绝，合法 http(s) / 根相对路径通过
+	for _, tc := range []struct {
+		name   string
+		avatar string
+	}{
+		{"javascript scheme", "javascript:alert(1)"},
+		{"data scheme", "data:image/png;base64,AAAA"},
+		{"protocol relative", "//evil.example.com/a.png"},
+		{"backslash path", "/uploads\\evil.png"},
+		{"relative path", "uploads/a.png"},
+	} {
+		_, err := srv.UpdateCurrentProfile(ctx, user.ID, &UpdateCurrentProfileInput{Avatar: tc.avatar})
+		wantErrCode(t, err, errno.CodeInvalidParam)
+	}
+	for _, avatar := range []string{"https://cdn.example.com/a.png", "/uploads/2026/08/21/x.png"} {
+		if _, err := srv.UpdateCurrentProfile(ctx, user.ID, &UpdateCurrentProfileInput{Avatar: avatar}); err != nil {
+			t.Fatalf("UpdateCurrentProfile with valid avatar %q failed: %v", avatar, err)
+		}
+	}
+}
+
+func TestUserServiceBatchOperations(t *testing.T) {
+	db := setupTestDB(t)
+	srv := newTestUserService(db)
+	ctx := context.Background()
+
+	protected := model.User{BaseModel: model.BaseModel{ID: model.AdminUserID}, Username: "renamed-admin", Status: model.StatusEnabled}
+	user1 := model.User{Username: "batch-user-1", Status: model.StatusEnabled}
+	user2 := model.User{Username: "batch-user-2", Status: model.StatusEnabled}
+	for _, user := range []*model.User{&protected, &user1, &user2} {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("create user %q: %v", user.Username, err)
+		}
+	}
+	role := model.Role{Name: "批量角色", Code: "batch-role", Status: model.StatusEnabled}
+	if err := db.Create(&role).Error; err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+	if err := db.Create(&[]model.UserRole{
+		{UserID: user1.ID, RoleID: role.ID},
+		{UserID: user2.ID, RoleID: role.ID},
+	}).Error; err != nil {
+		t.Fatalf("create user roles: %v", err)
+	}
+
+	wantErrCode(t, srv.BatchDelete(ctx, []uint64{0, user1.ID}), errno.CodeInvalidParam)
+	wantErrCode(t, srv.BatchUpdateStatus(ctx, []uint64{}, model.StatusEnabled), errno.CodeInvalidParam)
+	wantErrCode(t, srv.BatchUpdateStatus(ctx, []uint64{user1.ID}, 2), errno.CodeInvalidParam)
+
+	// ID=1 受保护，即使用户名不是 admin 也不能禁用、删除或改名。
+	wantErrCode(t, srv.UpdateStatus(ctx, protected.ID, model.StatusDisabled), errno.CodeAdminUserProtected)
+	wantErrCode(t, srv.DeleteUser(ctx, protected.ID), errno.CodeAdminUserProtected)
+	_, err := srv.UpdateUser(ctx, protected.ID, &SaveUserInput{Username: protected.Username})
+	wantErrCode(t, err, errno.CodeAdminUserProtected)
+	wantErrCode(t, srv.BatchUpdateStatus(ctx, []uint64{user1.ID, protected.ID}, model.StatusDisabled), errno.CodeAdminUserProtected)
+	wantErrCode(t, srv.BatchDelete(ctx, []uint64{user1.ID, protected.ID}), errno.CodeAdminUserProtected)
+
+	var untouched model.User
+	if err := db.First(&untouched, user1.ID).Error; err != nil {
+		t.Fatalf("protected batch must not delete user1: %v", err)
+	}
+	if untouched.Status != model.StatusEnabled {
+		t.Fatalf("protected batch must not update user1 status: got %d", untouched.Status)
+	}
+
+	if err := srv.BatchUpdateStatus(ctx, []uint64{user1.ID, user2.ID}, model.StatusDisabled); err != nil {
+		t.Fatalf("batch update status: %v", err)
+	}
+	var disabled model.User
+	if err := db.First(&disabled, user2.ID).Error; err != nil {
+		t.Fatalf("find disabled user: %v", err)
+	}
+	if disabled.Status != model.StatusDisabled {
+		t.Fatalf("batch status = %d, want %d", disabled.Status, model.StatusDisabled)
+	}
+
+	if err := srv.BatchDelete(ctx, []uint64{user1.ID, user2.ID, user1.ID}); err != nil {
+		t.Fatalf("batch delete: %v", err)
+	}
+	var deleted model.User
+	if err := db.Unscoped().First(&deleted, user1.ID).Error; err != nil {
+		t.Fatalf("find soft-deleted user: %v", err)
+	}
+	if deleted.DeletedAt == 0 {
+		t.Fatal("batch delete did not soft-delete user1")
+	}
+	var relationCount int64
+	if err := db.Model(&model.UserRole{}).Where("user_id IN ?", []uint64{user1.ID, user2.ID}).Count(&relationCount).Error; err != nil {
+		t.Fatalf("count deleted user roles: %v", err)
+	}
+	if relationCount != 0 {
+		t.Fatalf("batch delete left %d user-role relations", relationCount)
+	}
+}

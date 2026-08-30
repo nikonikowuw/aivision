@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package aivision.v1;
+package argus.v1;
 
-option go_package = "niko-vue-admin/app/internal/proto/aivision/v1;aivisionv1";
+option go_package = "argus/app/internal/proto/argus/v1;argusv1";
 
-// 像素格式枚举（对齐 C ABI av_pixel_format，sdk/include/aivision/types.h）
+// 像素格式枚举（对齐 C ABI av_pixel_format，sdk/include/argus/types.h）
 enum FramePixelFormat {
   FRAME_PIX_UNSPECIFIED = 0;
   FRAME_PIX_NV12 = 1;

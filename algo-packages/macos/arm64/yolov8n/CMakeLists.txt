@@ -30,14 +30,14 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 set(ALGO_WARNING_FLAGS -Wall -Wextra -Wpedantic -Werror)
 
-list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/cmake")
-find_package(AivisionAlgoSDK REQUIRED)
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/cmake")
+find_package(ArgusAlgoSDK REQUIRED)
 
 add_subdirectory(src)
 
 # The production dylib contains only the C ABI object; implementation modules
 # remain separate targets so they can be rebuilt independently.
-aivision_add_algo_package(yolov8n
+argus_add_algo_package(yolov8n
     ALGORITHM_ID yolov8n
     VERSION 1.0.0
     PLATFORM_ID macos-arm64-coreml
@@ -54,8 +54,8 @@ aivision_add_algo_package(yolov8n
 )
 target_compile_options(yolov8n PRIVATE ${ALGO_WARNING_FLAGS} -fobjc-arc)
 target_include_directories(yolov8n PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/toolkit/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/toolkit/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 if(APPLE)
@@ -72,26 +72,26 @@ if(BUILD_TESTING)
     add_executable(yolov8n_tests tests/package_tests.cpp)
     target_compile_options(yolov8n_tests PRIVATE ${ALGO_WARNING_FLAGS})
     target_include_directories(yolov8n_tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/toolkit/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/toolkit/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
     target_link_libraries(yolov8n_tests PRIVATE
         yolov8n_postprocess
-        aivision_sdk_headers
+        argus_sdk_headers
     )
     add_test(NAME yolov8n_tests COMMAND yolov8n_tests)
 
     add_executable(yolov8n_preprocess_tests tests/preprocess_tests.mm)
     target_compile_options(yolov8n_preprocess_tests PRIVATE ${ALGO_WARNING_FLAGS} -fobjc-arc)
     target_include_directories(yolov8n_preprocess_tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/toolkit/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/toolkit/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
     target_link_libraries(yolov8n_preprocess_tests PRIVATE
         yolov8n_preprocess
-        aivision_sdk_headers
+        argus_sdk_headers
         "-framework Foundation"
         "-framework CoreVideo"
         "-framework Accelerate"
@@ -103,8 +103,8 @@ if(BUILD_TESTING)
         src/core/manifest_loader.mm)
     target_compile_options(yolov8n_manifest_loader_tests PRIVATE ${ALGO_WARNING_FLAGS} -fobjc-arc)
     target_include_directories(yolov8n_manifest_loader_tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/toolkit/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/toolkit/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(yolov8n_manifest_loader_tests PRIVATE "-framework Foundation")
     add_test(NAME yolov8n_manifest_loader_tests COMMAND yolov8n_manifest_loader_tests)
@@ -115,11 +115,11 @@ if(BUILD_TESTING)
         YOLOV8N_PACKAGE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
     )
     target_include_directories(yolov8n_abi_tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/include"
     )
     target_link_libraries(yolov8n_abi_tests PRIVATE
         yolov8n
-        aivision_sdk_headers
+        argus_sdk_headers
         "-framework Foundation"
         "-framework CoreML"
         "-framework CoreVideo"

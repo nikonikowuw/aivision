@@ -53,7 +53,7 @@ static void compute_dfl(const float* before_dfl, int dfl_len, float* box) {
 
 std::vector<DetectionBox> Postprocessor::decode(
     const std::vector<RknnOutputBuffer>& outputs,
-    const aivision::cv::LetterboxInfo& letterbox,
+    const argus::cv::LetterboxInfo& letterbox,
     float conf_threshold,
     float nms_threshold,
     int src_w,
@@ -137,7 +137,7 @@ std::vector<DetectionBox> Postprocessor::decode(
                     float y2 = (dfl_box[3] + i + 0.5f) * stride;
 
                     // Reverse letterbox mapping
-                    aivision::cv::NormalizedBBox norm_box{
+                    argus::cv::NormalizedBBox norm_box{
                         .x_min = x1 / 640.0f,
                         .y_min = y1 / 640.0f,
                         .x_max = x2 / 640.0f,
@@ -174,7 +174,7 @@ std::vector<DetectionBox> Postprocessor::decode(
         for (size_t j = i + 1; j < candidates.size(); ++j) {
             if (suppressed[j]) continue;
             if (candidates[i].class_id == candidates[j].class_id) {
-                if (aivision::cv::compute_iou_xywh(candidates[i], candidates[j]) > nms_threshold) {
+                if (argus::cv::compute_iou_xywh(candidates[i], candidates[j]) > nms_threshold) {
                     suppressed[j] = true;
                 }
             }

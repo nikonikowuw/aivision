@@ -2,7 +2,7 @@
  * @file log_sanitizer.cpp
  * @brief 日志字段白名单、凭据 URL 脱敏及 UTF-8 清洗实现
  */
-#include "aivision/core/logging/log_sanitizer.hpp"
+#include "argus/core/logging/log_sanitizer.hpp"
 #include "log_text_utils.hpp"
 #include <algorithm>
 #include <array>
@@ -11,7 +11,7 @@
 #include <string_view>
 #include <unordered_set>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 namespace {
 
@@ -251,4 +251,4 @@ const char* LogSanitizer::normalize_file_path(const char* full_path) noexcept {
     return position == std::string_view::npos ? full_path : full_path + position + 1;
 }
 
-} // namespace aivision::logging
+} // namespace argus::logging

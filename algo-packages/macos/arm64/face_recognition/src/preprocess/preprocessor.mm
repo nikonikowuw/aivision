@@ -228,7 +228,7 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
     vImageConvert_ARGB8888toRGB888(&dst_argb, &dst_rgb, kvImageNoFlags);
 
     // Letterbox to 640x640
-    out.letterbox_info = aivision::cv::compute_letterbox(width, height, 640, 640);
+    out.letterbox_info = argus::cv::compute_letterbox(width, height, 640, 640);
     out.letterbox_rgb.width = 640;
     out.letterbox_rgb.height = 640;
     out.letterbox_rgb.channels = 3;

@@ -36,7 +36,7 @@ for manifest in $(find "${REPO_ROOT}/algo-packages" -name "manifest.json" -not -
     echo "Checking ${pkg_dir}..."
 
     # AC20-a: vendor SDK integrity (full surface)
-    vendor_sdk="${pkg_dir}/vendor/aivision-sdk"
+    vendor_sdk="${pkg_dir}/vendor/argus-sdk"
     if [ -d "${vendor_sdk}" ]; then
         vendor_hash=$(sdk_full_hash "${vendor_sdk}")
         if [ "${UPSTREAM_SDK_HASH}" != "${vendor_hash}" ]; then

@@ -7,7 +7,7 @@ SDK_SRC="${REPO_ROOT}/sdk"
 echo "[sync-sdk] Syncing upstream sdk/ to algo-packages vendors..."
 
 for pkg_dir in $(find "${REPO_ROOT}/algo-packages" -name "vendor" -type d); do
-    target_sdk="${pkg_dir}/aivision-sdk"
+    target_sdk="${pkg_dir}/argus-sdk"
     echo "Updating ${target_sdk}..."
     rm -rf "${target_sdk}"
     mkdir -p "${target_sdk}"

@@ -4,12 +4,12 @@
  */
 #pragma once
 
-#include "aivision/core/logging/log_context.hpp"
-#include "aivision/core/logging/log_record.hpp"
-#include "aivision/core/logging/log_sanitizer.hpp"
-#include "aivision/core/logging/log_sink.hpp"
-#include "aivision/core/logging/log_stats.hpp"
-#include "aivision/core/logging/log_writer.hpp"
+#include "argus/core/logging/log_context.hpp"
+#include "argus/core/logging/log_record.hpp"
+#include "argus/core/logging/log_sanitizer.hpp"
+#include "argus/core/logging/log_sink.hpp"
+#include "argus/core/logging/log_stats.hpp"
+#include "argus/core/logging/log_writer.hpp"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -17,7 +17,7 @@
 #include <string>
 #include <string_view>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief Engine 统一结构化日志 Facade
@@ -146,20 +146,20 @@ private:
     static std::atomic<bool> initialized_;
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging
 
 // 便捷日志宏 (自动捕获源码位置)
 #define LOG_DEBUG(comp, evt, msg, ...) \
-    ::aivision::logging::Logger::debug(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
+    ::argus::logging::Logger::debug(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
 
 #define LOG_INFO(comp, evt, msg, ...) \
-    ::aivision::logging::Logger::info(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
+    ::argus::logging::Logger::info(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
 
 #define LOG_WARN(comp, evt, msg, ...) \
-    ::aivision::logging::Logger::warn(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
+    ::argus::logging::Logger::warn(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
 
 #define LOG_ERROR(comp, evt, msg, ...) \
-    ::aivision::logging::Logger::error(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
+    ::argus::logging::Logger::error(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
 
 #define LOG_FATAL(comp, evt, msg, ...) \
-    ::aivision::logging::Logger::fatal(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})
+    ::argus::logging::Logger::fatal(comp, evt, msg __VA_OPT__(,) __VA_ARGS__, {__FILE__, __LINE__, __func__})

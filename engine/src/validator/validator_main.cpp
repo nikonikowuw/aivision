@@ -8,33 +8,33 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 
-#include "aivision/core/algo_sandbox.hpp"
-#include "aivision/core/logging/logger.hpp"
+#include "argus/core/algo_sandbox.hpp"
+#include "argus/core/logging/logger.hpp"
 
 
-#if defined(AIVISION_PLATFORM_MACOS)
-extern "C" bool aivision_validator_create_test_frame(const char* package_root,
+#if defined(ARGUS_PLATFORM_MACOS)
+extern "C" bool argus_validator_create_test_frame(const char* package_root,
                                                        const char* test_image_file,
                                                        av_frame_desc* out_frame,
                                                        void** owner);
-extern "C" void aivision_validator_release_test_frame(void* owner);
+extern "C" void argus_validator_release_test_frame(void* owner);
 #endif
 
 int main(int argc, char* argv[]) {
     // 0. 初始化结构化日志系统 (输出至 stderr)
-    aivision::logging::Level log_level = aivision::logging::Level::Info;
+    argus::logging::Level log_level = argus::logging::Level::Info;
     bool invalid_log_level = false;
-    if (const char* value = std::getenv("AIVISION_LOG_LEVEL")) {
-        const auto parsed = aivision::logging::parse_level(value);
+    if (const char* value = std::getenv("ARGUS_LOG_LEVEL")) {
+        const auto parsed = argus::logging::parse_level(value);
         if (parsed) {
             log_level = *parsed;
         } else {
             invalid_log_level = true;
         }
     }
-    aivision::logging::Logger::initialize(log_level);
+    argus::logging::Logger::initialize(log_level);
     if (invalid_log_level) {
-        LOG_WARN("validator", "validator.log_level_invalid", "Invalid AIVISION_LOG_LEVEL; falling back to INFO",
+        LOG_WARN("validator", "validator.log_level_invalid", "Invalid ARGUS_LOG_LEVEL; falling back to INFO",
                  "VALIDATOR_LOG_LEVEL_INVALID");
     }
 
@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
         err_res["error_stage"] = "args_parse";
         err_res["error_message"] = "Usage: package_validator <package_dir_or_zip> [install_base_dir]";
         std::cout << err_res.dump() << std::endl;
-        aivision::logging::Logger::shutdown();
+        argus::logging::Logger::shutdown();
         return 1;
     }
     const std::string package_path = argv[1];
@@ -56,13 +56,13 @@ int main(int argc, char* argv[]) {
 
     LOG_INFO("validator", "validator.started", "Starting package validation");
 
-    aivision::core::ValidationResult result;
+    argus::core::ValidationResult result;
     try {
-#if defined(AIVISION_PLATFORM_MACOS)
-        result = aivision::core::PackageValidator::validate_and_extract(
-            package_path, install_base, aivision_validator_create_test_frame, aivision_validator_release_test_frame);
+#if defined(ARGUS_PLATFORM_MACOS)
+        result = argus::core::PackageValidator::validate_and_extract(
+            package_path, install_base, argus_validator_create_test_frame, argus_validator_release_test_frame);
 #else
-        result = aivision::core::PackageValidator::validate_and_extract(package_path, install_base);
+        result = argus::core::PackageValidator::validate_and_extract(package_path, install_base);
 #endif
     } catch (const std::exception& exception) {
         result.error_stage = "validator_exception";
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
                   {{"error_stage", error_stage}});
         // stdout 严格输出单行 JSON 机器契约
         std::cout << response.dump() << std::endl;
-        aivision::logging::Logger::shutdown();
+        argus::logging::Logger::shutdown();
         return 2;
     }
 
@@ -104,6 +104,6 @@ int main(int argc, char* argv[]) {
     // stdout 严格输出单行 JSON 机器契约
     std::cout << response.dump() << std::endl;
 
-    aivision::logging::Logger::shutdown();
+    argus::logging::Logger::shutdown();
     return 0;
 }

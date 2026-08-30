@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aivision/algo.h"
+#include "argus/algo.h"
 
 #include <memory>
 #include <string>

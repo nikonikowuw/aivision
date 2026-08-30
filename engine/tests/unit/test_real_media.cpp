@@ -21,21 +21,21 @@
 #include <vector>
 
 
-#include "aivision/core/algo_instance.hpp"
-#include "aivision/core/camera_task.hpp"
-#include "aivision/core/frame_pool.hpp"
-#include "aivision/media/media_api.hpp"
-#include "aivision/platform/platform_api.hpp"
+#include "argus/core/algo_instance.hpp"
+#include "argus/core/camera_task.hpp"
+#include "argus/core/frame_pool.hpp"
+#include "argus/media/media_api.hpp"
+#include "argus/platform/platform_api.hpp"
 
-#ifdef AIVISION_PLATFORM_MACOS
-#include "aivision/platform/macos_platform.hpp"
+#ifdef ARGUS_PLATFORM_MACOS
+#include "argus/platform/macos_platform.hpp"
 #endif
 
 extern char** environ;
 
 namespace fs = std::filesystem;
 
-#if defined(AIVISION_PLATFORM_MACOS) && defined(AIVISION_USE_ZLM) && !defined(AIVISION_SKIP_REAL_MEDIA_TESTS)
+#if defined(ARGUS_PLATFORM_MACOS) && defined(ARGUS_USE_ZLM) && !defined(ARGUS_SKIP_REAL_MEDIA_TESTS)
 namespace {
 
 std::string shell_quote(const std::string& value) {
@@ -56,11 +56,11 @@ std::string shell_quote(const std::string& value) {
 class RealMediaIntegrationTest : public ::testing::Test {
 protected:
     static fs::path fixture_dir() {
-        return fs::path(AIVISION_BINARY_DIR) / "tests" / "fixtures" / "media";
+        return fs::path(ARGUS_BINARY_DIR) / "tests" / "fixtures" / "media";
     }
 
     static void SetUpTestSuite() {
-        const fs::path root_dir = AIVISION_SOURCE_DIR;
+        const fs::path root_dir = ARGUS_SOURCE_DIR;
         const fs::path script_path = root_dir / "tests" / "media" / "generate_fixtures.sh";
         const std::string command = "bash " + shell_quote(script_path.string()) + " " +
                                     shell_quote(fixture_dir().string());
@@ -76,10 +76,10 @@ protected:
         stop_server();
     }
 
-    std::shared_ptr<aivision::core::AlgorithmInstance> create_mock_instance(
+    std::shared_ptr<argus::core::AlgorithmInstance> create_mock_instance(
         const std::string& instance_id, const std::string& camera_id, int32_t target_fps = 25) {
         const std::filesystem::path library_path =
-            std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib";
+            std::filesystem::path(ARGUS_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib";
         void* library = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!library) return nullptr;
         auto get_abi = reinterpret_cast<av_algo_get_abi_fn>(dlsym(library, AV_ALGO_GET_ABI_SYMBOL));
@@ -95,12 +95,12 @@ protected:
             return nullptr;
         }
 
-        return std::make_shared<aivision::core::AlgorithmInstance>(
+        return std::make_shared<argus::core::AlgorithmInstance>(
             instance_id, camera_id, "mock-detector", "1.0.0", target_fps, "{}", abi, algorithm_library);
     }
 
     bool start_server(const fs::path& media_file, const std::string& stream_name) {
-        const fs::path server_exe = fs::path(AIVISION_BINARY_DIR) / "tests" / "test_rtsp_server";
+        const fs::path server_exe = fs::path(ARGUS_BINARY_DIR) / "tests" / "test_rtsp_server";
         if (!fs::exists(server_exe) || !fs::exists(media_file)) return false;
 
         const std::string port = std::to_string(port_);
@@ -187,14 +187,14 @@ TEST_F(RealMediaIntegrationTest, DecodeH264StreamWithVideoToolbox) {
     const fs::path h264_file = fixture_dir() / "test_1080p_h264.mp4";
     ASSERT_TRUE(start_server(h264_file, "h264_test"));
 
-    auto media_backend = aivision::media::create_zlm_backend();
-    auto platform_adapter = std::make_shared<aivision::platform::MacosPlatformAdapter>();
+    auto media_backend = argus::media::create_zlm_backend();
+    auto platform_adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
     const std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(port_) + "/live/h264_test";
-    auto task = std::make_shared<aivision::core::CameraTask>(
+    auto task = std::make_shared<argus::core::CameraTask>(
         "cam_real_h264", rtsp_url, platform_adapter, media_backend);
-    auto inst = std::make_shared<aivision::core::AlgorithmInstance>(
+    auto inst = std::make_shared<argus::core::AlgorithmInstance>(
         "inst_h264", "cam_real_h264", "mock_algo", "1.0.0", 25, "{}", nullptr, nullptr);
-    ASSERT_EQ(inst->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst->init(argus::core::FramePool::instance().get_frame_ops(),
                          platform_adapter->get_c_image_ops()), AV_OK);
 
     task->add_instance(inst);
@@ -214,14 +214,14 @@ TEST_F(RealMediaIntegrationTest, DecodeH265StreamWithVideoToolbox) {
     const fs::path h265_file = fixture_dir() / "test_1080p_h265.mp4";
     ASSERT_TRUE(start_server(h265_file, "h265_test"));
 
-    auto media_backend = aivision::media::create_zlm_backend();
-    auto platform_adapter = std::make_shared<aivision::platform::MacosPlatformAdapter>();
+    auto media_backend = argus::media::create_zlm_backend();
+    auto platform_adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
     const std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(port_) + "/live/h265_test";
-    auto task = std::make_shared<aivision::core::CameraTask>(
+    auto task = std::make_shared<argus::core::CameraTask>(
         "cam_real_h265", rtsp_url, platform_adapter, media_backend);
-    auto inst = std::make_shared<aivision::core::AlgorithmInstance>(
+    auto inst = std::make_shared<argus::core::AlgorithmInstance>(
         "inst_h265", "cam_real_h265", "mock_algo", "1.0.0", 25, "{}", nullptr, nullptr);
-    ASSERT_EQ(inst->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst->init(argus::core::FramePool::instance().get_frame_ops(),
                          platform_adapter->get_c_image_ops()), AV_OK);
 
     task->add_instance(inst);
@@ -241,14 +241,14 @@ TEST_F(RealMediaIntegrationTest, StreamDisconnectAndAutoReconnect) {
     const fs::path h264_file = fixture_dir() / "test_1080p_h264.mp4";
     ASSERT_TRUE(start_server(h264_file, "reconnect_test"));
 
-    auto media_backend = aivision::media::create_zlm_backend();
-    auto platform_adapter = std::make_shared<aivision::platform::MacosPlatformAdapter>();
+    auto media_backend = argus::media::create_zlm_backend();
+    auto platform_adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
     const std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(port_) + "/live/reconnect_test";
-    auto task = std::make_shared<aivision::core::CameraTask>(
+    auto task = std::make_shared<argus::core::CameraTask>(
         "cam_reconnect", rtsp_url, platform_adapter, media_backend);
-    auto inst = std::make_shared<aivision::core::AlgorithmInstance>(
+    auto inst = std::make_shared<argus::core::AlgorithmInstance>(
         "inst_rec", "cam_reconnect", "mock_algo", "1.0.0", 25, "{}", nullptr, nullptr);
-    ASSERT_EQ(inst->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst->init(argus::core::FramePool::instance().get_frame_ops(),
                          platform_adapter->get_c_image_ops()), AV_OK);
 
     task->add_instance(inst);
@@ -278,10 +278,10 @@ TEST_F(RealMediaIntegrationTest, DynamicTrackReplacementResolutionChange) {
     const fs::path h264_720p = fixture_dir() / "test_720p_h264.mp4";
     ASSERT_TRUE(start_server(h264_1080p, "track_switch_test"));
 
-    auto media_backend = aivision::media::create_zlm_backend();
-    auto platform_adapter = std::make_shared<aivision::platform::MacosPlatformAdapter>();
+    auto media_backend = argus::media::create_zlm_backend();
+    auto platform_adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
     const std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(port_) + "/live/track_switch_test";
-    auto task = std::make_shared<aivision::core::CameraTask>(
+    auto task = std::make_shared<argus::core::CameraTask>(
         "cam_track_switch", rtsp_url, platform_adapter, media_backend);
 
     std::atomic<uint32_t> last_width{0};
@@ -291,7 +291,7 @@ TEST_F(RealMediaIntegrationTest, DynamicTrackReplacementResolutionChange) {
 
     auto inst = create_mock_instance("inst_switch", "cam_track_switch", 25);
     ASSERT_NE(inst, nullptr);
-    ASSERT_EQ(inst->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst->init(argus::core::FramePool::instance().get_frame_ops(),
                          platform_adapter->get_c_image_ops()), AV_OK);
 
     inst->set_result_callback([&](const av_algo_result&, const av_frame_desc& frame) {
@@ -335,28 +335,28 @@ TEST_F(RealMediaIntegrationTest, MultiInstanceSamplingAndSlowConsumerIsolation) 
     const fs::path h264_file = fixture_dir() / "test_1080p_h264.mp4";
     ASSERT_TRUE(start_server(h264_file, "multi_inst_test"));
 
-    auto media_backend = aivision::media::create_zlm_backend();
-    auto platform_adapter = std::make_shared<aivision::platform::MacosPlatformAdapter>();
+    auto media_backend = argus::media::create_zlm_backend();
+    auto platform_adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
     const std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(port_) + "/live/multi_inst_test";
-    auto task = std::make_shared<aivision::core::CameraTask>(
+    auto task = std::make_shared<argus::core::CameraTask>(
         "cam_multi_inst", rtsp_url, platform_adapter, media_backend);
 
     // Instance 1: High FPS (25 FPS), Fast consumer
     auto inst_fast = create_mock_instance("inst_fast", "cam_multi_inst", 25);
     ASSERT_NE(inst_fast, nullptr);
-    ASSERT_EQ(inst_fast->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst_fast->init(argus::core::FramePool::instance().get_frame_ops(),
                               platform_adapter->get_c_image_ops()), AV_OK);
 
     // Instance 2: Low FPS (5 FPS), Moderate consumer
     auto inst_low_fps = create_mock_instance("inst_low", "cam_multi_inst", 5);
     ASSERT_NE(inst_low_fps, nullptr);
-    ASSERT_EQ(inst_low_fps->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst_low_fps->init(argus::core::FramePool::instance().get_frame_ops(),
                                 platform_adapter->get_c_image_ops()), AV_OK);
 
     // Instance 3: Slow consumer (simulating artificial delay in callback to cause queue backlog)
     auto inst_slow = create_mock_instance("inst_slow", "cam_multi_inst", 25);
     ASSERT_NE(inst_slow, nullptr);
-    ASSERT_EQ(inst_slow->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst_slow->init(argus::core::FramePool::instance().get_frame_ops(),
                               platform_adapter->get_c_image_ops()), AV_OK);
 
     inst_slow->set_result_callback([](const av_algo_result&, const av_frame_desc&) {
@@ -395,29 +395,29 @@ TEST_F(RealMediaIntegrationTest, MultiInstanceSamplingAndSlowConsumerIsolation) 
     // Ensure frame pool has not leaked frames during drop & processing
     task->stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    EXPECT_EQ(aivision::core::FramePool::instance().active_frame_count(), 0U);
+    EXPECT_EQ(argus::core::FramePool::instance().active_frame_count(), 0U);
 }
 
 TEST_F(RealMediaIntegrationTest, LongContinuousStreamingStability) {
     const fs::path h264_file = fixture_dir() / "test_1080p_h264.mp4";
     ASSERT_TRUE(start_server(h264_file, "long_stream_test"));
 
-    auto media_backend = aivision::media::create_zlm_backend();
-    auto platform_adapter = std::make_shared<aivision::platform::MacosPlatformAdapter>();
+    auto media_backend = argus::media::create_zlm_backend();
+    auto platform_adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
     const std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(port_) + "/live/long_stream_test";
-    auto task = std::make_shared<aivision::core::CameraTask>(
+    auto task = std::make_shared<argus::core::CameraTask>(
         "cam_long_stream", rtsp_url, platform_adapter, media_backend);
-    auto inst = std::make_shared<aivision::core::AlgorithmInstance>(
+    auto inst = std::make_shared<argus::core::AlgorithmInstance>(
         "inst_long", "cam_long_stream", "mock_algo", "1.0.0", 25, "{}", nullptr, nullptr);
-    ASSERT_EQ(inst->init(aivision::core::FramePool::instance().get_frame_ops(),
+    ASSERT_EQ(inst->init(argus::core::FramePool::instance().get_frame_ops(),
                          platform_adapter->get_c_image_ops()), AV_OK);
 
     task->add_instance(inst);
     ASSERT_EQ(task->start(), AV_OK);
 
     // Allow environment variable to configure duration; default to 10 seconds for unit test run,
-    // or 60+ seconds when AIVISION_EXTENDED_MEDIA_TESTS is set.
-    const char* ext_env = std::getenv("AIVISION_EXTENDED_MEDIA_TESTS");
+    // or 60+ seconds when ARGUS_EXTENDED_MEDIA_TESTS is set.
+    const char* ext_env = std::getenv("ARGUS_EXTENDED_MEDIA_TESTS");
     const int duration_sec = (ext_env != nullptr && std::string(ext_env) == "1") ? 60 : 8;
 
     const auto start_time = std::chrono::steady_clock::now();
@@ -435,7 +435,7 @@ TEST_F(RealMediaIntegrationTest, LongContinuousStreamingStability) {
 
     task->stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    EXPECT_EQ(aivision::core::FramePool::instance().active_frame_count(), 0U);
+    EXPECT_EQ(argus::core::FramePool::instance().active_frame_count(), 0U);
 }
 
 #endif

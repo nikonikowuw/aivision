@@ -2,12 +2,12 @@
  * @file log_sink.cpp
  * @brief stderr 与内存日志 sink 的线程安全实现
  */
-#include "aivision/core/logging/log_sink.hpp"
+#include "argus/core/logging/log_sink.hpp"
 #include <cerrno>
 #include <cstdio>
 #include <unistd.h>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 bool StderrSink::write_line(std::string_view line) noexcept {
     if (line.empty()) {
@@ -66,4 +66,4 @@ size_t MemorySink::size() const {
     return lines_.size();
 }
 
-} // namespace aivision::logging
+} // namespace argus::logging

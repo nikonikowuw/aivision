@@ -8,7 +8,7 @@
  * 3. 对账与安全路径检查（防止目录穿越）。
  */
 
-#include "aivision/core/image_manager.hpp"
+#include "argus/core/image_manager.hpp"
 
 #include <chrono>
 #include <cctype>
@@ -26,7 +26,7 @@
 
 namespace fs = std::filesystem;
 
-namespace aivision::core {
+namespace argus::core {
 namespace {
 
 bool write_fd(int fd, const uint8_t* data, size_t size) {
@@ -379,4 +379,4 @@ std::vector<std::string> ImageManager::scan_orphan_images(const std::vector<std:
     return {found.begin(), found.end()};
 }
 
-} // namespace aivision::core
+} // namespace argus::core

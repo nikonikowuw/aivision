@@ -5,21 +5,21 @@
 
 #include <gtest/gtest.h>
 #include <cmath>
-#include "aivision/platform/mock_platform.hpp"
+#include "argus/platform/mock_platform.hpp"
 
 
 TEST(ContractMockTest, PlatformProfileAndImageOps) {
-    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::UNSPECIFIED) == 0);
-    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::AVAILABLE) == 1);
-    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::DEGRADED) == 2);
-    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::UNSUPPORTED) == 3);
-    static_assert(static_cast<int>(aivision::platform::CapabilityStatus::UNAVAILABLE) == 3);
+    static_assert(static_cast<int>(argus::platform::CapabilityStatus::UNSPECIFIED) == 0);
+    static_assert(static_cast<int>(argus::platform::CapabilityStatus::AVAILABLE) == 1);
+    static_assert(static_cast<int>(argus::platform::CapabilityStatus::DEGRADED) == 2);
+    static_assert(static_cast<int>(argus::platform::CapabilityStatus::UNSUPPORTED) == 3);
+    static_assert(static_cast<int>(argus::platform::CapabilityStatus::UNAVAILABLE) == 3);
 
-    aivision::platform::MockPlatformAdapter mock_adapter;
+    argus::platform::MockPlatformAdapter mock_adapter;
     const auto& profile = mock_adapter.get_profile();
     EXPECT_EQ(profile.platform_id, "mock");
     EXPECT_EQ(profile.total_compute_units, 1000);
-    EXPECT_EQ(profile.hardware_decode.status, aivision::platform::CapabilityStatus::AVAILABLE);
+    EXPECT_EQ(profile.hardware_decode.status, argus::platform::CapabilityStatus::AVAILABLE);
 
     auto decoder = mock_adapter.create_decoder("H264");
     ASSERT_NE(decoder, nullptr);
@@ -37,7 +37,7 @@ TEST(ContractMockTest, PlatformProfileAndImageOps) {
     EXPECT_EQ(frame.height, 1080);
     EXPECT_EQ(frame.pixel_format, AV_PIX_NV12);
 
-    auto* mock_decoder = dynamic_cast<aivision::platform::MockDecoder*>(decoder.get());
+    auto* mock_decoder = dynamic_cast<argus::platform::MockDecoder*>(decoder.get());
     ASSERT_NE(mock_decoder, nullptr);
     ASSERT_NE(frame.frame_token, nullptr);
     EXPECT_EQ(mock_decoder->get_frame_ops()->retain(mock_decoder->get_frame_ops()->ctx, frame.frame_token), AV_OK);

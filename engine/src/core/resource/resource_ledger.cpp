@@ -6,7 +6,7 @@
  * 跟踪算力单元分配与超限判断。
  */
 
-#include "aivision/core/resource_ledger.hpp"
+#include "argus/core/resource_ledger.hpp"
 
 #include <limits>
 #include <utility>
@@ -17,7 +17,7 @@
 #endif
 
 
-namespace aivision::core {
+namespace argus::core {
 
 ResourceLedger& ResourceLedger::instance() {
     static ResourceLedger inst;
@@ -179,4 +179,4 @@ uint32_t ResourceLedger::get_available_compute_units() const {
     return static_cast<uint32_t>(max_allocatable > current_used ? max_allocatable - current_used : 0);
 }
 
-} // namespace aivision::core
+} // namespace argus::core

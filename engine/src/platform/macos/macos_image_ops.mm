@@ -9,7 +9,7 @@
  * 4. 告警抓拍：ROI 裁剪并高质量编码为 JPEG 字节流（CGImageDestination）。
  */
 
-#import "aivision/platform/macos_platform.hpp"
+#import "argus/platform/macos_platform.hpp"
 
 #import <Accelerate/Accelerate.h>
 #import <CoreImage/CoreImage.h>
@@ -21,7 +21,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace aivision::platform {
+namespace argus::platform {
 namespace {
 
 CVPixelBufferRef pixel_buffer_from_view(const av_image_view* view) {
@@ -419,4 +419,4 @@ const av_image_ops* MacosPlatformAdapter::get_c_image_ops() {
     return &g_macos_c_image_ops;
 }
 
-} // namespace aivision::platform
+} // namespace argus::platform

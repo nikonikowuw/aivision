@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aivision/algo.h"
-#include "aivision/types.h"
+#include "argus/algo.h"
+#include "argus/types.h"
 #include "../postprocess/postprocessor.hpp"
 #include <memory>
 #include <string>

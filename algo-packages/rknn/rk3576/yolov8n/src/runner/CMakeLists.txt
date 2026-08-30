@@ -9,7 +9,7 @@ target_include_directories(run_local PRIVATE
 
 target_link_libraries(run_local PRIVATE
     yolov8n
-    aivision_sdk_headers
+    argus_sdk_headers
     yolov8n_preprocess
     yolov8n_inference
     yolov8n_postprocess

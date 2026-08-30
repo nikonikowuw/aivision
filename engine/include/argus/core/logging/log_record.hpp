@@ -13,7 +13,7 @@
 #include <string_view>
 #include <variant>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief 日志级别定义 (严格对齐规范五级)
@@ -100,4 +100,4 @@ struct LogRecord {
     LogFields extra_fields; ///< 受控白名单额外标量字段
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging

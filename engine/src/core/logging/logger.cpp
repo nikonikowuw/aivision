@@ -2,11 +2,11 @@
  * @file logger.cpp
  * @brief 结构化日志 Facade 生命周期、过滤与入队实现
  */
-#include "aivision/core/logging/logger.hpp"
+#include "argus/core/logging/logger.hpp"
 #include <cmath>
 #include <type_traits>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 std::atomic<Level> Logger::min_level_{Level::Info};
 std::atomic<uint64_t> Logger::global_seq_{1};
@@ -143,4 +143,4 @@ void Logger::log(Level lvl,
     }
 }
 
-} // namespace aivision::logging
+} // namespace argus::logging

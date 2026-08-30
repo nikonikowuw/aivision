@@ -3,9 +3,9 @@
  * @brief 摄像头任务调度器单例实现
  */
 
-#include "aivision/core/task_scheduler.hpp"
+#include "argus/core/task_scheduler.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 TaskScheduler& TaskScheduler::instance() {
     // 线程安全的 Meyers 单例
@@ -72,4 +72,4 @@ size_t TaskScheduler::size() const {
     return tasks_.size();
 }
 
-} // namespace aivision::core
+} // namespace argus::core

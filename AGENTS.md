@@ -4,11 +4,11 @@
 
 ### 概览
 
-`aivision` 是一个边缘 AI 视频分析与 RBAC 管理系统，由三部分组成：
+`Argus` 是一个边缘 AI 视频分析与 RBAC 管理系统，由三部分组成：
 
-- `app/`：Go 后端管理服务；
+- `app/`：Go 后端管理服务（module `argus/app`）；
 - `ui/`：vben-admin 5.7 Vue3 前端；
-- `engine/`、`sdk/`、`algo-packages/`：C++20 媒体推理引擎、共享 C ABI 契约 SDK 与独立算法插件包。
+- `engine/`、`sdk/`、`algo-packages/`：C++20 媒体推理引擎（namespace `argus`）、共享 C ABI 契约 SDK 与独立算法插件包。
 
 ### 技术栈
 

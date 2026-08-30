@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package aivision.v1;
+package argus.v1;
 
-import "aivision/v1/common.proto";
+import "argus/v1/common.proto";
 
-option go_package = "niko-vue-admin/app/internal/proto/aivision/v1;aivisionv1";
+option go_package = "argus/app/internal/proto/argus/v1;argusv1";
 
 // 摄像头拉流任务配置
 message CameraTaskConfig {

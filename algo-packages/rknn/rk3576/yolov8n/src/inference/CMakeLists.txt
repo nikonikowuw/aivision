@@ -7,7 +7,7 @@ target_include_directories(yolov8n_inference PUBLIC
 )
 
 target_link_libraries(yolov8n_inference PUBLIC
-    aivision_sdk_headers
+    argus_sdk_headers
     yolov8n_postprocess
 )
 

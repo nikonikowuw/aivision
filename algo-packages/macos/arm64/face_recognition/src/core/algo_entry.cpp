@@ -3,11 +3,11 @@
  * @brief C ABI 统一导出接口、Library/Instance 生命周期管理与人脸识别流水线驱动
  */
 
-#include "aivision/algo.h"
-#include "aivision/utils/event_id.hpp"
-#include "aivision/utils/json.hpp"
-#include "aivision/cv/tracker.hpp"
-#include "aivision/utils/env.hpp"
+#include "argus/algo.h"
+#include "argus/utils/event_id.hpp"
+#include "argus/utils/json.hpp"
+#include "argus/cv/tracker.hpp"
+#include "argus/utils/env.hpp"
 #include "../preprocess/preprocessor.hpp"
 #include "../inference/model_inference.hpp"
 #include "../postprocess/postprocessor.hpp"
@@ -73,7 +73,7 @@ struct InstanceContext {
     uint64_t last_frame_id = 0;
     bool has_received_frame = false;
 
-    aivision::cv::SimpleTracker tracker;
+    argus::cv::SimpleTracker tracker;
     std::unordered_map<int64_t, TrackQualityState> track_quality_map;
 };
 
@@ -165,7 +165,7 @@ void copy_text(char (&dst)[N], std::string_view src) noexcept {
 }
 
 // 计算人脸中心是否落在人体框内
-bool face_center_in_person(const FaceDetection& face, const aivision::cv::DetectionBox& person, uint32_t orig_w, uint32_t orig_h) {
+bool face_center_in_person(const FaceDetection& face, const argus::cv::DetectionBox& person, uint32_t orig_w, uint32_t orig_h) {
     float face_cx = (face.x1 + face.x2) * 0.5f;
     float face_cy = (face.y1 + face.y2) * 0.5f;
 
@@ -179,7 +179,7 @@ bool face_center_in_person(const FaceDetection& face, const aivision::cv::Detect
 }
 
 // 计算人脸与人体的交并比
-float compute_face_person_iou(const FaceDetection& face, const aivision::cv::DetectionBox& person, uint32_t orig_w, uint32_t orig_h) {
+float compute_face_person_iou(const FaceDetection& face, const argus::cv::DetectionBox& person, uint32_t orig_w, uint32_t orig_h) {
     float person_x1 = person.x * static_cast<float>(orig_w);
     float person_y1 = person.y * static_cast<float>(orig_h);
     float person_x2 = (person.x + person.w) * static_cast<float>(orig_w);
@@ -264,7 +264,7 @@ static int library_open(const av_algo_library_args* args, av_algo_library* out) 
     return invoke_abi(lib.get(), [&] {
         // 读取 package_root/.env 私有配置
         std::string env_path = lib->package_root + "/.env";
-        auto env_vars = aivision::utils::EnvReader::load_file(env_path);
+        auto env_vars = argus::utils::EnvReader::load_file(env_path);
 
         if (env_vars.contains("YOLO_MODEL_PATH")) lib->yolo_path = env_vars["YOLO_MODEL_PATH"];
         if (env_vars.contains("SCRFD_MODEL_PATH")) lib->scrfd_path = env_vars["SCRFD_MODEL_PATH"];
@@ -341,7 +341,7 @@ static int instance_create(av_algo_library lib_handle, const av_algo_instance_ar
             std::string_view(args->config_json, args->config_json_len), inst->config);
     }
 
-    inst->tracker = aivision::cv::SimpleTracker(
+    inst->tracker = argus::cv::SimpleTracker(
         1.0f - inst->config.track_match_threshold,
         static_cast<int>(inst->config.track_buffer)
     );
@@ -387,7 +387,7 @@ static int instance_update_config(av_algo_instance inst_handle, const char* json
     return invoke_abi(inst, [&] {
         if (json && len > 0) {
             inst->config = InstanceConfig::parse_from_json(std::string_view(json, len), inst->config);
-            inst->tracker = aivision::cv::SimpleTracker(
+            inst->tracker = argus::cv::SimpleTracker(
                 1.0f - inst->config.track_match_threshold,
                 static_cast<int>(inst->config.track_buffer)
             );

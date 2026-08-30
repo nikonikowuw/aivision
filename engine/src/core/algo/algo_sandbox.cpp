@@ -7,10 +7,10 @@
  * 2. posix_spawn 进程隔离的沙箱子进程拉起与超时熔断控制。
  */
 
-#include "aivision/core/algo_sandbox.hpp"
-#include "aivision/algo.h"
-#include "aivision/core/logging/log_adapter.hpp"
-#include "aivision/utils/package_layout.hpp"
+#include "argus/core/algo_sandbox.hpp"
+#include "argus/algo.h"
+#include "argus/core/logging/log_adapter.hpp"
+#include "argus/utils/package_layout.hpp"
 
 #include <algorithm>
 #include <array>
@@ -49,7 +49,7 @@ extern char** environ;
 
 namespace fs = std::filesystem;
 
-namespace aivision::core {
+namespace argus::core {
 namespace {
 
 struct StagingDirectory {
@@ -602,7 +602,7 @@ bool validate_zip_uncompressed_size(const fs::path& zip_path, std::string& error
 
 bool extract_zip(const fs::path& zip_path, StagingDirectory& staging, std::string& error) {
 
-    const fs::path base = fs::temp_directory_path() / ("aivision-validator-" + std::to_string(static_cast<long long>(getpid())));
+    const fs::path base = fs::temp_directory_path() / ("argus-validator-" + std::to_string(static_cast<long long>(getpid())));
     for (int attempt = 0; attempt < 100; ++attempt) {
         const fs::path candidate = base.string() + "-" + std::to_string(attempt);
         std::error_code create_error;
@@ -866,8 +866,8 @@ bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifes
         return false;
     }
 
-    aivision::utils::PackageLibraryEntry library_entry;
-    if (!aivision::utils::resolve_conventional_package_library(root, algorithm_id, library_entry, error)) {
+    argus::utils::PackageLibraryEntry library_entry;
+    if (!argus::utils::resolve_conventional_package_library(root, algorithm_id, library_entry, error)) {
         return false;
     }
     library_name = library_entry.relative_path;
@@ -1073,7 +1073,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     }
 
     // 打开算法库上下文并加载模型
-    aivision::logging::AlgoLogContext log_context{
+    argus::logging::AlgoLogContext log_context{
         result.manifest.algorithm_id,
         result.manifest.version,
         result.manifest.platform_id
@@ -1083,7 +1083,7 @@ ValidationResult PackageValidator::validate_and_extract(const std::string& packa
     library_args.api_version = AV_ALGO_API_VERSION;
     library_args.package_root = working_dir.c_str();
     library_args.platform_id = result.manifest.platform_id.c_str();
-    library_args.log = aivision::logging::sdk_algo_log_bridge;
+    library_args.log = argus::logging::sdk_algo_log_bridge;
     library_args.log_user = &log_context;
     av_algo_library library = nullptr;
     if (abi->library_open(&library_args, &library) != AV_OK || !library) {
@@ -1286,4 +1286,4 @@ ValidationResult PackageValidator::run_sandbox_validator(const std::string& vali
     return result;
 }
 
-} // namespace aivision::core
+} // namespace argus::core

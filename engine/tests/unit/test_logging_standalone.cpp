@@ -11,10 +11,10 @@
 #include <thread>
 #include <vector>
 
-#include "aivision/core/logging/logger.hpp"
-#include "aivision/core/logging/log_adapter.hpp"
+#include "argus/core/logging/logger.hpp"
+#include "argus/core/logging/log_adapter.hpp"
 
-using namespace aivision::logging;
+using namespace argus::logging;
 
 class GateSink final : public LogSink {
 public:

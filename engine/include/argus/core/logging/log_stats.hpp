@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief Logger 统计快照结构体
@@ -63,4 +63,4 @@ public:
     }
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging

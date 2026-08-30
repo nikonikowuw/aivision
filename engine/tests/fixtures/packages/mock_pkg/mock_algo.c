@@ -3,7 +3,7 @@
  * @brief C ABI 规范 Mock 算法插件动态库实现（供自检与单测使用）
  */
 
-#include "aivision/algo.h"
+#include "argus/algo.h"
 #include <stdlib.h>
 #include <string.h>
 

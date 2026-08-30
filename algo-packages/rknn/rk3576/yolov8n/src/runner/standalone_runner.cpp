@@ -1,7 +1,7 @@
-#include "aivision/algo.h"
-#include "aivision/types.h"
-#include "aivision/utils/profiler.hpp"
-#include "aivision/utils/json.hpp"
+#include "argus/algo.h"
+#include "argus/types.h"
+#include "argus/utils/profiler.hpp"
+#include "argus/utils/json.hpp"
 #include "core/env_config.hpp"
 #include "preprocess/preprocessor.hpp"
 #include "inference/rknn_runner.hpp"
@@ -24,7 +24,7 @@ namespace {
 
 struct ResultCapture {
     std::string json;
-    std::vector<aivision::cv::DetectionBox> objects;
+    std::vector<argus::cv::DetectionBox> objects;
     std::string error;
     bool self_test = false;
 };
@@ -40,8 +40,8 @@ void result_callback(const av_algo_result* res, void* user) {
 
     capture->json.assign(res->json, res->json_len);
     if (res->kind == AV_RESULT_ALARM) {
-        aivision::utils::ParsedAlarmJson parsed;
-        if (aivision::utils::parse_alarm_json(capture->json, parsed, capture->error)) {
+        argus::utils::ParsedAlarmJson parsed;
+        if (argus::utils::parse_alarm_json(capture->json, parsed, capture->error)) {
             capture->objects = std::move(parsed.objects);
         }
     }
@@ -111,7 +111,7 @@ bool load_image_as_nv12(const std::string& path, uint32_t& width, uint32_t& heig
 
 // Draw bounding boxes on RGB image and save
 bool draw_and_save_image(const std::string& input_path, const std::string& output_path,
-                         const std::vector<aivision::cv::DetectionBox>& boxes) {
+                         const std::vector<argus::cv::DetectionBox>& boxes) {
     int w = 0, h = 0, channels = 0;
     unsigned char* img = stbi_load(input_path.c_str(), &w, &h, &channels, 3);
     if (!img) {
@@ -350,14 +350,14 @@ int main(int argc, char** argv) {
             }
         }
 
-        const auto abi_stats = aivision::utils::BenchmarkStats::compute(abi_times);
+        const auto abi_stats = argus::utils::BenchmarkStats::compute(abi_times);
 
         std::cout << "\n--- Benchmark Report (" << kIterations << " iterations, " << kWarmup << " warmup) ---\n";
         if (direct_instance && !e2e_times.empty()) {
-            const auto prep_stats = aivision::utils::BenchmarkStats::compute(prep_times);
-            const auto infer_stats = aivision::utils::BenchmarkStats::compute(infer_times);
-            const auto post_stats = aivision::utils::BenchmarkStats::compute(post_times);
-            const auto e2e_stats = aivision::utils::BenchmarkStats::compute(e2e_times);
+            const auto prep_stats = argus::utils::BenchmarkStats::compute(prep_times);
+            const auto infer_stats = argus::utils::BenchmarkStats::compute(infer_times);
+            const auto post_stats = argus::utils::BenchmarkStats::compute(post_times);
+            const auto e2e_stats = argus::utils::BenchmarkStats::compute(e2e_times);
 
             std::cout << "  Preprocess:  Avg " << std::fixed << std::setprecision(2) << prep_stats.avg_ms
                       << " ms | P50 " << prep_stats.p50_ms << " ms | P99 " << prep_stats.p99_ms << " ms\n"

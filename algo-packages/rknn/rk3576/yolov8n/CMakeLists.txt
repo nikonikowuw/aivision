@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(aivision_algo_rk3576_yolov8n LANGUAGES C CXX)
+project(argus_algo_rk3576_yolov8n LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -10,9 +10,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/cmake")
-include(AivisionAlgoSDKConfig)
-include(AivisionAlgoPackage)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/cmake")
+include(ArgusAlgoSDKConfig)
+include(ArgusAlgoPackage)
 
 find_library(RKNN_RT_LIB NAMES rknnrt librknnrt PATHS /usr/lib /usr/lib64 /lib /usr/lib/aarch64-linux-gnu /lib/aarch64-linux-gnu)
 
@@ -25,7 +25,7 @@ endif()
 
 add_subdirectory(src)
 
-aivision_add_algo_package(yolov8n
+argus_add_algo_package(yolov8n
     ALGORITHM_ID yolov8n
     VERSION 1.0.0
     PLATFORM_ID rk3576-rknn

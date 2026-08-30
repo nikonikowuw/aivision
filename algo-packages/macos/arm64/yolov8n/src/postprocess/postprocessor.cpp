@@ -4,8 +4,8 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
-#include "aivision/cv/nms.hpp"
-#include "aivision/cv/letterbox.hpp"
+#include "argus/cv/nms.hpp"
+#include "argus/cv/letterbox.hpp"
 
 namespace yolov8n {
 
@@ -22,18 +22,18 @@ static const char* COCO_CLASSES[] = {
     "hair drier", "toothbrush"
 };
 
-std::vector<aivision::cv::DetectionBox> Postprocessor::postprocess(
+std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
     const std::vector<float>& net_out,
     float conf_thresh,
     float iou_thresh,
     uint32_t orig_w,
     uint32_t orig_h
 ) {
-    std::vector<aivision::cv::DetectionBox> candidates;
+    std::vector<argus::cv::DetectionBox> candidates;
     if (net_out.size() != static_cast<size_t>(84 * 8400) || orig_w == 0 || orig_h == 0 ||
         !std::isfinite(conf_thresh) || !std::isfinite(iou_thresh)) return candidates;
 
-    auto lb = aivision::cv::compute_letterbox(orig_w, orig_h, 640, 640);
+    auto lb = argus::cv::compute_letterbox(orig_w, orig_h, 640, 640);
 
     for (int i = 0; i < 8400; ++i) {
         float max_score = 0.0f;
@@ -57,7 +57,7 @@ std::vector<aivision::cv::DetectionBox> Postprocessor::postprocess(
                 continue;
             }
 
-            aivision::cv::NormalizedBBox box{
+            argus::cv::NormalizedBBox box{
                 .x_min = (cx - w * 0.5f) / 640.0f,
                 .y_min = (cy - h * 0.5f) / 640.0f,
                 .x_max = (cx + w * 0.5f) / 640.0f,
@@ -72,7 +72,7 @@ std::vector<aivision::cv::DetectionBox> Postprocessor::postprocess(
                 continue;
             }
 
-            aivision::cv::DetectionBox det{};
+            argus::cv::DetectionBox det{};
             det.class_id = max_cls;
             det.label = (max_cls < 80) ? COCO_CLASSES[max_cls] : "object";
             det.confidence = max_score;
@@ -85,7 +85,7 @@ std::vector<aivision::cv::DetectionBox> Postprocessor::postprocess(
         }
     }
 
-    return aivision::cv::nms_filter(candidates, iou_thresh);
+    return argus::cv::nms_filter(candidates, iou_thresh);
 }
 
 } // namespace yolov8n

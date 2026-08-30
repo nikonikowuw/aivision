@@ -19,12 +19,12 @@
 #include <chrono>
 #include <functional>
 #include <utility>
-#include "aivision/types.h"
-#include "aivision/algo.h"
-#include "aivision/media/media_api.hpp"
-#include "aivision/platform/platform_api.hpp"
+#include "argus/types.h"
+#include "argus/algo.h"
+#include "argus/media/media_api.hpp"
+#include "argus/platform/platform_api.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 运行中的算法实例控制器
@@ -164,5 +164,5 @@ private:
     std::function<void(const av_algo_result&, const av_frame_desc&)> result_cb_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

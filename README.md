@@ -1,8 +1,8 @@
-# niko-vue-admin
+# Argus
 
-`niko-vue-admin` 是一个开箱即用的全栈 RBAC 管理后台脚手架。
+`Argus` 是一个面向边缘计算场景的高性能 AI 视频分析与 RBAC 管理系统。
 
-后端基于 **Go 1.26 + Gin + GORM + Wire** 构建，前端基于 **Vue 3 + Vite + Ant Design Vue + vben-admin 5.7** 定制，采用后端路由驱动（Backend Access Mode）与 JWT 双 Token 认证，支持一键容器化部署。
+后端基于 **Go 1.26 + Gin + GORM + Wire** 构建，引擎基于 **C++20 + ZLMediaKit + 动态 C ABI 算法插件**，前端基于 **Vue 3 + Vite + Ant Design Vue + vben-admin 5.7** 定制，采用后端路由驱动（Backend Access Mode）与 JWT 双 Token 认证，支持一键容器化部署。
 
 ---
 
@@ -44,7 +44,7 @@
 
 ```bash
 git clone <repository-url>
-cd niko-vue-admin
+cd argus
 ```
 
 ### 2. 下载模型权重文件
@@ -133,9 +133,9 @@ docker compose up -d --build
 ## 目录结构
 
 ```text
-niko-vue-admin/
+argus/
 ├── algo-packages/               # 独立算法插件包 (macOS CoreML, RKNN 等)
-├── app/                          # Go 后端工程
+├── app/                          # Go 后端工程 (module argus/app)
 │   ├── cmd/api/                  # 入口与 Wire DI 装配 (main.go, wire.go)
 │   ├── configs/                  # 配置文件 (config.yaml)
 │   ├── docs/                     # Swagger OpenAPI 文档

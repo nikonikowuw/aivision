@@ -3,7 +3,7 @@
  * @brief 实时预览流媒体管理器实现（基于 ZLMediaKit PlayerProxy & HttpSession）
  */
 
-#include "aivision/core/live_stream_manager.hpp"
+#include "argus/core/live_stream_manager.hpp"
 
 #include <chrono>
 #include <exception>
@@ -17,9 +17,9 @@
 #include "Network/TcpServer.h"
 #include "Player/PlayerProxy.h"
 #include "Util/logger.h"
-#include "aivision/core/logging/logger.hpp"
+#include "argus/core/logging/logger.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 struct LiveStreamEntry {
     std::string stream_id;
@@ -45,8 +45,8 @@ LiveStreamManager::~LiveStreamManager() {
     }
 }
 
-std::string LiveStreamManager::make_stream_id(const std::string& camera_id, aivision::v1::StreamType stream_type) {
-    const std::string suffix = (stream_type == aivision::v1::STREAM_TYPE_SUB) ? "_sub" : "_main";
+std::string LiveStreamManager::make_stream_id(const std::string& camera_id, argus::v1::StreamType stream_type) {
+    const std::string suffix = (stream_type == argus::v1::STREAM_TYPE_SUB) ? "_sub" : "_main";
     return camera_id + suffix;
 }
 
@@ -115,7 +115,7 @@ void LiveStreamManager::stop_server() {
 }
 
 std::string LiveStreamManager::start_preview(const std::string& camera_id,
-                                            aivision::v1::StreamType stream_type,
+                                            argus::v1::StreamType stream_type,
                                             const std::string& rtsp_url,
                                             std::string* stream_path,
                                             std::string* error_message) {
@@ -213,7 +213,7 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
                          "Live stream player proxy closed", "",
                          {{"camera_id", camera_id}, {"stream_id", stream_id}, {"error", ex.what()}});
                 LiveStreamManager::instance().stop_preview(camera_id, 
-                    stream_id.ends_with("_sub") ? aivision::v1::STREAM_TYPE_SUB : aivision::v1::STREAM_TYPE_MAIN);
+                    stream_id.ends_with("_sub") ? argus::v1::STREAM_TYPE_SUB : argus::v1::STREAM_TYPE_MAIN);
             });
             proxy->play(rtsp_url);
         });
@@ -237,7 +237,7 @@ std::string LiveStreamManager::start_preview(const std::string& camera_id,
     }
 }
 
-bool LiveStreamManager::stop_preview(const std::string& camera_id, aivision::v1::StreamType stream_type) {
+bool LiveStreamManager::stop_preview(const std::string& camera_id, argus::v1::StreamType stream_type) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!impl_) return true;
 
@@ -264,7 +264,7 @@ bool LiveStreamManager::stop_preview(const std::string& camera_id, aivision::v1:
     return true;
 }
 
-bool LiveStreamManager::is_streaming(const std::string& camera_id, aivision::v1::StreamType stream_type) const {
+bool LiveStreamManager::is_streaming(const std::string& camera_id, argus::v1::StreamType stream_type) const {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!impl_) return false;
     const std::string stream_id = make_stream_id(camera_id, stream_type);
@@ -284,4 +284,4 @@ void LiveStreamManager::reset() {
     }
 }
 
-} // namespace aivision::core
+} // namespace argus::core

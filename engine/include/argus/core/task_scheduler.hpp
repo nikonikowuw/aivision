@@ -13,9 +13,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "aivision/core/camera_task.hpp"
+#include "argus/core/camera_task.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 摄像头任务调度器
@@ -69,5 +69,5 @@ private:
     std::unordered_map<std::string, std::shared_ptr<CameraTask>> tasks_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

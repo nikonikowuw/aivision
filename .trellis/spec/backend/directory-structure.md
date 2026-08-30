@@ -6,7 +6,7 @@
 
 ## 概览
 
-后端位于 `app/`（Go 模块 `niko-vue-admin/app`）。它是一个由 google/wire 装配的
+后端位于 `app/`（Go 模块 `argus/app`）。它是一个由 google/wire 装配的
 Gin + GORM API 服务。业务分层采用标准的 `api -> service -> repository -> model`
 架构，并通过 `internal/router` 和 `internal/middleware` 统一管理路由挂载与横切逻辑。
 

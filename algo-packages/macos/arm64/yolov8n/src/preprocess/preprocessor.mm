@@ -3,7 +3,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <Accelerate/Accelerate.h>
 
-#include "aivision/cv/letterbox.hpp"
+#include "argus/cv/letterbox.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -75,7 +75,7 @@ void* create_input_pixelbuffer_with_ops(const av_frame_desc* src, const av_image
         return nullptr;
     }
 
-    const auto letterbox = aivision::cv::compute_letterbox(
+    const auto letterbox = argus::cv::compute_letterbox(
         src->width, src->height, static_cast<uint32_t>(target_w), static_cast<uint32_t>(target_h));
     const uint32_t scaled_w = std::max<uint32_t>(1, std::min<uint32_t>(
         static_cast<uint32_t>(target_w), static_cast<uint32_t>(src->width * letterbox.scale)));
@@ -165,7 +165,7 @@ void* Preprocessor::create_input_pixelbuffer(const av_frame_desc* src, const av_
         const size_t src_h = CVPixelBufferGetHeight(src_pb);
         const size_t dst_stride = CVPixelBufferGetBytesPerRow(dst_pb);
         uint8_t* dst_ptr = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(dst_pb));
-        const auto letterbox = aivision::cv::compute_letterbox(
+        const auto letterbox = argus::cv::compute_letterbox(
             static_cast<uint32_t>(src_w), static_cast<uint32_t>(src_h),
             static_cast<uint32_t>(target_w), static_cast<uint32_t>(target_h));
         const uint32_t scaled_w = std::min<uint32_t>(target_w, static_cast<uint32_t>(src_w * letterbox.scale));

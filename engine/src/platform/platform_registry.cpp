@@ -3,9 +3,9 @@
  * @brief 平台适配器注册表实现
  */
 
-#include "aivision/platform/platform_api.hpp"
+#include "argus/platform/platform_api.hpp"
 
-namespace aivision::platform {
+namespace argus::platform {
 
 PlatformRegistry& PlatformRegistry::instance() {
     static PlatformRegistry registry;
@@ -31,5 +31,5 @@ std::shared_ptr<IPlatformAdapter> PlatformRegistry::get_active_adapter() {
     return active_adapter_;
 }
 
-} // namespace aivision::platform
+} // namespace argus::platform
 

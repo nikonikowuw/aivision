@@ -4,11 +4,11 @@
  */
 
 #include <gtest/gtest.h>
-#include "aivision/core/color_vui.hpp"
+#include "argus/core/color_vui.hpp"
 
 
 TEST(ColorVUITest, FallbackBT709) {
-    auto info = aivision::core::ColorVUIParser::parse_h264_sps(nullptr, 0);
+    auto info = argus::core::ColorVUIParser::parse_h264_sps(nullptr, 0);
     EXPECT_FALSE(info.vui_present);
     EXPECT_EQ(info.primaries, AV_COLOR_PRIM_BT709);
     EXPECT_EQ(info.range, AV_COLOR_RANGE_LIMITED);

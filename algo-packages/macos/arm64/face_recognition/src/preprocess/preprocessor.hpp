@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aivision/types.h"
-#include "aivision/cv/letterbox.hpp"
+#include "argus/types.h"
+#include "argus/cv/letterbox.hpp"
 #include <vector>
 #include <cstdint>
 
@@ -23,7 +23,7 @@ struct ImageBuffer {
 struct PreprocessResult {
     ImageBuffer original_rgb;
     ImageBuffer letterbox_rgb;
-    aivision::cv::LetterboxInfo letterbox_info;
+    argus::cv::LetterboxInfo letterbox_info;
 };
 
 /**

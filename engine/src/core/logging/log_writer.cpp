@@ -2,8 +2,8 @@
  * @file log_writer.cpp
  * @brief 双队列异步日志写出、序列化及有界停机实现
  */
-#include "aivision/core/logging/log_writer.hpp"
-#include "aivision/core/logging/log_sanitizer.hpp"
+#include "argus/core/logging/log_writer.hpp"
+#include "argus/core/logging/log_sanitizer.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -17,7 +17,7 @@
 #include <sstream>
 #include <type_traits>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 namespace {
 
@@ -506,4 +506,4 @@ std::string AsyncLogWriter::serialize_jsonl(const LogRecord& record,
     }
 }
 
-} // namespace aivision::logging
+} // namespace argus::logging

@@ -3,9 +3,9 @@
  * @brief 算法实例全局管理器单例实现
  */
 
-#include "aivision/core/algo_manager.hpp"
+#include "argus/core/algo_manager.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 AlgoManager& AlgoManager::instance() {
     // 线程安全的 Meyers 单例模式
@@ -76,4 +76,4 @@ size_t AlgoManager::size() const {
     return instances_.size();
 }
 
-} // namespace aivision::core
+} // namespace argus::core

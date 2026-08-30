@@ -1,0 +1,4275 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "argus 后端 API 接口文档",
+        "title": "argus API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8000",
+    "basePath": "/",
+    "paths": {
+        "/api/auth/codes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取当前登录用户拥有的全部按钮权限码",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "获取当前用户权限码集合",
+                "responses": {
+                    "200": {
+                        "description": "权限码列表",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.AccessCodesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/login": {
+            "post": {
+                "description": "使用用户名和密码登录获取 AccessToken，同时在 Cookie 中写入 RefreshToken",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "用户登录",
+                "parameters": [
+                    {
+                        "description": "登录参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.LoginInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功返回用户信息及 AccessToken",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "用户名或密码错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/logout": {
+            "post": {
+                "description": "注销当前的 RefreshToken 并清除客户端 Cookie",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "用户登出",
+                "responses": {
+                    "200": {
+                        "description": "登出成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/refresh": {
+            "post": {
+                "description": "从 HttpOnly Cookie 中读取 RefreshToken，签发新的 AccessToken 并轮换 RefreshToken Cookie",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "刷新令牌",
+                "responses": {
+                    "200": {
+                        "description": "新的 AccessToken",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权或 RefreshToken 无效",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "新增 RTSP 视频源；保存只做字段与 URL 校验，不强制测活成功",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "新增摄像头",
+                "parameters": [
+                    {
+                        "description": "创建摄像头参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功的摄像头",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.CameraResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/batch": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "批量软删除指定 ID 列表的摄像头",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "批量删除摄像头",
+                "parameters": [
+                    {
+                        "description": "批量删除参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.BatchDeleteCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/page": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询摄像头数据，支持名称模糊筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "分页获取摄像头列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "名称模糊查询",
+                        "name": "name",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "摄像头分页数据",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.CameraPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/probe": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中\n对 RTSP 配置执行测活（TCP 优先，失败回退 UDP，首帧即成功）。测活失败也返回 code=0，结果在 data.status 中",
+                "consumes": [
+                    "application/json",
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json",
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理",
+                    "摄像头管理"
+                ],
+                "summary": "摄像头测活",
+                "parameters": [
+                    {
+                        "description": "测活参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ProbeCameraInput"
+                        }
+                    },
+                    {
+                        "description": "测活参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ProbeCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "测活结构化结果",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ProbeResultResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 修改摄像头名称、RTSP URL 与备注；配置变更后旧测活结果视为不适用于当前配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "更新摄像头",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新摄像头参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveCameraInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的摄像头",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.CameraResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "软删除指定 ID 的摄像头；camera_id 永不复用",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "删除摄像头",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/{id}/preview/start": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "启动或复用 ZLMediaKit 实时预览拉流通道（支持 main/sub 码流自适应）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "开启摄像头实时预览",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "main",
+                        "description": "码流类型 (main/sub)",
+                        "name": "streamType",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "实时拉流地址",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.LiveStreamResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/camera/{id}/preview/stop": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "显式停止指定摄像头的实时拉流通道",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "摄像头管理"
+                ],
+                "summary": "停止摄像头实时预览",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "摄像头ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "main",
+                        "description": "码流类型 (main/sub)",
+                        "name": "streamType",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "停止成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/dept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "新增部门节点",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "部门模块"
+                ],
+                "summary": "创建部门",
+                "parameters": [
+                    {
+                        "description": "创建部门参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveDeptInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功的部门信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.DeptResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/dept/tree": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "查询系统所有部门并构建为树形结构",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "部门模块"
+                ],
+                "summary": "获取全量部门树",
+                "responses": {
+                    "200": {
+                        "description": "部门树数据",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.DeptTreeResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/dept/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "更新指定 ID 的部门信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "部门模块"
+                ],
+                "summary": "更新部门",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "部门ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新部门参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveDeptInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的部门信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.DeptResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除指定 ID 的部门（有子部门或包含用户时不可删除）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "部门模块"
+                ],
+                "summary": "删除部门",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "部门ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/file/upload": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "上传图片或 PDF 文件，返回不需要认证即可访问的文件 URL",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "文件模块"
+                ],
+                "summary": "上传文件",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "上传文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "上传成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.FileUploadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "文件参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "500": {
+                        "description": "存储失败",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/menu": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "新增菜单、目录或权限按钮节点",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "菜单模块"
+                ],
+                "summary": "创建菜单/按钮",
+                "parameters": [
+                    {
+                        "description": "创建菜单参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveMenuInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功的菜单信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.MenuResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/menu/all": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据当前用户角色权限，生成用于前端动态挂载路由的菜单结构",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "菜单模块"
+                ],
+                "summary": "获取当前用户可访问菜单树",
+                "responses": {
+                    "200": {
+                        "description": "前端动态路由树",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.UserMenuTreeResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/menu/tree": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "查询系统所有菜单/按钮并构建为树形结构（用于菜单管理页面）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "菜单模块"
+                ],
+                "summary": "获取全量菜单树",
+                "responses": {
+                    "200": {
+                        "description": "菜单树数据",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.MenuTreeResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/menu/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "更新指定 ID 的菜单节点信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "菜单模块"
+                ],
+                "summary": "更新菜单/按钮",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "菜单ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新菜单参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveMenuInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的菜单信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.MenuResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除指定 ID 的菜单（有子菜单时不可删除）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "菜单模块"
+                ],
+                "summary": "删除菜单/按钮",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "菜单ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/oplog/page": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询用户操作日志，支持用户名、模块名称、状态码以及时间范围筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "操作日志模块"
+                ],
+                "summary": "分页获取操作日志列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "操作用户名",
+                        "name": "username",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "功能模块",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "HTTP响应状态码",
+                        "name": "statusCode",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "开始时间 (RFC3339 格式: 2006-01-02T15:04:05Z07:00)",
+                        "name": "startTime",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束时间 (RFC3339 格式: 2006-01-02T15:04:05Z07:00)",
+                        "name": "endTime",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作日志分页数据",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.LogPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/oplog/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 查询单条操作日志详情",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "操作日志模块"
+                ],
+                "summary": "获取操作日志详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "日志ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作日志详情",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.LogResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/alarms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "支持按发生时间区间、摄像头、算法、告警类型、置信度区间组合分页查询",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "告警记录"
+                ],
+                "summary": "分页查询告警记录",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "开始时间",
+                        "name": "startTime",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束时间",
+                        "name": "endTime",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "摄像头ID",
+                        "name": "cameraId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "算法ID",
+                        "name": "algorithmId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "告警类型ID",
+                        "name": "alarmTypeId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "最低置信度",
+                        "name": "minConfidence",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "最高置信度",
+                        "name": "maxConfidence",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "告警分页数据",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/argus_app_internal_service.AlarmRecordPageResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/alarms/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取单条告警详细信息，含检测规则与目标框",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "告警记录"
+                ],
+                "summary": "查询告警记录详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "告警记录ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "告警详情数据",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/argus_app_internal_service.AlarmRecordDetail"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "记录不存在",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/images/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "校验 Bearer Token 并在后端代理读取 Engine var/images 下的安全图片流，支持 type=thumb 缩略图",
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "告警记录"
+                ],
+                "summary": "受控读取告警图片",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "图片唯一标识 image_id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "图片类型: thumb 缩略图, 默认原图",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "图片文件流",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "图片不存在",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/role": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建新的系统角色",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色模块"
+                ],
+                "summary": "创建角色",
+                "parameters": [
+                    {
+                        "description": "创建角色参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveRoleInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功的角色信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.RoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/role/batch": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "批量删除指定 ID 列表的角色",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色模块"
+                ],
+                "summary": "批量删除角色",
+                "parameters": [
+                    {
+                        "description": "批量删除参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.BatchDeleteRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/role/page": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询角色数据，支持角色名称、角色编码、状态筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色模块"
+                ],
+                "summary": "分页获取角色列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "角色名称",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "角色编码",
+                        "name": "code",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "状态 (0:禁用, 1:启用)",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "角色分页数据",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.RolePageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/role/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 更新角色信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色模块"
+                ],
+                "summary": "更新角色",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "角色ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新角色参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveRoleInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的角色信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.RoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除指定 ID 的角色（内置角色禁止删除）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色模块"
+                ],
+                "summary": "删除角色",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "角色ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/role/{id}/menu-ids": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "查询指定角色当前关联的菜单 ID 集合",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色模块"
+                ],
+                "summary": "获取角色拥有的菜单ID列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "角色ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "菜单ID列表",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.MenuIDsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/role/{id}/menus": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "覆盖更新指定角色的菜单关联关系",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色模块"
+                ],
+                "summary": "为角色分配菜单权限",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "角色ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "分配菜单参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.AssignRoleMenusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "分配成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建系统用户账号，默认初始密码为 password123",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "创建新用户",
+                "parameters": [
+                    {
+                        "description": "创建用户参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveUserInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功的用户信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/batch": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "批量软删除指定 ID 列表的用户",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "批量删除用户",
+                "parameters": [
+                    {
+                        "description": "批量删除参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.BatchDeleteUserInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/batch-status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "批量启用或禁用指定用户",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "批量更新用户状态",
+                "parameters": [
+                    {
+                        "description": "批量状态修改参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.BatchUpdateUserStatusInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/info": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据请求头中的 Bearer Token 获取当前登录用户的详细信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "获取当前登录用户信息",
+                "responses": {
+                    "200": {
+                        "description": "当前用户信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.UserInfoResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/page": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页查询用户数据，支持用户名、昵称、状态、部门筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "分页获取用户列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户名",
+                        "name": "username",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "昵称",
+                        "name": "nickname",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "状态 (0:禁用, 1:启用)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "部门ID",
+                        "name": "deptId",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "用户分页数据",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.UserPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取当前认证用户的基本资料（包含昵称、邮箱、手机号等）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "获取当前登录用户个人资料",
+                "responses": {
+                    "200": {
+                        "description": "个人资料",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.CurrentProfileDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "修改当前认证用户的昵称、邮箱、手机号、头像和个人简介",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "修改当前登录用户个人资料",
+                "parameters": [
+                    {
+                        "description": "修改资料参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.UpdateCurrentProfileInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的个人资料",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.CurrentProfileDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/profile/password": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "校验旧密码并更新为新密码，同时吊销当前用户的所有 Refresh Token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "修改当前登录用户密码",
+                "parameters": [
+                    {
+                        "description": "修改密码参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.ChangeCurrentPasswordInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "修改成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误或旧密码错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据 ID 修改指定用户的信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "更新用户信息",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新用户参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_service.SaveUserInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的用户信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "软删除指定 ID 的用户",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "删除指定用户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/{id}/reset-password": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "将指定用户的密码重置为系统默认密码 (password123)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "重置用户密码",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "重置成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/{id}/roles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "查询指定用户当前分配的角色 ID 列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "获取用户绑定的角色ID列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "角色ID数组",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.RoleIDsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "覆盖更新指定用户的角色分配关系",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "为用户分配角色",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "角色分配参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.AssignRolesInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "分配成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/{id}/status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "启用或禁用指定用户账号",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户模块"
+                ],
+                "summary": "修改用户状态",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "状态修改参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.UpdateStatusInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "修改成功",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.NilResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "argus_app_internal_model.Camera": {
+            "type": "object",
+            "properties": {
+                "cameraId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "lastCodec": {
+                    "type": "string"
+                },
+                "lastFps": {
+                    "type": "number"
+                },
+                "lastHeight": {
+                    "type": "integer"
+                },
+                "lastProbeAt": {
+                    "type": "string"
+                },
+                "lastProbeErrorCode": {
+                    "type": "string"
+                },
+                "lastProbeStatus": {
+                    "description": "最近一次测活结果（成功/失败均更新）。",
+                    "type": "string"
+                },
+                "lastSuccessAt": {
+                    "description": "最后已知成功媒体信息：失败测活更新当前失败状态但保留该历史；配置变更后旧结果标记为不适用于当前配置。",
+                    "type": "string"
+                },
+                "lastSuccessTransport": {
+                    "type": "string"
+                },
+                "lastWidth": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "rtspUrl": {
+                    "type": "string"
+                },
+                "subRtspUrl": {
+                    "type": "string"
+                },
+                "transportPolicy": {
+                    "description": "传输策略（当前固定 auto）。Go/C++ 通过协议/策略适配选择实现，前端不可编辑。",
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_model.Department": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "leader": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentId": {
+                    "description": "0=根",
+                    "type": "integer"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "1 启用 / 0 禁用；新建默认值由 service 明确填充",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_model.DepartmentTreeNode": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.DepartmentTreeNode"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "leader": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentId": {
+                    "description": "0=根",
+                    "type": "integer"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "1 启用 / 0 禁用；新建默认值由 service 明确填充",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_model.DetectionLineDirection": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2
+            ],
+            "x-enum-comments": {
+                "DetectionLineDirectionAToB": "沿折线方向跨越",
+                "DetectionLineDirectionBToA": "逆折线方向跨越",
+                "DetectionLineDirectionBoth": "双向跨越"
+            },
+            "x-enum-descriptions": [
+                "双向跨越",
+                "沿折线方向跨越",
+                "逆折线方向跨越"
+            ],
+            "x-enum-varnames": [
+                "DetectionLineDirectionBoth",
+                "DetectionLineDirectionAToB",
+                "DetectionLineDirectionBToA"
+            ]
+        },
+        "argus_app_internal_model.DetectionPoint": {
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            }
+        },
+        "argus_app_internal_model.DetectionRule": {
+            "type": "object",
+            "properties": {
+                "lineDirection": {
+                    "$ref": "#/definitions/argus_app_internal_model.DetectionLineDirection"
+                },
+                "points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.DetectionPoint"
+                    }
+                },
+                "role": {
+                    "$ref": "#/definitions/argus_app_internal_model.DetectionRuleRole"
+                }
+            }
+        },
+        "argus_app_internal_model.DetectionRuleRole": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-comments": {
+                "DetectionRuleRoleLine": "分界线：目标跨线触发",
+                "DetectionRuleRoleMask": "屏蔽/遮罩区域：此区域内目标忽略",
+                "DetectionRuleRoleROI": "布防/检测区域：只在此区域内检测",
+                "DetectionRuleRoleUnspecified": "未指定（非法）"
+            },
+            "x-enum-descriptions": [
+                "未指定（非法）",
+                "布防/检测区域：只在此区域内检测",
+                "屏蔽/遮罩区域：此区域内目标忽略",
+                "分界线：目标跨线触发"
+            ],
+            "x-enum-varnames": [
+                "DetectionRuleRoleUnspecified",
+                "DetectionRuleRoleROI",
+                "DetectionRuleRoleMask",
+                "DetectionRuleRoleLine"
+            ]
+        },
+        "argus_app_internal_model.Menu": {
+            "type": "object",
+            "properties": {
+                "affix": {
+                    "type": "boolean"
+                },
+                "component": {
+                    "description": "视图相对路径；按钮级为空",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "homePath": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "keepAlive": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "catalog/menu 为 ASCII 路由标识符；button 为 i18n key（如 system.user.addUser）",
+                    "type": "string"
+                },
+                "parentId": {
+                    "description": "0=根",
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "permission": {
+                    "description": "catalog/menu 存模块码，button 存动作码",
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "类型由 gorm 按驱动映射（决策 18）",
+                    "type": "integer"
+                },
+                "title": {
+                    "description": "i18n key，如 routes.system.user（决策 17）",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "catalog / menu / button",
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_model.MenuTreeNode": {
+            "type": "object",
+            "properties": {
+                "affix": {
+                    "type": "boolean"
+                },
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.MenuTreeNode"
+                    }
+                },
+                "component": {
+                    "description": "视图相对路径；按钮级为空",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "homePath": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "keepAlive": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "catalog/menu 为 ASCII 路由标识符；button 为 i18n key（如 system.user.addUser）",
+                    "type": "string"
+                },
+                "parentId": {
+                    "description": "0=根",
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "permission": {
+                    "description": "catalog/menu 存模块码，button 存动作码",
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "类型由 gorm 按驱动映射（决策 18）",
+                    "type": "integer"
+                },
+                "title": {
+                    "description": "i18n key，如 routes.system.user（决策 17）",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "catalog / menu / button",
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_model.OperationLog": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "body": {
+                    "description": "已脱敏 JSON",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "description": "CreatedAt 覆盖 TimeFields：操作日志按时间范围查询，需要索引（设计 §2）。",
+                    "type": "string"
+                },
+                "durationMs": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "module": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "query": {
+                    "type": "string"
+                },
+                "statusCode": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "userAgent": {
+                    "type": "string"
+                },
+                "userId": {
+                    "description": "登录失败等场景可为空",
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_model.Role": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_model.User": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "deptId": {
+                    "type": "integer"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "nickname": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_pkg_response.Result": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.AlarmRecordDetail": {
+            "type": "object",
+            "properties": {
+                "alarmTypeId": {
+                    "type": "string"
+                },
+                "algorithmId": {
+                    "type": "string"
+                },
+                "algorithmName": {
+                    "type": "string"
+                },
+                "algorithmVersion": {
+                    "type": "string"
+                },
+                "bbox": {
+                    "description": "[x1, y1, x2, y2]",
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "cameraId": {
+                    "type": "string"
+                },
+                "cameraName": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "eventId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "imageId": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "instanceId": {
+                    "type": "string"
+                },
+                "occurredAt": {
+                    "type": "string"
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.DetectionRule"
+                    }
+                },
+                "targetLabel": {
+                    "type": "string"
+                },
+                "timeSynced": {
+                    "type": "boolean"
+                },
+                "trackId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.AlarmRecordItem": {
+            "type": "object",
+            "properties": {
+                "alarmTypeId": {
+                    "type": "string"
+                },
+                "algorithmId": {
+                    "type": "string"
+                },
+                "algorithmName": {
+                    "type": "string"
+                },
+                "algorithmVersion": {
+                    "type": "string"
+                },
+                "bbox": {
+                    "description": "[x1, y1, x2, y2]",
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "cameraId": {
+                    "type": "string"
+                },
+                "cameraName": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "eventId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "imageId": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "instanceId": {
+                    "type": "string"
+                },
+                "occurredAt": {
+                    "type": "string"
+                },
+                "targetLabel": {
+                    "type": "string"
+                },
+                "timeSynced": {
+                    "type": "boolean"
+                },
+                "trackId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.AlarmRecordPageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_service.AlarmRecordItem"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.CameraLiveStreamResult": {
+            "type": "object",
+            "properties": {
+                "httpPort": {
+                    "type": "integer"
+                },
+                "httpUrl": {
+                    "type": "string"
+                },
+                "streamPath": {
+                    "type": "string"
+                },
+                "streamType": {
+                    "type": "string"
+                },
+                "wsPort": {
+                    "type": "integer"
+                },
+                "wsUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.CameraPageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.Camera"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.ChangeCurrentPasswordInput": {
+            "type": "object",
+            "required": [
+                "newPassword",
+                "oldPassword"
+            ],
+            "properties": {
+                "newPassword": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 6
+                },
+                "oldPassword": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            }
+        },
+        "argus_app_internal_service.CurrentProfileDTO": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "nickname": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.LogPageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.OperationLog"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.LoginResult": {
+            "type": "object",
+            "properties": {
+                "accessToken": {
+                    "type": "string"
+                },
+                "avatar": {
+                    "type": "string"
+                },
+                "desc": {
+                    "type": "string"
+                },
+                "homePath": {
+                    "type": "string"
+                },
+                "realName": {
+                    "type": "string"
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.ProbeAttempt": {
+            "type": "object",
+            "properties": {
+                "elapsedMs": {
+                    "description": "该次尝试耗时",
+                    "type": "integer"
+                },
+                "failureCode": {
+                    "description": "空串表示该次成功",
+                    "type": "string"
+                },
+                "transport": {
+                    "description": "tcp | udp",
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.ProbeCameraResult": {
+            "type": "object",
+            "properties": {
+                "attempts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_service.ProbeAttempt"
+                    }
+                },
+                "codec": {
+                    "type": "string"
+                },
+                "elapsedMs": {
+                    "type": "integer"
+                },
+                "failureCode": {
+                    "type": "string"
+                },
+                "failureMessage": {
+                    "type": "string"
+                },
+                "fps": {
+                    "type": "number"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "persisted": {
+                    "description": "是否已写入测活元数据",
+                    "type": "boolean"
+                },
+                "selectedTransport": {
+                    "description": "实际成功传输方式（成功时有值）",
+                    "type": "string"
+                },
+                "stale": {
+                    "description": "配置指纹不一致，结果不适用于当前配置",
+                    "type": "boolean"
+                },
+                "status": {
+                    "description": "success | failed",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.RolePageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.Role"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.SaveCameraInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "rtspUrl"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "remark": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "rtspUrl": {
+                    "type": "string",
+                    "maxLength": 2048
+                },
+                "subRtspUrl": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
+        "argus_app_internal_service.SaveDeptInput": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "leader": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentId": {
+                    "description": "0=根",
+                    "type": "integer"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "省略时新建默认启用；编辑省略表示不变",
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.SaveMenuInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "type"
+            ],
+            "properties": {
+                "affix": {
+                    "type": "boolean"
+                },
+                "component": {
+                    "type": "string"
+                },
+                "homePath": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "keepAlive": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentId": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "permission": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "catalog",
+                        "menu",
+                        "button"
+                    ]
+                }
+            }
+        },
+        "argus_app_internal_service.SaveRoleInput": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "省略时新建默认启用；编辑省略表示不变",
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.SaveUserInput": {
+            "type": "object",
+            "required": [
+                "username"
+            ],
+            "properties": {
+                "deptId": {
+                    "type": "integer"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "nickname": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "password": {
+                    "description": "编辑时可空，新增时需处理默认密码",
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 6
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "remark": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "status": {
+                    "type": "integer",
+                    "enum": [
+                        0,
+                        1
+                    ]
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 2
+                }
+            }
+        },
+        "argus_app_internal_service.UpdateCurrentProfileInput": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "email": {
+                    "type": "string"
+                },
+                "nickname": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "remark": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "argus_app_internal_service.UploadedFile": {
+            "type": "object",
+            "properties": {
+                "contentType": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.UserInfoDTO": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string"
+                },
+                "desc": {
+                    "type": "string"
+                },
+                "homePath": {
+                    "type": "string"
+                },
+                "realName": {
+                    "type": "string"
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.UserPageItem": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "deptId": {
+                    "type": "integer"
+                },
+                "deptName": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "nickname": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "1 启用 / 0 禁用；类型由 gorm 按驱动映射（决策 18）",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.UserPageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_service.UserPageItem"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.VbenRouteMeta": {
+            "type": "object",
+            "properties": {
+                "affixTab": {
+                    "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "keepAlive": {
+                    "type": "boolean"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.VbenRouteRecord": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_service.VbenRouteRecord"
+                    }
+                },
+                "component": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "meta": {
+                    "$ref": "#/definitions/argus_app_internal_service.VbenRouteMeta"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "pid": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.AccessCodesResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.AssignRoleMenusRequest": {
+            "type": "object",
+            "properties": {
+                "menuIds": {
+                    "description": "省略/空数组 = 清空分配",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_api.AssignRolesInput": {
+            "type": "object",
+            "properties": {
+                "roleIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_api.BatchDeleteCameraInput": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_api.BatchDeleteRoleRequest": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_api.BatchDeleteUserInput": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_api.BatchUpdateUserStatusInput": {
+            "type": "object",
+            "required": [
+                "ids",
+                "status"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "status": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_api.CameraPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.CameraPageResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.CameraResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_model.Camera"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.DeptResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_model.Department"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.DeptTreeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.DepartmentTreeNode"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.FileUploadResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.UploadedFile"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.LiveStreamResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.CameraLiveStreamResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.LogPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.LogPageResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.LogResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_model.OperationLog"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.LoginInput": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.LoginResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.MenuIDsResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.MenuResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_model.Menu"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.MenuTreeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.MenuTreeNode"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.NilResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.ProbeCameraInput": {
+            "type": "object",
+            "required": [
+                "rtspUrl"
+            ],
+            "properties": {
+                "id": {
+                    "description": "可选：已保存摄像头的数值 id；省略表示未保存表单",
+                    "type": "integer"
+                },
+                "protocol": {
+                    "description": "当前固定 rtsp；省略默认 rtsp",
+                    "type": "string"
+                },
+                "rtspUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.ProbeResultResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.ProbeCameraResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.RoleIDsResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.RolePageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.RolePageResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.RoleResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_model.Role"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.UpdateStatusInput": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "integer",
+                    "enum": [
+                        0,
+                        1
+                    ]
+                }
+            }
+        },
+        "internal_api.UserInfoResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.UserInfoDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.UserMenuTreeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_service.VbenRouteRecord"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.UserPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_service.UserPageResult"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.UserResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/argus_app_internal_model.User"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "在 Header 中传入 `Bearer \u003ctoken\u003e` 进行身份认证",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

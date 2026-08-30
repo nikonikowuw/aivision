@@ -15,10 +15,10 @@
 #include <unordered_map>
 #include <cstdint>
 #include <limits>
-#include "aivision/types.h"
-#include "aivision/result.h"
+#include "argus/types.h"
+#include "argus/result.h"
 
-namespace aivision::platform {
+namespace argus::platform {
 
 /**
  * @brief 平台功能/能力可用性状态枚举
@@ -229,5 +229,5 @@ private:
     std::string active_platform_id_;
 };
 
-} // namespace aivision::platform
+} // namespace argus::platform
 

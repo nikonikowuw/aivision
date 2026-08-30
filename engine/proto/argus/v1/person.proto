@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package aivision.v1;
+package argus.v1;
 
-option go_package = "niko-vue-admin/app/internal/proto/aivision/v1;aivisionv1";
+option go_package = "argus/app/internal/proto/argus/v1;argusv1";
 
 // 人脸识别预留（D4 / 本任务不含人脸子系统）：
 // - 当前 handler 一律返回 UNIMPLEMENTED；

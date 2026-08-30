@@ -8,7 +8,7 @@ set_target_properties(package_validator PROPERTIES
 )
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
     target_sources(package_validator PRIVATE macos_test_frame.mm)
-    target_compile_definitions(package_validator PRIVATE AIVISION_PLATFORM_MACOS=1)
+    target_compile_definitions(package_validator PRIVATE ARGUS_PLATFORM_MACOS=1)
 endif()
 target_include_directories(package_validator PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
@@ -19,7 +19,7 @@ target_link_libraries(package_validator PRIVATE
     nlohmann_json::nlohmann_json
     ${CMAKE_DL_LIBS}
 )
-aivision_enable_strict_warnings(package_validator)
+argus_enable_strict_warnings(package_validator)
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
     target_link_libraries(package_validator PRIVATE
         "-framework CoreVideo"

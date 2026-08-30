@@ -4,16 +4,16 @@
  */
 
 #include <gtest/gtest.h>
-#include "aivision/core/resource_ledger.hpp"
+#include "argus/core/resource_ledger.hpp"
 
 
 TEST(ResourceLedgerTest, QuotaExceeded) {
-    auto& ledger = aivision::core::ResourceLedger::instance();
+    auto& ledger = argus::core::ResourceLedger::instance();
     ledger.clear();
     ledger.set_limits(1000, 100, 256 * 1024 * 1024);
     ledger.set_free_memory_provider([] { return uint64_t{2} * 1024 * 1024 * 1024; });
 
-    aivision::core::ResourceRequirement req1{
+    argus::core::ResourceRequirement req1{
         .instance_id = "inst-1",
         .algorithm_id = "yolov8n",
         .target_fps = 25,
@@ -25,7 +25,7 @@ TEST(ResourceLedgerTest, QuotaExceeded) {
     EXPECT_EQ(ledger.get_used_compute_units(), 500);
     EXPECT_EQ(ledger.get_available_compute_units(), 400); // 1000 - 100 - 500 = 400
 
-    aivision::core::ResourceRequirement req2{
+    argus::core::ResourceRequirement req2{
         .instance_id = "inst-2",
         .algorithm_id = "yolov8n",
         .target_fps = 25,
@@ -49,7 +49,7 @@ TEST(ResourceLedgerTest, QuotaExceeded) {
 
     ledger.clear();
     ledger.set_free_memory_provider([] { return uint64_t{512} * 1024 * 1024; });
-    aivision::core::ResourceRequirement memory_req = req1;
+    argus::core::ResourceRequirement memory_req = req1;
     memory_req.memory_bytes = 200 * 1024 * 1024;
     EXPECT_EQ(ledger.allocate(memory_req), AV_OK);
     memory_req.instance_id = "inst-2";

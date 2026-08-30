@@ -10,7 +10,7 @@
 #include <string_view>
 #include <utility>
 
-namespace aivision::logging {
+namespace argus::logging {
 
 /**
  * @brief 字段安全与脱敏清洗工具集
@@ -52,4 +52,4 @@ public:
     [[nodiscard]] static const char* normalize_file_path(const char* full_path) noexcept;
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging

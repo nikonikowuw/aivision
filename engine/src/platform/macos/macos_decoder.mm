@@ -6,9 +6,9 @@
  * CVPixelBuffer 异步接收与 av_frame_desc 结构体组装。
  */
 
-#import "aivision/platform/macos_platform.hpp"
+#import "argus/platform/macos_platform.hpp"
 
-#include "aivision/core/color_vui.hpp"
+#include "argus/core/color_vui.hpp"
 
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace aivision::platform {
+namespace argus::platform {
 namespace {
 
 struct NalUnit {
@@ -365,4 +365,4 @@ std::unique_ptr<IDecoder> MacosPlatformAdapter::create_decoder(const std::string
     return std::make_unique<MacosDecoder>(codec_type);
 }
 
-} // namespace aivision::platform
+} // namespace argus::platform

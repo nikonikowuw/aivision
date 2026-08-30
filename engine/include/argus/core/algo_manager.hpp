@@ -14,9 +14,9 @@
 #include <vector>
 #include <unordered_map>
 
-#include "aivision/core/algo_instance.hpp"
+#include "argus/core/algo_instance.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 算法实例全局管理器
@@ -71,5 +71,5 @@ private:
     std::unordered_map<std::string, std::shared_ptr<AlgorithmInstance>> instances_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

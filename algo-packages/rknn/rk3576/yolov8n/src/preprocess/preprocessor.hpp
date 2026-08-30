@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aivision/types.h"
-#include "aivision/cv/letterbox.hpp"
+#include "argus/types.h"
+#include "argus/cv/letterbox.hpp"
 #include <cstdint>
 #include <vector>
 
@@ -9,7 +9,7 @@ namespace yolov8n {
 
 struct PreparedInput {
     av_image_view view{};
-    aivision::cv::LetterboxInfo letterbox{};
+    argus::cv::LetterboxInfo letterbox{};
     std::vector<uint8_t> host_buffer{};
     bool from_image_ops = false;
 };

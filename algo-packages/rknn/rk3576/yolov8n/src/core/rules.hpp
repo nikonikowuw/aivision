@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aivision/algo.h"
-#include "aivision/cv/nms.hpp"
+#include "argus/algo.h"
+#include "argus/cv/nms.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -168,11 +168,11 @@ inline bool line_crossed(const av_point& previous, const av_point& current,
     return direction == AV_LINE_DIR_A_TO_B ? a_to_b : !a_to_b;
 }
 
-inline std::vector<aivision::cv::DetectionBox> apply_rules(
+inline std::vector<argus::cv::DetectionBox> apply_rules(
     const std::vector<RuleState>& rules,
     std::unordered_map<int64_t, av_point>& previous_points,
     std::unordered_map<int64_t, uint32_t>& missed_frames,
-    const std::vector<aivision::cv::DetectionBox>& objects) {
+    const std::vector<argus::cv::DetectionBox>& objects) {
     if (rules.empty()) return objects;
 
     bool has_roi = false;
@@ -206,7 +206,7 @@ inline std::vector<aivision::cv::DetectionBox> apply_rules(
         }
     }
 
-    std::vector<aivision::cv::DetectionBox> filtered;
+    std::vector<argus::cv::DetectionBox> filtered;
     for (const auto& object : objects) {
         const av_point point{object.x + object.w * 0.5f, object.y + object.h};
         bool masked = false;

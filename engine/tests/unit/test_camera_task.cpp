@@ -5,13 +5,13 @@
 
 #include <gtest/gtest.h>
 #include <chrono>
-#include "aivision/core/camera_task.hpp"
-#include "aivision/platform/mock_platform.hpp"
+#include "argus/core/camera_task.hpp"
+#include "argus/platform/mock_platform.hpp"
 
 
-class DummyMediaSource : public aivision::media::IMediaSource {
+class DummyMediaSource : public argus::media::IMediaSource {
 public:
-    av_status start(const std::string&, aivision::media::PacketCallback on_packet, aivision::media::StatusCallback on_status) override {
+    av_status start(const std::string&, argus::media::PacketCallback on_packet, argus::media::StatusCallback on_status) override {
         on_packet_ = std::move(on_packet);
         on_status_ = std::move(on_status);
         ++start_count_;
@@ -20,9 +20,9 @@ public:
     void stop() override {}
     bool is_connected() const override { return true; }
 
-    aivision::media::ProbeOutcome probe(const std::string&, aivision::media::Transport,
+    argus::media::ProbeOutcome probe(const std::string&, argus::media::Transport,
                                         std::chrono::milliseconds) override {
-        aivision::media::ProbeOutcome outcome;
+        argus::media::ProbeOutcome outcome;
         outcome.success = true;
         outcome.codec = "H264";
         outcome.width = 1920;
@@ -39,7 +39,7 @@ public:
     void emit_nal(uint8_t nal_header, bool is_keyframe, int64_t pts, const std::string& codec = "H264") {
         if (on_packet_) {
             uint8_t dummy[5] = {0, 0, 0, 1, nal_header};
-            aivision::media::EncodedPacket pkt{
+            argus::media::EncodedPacket pkt{
                 .data = dummy,
                 .size = sizeof(dummy),
                 .pts_us = pts,
@@ -57,14 +57,14 @@ public:
     uint64_t start_count() const { return start_count_; }
 
 private:
-    aivision::media::PacketCallback on_packet_;
-    aivision::media::StatusCallback on_status_;
+    argus::media::PacketCallback on_packet_;
+    argus::media::StatusCallback on_status_;
     std::atomic<uint64_t> start_count_{0};
 };
 
-class DummyMediaBackend : public aivision::media::IMediaBackend {
+class DummyMediaBackend : public argus::media::IMediaBackend {
 public:
-    std::unique_ptr<aivision::media::IMediaSource> create_source(const std::string&) override {
+    std::unique_ptr<argus::media::IMediaSource> create_source(const std::string&) override {
         auto src = std::make_unique<DummyMediaSource>();
         last_source_ = src.get();
         return src;
@@ -72,7 +72,7 @@ public:
     DummyMediaSource* last_source_ = nullptr;
 };
 
-class WatchdogDecoder final : public aivision::platform::IDecoder {
+class WatchdogDecoder final : public argus::platform::IDecoder {
 public:
     explicit WatchdogDecoder(std::shared_ptr<std::atomic<int>> reset_count)
         : reset_count_(std::move(reset_count)) {}
@@ -95,17 +95,17 @@ public:
     }
 
 private:
-    aivision::platform::MockDecoder delegate_;
+    argus::platform::MockDecoder delegate_;
     std::shared_ptr<std::atomic<int>> reset_count_;
     bool stalled_ = true;
 };
 
-class WatchdogPlatformAdapter final : public aivision::platform::MockPlatformAdapter {
+class WatchdogPlatformAdapter final : public argus::platform::MockPlatformAdapter {
 public:
     explicit WatchdogPlatformAdapter(std::shared_ptr<std::atomic<int>> reset_count)
         : reset_count_(std::move(reset_count)) {}
 
-    std::unique_ptr<aivision::platform::IDecoder> create_decoder(const std::string&) override {
+    std::unique_ptr<argus::platform::IDecoder> create_decoder(const std::string&) override {
         return std::make_unique<WatchdogDecoder>(reset_count_);
     }
 
@@ -115,19 +115,19 @@ private:
 
 
 TEST(CameraTaskTest, MultiInstanceAndIDRGate) {
-    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
     auto backend = std::make_shared<DummyMediaBackend>();
 
-    aivision::core::CameraTask task("cam-1", "rtsp://127.0.0.1/live/test", adapter, backend);
+    argus::core::CameraTask task("cam-1", "rtsp://127.0.0.1/live/test", adapter, backend);
     EXPECT_EQ(task.start(), AV_OK);
     EXPECT_EQ(task.get_last_frame_wall_time_ns(), 0);
 
     // Create 2 instances with different target FPS
-    auto inst1 = std::make_shared<aivision::core::AlgorithmInstance>("inst-1", "cam-1", "yolo", "1.0.0", 25, "{}", nullptr, nullptr);
-    auto inst2 = std::make_shared<aivision::core::AlgorithmInstance>("inst-2", "cam-1", "yolo", "1.0.0", 10, "{}", nullptr, nullptr);
+    auto inst1 = std::make_shared<argus::core::AlgorithmInstance>("inst-1", "cam-1", "yolo", "1.0.0", 25, "{}", nullptr, nullptr);
+    auto inst2 = std::make_shared<argus::core::AlgorithmInstance>("inst-2", "cam-1", "yolo", "1.0.0", 10, "{}", nullptr, nullptr);
 
-    inst1->init(aivision::core::FramePool::instance().get_frame_ops(), adapter->get_c_image_ops());
-    inst2->init(aivision::core::FramePool::instance().get_frame_ops(), adapter->get_c_image_ops());
+    inst1->init(argus::core::FramePool::instance().get_frame_ops(), adapter->get_c_image_ops());
+    inst2->init(argus::core::FramePool::instance().get_frame_ops(), adapter->get_c_image_ops());
 
     task.add_instance(inst1);
     task.add_instance(inst2);
@@ -155,13 +155,13 @@ TEST(CameraTaskTest, MultiInstanceAndIDRGate) {
     EXPECT_GE(inst2->get_processed_frames(), 1);
 
     task.stop();
-    EXPECT_EQ(aivision::core::FramePool::instance().active_frame_count(), 0);
+    EXPECT_EQ(argus::core::FramePool::instance().active_frame_count(), 0);
 }
 
 TEST(CameraTaskTest, H265RequiresParameterSetsAndRandomAccessFrame) {
-    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
     auto backend = std::make_shared<DummyMediaBackend>();
-    aivision::core::CameraTask task("cam-h265", "rtsp://127.0.0.1/live/h265", adapter, backend);
+    argus::core::CameraTask task("cam-h265", "rtsp://127.0.0.1/live/h265", adapter, backend);
     ASSERT_EQ(task.start(), AV_OK);
     ASSERT_NE(backend->last_source_, nullptr);
 
@@ -189,7 +189,7 @@ TEST(CameraTaskTest, DecoderWatchdogResetsSilentDecoder) {
     auto reset_count = std::make_shared<std::atomic<int>>(0);
     auto adapter = std::make_shared<WatchdogPlatformAdapter>(reset_count);
     auto backend = std::make_shared<DummyMediaBackend>();
-    aivision::core::CameraTask task("cam-watchdog", "rtsp://127.0.0.1/live/watchdog", adapter, backend);
+    argus::core::CameraTask task("cam-watchdog", "rtsp://127.0.0.1/live/watchdog", adapter, backend);
     ASSERT_EQ(task.start(), AV_OK);
     ASSERT_NE(backend->last_source_, nullptr);
 
@@ -217,9 +217,9 @@ TEST(CameraTaskTest, DecoderWatchdogResetsSilentDecoder) {
 }
 
 TEST(CameraTaskTest, ReconnectsAfterMediaError) {
-    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
     auto backend = std::make_shared<DummyMediaBackend>();
-    aivision::core::CameraTask task("cam-reconnect", "rtsp://127.0.0.1/live/reconnect", adapter, backend);
+    argus::core::CameraTask task("cam-reconnect", "rtsp://127.0.0.1/live/reconnect", adapter, backend);
     ASSERT_EQ(task.start(), AV_OK);
     ASSERT_NE(backend->last_source_, nullptr);
     auto* source = backend->last_source_;

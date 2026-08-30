@@ -1,5 +1,5 @@
-#include "aivision/algo.h"
-#include "aivision/utils/profiler.hpp"
+#include "argus/algo.h"
+#include "argus/utils/profiler.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -439,7 +439,7 @@ int main(int argc, char** argv) {
             samples.push_back(ms);
         }
 
-        auto stats = aivision::utils::BenchmarkStats::compute(samples);
+        auto stats = argus::utils::BenchmarkStats::compute(samples);
         std::cout << "\n=== Face Recognition Benchmark Results ===\n"
                   << "Loops: 50\n"
                   << "Resolution: " << width << "x" << height << "\n"

@@ -15,9 +15,9 @@
 #include <cstdint>
 #include <atomic>
 #include <chrono>
-#include "aivision/types.h"
+#include "argus/types.h"
 
-namespace aivision::media {
+namespace argus::media {
 
 /**
  * @brief 编码数据包（H.264/H.265 NALU / 帧包）
@@ -135,5 +135,5 @@ std::shared_ptr<IMediaBackend> create_zlm_backend();
  */
 std::shared_ptr<IMediaBackend> create_mock_backend();
 
-} // namespace aivision::media
+} // namespace argus::media
 

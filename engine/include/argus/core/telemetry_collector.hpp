@@ -8,9 +8,9 @@
  */
 
 #include <memory>
-#include "aivision/platform/platform_api.hpp"
+#include "argus/platform/platform_api.hpp"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief 遥测指标收集器
@@ -33,5 +33,5 @@ private:
     std::shared_ptr<platform::IPlatformAdapter> adapter_;
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

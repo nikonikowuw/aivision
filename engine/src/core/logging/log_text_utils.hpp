@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace aivision::logging::detail {
+namespace argus::logging::detail {
 
 /**
  * @brief 将 ASCII 字符串转换为小写
@@ -26,4 +26,4 @@ inline std::string ascii_lower(std::string_view value) {
     return lower;
 }
 
-} // namespace aivision::logging::detail
+} // namespace argus::logging::detail

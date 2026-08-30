@@ -4,13 +4,13 @@
  */
 
 #include <gtest/gtest.h>
-#include "aivision/core/algo_sandbox.hpp"
-#include "aivision/core/algo_instance.hpp"
-#include "aivision/core/frame_pool.hpp"
-#include "aivision/core/task_scheduler.hpp"
-#include "aivision/core/uds_ipc.hpp"
-#include "aivision/core/resource_ledger.hpp"
-#include "aivision/platform/mock_platform.hpp"
+#include "argus/core/algo_sandbox.hpp"
+#include "argus/core/algo_instance.hpp"
+#include "argus/core/frame_pool.hpp"
+#include "argus/core/task_scheduler.hpp"
+#include "argus/core/uds_ipc.hpp"
+#include "argus/core/resource_ledger.hpp"
+#include "argus/platform/mock_platform.hpp"
 
 #include <dlfcn.h>
 #include <atomic>
@@ -21,14 +21,14 @@
 #include <filesystem>
 #include <thread>
 
-#ifndef AIVISION_FIXTURE_PACKAGE_DIR
-#define AIVISION_FIXTURE_PACKAGE_DIR "tests/fixtures/packages/mock_pkg"
+#ifndef ARGUS_FIXTURE_PACKAGE_DIR
+#define ARGUS_FIXTURE_PACKAGE_DIR "tests/fixtures/packages/mock_pkg"
 #endif
 
-class NoopSource final : public aivision::media::IMediaSource {
+class NoopSource final : public argus::media::IMediaSource {
 public:
-    av_status start(const std::string&, aivision::media::PacketCallback on_packet,
-                    aivision::media::StatusCallback on_status) override {
+    av_status start(const std::string&, argus::media::PacketCallback on_packet,
+                    argus::media::StatusCallback on_status) override {
         on_packet_ = std::move(on_packet);
         on_status_ = std::move(on_status);
         return AV_OK;
@@ -36,27 +36,27 @@ public:
     void stop() override {}
     bool is_connected() const override { return false; }
 
-    aivision::media::ProbeOutcome probe(const std::string&, aivision::media::Transport,
+    argus::media::ProbeOutcome probe(const std::string&, argus::media::Transport,
                                         std::chrono::milliseconds) override {
-        aivision::media::ProbeOutcome outcome;
+        argus::media::ProbeOutcome outcome;
         outcome.failure_code = "RTSP_MEDIA_ERROR";
         return outcome;
     }
 
 private:
-    aivision::media::PacketCallback on_packet_;
-    aivision::media::StatusCallback on_status_;
+    argus::media::PacketCallback on_packet_;
+    argus::media::StatusCallback on_status_;
 };
 
-class NoopBackend final : public aivision::media::IMediaBackend {
+class NoopBackend final : public argus::media::IMediaBackend {
 public:
-    std::unique_ptr<aivision::media::IMediaSource> create_source(const std::string&) override {
+    std::unique_ptr<argus::media::IMediaSource> create_source(const std::string&) override {
         return std::make_unique<NoopSource>();
     }
 };
 
 TEST(AlgorithmInstanceTest, BridgesResultCallback) {
-    const std::filesystem::path library_path = std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib";
+    const std::filesystem::path library_path = std::filesystem::path(ARGUS_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib";
     void* library = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     ASSERT_NE(library, nullptr);
     auto get_abi = reinterpret_cast<av_algo_get_abi_fn>(dlsym(library, AV_ALGO_GET_ABI_SYMBOL));
@@ -71,16 +71,16 @@ TEST(AlgorithmInstanceTest, BridgesResultCallback) {
     ASSERT_EQ(abi->library_open(&library_args, &algorithm_library), AV_OK);
     ASSERT_NE(algorithm_library, nullptr);
 
-    auto instance = std::make_shared<aivision::core::AlgorithmInstance>(
+    auto instance = std::make_shared<argus::core::AlgorithmInstance>(
         "callback-instance", "camera-1", "mock-detector", "1.0.0", 25, "{}", abi, algorithm_library);
-    ASSERT_EQ(instance->init(aivision::core::FramePool::instance().get_frame_ops(), nullptr), AV_OK);
+    ASSERT_EQ(instance->init(argus::core::FramePool::instance().get_frame_ops(), nullptr), AV_OK);
 
     std::atomic<bool> callback_seen{false};
     instance->set_result_callback([&](const av_algo_result& result, const av_frame_desc& frame) {
         callback_seen.store(result.kind == AV_RESULT_ALARM && frame.frame_id == 7);
     });
 
-    auto& pool = aivision::core::FramePool::instance();
+    auto& pool = argus::core::FramePool::instance();
     ASSERT_EQ(pool.reset(), AV_OK);
     auto* frame = pool.acquire_frame();
     ASSERT_NE(frame, nullptr);
@@ -102,10 +102,10 @@ TEST(AlgorithmInstanceTest, BridgesResultCallback) {
     dlclose(library);
 }
 
-#if defined(AIVISION_RUN_SANDBOX_CHILD_TEST)
+#if defined(ARGUS_RUN_SANDBOX_CHILD_TEST)
 TEST(SandboxValidatorTest, RunsValidatorInChildProcess) {
-    const auto result = aivision::core::PackageValidator::run_sandbox_validator(
-        AIVISION_PACKAGE_VALIDATOR_PATH, AIVISION_FIXTURE_PACKAGE_DIR, "var/sandbox-packages");
+    const auto result = argus::core::PackageValidator::run_sandbox_validator(
+        ARGUS_PACKAGE_VALIDATOR_PATH, ARGUS_FIXTURE_PACKAGE_DIR, "var/sandbox-packages");
     EXPECT_TRUE(result.success) << result.error_stage << ": " << result.error_message;
     EXPECT_EQ(result.manifest.algorithm_id, "mock-detector");
     EXPECT_EQ(result.manifest.version, "1.0.0");
@@ -115,12 +115,12 @@ TEST(SandboxValidatorTest, RunsValidatorByCommandName) {
     const char* previous_path = std::getenv("PATH");
     const bool had_path = previous_path != nullptr;
     const std::string original_path = had_path ? previous_path : "";
-    const std::string test_path = std::string(AIVISION_BINARY_DIR) +
+    const std::string test_path = std::string(ARGUS_BINARY_DIR) +
                                   (had_path ? ":" + original_path : "");
     ASSERT_EQ(::setenv("PATH", test_path.c_str(), 1), 0);
 
-    const auto result = aivision::core::PackageValidator::run_sandbox_validator(
-        "package_validator", AIVISION_FIXTURE_PACKAGE_DIR, "var/sandbox-packages-command");
+    const auto result = argus::core::PackageValidator::run_sandbox_validator(
+        "package_validator", ARGUS_FIXTURE_PACKAGE_DIR, "var/sandbox-packages-command");
 
     if (had_path) {
         ASSERT_EQ(::setenv("PATH", original_path.c_str(), 1), 0);
@@ -133,10 +133,10 @@ TEST(SandboxValidatorTest, RunsValidatorByCommandName) {
 }
 #endif
 TEST(SandboxValidatorTest, ValidMockPackage) {
-    const std::string pkg_dir = AIVISION_FIXTURE_PACKAGE_DIR;
+    const std::string pkg_dir = ARGUS_FIXTURE_PACKAGE_DIR;
     const std::string install_base = "var/packages";
 
-    auto res = aivision::core::PackageValidator::validate_and_extract(pkg_dir, install_base);
+    auto res = argus::core::PackageValidator::validate_and_extract(pkg_dir, install_base);
     EXPECT_TRUE(res.success) << "Failed with error: " << res.error_message << " at stage: " << res.error_stage;
     EXPECT_EQ(res.manifest.algorithm_id, "mock-detector");
     EXPECT_EQ(res.manifest.version, "1.0.0");
@@ -150,9 +150,9 @@ TEST(SandboxValidatorTest, FaceRecognitionManifestWithoutAlarmTypeIdValidates) {
     std::filesystem::create_directories(temp_dir / "lib");
 
     // Copy mock lib and testimage
-    std::filesystem::copy_file(std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "testimage.jpg",
+    std::filesystem::copy_file(std::filesystem::path(ARGUS_FIXTURE_PACKAGE_DIR) / "testimage.jpg",
                                temp_dir / "testimage.jpg");
-    std::filesystem::copy_file(std::filesystem::path(AIVISION_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib",
+    std::filesystem::copy_file(std::filesystem::path(ARGUS_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib",
                                temp_dir / "lib/libmock-face.dylib");
 
     nlohmann::json manifest = {
@@ -181,7 +181,7 @@ TEST(SandboxValidatorTest, FaceRecognitionManifestWithoutAlarmTypeIdValidates) {
 
     const std::string install_base = "var/packages_fr";
     std::filesystem::remove_all(install_base);
-    auto res = aivision::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
+    auto res = argus::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
     // Since mock library_query returns mock-detector & mock_alarm, it must pass manifest stage and fail at library_query stage
     EXPECT_FALSE(res.success);
     EXPECT_EQ(res.error_stage, "library_query");
@@ -192,7 +192,7 @@ TEST(SandboxValidatorTest, FaceRecognitionManifestWithoutAlarmTypeIdValidates) {
     ofs_invalid << manifest.dump(2);
     ofs_invalid.close();
 
-    auto res_invalid = aivision::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
+    auto res_invalid = argus::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
     EXPECT_FALSE(res_invalid.success);
     EXPECT_EQ(res_invalid.error_stage, "manifest");
 
@@ -200,9 +200,9 @@ TEST(SandboxValidatorTest, FaceRecognitionManifestWithoutAlarmTypeIdValidates) {
     std::filesystem::remove_all(install_base);
 }
 
-#if !defined(AIVISION_SKIP_IPC_TESTS)
+#if !defined(ARGUS_SKIP_IPC_TESTS)
 TEST(ProtoTest, ApplyResponseLifecycle) {
-    aivision::v1::ApplyDesiredStateResponse response;
+    argus::v1::ApplyDesiredStateResponse response;
     response.set_code("test");
     auto* item = response.add_results();
     item->set_id("id");
@@ -214,53 +214,53 @@ TEST(UdsServerTest, AppliesInstalledPackageRevision) {
     std::filesystem::create_directories(package_dir + "/mock-detector");
     std::error_code package_copy_error;
     std::filesystem::copy(
-        AIVISION_FIXTURE_PACKAGE_DIR,
+        ARGUS_FIXTURE_PACKAGE_DIR,
         package_dir + "/mock-detector/1.0.0",
         std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
         package_copy_error);
     ASSERT_FALSE(package_copy_error);
-    ASSERT_EQ(::setenv("AIVISION_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
 
-    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
-    auto& registry = aivision::platform::PlatformRegistry::instance();
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
     registry.register_adapter("mock", adapter);
     registry.set_active_platform("mock");
-    aivision::core::UdsServer server("/tmp/aivision-test-engine.sock", adapter, nullptr);
+    argus::core::UdsServer server("/tmp/argus-test-engine.sock", adapter, nullptr);
     ASSERT_TRUE(server.start());
 
-    aivision::v1::DesiredState invalid_package;
+    argus::v1::DesiredState invalid_package;
     invalid_package.set_revision(1);
     auto* invalid_package_ref = invalid_package.add_active_package_versions();
     invalid_package_ref->set_algorithm_id("..");
     invalid_package_ref->set_version("1.0.0");
-    aivision::v1::ApplyDesiredStateResponse invalid_response;
+    argus::v1::ApplyDesiredStateResponse invalid_response;
     ASSERT_TRUE(server.apply_desired_state(invalid_package, &invalid_response));
     EXPECT_EQ(invalid_response.code(), "RECONCILE_FAILED");
     ASSERT_EQ(invalid_response.results_size(), 1);
     EXPECT_EQ(invalid_response.results(0).code(), "PACKAGE_ID_INVALID");
 
-    aivision::v1::DesiredState desired;
+    argus::v1::DesiredState desired;
     desired.set_revision(1);
     auto* package = desired.add_active_package_versions();
     package->set_algorithm_id("mock-detector");
     package->set_version("1.0.0");
-    aivision::v1::ApplyDesiredStateResponse response;
+    argus::v1::ApplyDesiredStateResponse response;
     ASSERT_TRUE(server.apply_desired_state(desired, &response));
     EXPECT_TRUE(response.code().empty()) << response.error_message();
     EXPECT_EQ(response.applied_revision(), 1);
 
-    aivision::v1::ApplyDesiredStateResponse duplicate_response;
+    argus::v1::ApplyDesiredStateResponse duplicate_response;
     ASSERT_TRUE(server.apply_desired_state(desired, &duplicate_response));
     EXPECT_TRUE(duplicate_response.code().empty()) << duplicate_response.error_message();
     EXPECT_EQ(duplicate_response.applied_revision(), 1);
 
     auto conflicting = desired;
     conflicting.mutable_active_package_versions(0)->set_version("2.0.0");
-    aivision::v1::ApplyDesiredStateResponse conflict_response;
+    argus::v1::ApplyDesiredStateResponse conflict_response;
     ASSERT_TRUE(server.apply_desired_state(conflicting, &conflict_response));
     EXPECT_EQ(conflict_response.code(), "STALE_REVISION");
     server.stop();
-    ::unsetenv("AIVISION_PACKAGE_DIR");
+    ::unsetenv("ARGUS_PACKAGE_DIR");
 }
 
 TEST(UdsServerTest, RollsBackRuntimeWhenDesiredStateItemFails) {
@@ -269,22 +269,22 @@ TEST(UdsServerTest, RollsBackRuntimeWhenDesiredStateItemFails) {
     std::filesystem::create_directories(package_dir + "/mock-detector");
     std::error_code package_copy_error;
     std::filesystem::copy(
-        AIVISION_FIXTURE_PACKAGE_DIR,
+        ARGUS_FIXTURE_PACKAGE_DIR,
         package_dir + "/mock-detector/1.0.0",
         std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
         package_copy_error);
     ASSERT_FALSE(package_copy_error);
-    ASSERT_EQ(::setenv("AIVISION_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
 
-    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
     auto backend = std::make_shared<NoopBackend>();
-    auto& registry = aivision::platform::PlatformRegistry::instance();
+    auto& registry = argus::platform::PlatformRegistry::instance();
     registry.register_adapter("mock", adapter);
     registry.set_active_platform("mock");
-    aivision::core::UdsServer server("/tmp/aivision-test-rollback.sock", adapter, backend);
+    argus::core::UdsServer server("/tmp/argus-test-rollback.sock", adapter, backend);
     ASSERT_TRUE(server.start());
 
-    aivision::v1::DesiredState desired;
+    argus::v1::DesiredState desired;
     desired.set_revision(1);
     auto* task = desired.add_tasks();
     task->set_camera_id("rollback-camera");
@@ -293,36 +293,36 @@ TEST(UdsServerTest, RollsBackRuntimeWhenDesiredStateItemFails) {
     auto* package = desired.add_active_package_versions();
     package->set_algorithm_id("mock-detector");
     package->set_version("missing");
-    aivision::v1::ApplyDesiredStateResponse response;
+    argus::v1::ApplyDesiredStateResponse response;
     ASSERT_TRUE(server.apply_desired_state(desired, &response));
     EXPECT_EQ(response.code(), "RECONCILE_FAILED");
     ASSERT_GE(response.results_size(), 2);
     EXPECT_EQ(response.results(0).code(), "RECONCILE_ROLLED_BACK");
-    EXPECT_EQ(aivision::core::TaskScheduler::instance().get_task("rollback-camera"), nullptr);
+    EXPECT_EQ(argus::core::TaskScheduler::instance().get_task("rollback-camera"), nullptr);
 
     server.stop();
-    ::unsetenv("AIVISION_PACKAGE_DIR");
+    ::unsetenv("ARGUS_PACKAGE_DIR");
     std::filesystem::remove_all(package_dir);
 }
-#if defined(AIVISION_RUN_PACKAGE_RPC_TEST)
+#if defined(ARGUS_RUN_PACKAGE_RPC_TEST)
 TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     const std::string package_dir = "var/rpc-packages";
     std::filesystem::remove_all(package_dir);
-    ASSERT_EQ(::setenv("AIVISION_PACKAGE_DIR", package_dir.c_str(), 1), 0);
-    ASSERT_EQ(::setenv("AIVISION_PACKAGE_VALIDATOR", AIVISION_PACKAGE_VALIDATOR_PATH, 1), 0);
-    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
-    auto& registry = aivision::platform::PlatformRegistry::instance();
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_VALIDATOR", ARGUS_PACKAGE_VALIDATOR_PATH, 1), 0);
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
     registry.register_adapter("mock", adapter);
     registry.set_active_platform("mock");
-    aivision::core::UdsServer server("/tmp/aivision-test-package.sock", adapter, nullptr);
+    argus::core::UdsServer server("/tmp/argus-test-package.sock", adapter, nullptr);
     ASSERT_TRUE(server.start());
 
-    auto channel = grpc::CreateChannel("unix:///tmp/aivision-test-package.sock",
+    auto channel = grpc::CreateChannel("unix:///tmp/argus-test-package.sock",
                                        grpc::InsecureChannelCredentials());
-    auto stub = aivision::v1::EngineService::NewStub(channel);
+    auto stub = argus::v1::EngineService::NewStub(channel);
 
-    aivision::v1::QueryMetricsRequest metrics_request;
-    aivision::v1::QueryMetricsResponse metrics_response;
+    argus::v1::QueryMetricsRequest metrics_request;
+    argus::v1::QueryMetricsResponse metrics_response;
     grpc::ClientContext metrics_context;
     metrics_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(stub->QueryMetrics(&metrics_context, metrics_request, &metrics_response).ok());
@@ -332,9 +332,9 @@ TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     EXPECT_FALSE(metrics_response.telemetry().temperature_supported());
     EXPECT_TRUE(std::isnan(metrics_response.telemetry().temperature_celsius()));
 
-    aivision::v1::InstallPackageRequest install_request;
-    install_request.set_package_path(AIVISION_FIXTURE_PACKAGE_DIR);
-    aivision::v1::InstallPackageResponse install_response;
+    argus::v1::InstallPackageRequest install_request;
+    install_request.set_package_path(ARGUS_FIXTURE_PACKAGE_DIR);
+    argus::v1::InstallPackageResponse install_response;
     grpc::ClientContext install_context;
     install_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(stub->InstallPackage(&install_context, install_request, &install_response).ok());
@@ -342,7 +342,7 @@ TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     EXPECT_EQ(install_response.algorithm_id(), "mock-detector");
     EXPECT_TRUE(std::filesystem::exists(package_dir + "/mock-detector/1.0.0/manifest.json"));
 
-    aivision::v1::DesiredState desired;
+    argus::v1::DesiredState desired;
     desired.set_revision(1);
     auto* active_package = desired.add_active_package_versions();
     active_package->set_algorithm_id("mock-detector");
@@ -353,53 +353,53 @@ TEST(UdsServerTest, InstallsAndUninstallsPackageThroughRpc) {
     disabled_reference->set_algorithm_id("mock-detector");
     disabled_reference->set_algorithm_version("1.0.0");
     disabled_reference->set_enabled(false);
-    aivision::v1::ApplyDesiredStateResponse desired_response;
+    argus::v1::ApplyDesiredStateResponse desired_response;
     ASSERT_TRUE(server.apply_desired_state(desired, &desired_response));
     ASSERT_TRUE(desired_response.code().empty()) << desired_response.error_message();
 
-    aivision::v1::UninstallPackageRequest uninstall_request;
+    argus::v1::UninstallPackageRequest uninstall_request;
     uninstall_request.set_algorithm_id("mock-detector");
     uninstall_request.set_version("1.0.0");
-    aivision::v1::UninstallPackageResponse uninstall_response;
+    argus::v1::UninstallPackageResponse uninstall_response;
     grpc::ClientContext uninstall_context;
     uninstall_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(stub->UninstallPackage(&uninstall_context, uninstall_request, &uninstall_response).ok());
     EXPECT_TRUE(uninstall_response.code().empty()) << uninstall_response.error_message();
     EXPECT_FALSE(std::filesystem::exists(package_dir + "/mock-detector/1.0.0"));
     server.stop();
-    ::unsetenv("AIVISION_PACKAGE_VALIDATOR");
-    ::unsetenv("AIVISION_PACKAGE_DIR");
+    ::unsetenv("ARGUS_PACKAGE_VALIDATOR");
+    ::unsetenv("ARGUS_PACKAGE_DIR");
 }
 
 TEST(UdsServerTest, LoadsMockInstanceFromInstalledPackage) {
     const std::string package_dir = "var/instance-packages";
     std::filesystem::remove_all(package_dir);
-    ASSERT_EQ(::setenv("AIVISION_PACKAGE_DIR", package_dir.c_str(), 1), 0);
-    ASSERT_EQ(::setenv("AIVISION_PACKAGE_VALIDATOR", AIVISION_PACKAGE_VALIDATOR_PATH, 1), 0);
-    auto adapter = std::make_shared<aivision::platform::MockPlatformAdapter>();
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_VALIDATOR", ARGUS_PACKAGE_VALIDATOR_PATH, 1), 0);
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
     auto backend = std::make_shared<NoopBackend>();
-    auto& registry = aivision::platform::PlatformRegistry::instance();
+    auto& registry = argus::platform::PlatformRegistry::instance();
     registry.register_adapter("mock", adapter);
     registry.set_active_platform("mock");
-    aivision::core::ResourceLedger::instance().set_limits(1000, 100, 0);
-    aivision::core::ResourceLedger::instance().set_free_memory_provider([] {
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
         return uint64_t{2} * 1024 * 1024 * 1024;
     });
-    aivision::core::UdsServer server("/tmp/aivision-test-instance.sock", adapter, backend);
+    argus::core::UdsServer server("/tmp/argus-test-instance.sock", adapter, backend);
     ASSERT_TRUE(server.start());
 
-    auto channel = grpc::CreateChannel("unix:///tmp/aivision-test-instance.sock",
+    auto channel = grpc::CreateChannel("unix:///tmp/argus-test-instance.sock",
                                        grpc::InsecureChannelCredentials());
-    auto stub = aivision::v1::EngineService::NewStub(channel);
-    aivision::v1::InstallPackageRequest install_request;
-    install_request.set_package_path(AIVISION_FIXTURE_PACKAGE_DIR);
-    aivision::v1::InstallPackageResponse install_response;
+    auto stub = argus::v1::EngineService::NewStub(channel);
+    argus::v1::InstallPackageRequest install_request;
+    install_request.set_package_path(ARGUS_FIXTURE_PACKAGE_DIR);
+    argus::v1::InstallPackageResponse install_response;
     grpc::ClientContext install_context;
     install_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(stub->InstallPackage(&install_context, install_request, &install_response).ok());
     ASSERT_TRUE(install_response.code().empty()) << install_response.error_message();
 
-    aivision::v1::DesiredState desired;
+    argus::v1::DesiredState desired;
     desired.set_revision(1);
     auto* task = desired.add_tasks();
     task->set_camera_id("camera-1");
@@ -413,48 +413,48 @@ TEST(UdsServerTest, LoadsMockInstanceFromInstalledPackage) {
     instance->set_analysis_fps(1);
     instance->set_params_json("{}");
     instance->set_enabled(true);
-    aivision::v1::ApplyDesiredStateResponse response;
+    argus::v1::ApplyDesiredStateResponse response;
     ASSERT_TRUE(server.apply_desired_state(desired, &response));
     EXPECT_TRUE(response.code().empty()) << response.error_message();
     EXPECT_EQ(response.applied_revision(), 1);
 
-    aivision::v1::UpdateInstanceConfigRequest update_request;
+    argus::v1::UpdateInstanceConfigRequest update_request;
     update_request.set_instance_id("instance-1");
     update_request.set_params_json("{}");
-    aivision::v1::UpdateInstanceConfigResponse update_response;
+    argus::v1::UpdateInstanceConfigResponse update_response;
     grpc::ClientContext update_context;
     update_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(stub->UpdateInstanceConfig(&update_context, update_request, &update_response).ok());
     EXPECT_TRUE(update_response.code().empty()) << update_response.error_message();
 
-    aivision::v1::UninstallPackageRequest protected_uninstall_request;
+    argus::v1::UninstallPackageRequest protected_uninstall_request;
     protected_uninstall_request.set_algorithm_id("mock-detector");
     protected_uninstall_request.set_version("1.0.0");
-    aivision::v1::UninstallPackageResponse protected_uninstall_response;
+    argus::v1::UninstallPackageResponse protected_uninstall_response;
     grpc::ClientContext protected_uninstall_context;
     protected_uninstall_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(stub->UninstallPackage(&protected_uninstall_context, protected_uninstall_request,
                                        &protected_uninstall_response).ok());
     EXPECT_EQ(protected_uninstall_response.code(), "PACKAGE_IN_USE");
 
-    aivision::v1::DesiredState empty;
+    argus::v1::DesiredState empty;
     empty.set_revision(2);
-    aivision::v1::ApplyDesiredStateResponse empty_response;
+    argus::v1::ApplyDesiredStateResponse empty_response;
     ASSERT_TRUE(server.apply_desired_state(empty, &empty_response));
     EXPECT_TRUE(empty_response.code().empty()) << empty_response.error_message();
 
-    aivision::v1::UninstallPackageRequest uninstall_request;
+    argus::v1::UninstallPackageRequest uninstall_request;
     uninstall_request.set_algorithm_id("mock-detector");
     uninstall_request.set_version("1.0.0");
-    aivision::v1::UninstallPackageResponse uninstall_response;
+    argus::v1::UninstallPackageResponse uninstall_response;
     grpc::ClientContext uninstall_context;
     uninstall_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(stub->UninstallPackage(&uninstall_context, uninstall_request, &uninstall_response).ok());
     EXPECT_TRUE(uninstall_response.code().empty()) << uninstall_response.error_message();
     EXPECT_FALSE(std::filesystem::exists(package_dir + "/mock-detector/1.0.0"));
     server.stop();
-    ::unsetenv("AIVISION_PACKAGE_VALIDATOR");
-    ::unsetenv("AIVISION_PACKAGE_DIR");
+    ::unsetenv("ARGUS_PACKAGE_VALIDATOR");
+    ::unsetenv("ARGUS_PACKAGE_DIR");
 }
 #endif
 #endif

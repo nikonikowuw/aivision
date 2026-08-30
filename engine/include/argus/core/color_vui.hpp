@@ -9,9 +9,9 @@
  */
 
 #include <cstdint>
-#include "aivision/types.h"
+#include "argus/types.h"
 
-namespace aivision::core {
+namespace argus::core {
 
 /**
  * @brief SPS VUI 色彩描述信息
@@ -44,5 +44,5 @@ public:
     static ColorVUIInfo parse_h265_sps(const uint8_t* sps_data, size_t size);
 };
 
-} // namespace aivision::core
+} // namespace argus::core
 

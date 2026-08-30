@@ -20,11 +20,11 @@
 #include <utility>
 #include <vector>
 
-#include "aivision/algo.h"
-#include "aivision/types.h"
-#include "aivision/utils/env.hpp"
-#include "aivision/utils/json.hpp"
-#include "aivision/utils/profiler.hpp"
+#include "argus/algo.h"
+#include "argus/types.h"
+#include "argus/utils/env.hpp"
+#include "argus/utils/json.hpp"
+#include "argus/utils/profiler.hpp"
 #include "inference/coreml_runner.hpp"
 #include "postprocess/postprocessor.hpp"
 #include "preprocess/preprocessor.hpp"
@@ -57,7 +57,7 @@ struct NativeFrame {
 
 struct ResultCapture {
     std::string json;
-    std::vector<aivision::cv::DetectionBox> objects;
+    std::vector<argus::cv::DetectionBox> objects;
     std::string error;
     bool self_test = false;
 };
@@ -88,7 +88,7 @@ struct RunnerPackageRoot {
         }
 
         const auto base = std::filesystem::temp_directory_path() /
-            ("aivision-yolov8n-runner-" + std::to_string(
+            ("argus-yolov8n-runner-" + std::to_string(
                 std::chrono::steady_clock::now().time_since_epoch().count()));
         error.clear();
         path = base;
@@ -123,8 +123,8 @@ void result_callback(const av_algo_result* result, void* user) noexcept {
         capture->json.assign(result->json, result->json_len);
         capture->self_test = result->kind == AV_RESULT_SELF_TEST;
         if (result->kind == AV_RESULT_ALARM) {
-            aivision::utils::ParsedAlarmJson parsed;
-            if (!aivision::utils::parse_alarm_json(capture->json, parsed, capture->error)) return;
+            argus::utils::ParsedAlarmJson parsed;
+            if (!argus::utils::parse_alarm_json(capture->json, parsed, capture->error)) return;
             capture->objects = std::move(parsed.objects);
         } else if (result->kind != AV_RESULT_SELF_TEST) {
             capture->error = "algorithm returned an unknown result kind";
@@ -326,11 +326,11 @@ std::unordered_set<std::string> parse_target_classes(const std::string& value) {
     return classes;
 }
 
-std::vector<aivision::cv::DetectionBox> filter_target_classes(
-    const std::vector<aivision::cv::DetectionBox>& objects,
+std::vector<argus::cv::DetectionBox> filter_target_classes(
+    const std::vector<argus::cv::DetectionBox>& objects,
     const std::unordered_set<std::string>& target_classes) {
     if (target_classes.empty()) return objects;
-    std::vector<aivision::cv::DetectionBox> filtered;
+    std::vector<argus::cv::DetectionBox> filtered;
     for (const auto& object : objects) {
         if (target_classes.contains(object.label)) filtered.push_back(object);
     }
@@ -338,7 +338,7 @@ std::vector<aivision::cv::DetectionBox> filter_target_classes(
 }
 
 bool save_visualization(const std::string& output_path, uint32_t width, uint32_t height,
-                       const std::vector<aivision::cv::DetectionBox>& objects,
+                       const std::vector<argus::cv::DetectionBox>& objects,
                        const std::string& input_path) {
     @autoreleasepool {
         NSString* ns_path = [NSString stringWithUTF8String:input_path.c_str()];
@@ -452,17 +452,17 @@ bool run_direct_pipeline(const av_frame_desc& frame, yolov8n::CoreMLRunner& runn
 }
 
 int run(int argc, char* argv[]) {
-    const auto env = aivision::utils::EnvReader::load_file(".env");
-    const float confidence = aivision::utils::EnvReader::get_float("CONF_THRESH", 0.5f, env);
-    const float iou = aivision::utils::EnvReader::get_float("IOU_THRESH", 0.45f, env);
-    const std::string input_path = aivision::utils::EnvReader::get("INPUT_IMAGE", "testimage.jpg", env);
-    const std::string output_path = aivision::utils::EnvReader::get("OUTPUT_IMAGE", "result.jpg", env);
-    const std::string model_path = aivision::utils::EnvReader::get("MODEL_PATH", "model/yolov8n.mlpackage", env);
+    const auto env = argus::utils::EnvReader::load_file(".env");
+    const float confidence = argus::utils::EnvReader::get_float("CONF_THRESH", 0.5f, env);
+    const float iou = argus::utils::EnvReader::get_float("IOU_THRESH", 0.45f, env);
+    const std::string input_path = argus::utils::EnvReader::get("INPUT_IMAGE", "testimage.jpg", env);
+    const std::string output_path = argus::utils::EnvReader::get("OUTPUT_IMAGE", "result.jpg", env);
+    const std::string model_path = argus::utils::EnvReader::get("MODEL_PATH", "model/yolov8n.mlpackage", env);
     const std::unordered_set<std::string> target_classes = parse_target_classes(
-        aivision::utils::EnvReader::get("TARGET_CLASSES", "", env));
+        argus::utils::EnvReader::get("TARGET_CLASSES", "", env));
     const bool benchmark = argc > 1 && std::string(argv[1]) == "--benchmark";
-    const int loops = aivision::utils::EnvReader::get_int("LOOPS", benchmark ? 100 : 1, env);
-    const int warmup = aivision::utils::EnvReader::get_int("WARMUP", benchmark ? 5 : 0, env);
+    const int loops = argus::utils::EnvReader::get_int("LOOPS", benchmark ? 100 : 1, env);
+    const int warmup = argus::utils::EnvReader::get_int("WARMUP", benchmark ? 5 : 0, env);
     if (loops <= 0 || warmup < 0) {
         std::cerr << "LOOPS must be positive and WARMUP must be non-negative\n";
         return 1;
@@ -627,12 +627,12 @@ int run(int argc, char* argv[]) {
         return 1;
     }
 
-    const auto stats = aivision::utils::BenchmarkStats::compute(process_times);
+    const auto stats = argus::utils::BenchmarkStats::compute(process_times);
     if (benchmark) {
-        const auto preprocess_stats = aivision::utils::BenchmarkStats::compute(stage_samples.preprocess_ms);
-        const auto inference_stats = aivision::utils::BenchmarkStats::compute(stage_samples.inference_ms);
-        const auto postprocess_stats = aivision::utils::BenchmarkStats::compute(stage_samples.postprocess_ms);
-        const auto end_to_end_stats = aivision::utils::BenchmarkStats::compute(stage_samples.end_to_end_ms);
+        const auto preprocess_stats = argus::utils::BenchmarkStats::compute(stage_samples.preprocess_ms);
+        const auto inference_stats = argus::utils::BenchmarkStats::compute(stage_samples.inference_ms);
+        const auto postprocess_stats = argus::utils::BenchmarkStats::compute(stage_samples.postprocess_ms);
+        const auto end_to_end_stats = argus::utils::BenchmarkStats::compute(stage_samples.end_to_end_ms);
         std::cout << "\n--- Benchmark Report (" << loops << " iterations, " << warmup << " warmup) ---\n"
                   << "  Preprocess:  Avg " << preprocess_stats.avg_ms << " ms | P50 " << preprocess_stats.p50_ms
                   << " ms | P99 " << preprocess_stats.p99_ms << " ms\n"

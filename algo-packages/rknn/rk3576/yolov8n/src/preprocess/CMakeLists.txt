@@ -9,7 +9,7 @@ target_include_directories(yolov8n_preprocess PUBLIC
 )
 
 target_link_libraries(yolov8n_preprocess PUBLIC
-    aivision_sdk_headers
+    argus_sdk_headers
 )
 
 if(RGA_LIB)

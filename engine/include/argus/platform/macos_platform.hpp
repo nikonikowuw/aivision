@@ -7,9 +7,9 @@
  * 整合 VideoToolbox 硬件解码、vImage/CoreGraphics 图像处理、sysctl/IOKit 遥测监控。
  */
 
-#include "aivision/platform/platform_api.hpp"
+#include "argus/platform/platform_api.hpp"
 
-namespace aivision::platform {
+namespace argus::platform {
 
 /**
  * @brief macOS 专用平台适配器
@@ -30,5 +30,5 @@ private:
     PlatformProfile profile_;
 };
 
-} // namespace aivision::platform
+} // namespace argus::platform
 

@@ -6,7 +6,7 @@ target_include_directories(platform_mock PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
 )
 target_link_libraries(platform_mock PUBLIC platform_api)
-aivision_enable_strict_warnings(platform_mock)
+argus_enable_strict_warnings(platform_mock)
 
 # Platform macos target
 if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
@@ -31,5 +31,5 @@ if(APPLE AND PLATFORM_TARGET STREQUAL "macos")
         "-framework Foundation"
         "-framework IOKit"
     )
-    aivision_enable_strict_warnings(platform_macos)
+    argus_enable_strict_warnings(platform_macos)
 endif()

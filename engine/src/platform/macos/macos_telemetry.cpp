@@ -6,7 +6,7 @@
  * 采集 CPU 使用率、内存占用、磁盘空间及系统运行时长。
  */
 
-#include "aivision/platform/macos_platform.hpp"
+#include "argus/platform/macos_platform.hpp"
 
 #include <mach/mach.h>
 #include <mach/mach_host.h>
@@ -19,7 +19,7 @@
 #include <mutex>
 
 
-namespace aivision::platform {
+namespace argus::platform {
 namespace {
 
 uint64_t sysctl_u64(const char* name) {
@@ -122,4 +122,4 @@ ITelemetry* MacosPlatformAdapter::get_telemetry() {
     return &g_macos_telemetry;
 }
 
-} // namespace aivision::platform
+} // namespace argus::platform

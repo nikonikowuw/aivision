@@ -25,7 +25,7 @@ void write_file(const fs::path& path, const std::string& content) {
 
 int main() {
     const auto suffix = std::chrono::steady_clock::now().time_since_epoch().count();
-    const fs::path root = fs::temp_directory_path() / ("aivision-yolov8n-loader-" + std::to_string(suffix));
+    const fs::path root = fs::temp_directory_path() / ("argus-yolov8n-loader-" + std::to_string(suffix));
     std::error_code cleanup_error;
     fs::remove_all(root, cleanup_error);
     require_condition(!cleanup_error);

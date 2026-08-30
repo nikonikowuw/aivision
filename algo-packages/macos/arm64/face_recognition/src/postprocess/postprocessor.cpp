@@ -40,13 +40,13 @@ std::string base64_encode(const uint8_t* data, size_t len) {
 
 } // namespace
 
-std::vector<aivision::cv::DetectionBox> Postprocessor::decode_yolo_persons(
+std::vector<argus::cv::DetectionBox> Postprocessor::decode_yolo_persons(
     const YoloOutput& yolo_out,
-    const aivision::cv::LetterboxInfo& lb_info,
+    const argus::cv::LetterboxInfo& lb_info,
     uint32_t orig_w, uint32_t orig_h,
     float conf_thresh, float nms_thresh) {
 
-    std::vector<aivision::cv::DetectionBox> candidates;
+    std::vector<argus::cv::DetectionBox> candidates;
     if (yolo_out.data.empty() || orig_w == 0 || orig_h == 0) return candidates;
 
     // Shape can be [84, 8400] or [8400, 84]
@@ -78,15 +78,15 @@ std::vector<aivision::cv::DetectionBox> Postprocessor::decode_yolo_persons(
         float y2 = cy + h * 0.5f;
 
         // Unletterbox to original normalized coordinates
-        aivision::cv::NormalizedBBox norm_lb{
+        argus::cv::NormalizedBBox norm_lb{
             .x_min = x1 / 640.0f,
             .y_min = y1 / 640.0f,
             .x_max = x2 / 640.0f,
             .y_max = y2 / 640.0f
         };
-        aivision::cv::NormalizedBBox orig_norm = lb_info.unletterbox_bbox(norm_lb, orig_w, orig_h);
+        argus::cv::NormalizedBBox orig_norm = lb_info.unletterbox_bbox(norm_lb, orig_w, orig_h);
 
-        aivision::cv::DetectionBox det{};
+        argus::cv::DetectionBox det{};
         det.class_id = 0;
         det.label = "person";
         det.confidence = person_score;
@@ -97,12 +97,12 @@ std::vector<aivision::cv::DetectionBox> Postprocessor::decode_yolo_persons(
         candidates.push_back(det);
     }
 
-    return aivision::cv::nms_filter(candidates, nms_thresh);
+    return argus::cv::nms_filter(candidates, nms_thresh);
 }
 
 std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
     const ScrfdOutput& scrfd_out,
-    const aivision::cv::LetterboxInfo& lb_info,
+    const argus::cv::LetterboxInfo& lb_info,
     uint32_t orig_w, uint32_t orig_h,
     float conf_thresh, float nms_thresh) {
 

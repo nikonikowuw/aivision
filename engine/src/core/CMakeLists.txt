@@ -11,7 +11,7 @@ target_include_directories(engine_logging PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
 )
 target_link_libraries(engine_logging PUBLIC Threads::Threads)
-aivision_enable_strict_warnings(engine_logging)
+argus_enable_strict_warnings(engine_logging)
 
 # Engine core module
 add_library(engine_core STATIC
@@ -35,7 +35,7 @@ target_include_directories(engine_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
 )
-if(AIVISION_USE_ZLM)
+if(ARGUS_USE_ZLM)
     target_include_directories(engine_core SYSTEM PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ZLMediaKit/src>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ZLMediaKit/3rdpart/ZLToolKit/src>
@@ -49,4 +49,4 @@ target_link_libraries(engine_core PUBLIC
     nlohmann_json::nlohmann_json
     ${CMAKE_DL_LIBS}
 )
-aivision_enable_strict_warnings(engine_core)
+argus_enable_strict_warnings(engine_core)

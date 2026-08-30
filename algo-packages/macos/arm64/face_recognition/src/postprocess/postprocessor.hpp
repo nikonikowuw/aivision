@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aivision/cv/nms.hpp"
-#include "aivision/cv/letterbox.hpp"
+#include "argus/cv/nms.hpp"
+#include "argus/cv/letterbox.hpp"
 #include "../inference/model_inference.hpp"
 #include <vector>
 #include <string>
@@ -42,9 +42,9 @@ public:
     /**
      * @brief 解码 YOLOv8n 输出，仅保留 COCO class 0 (person)
      */
-    static std::vector<aivision::cv::DetectionBox> decode_yolo_persons(
+    static std::vector<argus::cv::DetectionBox> decode_yolo_persons(
         const YoloOutput& yolo_out,
-        const aivision::cv::LetterboxInfo& lb_info,
+        const argus::cv::LetterboxInfo& lb_info,
         uint32_t orig_w, uint32_t orig_h,
         float conf_thresh, float nms_thresh);
 
@@ -53,7 +53,7 @@ public:
      */
     static std::vector<FaceDetection> decode_scrfd_faces(
         const ScrfdOutput& scrfd_out,
-        const aivision::cv::LetterboxInfo& lb_info,
+        const argus::cv::LetterboxInfo& lb_info,
         uint32_t orig_w, uint32_t orig_h,
         float conf_thresh, float nms_thresh);
 

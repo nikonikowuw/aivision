@@ -79,7 +79,7 @@ const VERTEX_RADIUS_DEFAULT = 5;
 const VERTEX_RADIUS_SELECTED = 7;
 const MASK_LINE_DASH = [7, 5];
 const DRAFT_LINE_DASH = [5, 4];
-const CAMERA_PAGE_MAX_SIZE = 1000;
+const CAMERA_PAGE_MAX_SIZE = 100;
 
 interface RuleStyle {
   fill: string;
@@ -578,6 +578,7 @@ function handlePointerMove(event: PointerEvent) {
 
   if (draftRule.value) {
     hoverPoint.value = state.normalized;
+    renderCanvas();
   }
 }
 
@@ -652,7 +653,10 @@ function handleCanvasDoubleClick(event: MouseEvent) {
 }
 
 function handleCanvasLeave() {
-  if (!draggingVertex.value) hoverPoint.value = null;
+  if (!draggingVertex.value) {
+    hoverPoint.value = null;
+    renderCanvas();
+  }
 }
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -810,9 +814,6 @@ function drawDraftRule(
 ) {
   if (rule.points.length === 0) return;
   const style = getRuleStyle(rule.role);
-  const previewPoints = hoverPoint.value
-    ? [...rule.points, hoverPoint.value]
-    : rule.points;
 
   context.save();
   context.lineWidth = 2;
@@ -820,8 +821,23 @@ function drawDraftRule(
   context.lineCap = 'round';
   context.strokeStyle = style.stroke;
   context.setLineDash(DRAFT_LINE_DASH);
-  drawPath(context, previewPoints, false);
-  context.stroke();
+
+  const firstPoint = rule.points[0];
+  if (firstPoint) {
+    const first = getCanvasPoint(firstPoint);
+    context.beginPath();
+    context.moveTo(first.x, first.y);
+    for (const point of rule.points.slice(1)) {
+      const canvasPoint = getCanvasPoint(point);
+      context.lineTo(canvasPoint.x, canvasPoint.y);
+    }
+    if (hoverPoint.value) {
+      const hoverCanvas = getCanvasPoint(hoverPoint.value);
+      context.lineTo(hoverCanvas.x, hoverCanvas.y);
+    }
+    context.stroke();
+  }
+
   if (rule.role === ROLE.LINE) {
     drawDirectionArrows(context, rule, style);
   }
@@ -864,9 +880,9 @@ function resizeCanvas() {
   const stage = stageRef.value;
   if (!canvas || !stage) return;
 
-  const rect = stage.getBoundingClientRect();
-  const width = rect.width;
-  const height = rect.height;
+  const rect = canvas.getBoundingClientRect();
+  const width = rect.width || stage.clientWidth;
+  const height = rect.height || stage.clientHeight;
   if (width <= 0 || height <= 0) return;
 
   canvasSize.value = { height, width };

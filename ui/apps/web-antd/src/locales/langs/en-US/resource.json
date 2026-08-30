@@ -132,11 +132,9 @@
       "params": "Parameters",
       "paramsJson": "Parameters JSON",
       "rules": "Detection Rules",
-      "rulesPlaceholder": "[] (Detection rule canvas editor will be supported in subtask)",
-      "rulesJsonInvalid": "Detection rules must be a JSON array",
+      "rulesInvalid": "Detection rules are invalid; fix the canvas validation message",
       "camera": "Camera",
       "paramsInvalid": "Please check the algorithm parameter configuration",
-      "rulesHint": "Enter DetectionRule rules as a JSON array; the visual canvas will be available in a later version",
       "loadFailed": "Failed to load algorithm instances",
       "pipeline": "Algorithm Instance Pipeline",
       "notConfigured": "No algorithm instances configured",
@@ -170,6 +168,44 @@
       "autoEnable": "Auto Enable",
       "autoEnableOn": "Enable immediately upon creation (requires compute quota)",
       "autoEnableOff": "Save as disabled (no compute units consumed, offline-ready)"
+    },
+    "ruleEditor": {
+      "role": {
+        "roi": "Detection Region",
+        "mask": "Mask Region",
+        "line": "Boundary Line",
+        "unknown": "Unknown Rule"
+      },
+      "direction": {
+        "both": "Both directions",
+        "aToB": "A → B",
+        "bToA": "B → A"
+      },
+      "finish": "Finish Drawing",
+      "cancel": "Cancel Drawing",
+      "deletePoint": "Delete Vertex",
+      "clear": "Clear Rules",
+      "clearConfirm": "Clear all detection rules?",
+      "canvasLabel": "Detection rule drawing canvas",
+      "streamLoading": "Connecting to video stream",
+      "streamFailed": "Failed to connect to video stream",
+      "cameraNotFound": "Bound camera was not found",
+      "waitingMetadata": "Waiting for video resolution",
+      "legend": "Legend",
+      "drawing": "Editing: {role}",
+      "ruleCount": "{count} rule(s)",
+      "ruleNumber": "Rule {index}",
+      "points": "{count} vertices",
+      "ruleList": "Drawn Rules",
+      "empty": "No detection rules",
+      "deleteRule": "Delete Rule",
+      "validation": {
+        "tooFewPoints": "At least {count} vertices are required",
+        "outOfBounds": "Vertices must stay inside the active video area",
+        "selfIntersect": "The polygon self-intersects",
+        "lineDirection": "Direction is only supported for boundary lines",
+        "invalid": "The detection rule is invalid"
+      }
     },
     "stats": {
       "onlineTasks": "Online Analysis Tasks",

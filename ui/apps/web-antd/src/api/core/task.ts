@@ -26,14 +26,18 @@ export namespace TaskApi {
     ERROR: 5,
   } as const;
 
+  export type DetectionLineDirection = 0 | 1 | 2;
+
+  export type DetectionRuleRole = 1 | 2 | 3;
+
   export interface DetectionPoint {
     x: number;
     y: number;
   }
 
   export interface DetectionRule {
-    role: number;
-    lineDirection: number;
+    role: DetectionRuleRole;
+    lineDirection: DetectionLineDirection;
     points: DetectionPoint[];
   }
 

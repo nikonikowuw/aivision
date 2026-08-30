@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { AlgorithmApi } from '#/api';
+import type { AlgorithmApi, TaskApi } from '#/api';
 
 import { computed, nextTick, ref, watch } from 'vue';
 
@@ -8,7 +8,6 @@ import { $t } from '@vben/locales';
 import {
   Form,
   FormItem,
-  Input,
   InputNumber,
   message,
   Modal,
@@ -17,13 +16,9 @@ import {
   Tag,
 } from 'ant-design-vue';
 
-import {
-  createInstanceApi,
-  getAlgorithmList,
-  type TaskApi,
-  updateInstanceApi,
-} from '#/api';
+import { createInstanceApi, getAlgorithmList, updateInstanceApi } from '#/api';
 
+import DetectionRuleEditor from './DetectionRuleEditor.vue';
 import SchemaForm from './SchemaForm.vue';
 
 interface Props {
@@ -64,7 +59,8 @@ const selectedAlgorithmId = ref<string>('');
 const analysisFps = ref<number>(25);
 const autoEnable = ref<boolean>(true);
 const paramsJson = ref<Record<string, unknown>>({});
-const rulesRaw = ref<string>('[]');
+const rules = ref<TaskApi.DetectionRule[]>([]);
+const ruleEditorRef = ref<InstanceType<typeof DetectionRuleEditor>>();
 
 // 当前选中的算法对象及其激活版本
 const currentAlgorithm = computed(() => {
@@ -147,7 +143,11 @@ watch(
       // 编辑回显
       selectedAlgorithmId.value = props.instance.algorithmId;
       analysisFps.value = props.instance.analysisFps || 25;
-      rulesRaw.value = JSON.stringify(props.instance.rules || [], null, 2);
+      rules.value = (props.instance.rules || []).map((rule) => ({
+        lineDirection: rule.lineDirection,
+        points: rule.points.map((point) => ({ x: point.x, y: point.y })),
+        role: rule.role,
+      }));
 
       if (typeof props.instance.paramsJson === 'string') {
         try {
@@ -163,7 +163,7 @@ watch(
       analysisFps.value = 25;
       autoEnable.value = true;
       paramsJson.value = {};
-      rulesRaw.value = '[]';
+      rules.value = [];
       // 保证每次新建时都重新选择默认算法并触发 schema 变化
       selectedAlgorithmId.value = algorithmOptions.value[0]?.value || '';
       // 显式应用算法 schema 默认值：重新打开弹窗时 schema 引用可能不变，
@@ -198,19 +198,17 @@ async function handleOk() {
     return;
   }
 
-  // 2. 解析规则 JSON
-  let parsedRules: TaskApi.DetectionRule[];
-  try {
-    const parsed = JSON.parse(rulesRaw.value || '[]');
-    if (!Array.isArray(parsed)) {
-      message.error($t('resource.task.instance.rulesJsonInvalid'));
-      return;
-    }
-    parsedRules = parsed;
-  } catch {
-    message.error($t('resource.task.instance.rulesJsonInvalid'));
+  // 2. 校验检测规则并复制为整份提交负载
+  const rulesValid = ruleEditorRef.value?.validate() ?? false;
+  if (!rulesValid) {
+    message.error($t('resource.task.instance.rulesInvalid'));
     return;
   }
+  const submittedRules = rules.value.map((rule) => ({
+    lineDirection: rule.lineDirection,
+    points: rule.points.map((point) => ({ x: point.x, y: point.y })),
+    role: rule.role,
+  }));
 
   submitting.value = true;
   try {
@@ -218,7 +216,7 @@ async function handleOk() {
       await updateInstanceApi(props.instance.instanceId, {
         analysisFps: analysisFps.value,
         paramsJson: paramsJson.value,
-        rules: parsedRules,
+        rules: submittedRules,
       });
       message.success($t('system.common.success'));
     } else {
@@ -227,7 +225,7 @@ async function handleOk() {
         algorithmId: selectedAlgorithmId.value,
         analysisFps: analysisFps.value,
         paramsJson: paramsJson.value,
-        rules: parsedRules,
+        rules: submittedRules,
         enabled: autoEnable.value,
       });
       message.success($t('system.common.success'));
@@ -248,7 +246,8 @@ async function handleOk() {
     v-model:open="visible"
     :title="title"
     :confirm-loading="submitting"
-    width="680px"
+    destroy-on-close
+    width="920px"
     @ok="handleOk"
   >
     <Form layout="vertical" class="mt-4">
@@ -334,16 +333,14 @@ async function handleOk() {
         </div>
       </FormItem>
 
-      <!-- 检测规则 -->
+      <!-- 检测规则绘制 -->
       <FormItem :label="$t('resource.task.instance.rules')" class="mb-2">
-        <Input.TextArea
-          v-model:value="rulesRaw"
-          :rows="3"
-          :placeholder="$t('resource.task.instance.rulesPlaceholder')"
+        <DetectionRuleEditor
+          ref="ruleEditorRef"
+          v-model:value="rules"
+          :camera-id="props.cameraId"
+          :open="visible"
         />
-        <div class="text-muted-foreground mt-1 text-xs">
-          <span>{{ $t('resource.task.instance.rulesHint') }}</span>
-        </div>
       </FormItem>
     </Form>
   </Modal>

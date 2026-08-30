@@ -26,6 +26,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'close'): void;
+  (e: 'metadata', size: { height: number; width: number }): void;
   (e: 'switchStream', type: 'main' | 'sub'): void;
   (e: 'error', err: any): void;
 }>();
@@ -46,7 +47,38 @@ let reconnectTimer: null | number = null;
 let retryCount = 0;
 const MAX_RETRY_COUNT = 3;
 
+function emitVideoMetadata() {
+  const video = videoRef.value;
+  if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) return;
+  emit('metadata', { height: video.videoHeight, width: video.videoWidth });
+}
+
+function handleVideoPlaying() {
+  loading.value = false;
+  error.value = null;
+  emitVideoMetadata();
+  if (
+    videoRef.value &&
+    videoRef.value.videoWidth &&
+    videoRef.value.videoHeight
+  ) {
+    videoResolution.value = `${videoRef.value.videoWidth}x${videoRef.value.videoHeight}`;
+  }
+}
+
+function handleVideoWaiting() {
+  loading.value = true;
+}
+
+function removeVideoEventListeners() {
+  videoRef.value?.removeEventListener('loadedmetadata', emitVideoMetadata);
+  videoRef.value?.removeEventListener('resize', emitVideoMetadata);
+  videoRef.value?.removeEventListener('playing', handleVideoPlaying);
+  videoRef.value?.removeEventListener('waiting', handleVideoWaiting);
+}
+
 function destroyPlayer() {
+  removeVideoEventListeners();
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -161,27 +193,21 @@ function initPlayer(isRetry = false) {
     player.on(mpegts.Events.MEDIA_INFO, (mediaInfo: any) => {
       if (mediaInfo.width && mediaInfo.height) {
         videoResolution.value = `${mediaInfo.width}x${mediaInfo.height}`;
+        emit('metadata', {
+          height: Number(mediaInfo.height),
+          width: Number(mediaInfo.width),
+        });
       }
       if (mediaInfo.fps) {
         videoFps.value = Math.round(mediaInfo.fps);
       }
     });
 
-    // 监听原生视频播放事件以关闭 loading 并获取宽高
-    videoRef.value.addEventListener('playing', () => {
-      loading.value = false;
-      error.value = null;
-      if (
-        videoRef.value &&
-        videoRef.value.videoWidth &&
-        videoRef.value.videoHeight
-      ) {
-        videoResolution.value = `${videoRef.value.videoWidth}x${videoRef.value.videoHeight}`;
-      }
-    });
-    videoRef.value.addEventListener('waiting', () => {
-      loading.value = true;
-    });
+    // 监听原生视频事件，向叠加层提供真实视频宽高并同步 loading 状态。
+    videoRef.value.addEventListener('loadedmetadata', emitVideoMetadata);
+    videoRef.value.addEventListener('resize', emitVideoMetadata);
+    videoRef.value.addEventListener('playing', handleVideoPlaying);
+    videoRef.value.addEventListener('waiting', handleVideoWaiting);
   } catch (error: any) {
     loading.value = false;
     error.value = error?.message || 'Player initialization failed';
@@ -270,7 +296,7 @@ onBeforeUnmount(() => {
 
     <!-- 顶部状态栏 -->
     <div
-      v-if="title || streamType"
+      v-if="showControls && (title || streamType)"
       class="absolute top-0 left-0 right-0 p-2 bg-gradient-to-b from-black/70 to-transparent flex items-center justify-between text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity z-10"
     >
       <div class="flex items-center space-x-2 truncate">

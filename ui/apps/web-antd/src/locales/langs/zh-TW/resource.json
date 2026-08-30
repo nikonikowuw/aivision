@@ -132,11 +132,9 @@
       "params": "演算法參數",
       "paramsJson": "參數配置",
       "rules": "檢測規則",
-      "rulesPlaceholder": "[]（檢測規則圖形編輯器將在下個子任務支援）",
-      "rulesJsonInvalid": "檢測規則格式必須為 JSON 陣列",
+      "rulesInvalid": "檢測規則無效，請修正畫布中的提示",
       "camera": "攝影機",
       "paramsInvalid": "請檢查演算法參數設定",
-      "rulesHint": "支援透過 JSON 陣列輸入 DetectionRule 規則；視覺化畫板將於後續版本推出",
       "loadFailed": "載入演算法實例失敗",
       "pipeline": "演算法實例流水線",
       "notConfigured": "未配置演算法實例",
@@ -170,6 +168,44 @@
       "autoEnable": "立即啟用",
       "autoEnableOn": "建立後立即嘗試調度運行（須消耗計算配額）",
       "autoEnableOff": "先以停用狀態儲存（不消耗算力，可離線編排）"
+    },
+    "ruleEditor": {
+      "role": {
+        "roi": "檢測區域",
+        "mask": "屏蔽區域",
+        "line": "分界線",
+        "unknown": "未知規則"
+      },
+      "direction": {
+        "both": "雙向",
+        "aToB": "A → B",
+        "bToA": "B → A"
+      },
+      "finish": "完成繪製",
+      "cancel": "取消繪製",
+      "deletePoint": "刪除頂點",
+      "clear": "清空規則",
+      "clearConfirm": "確定清空全部檢測規則嗎？",
+      "canvasLabel": "檢測規則繪製畫布",
+      "streamLoading": "正在連線視訊流",
+      "streamFailed": "視訊流連線失敗",
+      "cameraNotFound": "找不到綁定攝影機",
+      "waitingMetadata": "等待視訊解析度",
+      "legend": "圖例",
+      "drawing": "正在編輯：{role}",
+      "ruleCount": "{count} 條規則",
+      "ruleNumber": "規則 {index}",
+      "points": "{count} 個頂點",
+      "ruleList": "已繪製規則",
+      "empty": "暫無檢測規則",
+      "deleteRule": "刪除規則",
+      "validation": {
+        "tooFewPoints": "至少需要 {count} 個頂點",
+        "outOfBounds": "頂點必須位於視訊有效畫面內",
+        "selfIntersect": "多邊形存在自交",
+        "lineDirection": "只有分界線支援方向設定",
+        "invalid": "檢測規則無效"
+      }
     },
     "stats": {
       "onlineTasks": "在線分析任務",

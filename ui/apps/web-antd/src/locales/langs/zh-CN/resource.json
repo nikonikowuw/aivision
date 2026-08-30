@@ -132,11 +132,9 @@
       "params": "算法参数",
       "paramsJson": "参数配置",
       "rules": "检测规则",
-      "rulesPlaceholder": "[]（检测规则图形编辑器将在下个子任务支持）",
-      "rulesJsonInvalid": "检测规则格式必须为 JSON 数组",
+      "rulesInvalid": "检测规则无效，请修正画布中的提示",
       "camera": "摄像头",
       "paramsInvalid": "请检查算法参数配置",
-      "rulesHint": "支持通过 JSON 数组输入 DetectionRule 规则；可视化画板将在后续版本推出",
       "loadFailed": "加载算法实例失败",
       "pipeline": "算法实例流水线",
       "notConfigured": "未配置算法实例",
@@ -170,6 +168,44 @@
       "autoEnable": "立即启用",
       "autoEnableOn": "创建后立即尝试调度运行（须消耗计算配额）",
       "autoEnableOff": "先以停用状态保存（不消耗算力，可离线编排）"
+    },
+    "ruleEditor": {
+      "role": {
+        "roi": "检测区域",
+        "mask": "屏蔽区域",
+        "line": "分界线",
+        "unknown": "未知规则"
+      },
+      "direction": {
+        "both": "双向",
+        "aToB": "A → B",
+        "bToA": "B → A"
+      },
+      "finish": "完成绘制",
+      "cancel": "取消绘制",
+      "deletePoint": "删除顶点",
+      "clear": "清空规则",
+      "clearConfirm": "确定清空全部检测规则吗？",
+      "canvasLabel": "检测规则绘制画布",
+      "streamLoading": "正在连接视频流",
+      "streamFailed": "视频流连接失败",
+      "cameraNotFound": "未找到绑定摄像头",
+      "waitingMetadata": "等待视频分辨率",
+      "legend": "图例",
+      "drawing": "正在编辑：{role}",
+      "ruleCount": "{count} 条规则",
+      "ruleNumber": "规则 {index}",
+      "points": "{count} 个顶点",
+      "ruleList": "已绘制规则",
+      "empty": "暂无检测规则",
+      "deleteRule": "删除规则",
+      "validation": {
+        "tooFewPoints": "至少需要 {count} 个顶点",
+        "outOfBounds": "顶点必须位于视频有效画面内",
+        "selfIntersect": "多边形存在自交",
+        "lineDirection": "只有分界线支持方向设置",
+        "invalid": "检测规则无效"
+      }
     },
     "stats": {
       "onlineTasks": "在线分析任务",

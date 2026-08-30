@@ -24,78 +24,25 @@ type seedMenuItem struct {
 }
 
 // seedMenuTree 设计 §5 菜单树契约，严禁增删权限码。
+// 顺序调整：实时预览(1) -> 智能记录(2) -> 资源管理(3) -> AI算法(4) -> 运维管理(5) -> 系统管理(6)
 var seedMenuTree = []seedMenuItem{
 	{
-		Type: MenuTypeCatalog, Name: "System", Title: "routes.system.system", Path: "/system", Component: "BasicLayout",
-		Icon: "ant-design:setting-outlined",
+		Type: MenuTypeMenu, Name: "LivePreview", Title: "routes.live.live", Path: "/live", Component: "/live/index",
+		Icon: "ant-design:video-camera-outlined", Permission: "live:preview", Affix: true,
 		Children: []seedMenuItem{
-			{
-				Type: MenuTypeMenu, Name: "User", Title: "routes.system.user", Path: "/system/user", Component: "/system/user/index",
-				Icon: "ant-design:user-outlined", Permission: "system:user",
-				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "system.user.addUser", Permission: "system:user:add"},
-					{Type: MenuTypeButton, Name: "system.user.editUser", Permission: "system:user:edit"},
-					{Type: MenuTypeButton, Name: "system.user.deleteUser", Permission: "system:user:delete"},
-					{Type: MenuTypeButton, Name: "system.user.resetPassword", Permission: "system:user:reset-password"},
-					{Type: MenuTypeButton, Name: "system.user.assignRole", Permission: "system:user:assign-role"},
-					{Type: MenuTypeButton, Name: "system.user.status", Permission: "system:user:status"},
-				},
-			},
-			{
-				Type: MenuTypeMenu, Name: "Role", Title: "routes.system.role", Path: "/system/role", Component: "/system/role/index",
-				Icon: "ant-design:team-outlined", Permission: "system:role",
-				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "system.role.addRole", Permission: "system:role:add"},
-					{Type: MenuTypeButton, Name: "system.role.editRole", Permission: "system:role:edit"},
-					{Type: MenuTypeButton, Name: "system.role.deleteRole", Permission: "system:role:delete"},
-					{Type: MenuTypeButton, Name: "system.role.assignMenu", Permission: "system:role:assign-menu"},
-				},
-			},
-			{
-				Type: MenuTypeMenu, Name: "Menu", Title: "routes.system.menu", Path: "/system/menu", Component: "/system/menu/index",
-				Icon: "ant-design:menu-outlined", Permission: "system:menu",
-				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "system.menu.addMenu", Permission: "system:menu:add"},
-					{Type: MenuTypeButton, Name: "system.menu.editMenu", Permission: "system:menu:edit"},
-					{Type: MenuTypeButton, Name: "system.menu.deleteMenu", Permission: "system:menu:delete"},
-				},
-			},
-			{
-				Type: MenuTypeMenu, Name: "Dept", Title: "routes.system.dept", Path: "/system/dept", Component: "/system/dept/index",
-				Icon: "ant-design:apartment-outlined", Permission: "system:dept",
-				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "system.dept.addDept", Permission: "system:dept:add"},
-					{Type: MenuTypeButton, Name: "system.dept.editDept", Permission: "system:dept:edit"},
-					{Type: MenuTypeButton, Name: "system.dept.deleteDept", Permission: "system:dept:delete"},
-				},
-			},
-			{
-				Type: MenuTypeMenu, Name: "Log", Title: "routes.system.log", Path: "/system/log", Component: "/system/log/index",
-				Icon: "ant-design:file-text-outlined", Permission: "system:log",
-			},
+			{Type: MenuTypeButton, Name: "live.preview.stream", Permission: "live:preview:stream"},
 		},
 	},
 	{
-		Type: MenuTypeCatalog, Name: "Ops", Title: "routes.ops.ops", Path: "/ops", Component: "BasicLayout",
-		Icon: "ant-design:tool-outlined",
+		Type: MenuTypeCatalog, Name: "Record", Title: "routes.record.record", Path: "/record", Component: "BasicLayout",
+		Icon: "ant-design:history-outlined",
 		Children: []seedMenuItem{
 			{
-				Type: MenuTypeMenu, Name: "Time", Title: "routes.ops.time", Path: "/ops/time", Component: "/ops/time/index",
-				Icon: "ant-design:field-time-outlined", Permission: "ops:time",
+				Type: MenuTypeMenu, Name: "RecordAlarm", Title: "routes.record.alarm", Path: "/record/alarm", Component: "/record/alarm/index",
+				Icon: "ant-design:alert-outlined", Permission: "record:alarm", KeepAlive: true,
 				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "ops.time.read", Permission: "ops:time:read"},
-					{Type: MenuTypeButton, Name: "ops.time.edit", Permission: "ops:time:edit"},
-				},
-			},
-			{
-				Type: MenuTypeMenu, Name: "Network", Title: "routes.ops.network", Path: "/ops/network", Component: "/ops/network/index",
-				Icon: "ant-design:global-outlined", Permission: "ops:network",
-				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "system.common.edit", Permission: "ops:network:edit"},
-					{Type: MenuTypeButton, Name: "ops.network.confirm", Permission: "ops:network:confirm"},
-					{Type: MenuTypeButton, Name: "ops.network.cancel", Permission: "ops:network:cancel"},
-					{Type: MenuTypeButton, Name: "ops.network.reset", Permission: "ops:network:reset"},
-					{Type: MenuTypeButton, Name: "ops.network.mode", Permission: "ops:network:mode"},
+					{Type: MenuTypeButton, Name: "record.alarm.query", Permission: "record:alarm:query"},
+					{Type: MenuTypeButton, Name: "record.alarm.export", Permission: "record:alarm:export"},
 				},
 			},
 		},
@@ -150,34 +97,77 @@ var seedMenuTree = []seedMenuItem{
 		},
 	},
 	{
-		Type: MenuTypeCatalog, Name: "Record", Title: "routes.record.record", Path: "/record", Component: "BasicLayout",
-		Icon: "ant-design:history-outlined",
+		Type: MenuTypeCatalog, Name: "Ops", Title: "routes.ops.ops", Path: "/ops", Component: "BasicLayout",
+		Icon: "ant-design:tool-outlined",
 		Children: []seedMenuItem{
 			{
-				Type: MenuTypeMenu, Name: "RecordAlarm", Title: "routes.record.alarm", Path: "/record/alarm", Component: "/record/alarm/index",
-				Icon: "ant-design:alert-outlined", Permission: "record:alarm", KeepAlive: true,
+				Type: MenuTypeMenu, Name: "Time", Title: "routes.ops.time", Path: "/ops/time", Component: "/ops/time/index",
+				Icon: "ant-design:field-time-outlined", Permission: "ops:time",
 				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "record.alarm.query", Permission: "record:alarm:query"},
-					{Type: MenuTypeButton, Name: "record.alarm.export", Permission: "record:alarm:export"},
+					{Type: MenuTypeButton, Name: "ops.time.read", Permission: "ops:time:read"},
+					{Type: MenuTypeButton, Name: "ops.time.edit", Permission: "ops:time:edit"},
+				},
+			},
+			{
+				Type: MenuTypeMenu, Name: "Network", Title: "routes.ops.network", Path: "/ops/network", Component: "/ops/network/index",
+				Icon: "ant-design:global-outlined", Permission: "ops:network",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "system.common.edit", Permission: "ops:network:edit"},
+					{Type: MenuTypeButton, Name: "ops.network.confirm", Permission: "ops:network:confirm"},
+					{Type: MenuTypeButton, Name: "ops.network.cancel", Permission: "ops:network:cancel"},
+					{Type: MenuTypeButton, Name: "ops.network.reset", Permission: "ops:network:reset"},
+					{Type: MenuTypeButton, Name: "ops.network.mode", Permission: "ops:network:mode"},
 				},
 			},
 		},
 	},
 	{
-		Type: MenuTypeMenu, Name: "LivePreview", Title: "routes.live.live", Path: "/live", Component: "/live/index",
-		Icon: "ant-design:video-camera-outlined", Permission: "live:preview", Affix: true,
-		Children: []seedMenuItem{
-			{Type: MenuTypeButton, Name: "live.preview.stream", Permission: "live:preview:stream"},
-		},
-	},
-	{
-		Type: MenuTypeCatalog, Name: "Dashboard", Title: "routes.dashboard.title", Path: "/dashboard", Component: "BasicLayout",
-		Icon: "ant-design:home-outlined",
+		Type: MenuTypeCatalog, Name: "System", Title: "routes.system.system", Path: "/system", Component: "BasicLayout",
+		Icon: "ant-design:setting-outlined",
 		Children: []seedMenuItem{
 			{
-				Type: MenuTypeMenu, Name: "dashboard", Title: "routes.dashboard.analytics", Path: "/dashboard",
-				Component: "/dashboard/analytics/index", // vben 自带视图
-				Icon:      "ant-design:dashboard-outlined", Affix: true, KeepAlive: true,
+				Type: MenuTypeMenu, Name: "User", Title: "routes.system.user", Path: "/system/user", Component: "/system/user/index",
+				Icon: "ant-design:user-outlined", Permission: "system:user",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "system.user.addUser", Permission: "system:user:add"},
+					{Type: MenuTypeButton, Name: "system.user.editUser", Permission: "system:user:edit"},
+					{Type: MenuTypeButton, Name: "system.user.deleteUser", Permission: "system:user:delete"},
+					{Type: MenuTypeButton, Name: "system.user.resetPassword", Permission: "system:user:reset-password"},
+					{Type: MenuTypeButton, Name: "system.user.assignRole", Permission: "system:user:assign-role"},
+					{Type: MenuTypeButton, Name: "system.user.status", Permission: "system:user:status"},
+				},
+			},
+			{
+				Type: MenuTypeMenu, Name: "Role", Title: "routes.system.role", Path: "/system/role", Component: "/system/role/index",
+				Icon: "ant-design:team-outlined", Permission: "system:role",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "system.role.addRole", Permission: "system:role:add"},
+					{Type: MenuTypeButton, Name: "system.role.editRole", Permission: "system:role:edit"},
+					{Type: MenuTypeButton, Name: "system.role.deleteRole", Permission: "system:role:delete"},
+					{Type: MenuTypeButton, Name: "system.role.assignMenu", Permission: "system:role:assign-menu"},
+				},
+			},
+			{
+				Type: MenuTypeMenu, Name: "Menu", Title: "routes.system.menu", Path: "/system/menu", Component: "/system/menu/index",
+				Icon: "ant-design:menu-outlined", Permission: "system:menu",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "system.menu.addMenu", Permission: "system:menu:add"},
+					{Type: MenuTypeButton, Name: "system.menu.editMenu", Permission: "system:menu:edit"},
+					{Type: MenuTypeButton, Name: "system.menu.deleteMenu", Permission: "system:menu:delete"},
+				},
+			},
+			{
+				Type: MenuTypeMenu, Name: "Dept", Title: "routes.system.dept", Path: "/system/dept", Component: "/system/dept/index",
+				Icon: "ant-design:apartment-outlined", Permission: "system:dept",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "system.dept.addDept", Permission: "system:dept:add"},
+					{Type: MenuTypeButton, Name: "system.dept.editDept", Permission: "system:dept:edit"},
+					{Type: MenuTypeButton, Name: "system.dept.deleteDept", Permission: "system:dept:delete"},
+				},
+			},
+			{
+				Type: MenuTypeMenu, Name: "Log", Title: "routes.system.log", Path: "/system/log", Component: "/system/log/index",
+				Icon: "ant-design:file-text-outlined", Permission: "system:log",
 			},
 		},
 	},

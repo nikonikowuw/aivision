@@ -39,7 +39,7 @@ validator: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR) --target package_validator
 
 app: $(BUILD_DIR)/CMakeCache.txt
-	cmake --build $(BUILD_DIR) --target aivision-engine
+	cmake --build $(BUILD_DIR) --target argus-engine
 
 test:
 	cd $(BUILD_DIR) && ./tests/unit_tests

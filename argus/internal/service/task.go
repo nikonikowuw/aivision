@@ -647,6 +647,10 @@ func (s *taskService) mergeInstance(inst *model.AlgorithmInstance) *InstanceItem
 		fps := rt.CurrentFps
 		item.CurrentFps = &fps
 		item.ReportedAt = timePtr(rt.ReportedAt)
+		if rt.Status != 0 {
+			item.ActualStatus = rt.Status
+			item.StatusMessage = rt.Message
+		}
 	}
 	return item
 }
@@ -812,6 +816,10 @@ func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, inp
 	inst.AnalysisFPS = fps
 	inst.ParamsJSON = paramsJSON
 	inst.RulesJSON = rulesJSON
+	if inst.Enabled {
+		inst.ActualStatus = model.InstanceStatusStarting
+		inst.StatusMessage = ""
+	}
 	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
 		if inst.Enabled {
 			// 在事务内加排他锁校验配额

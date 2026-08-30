@@ -4,6 +4,7 @@
  */
 
 #include "argus/core/algo_instance.hpp"
+#include "argus/core/logging/logger.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -162,6 +163,19 @@ av_status AlgorithmInstance::init(const av_frame_ops* frame_ops, const av_image_
     }
 
     // 标记运行状态并启动后台工作线程
+    received_frames_.store(0, std::memory_order_relaxed);
+    sampled_frames_.store(0, std::memory_order_relaxed);
+    sample_dropped_frames_.store(0, std::memory_order_relaxed);
+    caps_dropped_frames_.store(0, std::memory_order_relaxed);
+    retain_failed_frames_.store(0, std::memory_order_relaxed);
+    queued_frames_.store(0, std::memory_order_relaxed);
+    queue_dropped_frames_.store(0, std::memory_order_relaxed);
+    process_calls_.store(0, std::memory_order_relaxed);
+    process_failures_.store(0, std::memory_order_relaxed);
+    process_duration_us_.store(0, std::memory_order_relaxed);
+    process_max_duration_us_.store(0, std::memory_order_relaxed);
+    last_process_status_.store(static_cast<int64_t>(AV_OK), std::memory_order_relaxed);
+    last_debug_log_ = {};
     running_.store(true);
     worker_thread_ = std::thread(&AlgorithmInstance::worker_loop, this);
     return AV_OK;
@@ -171,6 +185,8 @@ void AlgorithmInstance::push_frame(const av_frame_desc& frame) {
     // 基础参数有效性校验
     if (!running_.load() || frame.size < sizeof(av_frame_desc) || frame.api_version != AV_ALGO_API_VERSION ||
         !frame.frame_token) return;
+
+    received_frames_.fetch_add(1, std::memory_order_relaxed);
 
     // 校验输入帧是否匹配算法协商确定的能力要求
     if (accepted_caps_.size >= sizeof(av_frame_caps)) {
@@ -187,6 +203,7 @@ void AlgorithmInstance::push_frame(const av_frame_desc& frame) {
              accepted_caps_.required_opaque_kind != frame.opaque_kind) ||
             frame.width < accepted_caps_.min_width || frame.height < accepted_caps_.min_height ||
             frame.width > accepted_caps_.max_width || frame.height > accepted_caps_.max_height) {
+            caps_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
             dropped_frames_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
@@ -195,12 +212,16 @@ void AlgorithmInstance::push_frame(const av_frame_desc& frame) {
     // 抽帧节流：优先按媒体 PTS 采样。硬件解码器可能批量输出帧，使用回调到达时间
     // 会把时间戳连续的视频帧误判为过密；PTS 缺失时才回退到单调时钟。
     if (target_fps_ > 0 && should_throttle_sample(frame.pts_ns)) {
+        sample_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
         dropped_frames_.fetch_add(1, std::memory_order_relaxed);
         return;
     }
+    sampled_frames_.fetch_add(1, std::memory_order_relaxed);
 
     // 增加视频帧引用计数，确保其在队列缓存期间不被上游释放
     if (frame_ops_ && frame_ops_->retain && frame_ops_->retain(frame_ops_->ctx, frame.frame_token) != AV_OK) {
+        retain_failed_frames_.fetch_add(1, std::memory_order_relaxed);
+        dropped_frames_.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -212,11 +233,13 @@ void AlgorithmInstance::push_frame(const av_frame_desc& frame) {
         if (frame_ops_ && frame_ops_->release) {
             frame_ops_->release(frame_ops_->ctx, oldest.frame_token);
         }
+        queue_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
         dropped_frames_.fetch_add(1);
     }
 
     // 入队并唤醒推理工作线程
     frame_queue_.push(frame);
+    queued_frames_.fetch_add(1, std::memory_order_relaxed);
     cv_.notify_one();
 }
 
@@ -284,10 +307,16 @@ void AlgorithmInstance::worker_loop() {
         av_frame_desc frame{};
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
-            // 阻塞等待待处理帧或停止信号
-            cv_.wait(lock, [this] {
+            // 阻塞等待待处理帧或停止信号；超时用于在无输入时仍输出诊断汇总
+            const bool notified = cv_.wait_for(lock, std::chrono::seconds(1), [this] {
                 return !running_.load() || !frame_queue_.empty();
             });
+
+            if (!notified && running_.load()) {
+                lock.unlock();
+                log_debug_metrics();
+                continue;
+            }
 
             if (!running_.load() && frame_queue_.empty()) {
                 break;
@@ -297,13 +326,31 @@ void AlgorithmInstance::worker_loop() {
             frame_queue_.pop();
         }
 
-        // 执行单帧推理处理
+        // 执行单帧推理处理，并测量 instance_process 本身的完整耗时（包含插件回调）
+        bool process_called = false;
+        av_status process_status = AV_OK;
+        uint64_t process_duration_us = 0;
         {
             std::lock_guard<std::mutex> lock(abi_mutex_);
             if (abi_ && abi_->instance_process && inst_handle_) {
+                process_called = true;
+                process_calls_.fetch_add(1, std::memory_order_relaxed);
                 callback_frame_ = frame;
-                abi_->instance_process(inst_handle_, &frame);
+                const auto process_start = std::chrono::steady_clock::now();
+                process_status = static_cast<av_status>(abi_->instance_process(inst_handle_, &frame));
+                process_duration_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - process_start).count());
                 callback_frame_ = {};
+            }
+        }
+        if (process_called) {
+            process_duration_us_.fetch_add(process_duration_us, std::memory_order_relaxed);
+            process_max_duration_us_.store(std::max(
+                process_max_duration_us_.load(std::memory_order_relaxed), process_duration_us),
+                std::memory_order_relaxed);
+            last_process_status_.store(static_cast<int64_t>(process_status), std::memory_order_relaxed);
+            if (process_status != AV_OK) {
+                process_failures_.fetch_add(1, std::memory_order_relaxed);
             }
         }
 
@@ -315,7 +362,61 @@ void AlgorithmInstance::worker_loop() {
         if (frame_ops_ && frame_ops_->release) {
             frame_ops_->release(frame_ops_->ctx, frame.frame_token);
         }
+        log_debug_metrics();
     }
+}
+
+void AlgorithmInstance::log_debug_metrics() {
+    const auto now = std::chrono::steady_clock::now();
+    if (last_debug_log_.time_since_epoch().count() == 0) {
+        last_debug_log_ = now;
+        return;
+    }
+    const double elapsed_seconds = std::chrono::duration<double>(now - last_debug_log_).count();
+    if (elapsed_seconds < 1.0) return;
+    last_debug_log_ = now;
+
+    const uint64_t received_frames = received_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t sampled_frames = sampled_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t sample_drops = sample_dropped_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t caps_drops = caps_dropped_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t retain_failures = retain_failed_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t queued_frames = queued_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t queue_drops = queue_dropped_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t process_calls = process_calls_.exchange(0, std::memory_order_relaxed);
+    const uint64_t process_failures = process_failures_.exchange(0, std::memory_order_relaxed);
+    const uint64_t process_duration_us = process_duration_us_.exchange(0, std::memory_order_relaxed);
+    const uint64_t process_max_duration_us = process_max_duration_us_.exchange(0, std::memory_order_relaxed);
+    size_t queue_depth = 0;
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        queue_depth = frame_queue_.size();
+    }
+
+    const double average_process_ms = process_calls == 0
+        ? 0.0
+        : static_cast<double>(process_duration_us) / static_cast<double>(process_calls) / 1000.0;
+    LOG_DEBUG(
+        "engine.algo_host", "algo.pipeline_metrics", "algorithm pipeline metrics", "",
+        {{"instance_id", instance_id_},
+         {"camera_id", camera_id_},
+         {"algorithm_id", algorithm_id_},
+         {"target_fps", static_cast<int64_t>(target_fps_)},
+         {"input_fps", static_cast<double>(received_frames) / elapsed_seconds},
+         {"sampled_fps", static_cast<double>(sampled_frames) / elapsed_seconds},
+         {"queued_fps", static_cast<double>(queued_frames) / elapsed_seconds},
+         {"process_fps", static_cast<double>(process_calls) / elapsed_seconds},
+         {"sample_drops", static_cast<int64_t>(sample_drops)},
+         {"caps_drops", static_cast<int64_t>(caps_drops)},
+         {"queue_drops", static_cast<int64_t>(queue_drops)},
+         {"retain_failures", static_cast<int64_t>(retain_failures)},
+         {"process_failures", static_cast<int64_t>(process_failures)},
+         {"average_process_ms", average_process_ms},
+         {"max_process_ms", static_cast<double>(process_max_duration_us) / 1000.0},
+         {"queue_depth", static_cast<int64_t>(queue_depth)},
+         {"total_processed_frames", static_cast<int64_t>(processed_frames_.load(std::memory_order_relaxed))},
+         {"total_dropped_frames", static_cast<int64_t>(dropped_frames_.load(std::memory_order_relaxed))},
+         {"last_process_status", last_process_status_.load(std::memory_order_relaxed)}});
 }
 
 double AlgorithmInstance::get_current_fps(std::chrono::steady_clock::time_point now) const {

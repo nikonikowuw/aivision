@@ -281,7 +281,7 @@ function validateRule(rule: TaskApi.DetectionRule): null | ValidationIssue {
     return { kind: 'tooFewPoints', minimum };
   }
 
-  if (!isAreaRole(rule.role) && rule.lineDirection !== LINE_DIRECTION.BOTH) {
+  if (isAreaRole(rule.role) && rule.lineDirection !== LINE_DIRECTION.BOTH) {
     return { kind: 'lineDirection' };
   }
 
@@ -297,6 +297,17 @@ function validateRule(rule: TaskApi.DetectionRule): null | ValidationIssue {
     )
   ) {
     return { kind: 'outOfBounds' };
+  }
+
+  const segmentCount = isAreaRole(rule.role)
+    ? points.length
+    : points.length - 1;
+  for (let i = 0; i < segmentCount; i += 1) {
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    if (current && next && isSamePoint(current, next)) {
+      return { kind: 'selfIntersect' };
+    }
   }
 
   if (isAreaRole(rule.role) && hasSelfIntersection(points)) {
@@ -380,6 +391,8 @@ function finishDraft(): boolean {
 function addDraftPoint(point: NormalizedPoint) {
   const draft = draftRule.value;
   if (!draft) return;
+  const lastPoint = draft.points.at(-1);
+  if (lastPoint && isSamePoint(lastPoint, point)) return;
   draftRule.value = {
     ...draft,
     points: [...draft.points, { x: point.x, y: point.y }],

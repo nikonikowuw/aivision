@@ -22,7 +22,16 @@ const std::unordered_set<std::string_view> ALLOWED_FIELDS = {
     "frame_id", "revision", "retry_count", "duration_ms",
     "seq", "file", "line", "function",
     "error_stage", "error_code", "package_sha256", "relative_path", "url",
-    "status_code", "pixel_format", "width", "height", "fps", "drop_count", "enabled"
+    "status_code", "pixel_format", "width", "height", "fps", "drop_count", "enabled",
+    // Engine 管线诊断字段（仅 DEBUG 使用，所有值均为有界 JSON 标量）。
+    "state", "decoder_codec", "media_backend", "target_fps", "input_fps", "sampled_fps", "queued_fps", "process_fps",
+    "sample_drops", "caps_drops", "queue_drops", "retain_failures", "process_failures",
+    "average_process_ms", "max_process_ms", "queue_depth", "total_processed_frames", "total_dropped_frames",
+    "input_packet_fps", "input_bytes_per_second", "decoder_input_fps", "decoded_fps",
+    "encoded_queue_depth", "encoded_queue_drops", "packet_parse_drops", "packet_gate_drops",
+    "decoder_send_errors", "last_decoder_send_status", "last_process_status", "last_packet_pts_us", "last_packet_pts_delta_us",
+    "last_decoded_pts_ns", "last_decoded_pts_delta_ns", "frame_width", "frame_height", "memory_type",
+    "keyframe_ready", "decoder_waiting_for_output", "instance_count", "total_decoded_frames"
 };
 
 constexpr std::array<std::string_view, 6> SENSITIVE_PATTERNS = {

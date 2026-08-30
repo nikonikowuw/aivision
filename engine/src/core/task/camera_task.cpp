@@ -10,6 +10,7 @@
  */
 
 #include "argus/core/camera_task.hpp"
+#include "argus/core/logging/logger.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -43,6 +44,17 @@ struct PacketNalFlags {
     bool has_pps = false;
     bool has_random_access = false;
 };
+
+const char* camera_state_name(CameraState state) {
+    switch (state) {
+        case CameraState::STOPPED: return "stopped";
+        case CameraState::CONNECTING: return "connecting";
+        case CameraState::RUNNING: return "running";
+        case CameraState::RECONNECTING: return "reconnecting";
+        case CameraState::ERROR: return "error";
+    }
+    return "unknown";
+}
 
 // 检查并提取 H.264 / H.265 NALU 单元的参数集和关键帧类型标志
 void inspect_nal(PacketNalFlags& flags, const uint8_t* nal, size_t size, bool hevc) {
@@ -155,6 +167,24 @@ av_status CameraTask::start() {
         std::chrono::steady_clock::now().time_since_epoch()).count();
     last_packet_time_ms_.store(now_ms);
     last_frame_wall_time_ns_.store(0, std::memory_order_release);
+    received_packets_.store(0, std::memory_order_relaxed);
+    received_packet_bytes_.store(0, std::memory_order_relaxed);
+    encoded_queue_dropped_.store(0, std::memory_order_relaxed);
+    decoder_packets_sent_.store(0, std::memory_order_relaxed);
+    decoder_send_errors_.store(0, std::memory_order_relaxed);
+    packet_parse_drops_.store(0, std::memory_order_relaxed);
+    packet_gate_drops_.store(0, std::memory_order_relaxed);
+    decoded_frame_window_.store(0, std::memory_order_relaxed);
+    last_packet_pts_us_.store(0, std::memory_order_relaxed);
+    last_packet_pts_delta_us_.store(0, std::memory_order_relaxed);
+    last_decoded_pts_ns_.store(0, std::memory_order_relaxed);
+    last_decoded_pts_delta_ns_.store(0, std::memory_order_relaxed);
+    last_decoder_send_status_.store(static_cast<int64_t>(AV_OK), std::memory_order_relaxed);
+    last_frame_width_.store(0, std::memory_order_relaxed);
+    last_frame_height_.store(0, std::memory_order_relaxed);
+    last_frame_pixel_format_.store(AV_PIX_UNKNOWN, std::memory_order_relaxed);
+    last_frame_memory_type_.store(AV_MEM_UNKNOWN, std::memory_order_relaxed);
+    last_debug_log_ = {};
     last_decoder_input_time_ms_.store(0);
     decoder_waiting_for_output_.store(false);
     saw_idr_keyframe_.store(false);
@@ -179,6 +209,11 @@ av_status CameraTask::start() {
         return media_status;
     }
 
+    LOG_DEBUG(
+        "engine.camera_task", "camera.pipeline_started", "camera pipeline started", "",
+        {{"camera_id", camera_id_},
+         {"decoder_codec", decoder_codec_},
+         {"media_backend", std::string(media_backend_->name())}});
     decode_thread_ = std::thread(&CameraTask::decode_loop, this);
     watchdog_thread_ = std::thread(&CameraTask::watchdog_loop, this);
     state_.store(CameraState::RUNNING);
@@ -308,6 +343,14 @@ void CameraTask::remove_instance(const std::string& instance_id) {
 
 void CameraTask::on_encoded_packet(const media::EncodedPacket& packet) {
     if (!running_.load(std::memory_order_acquire) || !packet.data || packet.size == 0) return;
+    received_packets_.fetch_add(1, std::memory_order_relaxed);
+    received_packet_bytes_.fetch_add(static_cast<uint64_t>(packet.size), std::memory_order_relaxed);
+    const int64_t previous_pts_us = last_packet_pts_us_.exchange(packet.pts_us, std::memory_order_relaxed);
+    if (previous_pts_us > 0 && packet.pts_us > 0) {
+        last_packet_pts_delta_us_.store(packet.pts_us - previous_pts_us, std::memory_order_relaxed);
+    } else {
+        last_packet_pts_delta_us_.store(0, std::memory_order_relaxed);
+    }
     last_packet_time_ms_.store(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count());
 
@@ -315,7 +358,10 @@ void CameraTask::on_encoded_packet(const media::EncodedPacket& packet) {
     if (!owned.storage || !owned.data) return;
     {
         std::lock_guard<std::mutex> lock(encoded_mutex_);
-        if (encoded_queue_.size() >= kMaxEncodedQueueSize) encoded_queue_.pop_front();
+        if (encoded_queue_.size() >= kMaxEncodedQueueSize) {
+            encoded_queue_.pop_front();
+            encoded_queue_dropped_.fetch_add(1, std::memory_order_relaxed);
+        }
         encoded_queue_.push_back(std::move(owned));
     }
     encoded_cv_.notify_one();
@@ -391,7 +437,10 @@ void CameraTask::decode_loop() {
 
         // 参数集状态机与首个关键帧过滤：必须在集齐 SPS/PPS 并在首个 IDR 关键帧到来后才开始向解码器送帧，防止花屏或崩溃
         const auto nal_flags = inspect_packet(packet, decoder_codec_);
-        if (!nal_flags.parseable) continue;
+        if (!nal_flags.parseable) {
+            packet_parse_drops_.fetch_add(1, std::memory_order_relaxed);
+            continue;
+        }
         saw_vps_ = saw_vps_ || nal_flags.has_vps;
         saw_sps_ = saw_sps_ || nal_flags.has_sps;
         saw_pps_ = saw_pps_ || nal_flags.has_pps;
@@ -407,12 +456,18 @@ void CameraTask::decode_loop() {
         }
         if (waiting_for_idr && !is_param_set &&
             !(parameter_sets_ready && nal_flags.has_random_access)) {
+            packet_gate_drops_.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
 
         // 向硬件/软件解码器喂入压缩数据包
         const av_status send_st = decoder_->send_packet(packet.data, packet.size, packet.pts_us, packet.is_keyframe);
-        if (send_st != AV_OK) continue;
+        if (send_st != AV_OK) {
+            decoder_send_errors_.fetch_add(1, std::memory_order_relaxed);
+            last_decoder_send_status_.store(static_cast<int64_t>(send_st), std::memory_order_relaxed);
+            continue;
+        }
+        decoder_packets_sent_.fetch_add(1, std::memory_order_relaxed);
         last_decoder_input_time_ms_.store(std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count(), std::memory_order_release);
         decoder_waiting_for_output_.store(true, std::memory_order_release);
@@ -429,7 +484,20 @@ void CameraTask::decode_loop() {
             if (receive_status == AV_OK) {
                 frame->frame_token = const_cast<void*>(pool_token);
                 decoder_waiting_for_output_.store(false, std::memory_order_release);
-                decoded_frames_.fetch_add(1);
+                decoded_frames_.fetch_add(1, std::memory_order_relaxed);
+                decoded_frame_window_.fetch_add(1, std::memory_order_relaxed);
+                const int64_t previous_decoded_pts_ns = last_decoded_pts_ns_.exchange(
+                    frame->pts_ns, std::memory_order_relaxed);
+                if (previous_decoded_pts_ns > 0 && frame->pts_ns > 0) {
+                    last_decoded_pts_delta_ns_.store(frame->pts_ns - previous_decoded_pts_ns,
+                                                     std::memory_order_relaxed);
+                } else {
+                    last_decoded_pts_delta_ns_.store(0, std::memory_order_relaxed);
+                }
+                last_frame_width_.store(frame->width, std::memory_order_relaxed);
+                last_frame_height_.store(frame->height, std::memory_order_relaxed);
+                last_frame_pixel_format_.store(frame->pixel_format, std::memory_order_relaxed);
+                last_frame_memory_type_.store(frame->memory_type, std::memory_order_relaxed);
                 // wall_time_ns 由平台解码器在成功输出时填充；仅正值可作为真实最后帧时间。
                 if (frame->wall_time_ns > 0) {
                     last_frame_wall_time_ns_.store(frame->wall_time_ns, std::memory_order_release);
@@ -462,6 +530,63 @@ void CameraTask::decode_loop() {
             break;
         }
     }
+}
+
+void CameraTask::log_debug_metrics() {
+    const auto now = std::chrono::steady_clock::now();
+    if (last_debug_log_.time_since_epoch().count() == 0) {
+        last_debug_log_ = now;
+        return;
+    }
+    const double elapsed_seconds = std::chrono::duration<double>(now - last_debug_log_).count();
+    if (elapsed_seconds < 1.0) return;
+    last_debug_log_ = now;
+
+    const uint64_t received_packets = received_packets_.exchange(0, std::memory_order_relaxed);
+    const uint64_t received_packet_bytes = received_packet_bytes_.exchange(0, std::memory_order_relaxed);
+    const uint64_t encoded_queue_drops = encoded_queue_dropped_.exchange(0, std::memory_order_relaxed);
+    const uint64_t decoder_packets_sent = decoder_packets_sent_.exchange(0, std::memory_order_relaxed);
+    const uint64_t decoder_send_errors = decoder_send_errors_.exchange(0, std::memory_order_relaxed);
+    const uint64_t packet_parse_drops = packet_parse_drops_.exchange(0, std::memory_order_relaxed);
+    const uint64_t packet_gate_drops = packet_gate_drops_.exchange(0, std::memory_order_relaxed);
+    const uint64_t decoded_frames = decoded_frame_window_.exchange(0, std::memory_order_relaxed);
+    size_t encoded_queue_depth = 0;
+    {
+        std::lock_guard<std::mutex> lock(encoded_mutex_);
+        encoded_queue_depth = encoded_queue_.size();
+    }
+    size_t instance_count = 0;
+    {
+        std::lock_guard<std::mutex> lock(instances_mutex_);
+        instance_count = instances_.size();
+    }
+
+    LOG_DEBUG(
+        "engine.camera_task", "camera.pipeline_metrics", "camera pipeline metrics", "",
+        {{"camera_id", camera_id_},
+         {"state", std::string(camera_state_name(state_.load(std::memory_order_acquire)))},
+         {"input_packet_fps", static_cast<double>(received_packets) / elapsed_seconds},
+         {"input_bytes_per_second", static_cast<double>(received_packet_bytes) / elapsed_seconds},
+         {"decoder_input_fps", static_cast<double>(decoder_packets_sent) / elapsed_seconds},
+         {"decoded_fps", static_cast<double>(decoded_frames) / elapsed_seconds},
+         {"encoded_queue_depth", static_cast<int64_t>(encoded_queue_depth)},
+         {"encoded_queue_drops", static_cast<int64_t>(encoded_queue_drops)},
+         {"packet_parse_drops", static_cast<int64_t>(packet_parse_drops)},
+         {"packet_gate_drops", static_cast<int64_t>(packet_gate_drops)},
+         {"decoder_send_errors", static_cast<int64_t>(decoder_send_errors)},
+         {"last_decoder_send_status", last_decoder_send_status_.load(std::memory_order_relaxed)},
+         {"last_packet_pts_us", last_packet_pts_us_.load(std::memory_order_relaxed)},
+         {"last_packet_pts_delta_us", last_packet_pts_delta_us_.load(std::memory_order_relaxed)},
+         {"last_decoded_pts_ns", last_decoded_pts_ns_.load(std::memory_order_relaxed)},
+         {"last_decoded_pts_delta_ns", last_decoded_pts_delta_ns_.load(std::memory_order_relaxed)},
+         {"frame_width", static_cast<int64_t>(last_frame_width_.load(std::memory_order_relaxed))},
+         {"frame_height", static_cast<int64_t>(last_frame_height_.load(std::memory_order_relaxed))},
+         {"pixel_format", static_cast<int64_t>(last_frame_pixel_format_.load(std::memory_order_relaxed))},
+         {"memory_type", static_cast<int64_t>(last_frame_memory_type_.load(std::memory_order_relaxed))},
+         {"keyframe_ready", saw_idr_keyframe_.load(std::memory_order_acquire)},
+         {"decoder_waiting_for_output", decoder_waiting_for_output_.load(std::memory_order_acquire)},
+         {"instance_count", static_cast<int64_t>(instance_count)},
+         {"total_decoded_frames", static_cast<int64_t>(decoded_frames_.load(std::memory_order_relaxed))}});
 }
 
 void CameraTask::on_media_status(const std::string&, bool is_error) {
@@ -506,7 +631,10 @@ void CameraTask::watchdog_loop() {
             return !running_.load(std::memory_order_acquire) || reconnect_requested_.load(std::memory_order_acquire);
         });
         lock.unlock();
-        if (running_.load(std::memory_order_acquire)) trigger_watchdog_check();
+        if (running_.load(std::memory_order_acquire)) {
+            trigger_watchdog_check();
+            log_debug_metrics();
+        }
     }
 }
 

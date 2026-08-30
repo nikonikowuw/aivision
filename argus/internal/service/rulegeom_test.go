@@ -99,6 +99,23 @@ func TestValidateRules(t *testing.T) {
 			rules:   []model.DetectionRule{{Role: model.DetectionRuleRoleROI, Points: points(0, 0, 1, 0, 0.5, 0.5, 1, 1, 0, 1)}},
 			wantErr: false,
 		},
+		{
+			name:     "ROI 包含零长度线段（相邻点重合）",
+			rules:    []model.DetectionRule{{Role: model.DetectionRuleRoleROI, Points: points(0.1, 0.1, 0.1, 0.1, 0.5, 0.5, 0.1, 0.5)}},
+			wantErr:  true,
+			wantCode: errno.CodeRuleSelfIntersect,
+		},
+		{
+			name:     "ROI 退化为共线零面积",
+			rules:    []model.DetectionRule{{Role: model.DetectionRuleRoleROI, Points: points(0.1, 0.1, 0.5, 0.5, 0.9, 0.9)}},
+			wantErr:  true,
+			wantCode: errno.CodeRuleSelfIntersect,
+		},
+		{
+			name:    "LINE 首尾相同但中间各线段非零长度（U型折线）应通过",
+			rules:   []model.DetectionRule{{Role: model.DetectionRuleRoleLine, Points: points(0.1, 0.1, 0.5, 0.5, 0.1, 0.1)}},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -44,12 +44,41 @@ func ValidateRules(rules []model.DetectionRule) error {
 				return errno.New(errno.CodeRuleOutOfBounds)
 			}
 		}
-		if (rule.Role == model.DetectionRuleRoleROI || rule.Role == model.DetectionRuleRoleMask) &&
-			polygonSelfIntersects(rule.Points) {
-			return errno.New(errno.CodeRuleSelfIntersect)
+
+		segmentCount := len(rule.Points)
+		if rule.Role == model.DetectionRuleRoleLine {
+			segmentCount = len(rule.Points) - 1
+		}
+		for i := 0; i < segmentCount; i++ {
+			p1 := rule.Points[i]
+			p2 := rule.Points[(i+1)%len(rule.Points)]
+			if math.Abs(p1.X-p2.X) <= 1e-6 && math.Abs(p1.Y-p2.Y) <= 1e-6 {
+				return errno.New(errno.CodeRuleSelfIntersect)
+			}
+		}
+
+		if rule.Role == model.DetectionRuleRoleROI || rule.Role == model.DetectionRuleRoleMask {
+			if math.Abs(polygonSignedArea(rule.Points)) <= 1e-6 {
+				return errno.New(errno.CodeRuleSelfIntersect)
+			}
+			if polygonSelfIntersects(rule.Points) {
+				return errno.New(errno.CodeRuleSelfIntersect)
+			}
 		}
 	}
 	return nil
+}
+
+// polygonSignedArea 计算多边形有向面积（顶点需为顺时针或逆时针排列）。
+func polygonSignedArea(points []model.DetectionPoint) float64 {
+	n := len(points)
+	area := 0.0
+	for i := 0; i < n; i++ {
+		cur := points[i]
+		next := points[(i+1)%n]
+		area += cur.X*next.Y - next.X*cur.Y
+	}
+	return area * 0.5
 }
 
 // polygonSelfIntersects 判定闭合多边形是否存在自交：对每对非相邻边做线段相交

@@ -10,6 +10,7 @@
 #include "argus/core/task_scheduler.hpp"
 #include "argus/core/uds_ipc.hpp"
 #include "argus/platform/mock_platform.hpp"
+#include "argus/platform/macos_platform.hpp"
 #include "argus/media/media_api.hpp"
 
 #include <nlohmann/json.hpp>
@@ -312,6 +313,82 @@ TEST(UdsReconcileTest, RebuildsInstanceWhenAnalysisFpsChanges) {
     argus::core::ResourceLedger::instance().clear();
     ::unsetenv("ARGUS_PACKAGE_DIR");
     std::filesystem::remove_all(package_dir);
+}
+
+TEST(UdsReconcileTest, ReconcilesExactDetectionRuleFromUI) {
+    const std::string pkg_dir = "/tmp/argus-test-pkg-roi";
+    std::filesystem::remove_all(pkg_dir);
+    std::filesystem::create_directories(pkg_dir + "/yolov8n");
+    std::filesystem::copy("/Users/niko/dev/go/argus/engine/var/packages/yolov8n", pkg_dir + "/yolov8n",
+                          std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+    ::setenv("ARGUS_PACKAGE_DIR", pkg_dir.c_str(), 1);
+    auto adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
+    registry.register_adapter("macos-arm64-coreml", adapter);
+    registry.set_active_platform("macos-arm64-coreml");
+    argus::core::UdsServer server("/tmp/argus-test-roi-reconcile.sock", adapter, backend, "");
+    ASSERT_TRUE(server.start());
+
+    // 1. 初始状态：无规则
+    argus::v1::DesiredState d1;
+    d1.set_revision(1);
+    auto* t1 = d1.add_tasks();
+    t1->set_camera_id("cam-1");
+    t1->set_rtsp_url("rtsp://unused");
+    t1->set_enabled(true);
+
+    auto* i1 = d1.add_instances();
+    i1->set_instance_id("inst-1");
+    i1->set_camera_id("cam-1");
+    i1->set_algorithm_id("yolov8n");
+    i1->set_algorithm_version("1.0.0");
+    i1->set_analysis_fps(25);
+    i1->set_params_json("{\"confidence_threshold\":0.5,\"iou_threshold\":0.45}");
+    i1->set_enabled(true);
+
+    auto* p1 = d1.add_active_package_versions();
+    p1->set_algorithm_id("yolov8n");
+    p1->set_version("1.0.0");
+
+    argus::v1::ApplyDesiredStateResponse r1;
+    ASSERT_TRUE(server.apply_desired_state(d1, &r1));
+    ASSERT_TRUE(r1.code().empty()) << r1.error_message();
+
+    auto inst = argus::core::AlgoManager::instance().get("inst-1");
+    ASSERT_NE(inst, nullptr);
+    EXPECT_TRUE(inst->is_running());
+
+    // 2. 更新状态：带 ROI 规则
+    argus::v1::DesiredState d2;
+    d2.set_revision(2);
+    auto* t2 = d2.add_tasks();
+    t2->CopyFrom(*t1);
+
+    auto* i2 = d2.add_instances();
+    i2->CopyFrom(*i1);
+    auto* r = i2->add_rules();
+    r->set_role(argus::v1::DETECTION_RULE_ROLE_ROI);
+    r->set_line_direction(argus::v1::DETECTION_LINE_DIRECTION_BOTH);
+    auto* pt0 = r->add_points(); pt0->set_x(0.069785276f); pt0->set_y(0.342886386f);
+    auto* pt1 = r->add_points(); pt1->set_x(0.068634969f); pt1->set_y(0.903787103f);
+    auto* pt2 = r->add_points(); pt2->set_x(0.891104294f); pt2->set_y(0.825997952f);
+    auto* pt3 = r->add_points(); pt3->set_x(0.856595092f); pt3->set_y(0.089048106f);
+
+    auto* p2 = d2.add_active_package_versions();
+    p2->CopyFrom(*p1);
+
+    argus::v1::ApplyDesiredStateResponse r2;
+    ASSERT_TRUE(server.apply_desired_state(d2, &r2));
+    EXPECT_TRUE(r2.code().empty()) << r2.error_message();
+
+    inst = argus::core::AlgoManager::instance().get("inst-1");
+    ASSERT_NE(inst, nullptr);
+    EXPECT_TRUE(inst->is_running());
+
+    server.stop();
+    argus::core::ResourceLedger::instance().clear();
+    std::filesystem::remove_all(pkg_dir);
 }
 
 #endif // !defined(ARGUS_SKIP_IPC_TESTS)

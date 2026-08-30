@@ -1116,7 +1116,7 @@ private:
     }
 
     std::string reconcile_instance(const argus::v1::AlgorithmInstanceConfig& config) {
-        if (config.instance_id().empty() || config.camera_id().empty() || config.algorithm_id().empty() ||
+        if (!safe_package_component(config.algorithm_id()) || !safe_package_component(config.algorithm_version()) ||
             config.algorithm_version().empty()) return "CONFIG_INVALID";
         const auto task = TaskScheduler::instance().get_task(config.camera_id());
         const auto existing = AlgoManager::instance().get(config.instance_id());
@@ -1134,7 +1134,7 @@ private:
             remove_instance(config.instance_id());
         }
         const auto current = AlgoManager::instance().get(config.instance_id());
-        if (current) {
+        if (current && current->is_running()) {
             std::vector<av_rule> rules;
             std::vector<std::vector<av_point>> points;
             const std::string rule_error = make_rules(config, rules, points);
@@ -1144,8 +1144,12 @@ private:
                 if (status != AV_OK) return "CONFIG_UPDATE_FAILED";
             }
             if (current->set_rules(rules) != AV_OK) return "CONFIG_INVALID";
+            task->add_instance(current);
             instance_configs_[config.instance_id()] = config;
             return {};
+        }
+        if (current) {
+            remove_instance(config.instance_id());
         }
 
         std::string package_error;
@@ -1550,6 +1554,15 @@ private:
             return {};
         }
         if (!platform_adapter_ || !media_backend_) return "PLATFORM_UNAVAILABLE";
+
+        const auto existing_task = TaskScheduler::instance().get_task(config.camera_id());
+        const auto it = task_configs_.find(config.camera_id());
+        if (existing_task && it != task_configs_.end() &&
+            it->second.rtsp_url() == config.rtsp_url() &&
+            it->second.enabled() == config.enabled()) {
+            task_configs_[config.camera_id()] = config;
+            return {};
+        }
 
         TaskScheduler::instance().stop_task(config.camera_id());
         task_configs_.erase(config.camera_id());

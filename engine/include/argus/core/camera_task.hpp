@@ -109,6 +109,8 @@ private:
     void restart_media_source();
     /// 等待指定重连延迟
     void wait_for_reconnect(std::chrono::seconds delay);
+    /// 每秒输出一次媒体输入、解码和输出帧率汇总
+    void log_debug_metrics();
 
     std::string camera_id_;
     std::string rtsp_url_;
@@ -133,6 +135,25 @@ private:
     std::atomic<uint64_t> decoded_frames_{0};
     /// 最近一次成功解码帧的墙上时钟纳秒值，供跨进程任务状态上报。
     std::atomic<int64_t> last_frame_wall_time_ns_{0};
+    // 以下计数器按诊断窗口累计，由 watchdog 线程每秒交换清零。
+    std::atomic<uint64_t> received_packets_{0};
+    std::atomic<uint64_t> received_packet_bytes_{0};
+    std::atomic<uint64_t> encoded_queue_dropped_{0};
+    std::atomic<uint64_t> decoder_packets_sent_{0};
+    std::atomic<uint64_t> decoder_send_errors_{0};
+    std::atomic<uint64_t> packet_parse_drops_{0};
+    std::atomic<uint64_t> packet_gate_drops_{0};
+    std::atomic<uint64_t> decoded_frame_window_{0};
+    std::atomic<int64_t> last_packet_pts_us_{0};
+    std::atomic<int64_t> last_packet_pts_delta_us_{0};
+    std::atomic<int64_t> last_decoded_pts_ns_{0};
+    std::atomic<int64_t> last_decoded_pts_delta_ns_{0};
+    std::atomic<int64_t> last_decoder_send_status_{AV_OK};
+    std::atomic<uint32_t> last_frame_width_{0};
+    std::atomic<uint32_t> last_frame_height_{0};
+    std::atomic<uint32_t> last_frame_pixel_format_{AV_PIX_UNKNOWN};
+    std::atomic<uint32_t> last_frame_memory_type_{AV_MEM_UNKNOWN};
+    std::chrono::steady_clock::time_point last_debug_log_{};
     std::atomic<int64_t> last_packet_time_ms_{0};
     std::atomic<int64_t> last_decoder_input_time_ms_{0};
     std::atomic<bool> decoder_waiting_for_output_{false};

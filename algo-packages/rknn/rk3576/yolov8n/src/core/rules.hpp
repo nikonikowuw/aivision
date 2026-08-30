@@ -41,27 +41,29 @@ inline float cross(const av_point& a, const av_point& b, const av_point& c) {
 inline bool segments_intersect(const av_point& a, const av_point& b,
                                const av_point& c, const av_point& d) {
     constexpr float kEpsilon = 1e-6f;
-    const auto orientation = [](const av_point& first, const av_point& second, const av_point& point) {
-        const float value = cross(first, second, point);
-        if (std::fabs(value) <= kEpsilon) return 0;
-        return value > 0.0f ? 1 : -1;
+    const auto cross_prod = [](const av_point& o, const av_point& first, const av_point& second) {
+        return (first.x - o.x) * (second.y - o.y) - (first.y - o.y) * (second.x - o.x);
     };
-    const auto on_segment = [](const av_point& first, const av_point& second, const av_point& point) {
-        return point.x >= std::min(first.x, second.x) - kEpsilon &&
-               point.x <= std::max(first.x, second.x) + kEpsilon &&
-               point.y >= std::min(first.y, second.y) - kEpsilon &&
-               point.y <= std::max(first.y, second.y) + kEpsilon;
+    const auto on_segment = [](const av_point& p, const av_point& q, const av_point& r) {
+        return q.x >= std::min(p.x, r.x) - kEpsilon &&
+               q.x <= std::max(p.x, r.x) + kEpsilon &&
+               q.y >= std::min(p.y, r.y) - kEpsilon &&
+               q.y <= std::max(p.y, r.y) + kEpsilon;
     };
 
-    const int ab_c = orientation(a, b, c);
-    const int ab_d = orientation(a, b, d);
-    const int cd_a = orientation(c, d, a);
-    const int cd_b = orientation(c, d, b);
-    if (ab_c != ab_d && cd_a != cd_b) return true;
-    return (ab_c == 0 && on_segment(a, b, c)) ||
-           (ab_d == 0 && on_segment(a, b, d)) ||
-           (cd_a == 0 && on_segment(c, d, a)) ||
-           (cd_b == 0 && on_segment(c, d, b));
+    const float d1 = cross_prod(c, d, a);
+    const float d2 = cross_prod(c, d, b);
+    const float d3 = cross_prod(a, b, c);
+    const float d4 = cross_prod(a, b, d);
+
+    if (((d1 > kEpsilon && d2 < -kEpsilon) || (d1 < -kEpsilon && d2 > kEpsilon)) &&
+        ((d3 > kEpsilon && d4 < -kEpsilon) || (d3 < -kEpsilon && d4 > kEpsilon))) {
+        return true;
+    }
+    return (std::fabs(d1) <= kEpsilon && on_segment(c, a, d)) ||
+           (std::fabs(d2) <= kEpsilon && on_segment(c, b, d)) ||
+           (std::fabs(d3) <= kEpsilon && on_segment(a, c, b)) ||
+           (std::fabs(d4) <= kEpsilon && on_segment(a, d, b));
 }
 
 inline float polygon_signed_area(const std::vector<av_point>& polygon) {
@@ -123,7 +125,8 @@ inline bool validate_and_copy_rules(const av_rule* rules, uint32_t count,
             }
         }
 
-        for (size_t point_index = 0; point_index < state.points.size(); ++point_index) {
+        const size_t segment_count = rule.role == AV_RULE_LINE ? state.points.size() - 1 : state.points.size();
+        for (size_t point_index = 0; point_index < segment_count; ++point_index) {
             const auto& point = state.points[point_index];
             const auto& next = state.points[(point_index + 1) % state.points.size()];
             if (std::fabs(point.x - next.x) <= 1e-6f && std::fabs(point.y - next.y) <= 1e-6f) {

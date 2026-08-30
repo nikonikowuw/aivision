@@ -123,6 +123,8 @@ private:
     void worker_loop();
     /// 按目标 FPS 判定当前帧是否应被抽帧节流丢弃（内部加锁更新采样基准）
     bool should_throttle_sample(int64_t pts_ns);
+    /// 每秒输出一次输入、丢帧、队列和实际 process 耗时汇总
+    void log_debug_metrics();
 
     std::string instance_id_;
     std::string camera_id_;
@@ -152,6 +154,20 @@ private:
 
     std::atomic<uint64_t> processed_frames_{0};
     std::atomic<uint64_t> dropped_frames_{0};
+    // 以下计数器按诊断窗口累计，并由 worker 线程每秒交换清零。
+    std::atomic<uint64_t> received_frames_{0};
+    std::atomic<uint64_t> sampled_frames_{0};
+    std::atomic<uint64_t> sample_dropped_frames_{0};
+    std::atomic<uint64_t> caps_dropped_frames_{0};
+    std::atomic<uint64_t> retain_failed_frames_{0};
+    std::atomic<uint64_t> queued_frames_{0};
+    std::atomic<uint64_t> queue_dropped_frames_{0};
+    std::atomic<uint64_t> process_calls_{0};
+    std::atomic<uint64_t> process_failures_{0};
+    std::atomic<uint64_t> process_duration_us_{0};
+    std::atomic<uint64_t> process_max_duration_us_{0};
+    std::atomic<int64_t> last_process_status_{AV_OK};
+    std::chrono::steady_clock::time_point last_debug_log_{};
     int64_t last_sample_pts_ns_ = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_sample_time_{};
 

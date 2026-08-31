@@ -44,18 +44,18 @@ pre-commit:
       run: pnpm check:type
 
     - name: backend gofmt
-      root: "app/"
+      root: "argus/"
       glob: '*.go'
       run: gofmt -w {staged_files}
       stage_fixed: true
 
     - name: backend vet
-      root: "app/"
+      root: "argus/"
       glob: '*.go'
       run: go vet ./...
 
     - name: backend test
-      root: "app/"
+      root: "argus/"
       glob: '*.go'
       run: go test ./...
 
@@ -63,9 +63,9 @@ pre-push:
   parallel: false
   jobs:
     - name: backend vet
-      run: make -C app vet
+      run: make -C argus vet
     - name: backend test
-      run: make -C app test
+      run: make -C argus test
     - name: frontend check
       run: pnpm --dir ui check
 

@@ -1081,3 +1081,26 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 
 [OK] **Completed**
 
+
+
+## Session 28: 完成 Linux 平台层真实化 (rtnetlink/DHCP/Bond) 实施与归档
+
+**Date**: 2026-08-31
+**Task**: 完成 Linux 平台层真实化 (rtnetlink/DHCP/Bond) 实施与归档
+**Branch**: `dev`
+
+### Summary
+
+实现 Linux rtnetlink 真实接口读取、Profile 校验、MAC 锚点、静态配置可补偿应用与 DNS 原子写入、Bond/LACP rtnetlink 原语与协商探测、DHCP 客户端与启动重放，并通过全量单测与 Dockerfile 同款纯 Go Linux 构建验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `52e4c28` | (see git log) |
+| `17d0415` | (see git log) |
+| `8a4f43b` | (see git log) |
+
+### Status
+
+[OK] **Completed**

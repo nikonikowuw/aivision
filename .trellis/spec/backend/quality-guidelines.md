@@ -58,7 +58,7 @@
 - 响应契约由 JSON 测试钉死（`response_test.go` 断言精确的 `{code,data,message}`
   JSON）——契约变更时保持同步。
 - **proto 生成代码只由 `scripts/generate-proto.sh` 产出**：修改
-  `engine/proto/aivision/v1/*.proto` 后运行 `make proto` 重新生成并提交；
+  `engine/proto/argus/v1/*.proto` 后运行 `make proto` 重新生成并提交；
   `make proto-check` 通过 `diff` 校验提交目录与新鲜生成一致（排除 `*_test.go`）。
   生成文件包含 descriptor 冒烟测试（`descriptor_smoke_test.go`）钉住 RPC 面。
 - **依赖真实 C++ engine 的测试**放 `tests/integration`（`//go:build integration`），
@@ -98,7 +98,7 @@
 - 业务失败使用 `errno` 错误码 + `response.Fail`；无内部细节/密钥泄露。
 - 模型遵循命名/索引/软删除约定（特别是必须使用 `gorm.io/plugin/soft_delete`，且 `deleted_at = 0` 表示活跃）；无新增外键。
 - `wire_gen.go` 是最新的（重新生成，而非手工编辑）。
-- `internal/proto/aivision/v1` 生成代码与 proto 权威源无漂移（`make proto-check`）；
+- `internal/proto/argus/v1` 生成代码与 proto 权威源无漂移（`make proto-check`）；
   `wire_gen.go` 已用 `make wire` 重新生成。
 - engineipc 改动后 `make grpc-e2e` 通过（Go<->真实 C++ engine 双向通信）。
 - engineipc 错误契约：adapter 未接受数据不返回空 `code`；业务失败用稳定响应

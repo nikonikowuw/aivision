@@ -10,7 +10,7 @@
 - 新增或修改 Engine 内部错误分支、RPC 状态返回与异常捕获；
 - 新增或修改 Engine 内部及各模块的日志输出（`LOG_DEBUG` / `LOG_INFO` / `LOG_WARN` / `LOG_ERROR` / `LOG_FATAL`）；
 - 跨进程（如 `package_validator` 与 Engine、Engine 与 Go App）的数据通信与状态交互；
-- C ABI（`sdk/include/aivision/algo.h`）状态码映射与第三方算法插件不可信输出（`last_error` / `av_log_fn`）的接入；
+- C ABI（`sdk/include/argus/algo.h`）状态码映射与第三方算法插件不可信输出（`last_error` / `av_log_fn`）的接入；
 - 生产环境 systemd / journald 日志采集配置及指标（Metrics）打点。
 
 ---
@@ -36,7 +36,7 @@ struct EngineError {
 
 ### 2.2 结构化日志核心记录与 Facade 签名
 ```cpp
-namespace aivision::logging {
+namespace argus::logging {
 
 enum class Level : uint8_t {
     Debug = 0,
@@ -80,7 +80,7 @@ public:
                     const SourceLocation& loc = {}) noexcept;
 };
 
-} // namespace aivision::logging
+} // namespace argus::logging
 
 // 常用宏（自动携带 __FILE__, __LINE__, __func__）
 #define LOG_DEBUG(comp, evt, msg, ...) ...

@@ -20,7 +20,7 @@ sdk_abi_headers (INTERFACE, 纯 C ABI)
         ^                         ^
         |                         |
 engine_core                 algorithm package
-        ^                         +-- vendor/aivision-sdk/
+        ^                         +-- vendor/argus-sdk/
         |
 engine_app
   +-- media_zlm
@@ -51,19 +51,19 @@ ZLMediaKit 可以作为所有部署 Profile 共用的媒体实现，但必须位
 
 ```text
 sdk/
-├── include/aivision/
+├── include/argus/
 │   ├── types.h                 # 纯 C：帧描述符、枚举、基础类型
 │   ├── algo.h                  # 纯 C：插件虚表、生命周期、回调
 │   └── result.h                # 纯 C：结果 kind 和长度上限
 ├── toolkit/
-│   ├── include/aivision/{cv,utils,platform}/
+│   ├── include/argus/{cv,utils,platform}/
 │   └── src/platform/<platform>/   # 可含 .mm/.cpp 与系统 Framework 依赖
 ├── cmake/
 ├── docs/
 └── VERSION
 ```
 
-`sdk/include/aivision/*.h` 是 ABI 权威源，必须能被 C11 和 C++20 单独包含。`sdk/toolkit/` 是算法开发辅助库，可以使用 C++20 和目标平台 Framework，但不得被误称为“纯 C、零实现依赖”。
+`sdk/include/argus/*.h` 是 ABI 权威源，必须能被 C11 和 C++20 单独包含。`sdk/toolkit/` 是算法开发辅助库，可以使用 C++20 和目标平台 Framework，但不得被误称为“纯 C、零实现依赖”。
 
 ### 3.2 `engine/`
 
@@ -73,8 +73,8 @@ engine/
 ├── Makefile
 ├── cmake/
 ├── third_party/ZLMediaKit/
-├── proto/aivision/v1/
-├── include/aivision/{core,media,platform}/
+├── proto/argus/v1/
+├── include/argus/{core,media,platform}/
 ├── src/
 │   ├── core/{frame,task,algo,image,resource,telemetry,ipc}/
 │   ├── media/zlm/
@@ -93,7 +93,7 @@ algo-packages/
 └── <family>/<model>/<algorithm>/
     ├── Makefile
     ├── CMakeLists.txt
-    ├── vendor/aivision-sdk/
+    ├── vendor/argus-sdk/
     ├── src/{preprocess,inference,postprocess,core,runner}/
     ├── conversion/
     └── package/
@@ -101,7 +101,7 @@ algo-packages/
 
 `<family>/<model>` 只用于仓库组织。运行时唯一权威是 `manifest.json.platform_id`；一致性脚本负责校验路径映射，运行时代码不得解析仓库目录名。
 
-算法包 CMake 只能引用当前包目录和 `vendor/aivision-sdk/`。禁止通过 `../`、符号链接或绝对路径读取仓库顶层 `sdk/`、`engine/` 或其他算法包。
+算法包 CMake 只能引用当前包目录和 `vendor/argus-sdk/`。禁止通过 `../`、符号链接或绝对路径读取仓库顶层 `sdk/`、`engine/` 或其他算法包。
 
 ## 4. Validation & Error Matrix
 
@@ -146,5 +146,5 @@ target_include_directories(yolov8n PRIVATE ../../../../sdk/include)
 
 # Correct
 target_include_directories(yolov8n PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/vendor/aivision-sdk/include")
+  "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/include")
 ```

@@ -11,7 +11,7 @@
 Profile 使用版本化 JSON，路径通过唯一环境变量传入：
 
 ```text
-AIVISION_ENGINE_PROFILE=/etc/aivision/engine-profile.json
+ARGUS_ENGINE_PROFILE=/etc/argus/engine-profile.json
 ```
 
 ```json
@@ -20,10 +20,10 @@ AIVISION_ENGINE_PROFILE=/etc/aivision/engine-profile.json
   "platform_id": "macos-arm64-coreml",
   "adapter_version": "1.0.0",
   "paths": {
-    "runtime_dir": "/var/run/aivision",
-    "package_root": "/var/lib/aivision/packages",
-    "image_root": "/var/lib/aivision/images",
-    "log_root": "/var/log/aivision"
+    "runtime_dir": "/var/run/argus",
+    "package_root": "/var/lib/argus/packages",
+    "image_root": "/var/lib/argus/images",
+    "log_root": "/var/log/argus"
   },
   "ipc": {
     "engine_socket": "engine.sock",
@@ -32,7 +32,7 @@ AIVISION_ENGINE_PROFILE=/etc/aivision/engine-profile.json
   "media": {
     "backend": "zlmediakit",
     "commit": "<full commit sha>",
-    "config_file": "/etc/aivision/zlm.ini"
+    "config_file": "/etc/argus/zlm.ini"
   },
   "watchdog": {
     "ingest_timeout_ms": 5000,
@@ -69,7 +69,7 @@ AIVISION_ENGINE_PROFILE=/etc/aivision/engine-profile.json
 
 ```text
 deploy/macos/engine-profile.json
-deploy/macos/com.aivision.engine.plist
+deploy/macos/com.argus.engine.plist
 deploy/macos/zlm.ini
 engine/docs/deployment-macos.md
 ```
@@ -119,11 +119,11 @@ launchd 配置必须：
 
 ```xml
 <!-- Wrong: 相对路径和 secret 写入 plist -->
-<string>./build/aivision-engine</string>
+<string>./build/argus-engine</string>
 <key>CAMERA_PASSWORD</key><string>secret</string>
 
 <!-- Correct: 只传版本化 Profile 的绝对路径 -->
-<string>/opt/aivision/bin/aivision-engine</string>
-<key>AIVISION_ENGINE_PROFILE</key>
-<string>/etc/aivision/engine-profile.json</string>
+<string>/opt/argus/bin/argus-engine</string>
+<key>ARGUS_ENGINE_PROFILE</key>
+<string>/etc/argus/engine-profile.json</string>
 ```

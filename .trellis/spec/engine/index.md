@@ -20,7 +20,7 @@
 
 1. **依赖倒 V**：`engine -> sdk <- algo-packages`；Engine 不编译或静态链接具体算法源码。
 2. **核心不依赖具体媒体/硬件**：`engine_core` 只依赖 `media_api` 与 `platform_api`；ZLMediaKit 位于 `media_zlm`，平台 Framework 位于 `platform_*`。
-3. **SDK 分层**：`sdk/include/aivision/*.h` 是纯 C ABI；平台 C++/Objective-C++ 辅助实现位于 `sdk/toolkit/`，不能污染 ABI 头。
+3. **SDK 分层**：`sdk/include/argus/*.h` 是纯 C ABI；平台 C++/Objective-C++ 辅助实现位于 `sdk/toolkit/`，不能污染 ABI 头。
 4. **推理归插件**：模型加载、推理运行时和实例推理上下文归算法包；平台只提供能力档案、帧、图像原语、资源和指标。
 5. **帧双句柄**：`opaque` 是只读平台句柄；`frame_token` 只供 `av_frame_ops retain/release`，二者不得混用。
 6. **两种结果**：正常实例按帧最多回调一个检测批次；Engine 将批次 fan-out 为零/多条目标级告警。安装 self-test 实例必须返回恰好一条 self-test 结果，零检测仍可成功。

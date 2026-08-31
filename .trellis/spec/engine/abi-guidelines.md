@@ -4,7 +4,7 @@
 
 ## 1. Scope / Trigger
 
-修改 `sdk/include/aivision/*.h`、帧池、跨 ABI 回调、能力枚举或结构体版本时必须读取本规范。ABI 头必须兼容 C11 与 C++20，跨边界不得传 STL、Objective-C 对象、C++ 异常或所有权不明的指针。
+修改 `sdk/include/argus/*.h`、帧池、跨 ABI 回调、能力枚举或结构体版本时必须读取本规范。ABI 头必须兼容 C11 与 C++20，跨边界不得传 STL、Objective-C 对象、C++ 异常或所有权不明的指针。
 
 ## 2. 基础签名与版本规则
 

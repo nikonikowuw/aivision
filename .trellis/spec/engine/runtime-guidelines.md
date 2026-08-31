@@ -64,7 +64,7 @@ Go 也可主动发起对账：通过 `ReconcileImages` 推送权威保留 ID 集
 | `engine.sock` | C++ Engine | Go | `EngineService` 控制命令/查询 |
 | `app.sock` | Go | C++ Engine | `ControlPlaneService` 期望状态 + `ReportService` 上报 |
 
-生产默认位于 `/var/run/aivision/`；macOS 开发 Profile 可位于仓库外的可写 runtime dir。两个服务不能绑定同一个 UDS 文件。
+生产默认位于 `/var/run/argus/`；macOS 开发 Profile 可位于仓库外的可写 runtime dir。两个服务不能绑定同一个 UDS 文件。
 
 ### 3.2 Service 划分
 

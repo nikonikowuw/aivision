@@ -28,7 +28,7 @@ exports[`defaultPreferences immutability test > should not modify the config obj
     "layout": "sidebar-nav",
     "locale": "zh-CN",
     "loginExpiredMode": "page",
-    "name": "Vben Admin",
+    "name": "Argus",
     "preferencesButtonPosition": "auto",
     "timezone": "Asia/Shanghai",
     "watermark": false,
@@ -68,7 +68,8 @@ exports[`defaultPreferences immutability test > should not modify the config obj
     "fit": "contain",
     "logoMode": "icon",
     "showText": true,
-    "source": "https://unpkg.com/@vbenjs/static-source@0.1.7/source/logo-v1.webp",
+    "source": "/logo.svg",
+    "sourceDark": "/logo.svg",
   },
   "navigation": {
     "accordion": true,

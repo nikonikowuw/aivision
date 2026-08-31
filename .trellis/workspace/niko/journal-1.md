@@ -1059,3 +1059,25 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Status
 
 [OK] **Completed**
+
+## Session 38: C++ Engine 框架与 macOS 运行平台验收与归档
+
+**Date**: 2026-08-31
+**Task**: C++ Engine 框架与 macOS 运行平台（T1）任务归档 (`08-22-cpp-engine-skeleton-macos`)
+**Branch**: `dev`
+
+### Summary
+
+完成 C++ Engine 框架及 macOS 运行平台（T1）全量测试验证与任务归档：
+1. **测试用例修复**：更新 `engine/tests/unit/test_uds_reconcile.cpp` 中的 `UdsReconcileTest.ReconcilesExactDetectionRuleFromUI`，将已废弃的 yolov8n 路径引用替换为 `mock-detector` fixture 包，补齐 ResourceLedger 初始化与 results 断言。
+2. **全量测试通过**：执行 `make -C engine test`，全部 61 个单元测试及真实流集成测试（H.264/H.265 解码、重连、分辨率动态切换等）100% PASS。
+3. **归档任务**：将 `08-22-cpp-engine-skeleton-macos` 归档至 `archive/2026-08/`。
+
+### Testing
+
+- [OK] `make -C engine test` (61/61 tests passed)
+
+### Status
+
+[OK] **Completed**
+

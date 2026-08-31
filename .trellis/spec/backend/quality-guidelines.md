@@ -70,7 +70,7 @@
 
 ---
 
-## gRPC over UDS（engineipc）契约
+## gRPC over UDS（engineipc）与告警契约
 
 `internal/pkg/engineipc` 是 Go 与 C++ engine 的 gRPC-over-UDS 通信层，遵循以下
 稳定契约（MVP 错误矩阵钉死在 `server_test.go` / `client_test.go`）：
@@ -78,8 +78,12 @@
 - **成功 = 响应 `code` 为空串**；只有业务 adapter 真实接受了数据才返回空 `code`。
   未注入 adapter 时 fail closed，返回稳定 `IPC_UNAVAILABLE`，禁止对未持久化的
   告警/状态/遥测/孤儿图片上报 ACK。
+- **告警记录（ReportAlarm）单目标与幂等契约**：
+  - Engine 将单帧多目标检测批次在 UDS 层 fan-out 为单目标 `AlarmEvent`（每条事件包含且仅包含 1 个目标 `Object`），Go 后端在 `AcceptAlarm` 严格校验 `len(req.Objects) == 1`，多目标或空目标直接拒绝（返回 `INVALID_ARGUMENT`）。
+  - 事件唯一标识使用 Engine 生成的目标级全局 event ID（格式 `<instance_run_id>/<batch_event_id>-<target_index>`，如 `run-01/evt-1001-1`），Go 端以该 `event_id` 作为幂等去重键。
+  - 同一批次内的多个单目标告警事件共享同一张抓拍图片（相同的 `image_id` 与相对路径 `rel_path`）。
 - **业务失败 ≠ 传输失败**：业务失败返回 gRPC OK + 非空响应 `code`（稳定码，如
-  `IPC_UNAVAILABLE` / `INTERNAL_ERROR`）；传输失败（连接、超时）才用 gRPC status。
+  `IPC_UNAVAILABLE` / `INTERNAL_ERROR` / `INVALID_ARGUMENT`）；传输失败（连接、超时）才用 gRPC status。
   普通 Go error 统一归一化为 `INTERNAL_ERROR`，只暴露受控诊断文本，不泄露内部 cause。
 - **调用方只判断稳定 `Code`**（`*RemoteError` / `AdapterError`），绝不解析
   `error_message` 文本；context cancel/deadline 与显式 gRPC status 保持 transport

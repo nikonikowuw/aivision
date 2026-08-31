@@ -62,13 +62,13 @@ make -C engine lint
 
 - [ ] 创建 `algo-packages/macos/arm64/license_plate_recognition/`，沿用现有 macOS 包目录和 CMake helper。
 - [ ] 确定可再分发的车牌检测/OCR模型来源，记录许可证、SHA-256、输入输出 shape 和转换证据。
-- [ ] 编写 Core ML 转换脚本和固定模型契约验证；模型文件不允许依赖仓库外绝对路径。
-- [ ] 实现 NV12/CVPixelBuffer 到原图 RGB、640x640 letterbox 和坐标反变换。
-- [ ] 实现车牌/车辆检测后处理、NMS、关联和原图裁剪/透视矫正。
-- [ ] 实现 OCR、颜色/类型分类、文本规范化、track 投票和去重窗口。
-- [ ] 实现 `AV_RESULT_RECOGNITION` JSON 和全景/裁剪 ROI 请求。
-- [ ] 实现 `.env` 默认配置、`config.schema.json` 和原子热更新。
-- [ ] 实现真实 self-test、runner、benchmark、可视化结果和 package target。
+- [x] 编写 Core ML 转换脚本和固定模型契约验证；模型文件不允许依赖仓库外绝对路径。
+- [x] 实现 NV12/CVPixelBuffer 到原图 RGB、640x384 letterbox 和坐标反变换，并对 CRNN OCR 采用 BGR 色彩空间对齐。
+- [x] 实现车牌/车辆检测后处理、NMS、关联和原图裁剪/透视矫正。
+- [x] 实现 OCR、颜色/类型分类、文本规范化、track 投票和去重窗口。
+- [x] 实现 `AV_RESULT_RECOGNITION` JSON 和全景/裁剪 ROI 请求。
+- [x] 实现 `.env` 默认配置、`config.schema.json` 和原子热更新。
+- [x] 实现真实 self-test、runner、benchmark、可视化结果和 package target。
 - [ ] 添加白天、夜间、倾斜、模糊、蓝/黄/绿牌、无牌和多目标 fixtures；记录来源和许可。
 
 验证：

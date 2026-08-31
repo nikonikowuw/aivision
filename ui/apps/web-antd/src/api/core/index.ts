@@ -9,6 +9,7 @@ export * from './menu';
 export * from './network';
 export * from './ntp';
 export * from './person';
+export * from './plate';
 export * from './role';
 export * from './task';
 export * from './user';

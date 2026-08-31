@@ -246,6 +246,7 @@ void set_package_validation_failure(const ValidationResult& result, const char* 
 struct LoadedPackage {
     std::string package_root;
     std::string platform_id;
+    std::string algorithm_type;
     argus::logging::AlgoLogContext log_context;
     void* dynamic_library = nullptr;
     const av_algo_abi* abi = nullptr;
@@ -881,9 +882,13 @@ public:
         return grpc::Status::OK;
     }
 private:
-    // 一个异步 pending 对应一个检测批次：多个目标事件共享同一帧引用和一张抓拍图片。
-    struct PendingAlarm {
+    // 一个异步 pending 对应一个检测或识别批次：多个目标事件共享同一帧引用和抓拍图片。
+    struct PendingCapture {
+        enum class Kind { Alarm, PlateObservation };
+        Kind kind = Kind::Alarm;
         std::vector<argus::v1::AlarmEvent> alarms;
+        std::vector<argus::v1::PlateObservation> plates;
+        std::vector<av_rect> plate_crop_rois;
         std::string capture_id;
         av_frame_desc frame{};
         av_rect image_roi{};
@@ -891,22 +896,26 @@ private:
         bool has_image = false;
         bool frame_retained = false;
 
-        PendingAlarm() = default;
-        PendingAlarm(const PendingAlarm&) = delete;
-        PendingAlarm& operator=(const PendingAlarm&) = delete;
+        PendingCapture() = default;
+        PendingCapture(const PendingCapture&) = delete;
+        PendingCapture& operator=(const PendingCapture&) = delete;
 
-        PendingAlarm(PendingAlarm&& other) noexcept
-            : alarms(std::move(other.alarms)), capture_id(std::move(other.capture_id)), frame(other.frame),
-              image_roi(other.image_roi), frame_ops(other.frame_ops), has_image(other.has_image),
-              frame_retained(other.frame_retained) {
+        PendingCapture(PendingCapture&& other) noexcept
+            : kind(other.kind), alarms(std::move(other.alarms)), plates(std::move(other.plates)),
+              plate_crop_rois(std::move(other.plate_crop_rois)), capture_id(std::move(other.capture_id)),
+              frame(other.frame), image_roi(other.image_roi), frame_ops(other.frame_ops),
+              has_image(other.has_image), frame_retained(other.frame_retained) {
             other.frame_retained = false;
             other.frame.frame_token = nullptr;
         }
 
-        PendingAlarm& operator=(PendingAlarm&& other) noexcept {
+        PendingCapture& operator=(PendingCapture&& other) noexcept {
             if (this == &other) return *this;
             release_frame();
+            kind = other.kind;
             alarms = std::move(other.alarms);
+            plates = std::move(other.plates);
+            plate_crop_rois = std::move(other.plate_crop_rois);
             capture_id = std::move(other.capture_id);
             frame = other.frame;
             image_roi = other.image_roi;
@@ -918,7 +927,7 @@ private:
             return *this;
         }
 
-        ~PendingAlarm() noexcept { release_frame(); }
+        ~PendingCapture() noexcept { release_frame(); }
 
         void release_frame() noexcept {
             if (!frame_retained || !frame_ops || !frame.frame_token) return;
@@ -936,22 +945,44 @@ private:
 
     static constexpr size_t kMaxPendingAlarmQueueSize = 256;
 
-    void enqueue_pending_alarm(PendingAlarm pending) {
-        PendingAlarm dropped;
+    void enqueue_pending_capture(PendingCapture pending) {
+        PendingCapture dropped;
         bool accepted = false;
         {
             std::lock_guard<std::mutex> queue_lock(capture_mutex_);
             if (capture_accepting_.load(std::memory_order_acquire) && capture_worker_running_) {
-                // 去重与入队在同一临界区完成，避免两个结果回调同时接受同一个目标 event_id。
-                std::vector<argus::v1::AlarmEvent> new_alarms;
-                new_alarms.reserve(pending.alarms.size());
-                for (auto& alarm : pending.alarms) {
-                    if (reported_events_.insert(alarm.event_id()).second) {
-                        new_alarms.push_back(std::move(alarm));
+                if (pending.kind == PendingCapture::Kind::Alarm) {
+                    std::vector<argus::v1::AlarmEvent> new_alarms;
+                    new_alarms.reserve(pending.alarms.size());
+                    for (auto& alarm : pending.alarms) {
+                        if (reported_events_.insert(alarm.event_id()).second) {
+                            new_alarms.push_back(std::move(alarm));
+                        }
+                    }
+                    if (!new_alarms.empty()) {
+                        pending.alarms = std::move(new_alarms);
+                        accepted = true;
+                    }
+                } else if (pending.kind == PendingCapture::Kind::PlateObservation) {
+                    std::vector<argus::v1::PlateObservation> new_plates;
+                    std::vector<av_rect> new_rois;
+                    new_plates.reserve(pending.plates.size());
+                    new_rois.reserve(pending.plate_crop_rois.size());
+                    for (size_t i = 0; i < pending.plates.size(); ++i) {
+                        if (reported_events_.insert(pending.plates[i].event_id()).second) {
+                            new_plates.push_back(std::move(pending.plates[i]));
+                            if (i < pending.plate_crop_rois.size()) {
+                                new_rois.push_back(pending.plate_crop_rois[i]);
+                            }
+                        }
+                    }
+                    if (!new_plates.empty()) {
+                        pending.plates = std::move(new_plates);
+                        pending.plate_crop_rois = std::move(new_rois);
+                        accepted = true;
                     }
                 }
-                if (!new_alarms.empty()) {
-                    pending.alarms = std::move(new_alarms);
+                if (accepted) {
                     if (capture_queue_.size() >= kMaxPendingAlarmQueueSize) {
                         dropped = std::move(capture_queue_.front());
                         capture_queue_.pop_front();
@@ -959,7 +990,6 @@ private:
                     }
                     capture_queue_.push_back(std::move(pending));
                     capture_enqueued_.fetch_add(1, std::memory_order_relaxed);
-                    accepted = true;
                 }
             }
         }
@@ -969,42 +999,101 @@ private:
         if (accepted) capture_cv_.notify_one();
     }
 
-    void process_pending_alarm(PendingAlarm& pending) noexcept {
+    void process_pending_capture(PendingCapture& pending) noexcept {
         try {
-            std::string image_id;
-            std::string image_rel_path;
-            if (pending.has_image) {
-                ImageRecord record;
-                const av_status image_status = ImageManager::instance().save_detection_image(
-                    &pending.frame, &pending.image_roi, pending.capture_id, &record);
-                // 图片编码落盘后立即归还帧缓冲，避免持有帧引用跨越同步 IPC 阻塞等待。
-                pending.release_frame();
-                if (image_status == AV_OK) {
-                    image_id = record.image_id;
-                    image_rel_path = record.rel_path;
-                    for (auto& alarm : pending.alarms) {
-                        alarm.set_image_id(image_id);
-                        alarm.set_image_rel_path(image_rel_path);
+            if (pending.kind == PendingCapture::Kind::Alarm) {
+                std::string image_id;
+                std::string image_rel_path;
+                if (pending.has_image) {
+                    ImageRecord record;
+                    const av_status image_status = ImageManager::instance().save_detection_image(
+                        &pending.frame, &pending.image_roi, pending.capture_id, &record);
+                    // 图片编码落盘后立即归还帧缓冲，避免持有帧引用跨越同步 IPC 阻塞等待。
+                    pending.release_frame();
+                    if (image_status == AV_OK) {
+                        image_id = record.image_id;
+                        image_rel_path = record.rel_path;
+                        for (auto& alarm : pending.alarms) {
+                            alarm.set_image_id(image_id);
+                            alarm.set_image_rel_path(image_rel_path);
+                        }
+                    } else {
+                        capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
                     }
                 } else {
-                    capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                    pending.release_frame();
                 }
-            } else {
-                pending.release_frame();
-            }
 
-            bool reported_any = false;
-            for (const auto& alarm : pending.alarms) {
-                if (!app_client_ || !app_client_->report_alarm(alarm)) {
-                    capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
-                } else {
-                    reported_any = true;
+                bool reported_any = false;
+                for (const auto& alarm : pending.alarms) {
+                    if (!app_client_ || !app_client_->report_alarm(alarm)) {
+                        capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        reported_any = true;
+                    }
                 }
-            }
-            // 图片是批次级资源；至少一个目标事件获得 ACK 后即可把共享图片标为 reported。
-            if (reported_any && !image_id.empty() &&
-                ImageManager::instance().mark_reported(image_id) != AV_OK) {
-                capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                // 图片是批次级资源；至少一个目标事件获得 ACK 后即可把共享图片标为 reported。
+                if (reported_any && !image_id.empty() &&
+                    ImageManager::instance().mark_reported(image_id) != AV_OK) {
+                    capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                }
+            } else if (pending.kind == PendingCapture::Kind::PlateObservation) {
+                std::string pano_image_id;
+                std::string pano_image_rel_path;
+                std::vector<std::pair<std::string, std::string>> plate_images;
+                if (pending.has_image) {
+                    ImageRecord pano_record;
+                    const av_status pano_status = ImageManager::instance().save_detection_image(
+                        &pending.frame, nullptr, pending.capture_id + "-pano", &pano_record);
+                    if (pano_status == AV_OK) {
+                        pano_image_id = pano_record.image_id;
+                        pano_image_rel_path = pano_record.rel_path;
+                    } else {
+                        capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                    }
+
+                    plate_images.resize(pending.plates.size());
+                    for (size_t i = 0; i < pending.plates.size(); ++i) {
+                        if (i < pending.plate_crop_rois.size()) {
+                            ImageRecord plate_record;
+                            const av_status plate_status = ImageManager::instance().save_detection_image(
+                                &pending.frame, &pending.plate_crop_rois[i],
+                                pending.capture_id + "-plate-" + std::to_string(i + 1), &plate_record);
+                            if (plate_status == AV_OK) {
+                                plate_images[i] = {plate_record.image_id, plate_record.rel_path};
+                            } else {
+                                capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                            }
+                        }
+                    }
+                    pending.release_frame();
+
+                    for (size_t i = 0; i < pending.plates.size(); ++i) {
+                        if (!pano_image_id.empty()) {
+                            pending.plates[i].set_image_id(pano_image_id);
+                            pending.plates[i].set_image_rel_path(pano_image_rel_path);
+                        }
+                        if (i < plate_images.size() && !plate_images[i].first.empty()) {
+                            pending.plates[i].set_plate_image_id(plate_images[i].first);
+                            pending.plates[i].set_plate_image_rel_path(plate_images[i].second);
+                        }
+                    }
+                } else {
+                    pending.release_frame();
+                }
+
+                for (const auto& plate : pending.plates) {
+                    if (!app_client_ || !app_client_->report_plate_observation(plate)) {
+                        capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        if (!plate.image_id().empty()) {
+                            ImageManager::instance().mark_reported(plate.image_id());
+                        }
+                        if (!plate.plate_image_id().empty()) {
+                            ImageManager::instance().mark_reported(plate.plate_image_id());
+                        }
+                    }
+                }
             }
         } catch (...) {
             capture_processing_failures_.fetch_add(1, std::memory_order_relaxed);
@@ -1051,7 +1140,7 @@ private:
 
     void capture_worker_loop() {
         for (;;) {
-            PendingAlarm pending;
+            PendingCapture pending;
             {
                 std::unique_lock<std::mutex> lock(capture_mutex_);
                 const bool notified = capture_cv_.wait_for(lock, std::chrono::seconds(1), [this] {
@@ -1067,14 +1156,14 @@ private:
                 pending = std::move(capture_queue_.front());
                 capture_queue_.pop_front();
             }
-            // 所有 JPEG、文件系统和 ReportAlarm 操作均在该线程执行，不阻塞算法 worker。
-            process_pending_alarm(pending);
+            // 所有 JPEG、文件系统和 ReportAlarm/ReportPlateObservation 操作均在该线程执行，不阻塞算法 worker。
+            process_pending_capture(pending);
             log_capture_metrics();
         }
     }
 
     void stop_capture_worker() {
-        std::deque<PendingAlarm> discarded;
+        std::deque<PendingCapture> discarded;
         {
             std::lock_guard<std::mutex> lock(capture_mutex_);
             capture_worker_running_ = false;
@@ -1222,6 +1311,7 @@ private:
             std::sort(package->fps_tiers.begin(), package->fps_tiers.end());
         }
         package->platform_id = platform_id;
+        package->algorithm_type = manifest.value("algorithm_type", "object_detection");
         package->log_context.algorithm_id = algorithm_id;
         package->log_context.package_version = version;
         package->log_context.platform_id = platform_id;
@@ -1410,7 +1500,8 @@ private:
         }
         auto instance = std::make_shared<AlgorithmInstance>(
             config.instance_id(), config.camera_id(), config.algorithm_id(), config.algorithm_version(),
-            target_fps, config.params_json().empty() ? "{}" : config.params_json(), package->abi, package->library);
+            target_fps, config.params_json().empty() ? "{}" : config.params_json(), package->abi, package->library,
+            package->algorithm_type);
         const auto adapter = platform::PlatformRegistry::instance().get_active_adapter();
         if (!adapter || instance->init(FramePool::instance().get_frame_ops(), adapter->get_c_image_ops()) != AV_OK) {
             ResourceLedger::instance().release(config.instance_id());
@@ -1444,9 +1535,21 @@ private:
 
     void handle_result(const std::shared_ptr<AlgorithmInstance>& instance,
                        const av_algo_result& result, const av_frame_desc& frame) {
-        if (result.kind != AV_RESULT_ALARM || result.size < sizeof(av_algo_result) ||
+        if (result.size < sizeof(av_algo_result) ||
             !result.json || result.json_len == 0 || result.json_len > AV_MAX_RESULT_JSON_BYTES ||
             result.image_count > 4096 || (result.image_count > 0 && !result.images)) return;
+
+        if (result.kind == AV_RESULT_ALARM) {
+            handle_alarm_result(instance, result, frame);
+        } else if (result.kind == AV_RESULT_RECOGNITION) {
+            if (instance->get_algorithm_type() == "license_plate_recognition") {
+                handle_license_plate_result(instance, result, frame);
+            }
+        }
+    }
+
+    void handle_alarm_result(const std::shared_ptr<AlgorithmInstance>& instance,
+                             const av_algo_result& result, const av_frame_desc& frame) {
         try {
             const auto value = nlohmann::json::parse(result.json, result.json + result.json_len);
             if (!value.is_object() || !value.contains("event_id") || !value["event_id"].is_string() ||
@@ -1494,7 +1597,8 @@ private:
                 detected_objects.push_back(std::move(detected));
             }
 
-            PendingAlarm pending;
+            PendingCapture pending;
+            pending.kind = PendingCapture::Kind::Alarm;
             pending.capture_id = instance->get_run_id() + "/" + batch_event_id;
             pending.alarms.reserve(detected_objects.size());
             std::unordered_set<std::string> batch_event_ids;
@@ -1541,7 +1645,138 @@ private:
                 }
             }
             // 仅在任务成功进入有界队列后记录各目标 event_id；满队列/停机丢弃不会阻塞算法线程。
-            enqueue_pending_alarm(std::move(pending));
+            enqueue_pending_capture(std::move(pending));
+        } catch (...) {
+            // Malformed plugin output is isolated to this result callback.
+        }
+    }
+
+    void handle_license_plate_result(const std::shared_ptr<AlgorithmInstance>& instance,
+                                     const av_algo_result& result, const av_frame_desc& frame) {
+        try {
+            const auto value = nlohmann::json::parse(result.json, result.json + result.json_len);
+            if (!value.is_object() || !value.contains("schema_version") ||
+                value["schema_version"] != 1 || !value.contains("plates") ||
+                !value["plates"].is_array() || value["plates"].empty() || value["plates"].size() > 4096) {
+                return;
+            }
+
+            std::string batch_event_id = value.value("event_id", std::to_string(frame.frame_id));
+            const auto is_safe_component = [](const std::string& component) {
+                if (component.empty() || component.size() > 128) return false;
+                for (const unsigned char ch : component) {
+                    if (!(std::isalnum(ch) || ch == '.' || ch == '_' || ch == '-')) return false;
+                }
+                return true;
+            };
+            if (!is_safe_component(batch_event_id)) return;
+
+            std::vector<argus::v1::PlateObservation> observations;
+            std::vector<av_rect> plate_crop_rois;
+            observations.reserve(value["plates"].size());
+            plate_crop_rois.reserve(value["plates"].size());
+
+            std::unordered_set<std::string> batch_event_ids;
+            for (const auto& item : value["plates"]) {
+                if (!item.is_object() || !item.contains("track_id") || !item["track_id"].is_number_integer() ||
+                    !item.contains("plate_text") || !item["plate_text"].is_string() ||
+                    !item.contains("normalized_text") || !item["normalized_text"].is_string() ||
+                    !item.contains("confidence") || !item["confidence"].is_number() ||
+                    !item.contains("ocr_confidence") || !item["ocr_confidence"].is_number() ||
+                    !item.contains("bbox") || !item["bbox"].is_array() || item["bbox"].size() != 4) {
+                    return;
+                }
+                const std::string plate_text = item["plate_text"].get<std::string>();
+                const std::string norm_text = item["normalized_text"].get<std::string>();
+                if (plate_text.empty() || plate_text.size() > 64 || norm_text.empty() || norm_text.size() > 64) {
+                    return;
+                }
+                const double conf = item["confidence"].get<double>();
+                const double ocr_conf = item["ocr_confidence"].get<double>();
+                if (!std::isfinite(conf) || conf < 0.0 || conf > 1.0 ||
+                    !std::isfinite(ocr_conf) || ocr_conf < 0.0 || ocr_conf > 1.0) {
+                    return;
+                }
+                std::array<double, 4> bbox{};
+                for (size_t i = 0; i < 4; ++i) {
+                    if (!item["bbox"][i].is_number()) return;
+                    bbox[i] = item["bbox"][i].get<double>();
+                    if (!std::isfinite(bbox[i]) || bbox[i] < 0.0 || bbox[i] > 1.0) return;
+                }
+                if (bbox[0] + bbox[2] > 1.0 || bbox[1] + bbox[3] > 1.0 || bbox[2] <= 0.0 || bbox[3] <= 0.0) return;
+
+                argus::v1::PlateObservation obs;
+                obs.set_instance_id(instance->get_instance_id());
+                obs.set_camera_id(instance->get_camera_id());
+                obs.set_algorithm_id(instance->get_algorithm_id());
+                obs.set_algorithm_version(instance->get_version());
+                obs.set_wall_time_ns(frame.wall_time_ns);
+                obs.set_time_synced(frame.time_synced != 0);
+                const int64_t track_id = item["track_id"].get<int64_t>();
+                obs.set_track_id(track_id);
+                obs.set_plate_text(plate_text);
+                obs.set_normalized_text(norm_text);
+                obs.set_plate_color(item.value("plate_color", ""));
+                obs.set_plate_type(item.value("plate_type", ""));
+                obs.set_confidence(static_cast<float>(conf));
+                obs.set_ocr_confidence(static_cast<float>(ocr_conf));
+
+                obs.mutable_plate_bbox()->set_x_min(static_cast<float>(bbox[0]));
+                obs.mutable_plate_bbox()->set_y_min(static_cast<float>(bbox[1]));
+                obs.mutable_plate_bbox()->set_x_max(static_cast<float>(bbox[0] + bbox[2]));
+                obs.mutable_plate_bbox()->set_y_max(static_cast<float>(bbox[1] + bbox[3]));
+
+                if (item.contains("vehicle_bbox") && item["vehicle_bbox"].is_array() && item["vehicle_bbox"].size() == 4) {
+                    std::array<double, 4> v_bbox{};
+                    bool valid_vbbox = true;
+                    for (size_t i = 0; i < 4; ++i) {
+                        if (!item["vehicle_bbox"][i].is_number()) { valid_vbbox = false; break; }
+                        v_bbox[i] = item["vehicle_bbox"][i].get<double>();
+                        if (!std::isfinite(v_bbox[i]) || v_bbox[i] < 0.0 || v_bbox[i] > 1.0) { valid_vbbox = false; break; }
+                    }
+                    if (valid_vbbox && v_bbox[0] + v_bbox[2] <= 1.0 && v_bbox[1] + v_bbox[3] <= 1.0 &&
+                        v_bbox[2] > 0.0 && v_bbox[3] > 0.0) {
+                        obs.mutable_vehicle_bbox()->set_x_min(static_cast<float>(v_bbox[0]));
+                        obs.mutable_vehicle_bbox()->set_y_min(static_cast<float>(v_bbox[1]));
+                        obs.mutable_vehicle_bbox()->set_x_max(static_cast<float>(v_bbox[0] + v_bbox[2]));
+                        obs.mutable_vehicle_bbox()->set_y_max(static_cast<float>(v_bbox[1] + v_bbox[3]));
+                    }
+                }
+
+                const std::string event_id = instance->get_run_id() + "/" + batch_event_id + "-" + std::to_string(track_id);
+                if (!batch_event_ids.insert(event_id).second) return;
+                obs.set_event_id(event_id);
+                observations.push_back(std::move(obs));
+
+                av_rect crop_roi{};
+                crop_roi.size = sizeof(av_rect);
+                crop_roi.api_version = AV_ALGO_API_VERSION;
+                crop_roi.x = static_cast<float>(bbox[0]);
+                crop_roi.y = static_cast<float>(bbox[1]);
+                crop_roi.width = static_cast<float>(bbox[2]);
+                crop_roi.height = static_cast<float>(bbox[3]);
+                plate_crop_rois.push_back(crop_roi);
+            }
+
+            PendingCapture pending;
+            pending.kind = PendingCapture::Kind::PlateObservation;
+            pending.capture_id = instance->get_run_id() + "/" + batch_event_id;
+            pending.plates = std::move(observations);
+            pending.plate_crop_rois = std::move(plate_crop_rois);
+            pending.has_image = true;
+            pending.frame = frame;
+            pending.frame_ops = FramePool::instance().get_frame_ops();
+            if (!pending.frame_ops || !pending.frame_ops->retain || !pending.frame_ops->release ||
+                pending.frame_ops->retain(pending.frame_ops->ctx, pending.frame.frame_token) != AV_OK) {
+                capture_retain_failures_.fetch_add(1, std::memory_order_relaxed);
+                pending.has_image = false;
+                pending.frame_ops = nullptr;
+                pending.frame.frame_token = nullptr;
+            } else {
+                pending.frame_retained = true;
+            }
+
+            enqueue_pending_capture(std::move(pending));
         } catch (...) {
             // Malformed plugin output is isolated to this result callback.
         }
@@ -1827,7 +2062,7 @@ private:
     std::shared_ptr<platform::IPlatformAdapter> platform_adapter_;
     std::shared_ptr<media::IMediaBackend> media_backend_;
     std::shared_ptr<UdsClient> app_client_;
-    std::deque<PendingAlarm> capture_queue_;
+    std::deque<PendingCapture> capture_queue_;
     std::mutex capture_mutex_;
     std::condition_variable capture_cv_;
     std::thread capture_worker_thread_;

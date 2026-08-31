@@ -51,5 +51,71 @@
       "legendTarget": "Target BBox",
       "noImage": "No Image Available"
     }
+  },
+  "plate": {
+    "title": "License Plate Records",
+    "filter": {
+      "camera": "Camera",
+      "cameraPlaceholder": "Select camera",
+      "plateText": "Plate Number",
+      "plateTextPlaceholder": "Input plate number",
+      "plateColor": "Plate Color",
+      "plateColorPlaceholder": "Select color",
+      "plateType": "Plate Type",
+      "plateTypePlaceholder": "Select type",
+      "timeRange": "Time Range",
+      "minConfidence": "Min Confidence",
+      "minOcrConfidence": "Min OCR Confidence",
+      "search": "Search",
+      "reset": "Reset"
+    },
+    "columns": {
+      "id": "ID",
+      "plateCrop": "Plate Crop",
+      "panorama": "Panorama",
+      "plateText": "Plate Number",
+      "plateColor": "Color",
+      "plateType": "Type",
+      "confidence": "Confidence",
+      "ocrConfidence": "OCR Confidence",
+      "cameraName": "Camera",
+      "observedAt": "Observed At",
+      "trackId": "Track ID",
+      "action": "Action"
+    },
+    "detail": {
+      "title": "Vehicle Passage Details",
+      "eventInfo": "Passage Info",
+      "eventId": "Event ID",
+      "camera": "Camera",
+      "observedAt": "Observed At",
+      "plateText": "Plate Number",
+      "normalizedText": "Normalized Text",
+      "plateColor": "Plate Color",
+      "plateType": "Plate Type",
+      "confidence": "Confidence",
+      "ocrConfidence": "OCR Confidence",
+      "trackId": "Track ID",
+      "plateCrop": "Plate Closeup",
+      "panorama": "Panorama Image",
+      "noImage": "No Image Available"
+    },
+    "colors": {
+      "blue": "Blue",
+      "yellow": "Yellow",
+      "green": "Green (NEV)",
+      "white": "White",
+      "black": "Black"
+    },
+    "types": {
+      "standard": "Standard Single",
+      "double_yellow": "Double Yellow",
+      "new_energy": "New Energy",
+      "police": "Police",
+      "coach": "Coach",
+      "embassy": "Embassy",
+      "hk_macau": "HK/Macau",
+      "other": "Other"
+    }
   }
 }

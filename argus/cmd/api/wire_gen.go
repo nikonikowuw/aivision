@@ -85,31 +85,35 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	algorithmService := service.NewAlgorithmService(algorithmRepository, engineClient, zapLogger)
 	algorithmHandler := api.NewAlgorithmHandler(algorithmService)
 	alarmRecordRepository := repository.NewAlarmRecordRepository(gormDB)
-	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, zapLogger)
+	plateObservationRepository := repository.NewPlateObservationRepository(gormDB)
+	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, zapLogger)
 	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
 	taskHandler := api.NewTaskHandler(taskService)
 	alarmRecordService := service.NewAlarmRecordService(alarmRecordRepository, cameraRepository, algorithmRepository, taskRepository, cfg)
 	alarmRecordHandler := api.NewAlarmRecordHandler(alarmRecordService)
+	plateObservationService := service.NewPlateObservationService(plateObservationRepository, cameraRepository, cfg)
+	plateObservationHandler := api.NewPlateObservationHandler(plateObservationService)
 	deps := router.Deps{
-		ErrorHandler:           handlerFunc,
-		AuthMiddleware:         authMiddleware,
-		PermMiddleware:         permMiddleware,
-		OplogMiddleware:        oplogMiddleware,
-		OpenPersonIPMiddleware: openPersonIPWhitelistMiddleware,
-		MenuHandler:            menuHandler,
-		RoleHandler:            roleHandler,
-		DepartmentHandler:      departmentHandler,
-		OperationLogHandler:    operationLogHandler,
-		UserHandler:            userHandler,
-		AuthHandler:            authHandler,
-		FileHandler:            fileHandler,
-		NTPHandler:             ntpHandler,
-		NetworkHandler:         networkHandler,
-		CameraHandler:          cameraHandler,
-		PersonHandler:          personHandler,
-		AlgorithmHandler:       algorithmHandler,
-		TaskHandler:            taskHandler,
-		AlarmRecordHandler:     alarmRecordHandler,
+		ErrorHandler:            handlerFunc,
+		AuthMiddleware:          authMiddleware,
+		PermMiddleware:          permMiddleware,
+		OplogMiddleware:         oplogMiddleware,
+		OpenPersonIPMiddleware:  openPersonIPWhitelistMiddleware,
+		MenuHandler:             menuHandler,
+		RoleHandler:             roleHandler,
+		DepartmentHandler:       departmentHandler,
+		OperationLogHandler:     operationLogHandler,
+		UserHandler:             userHandler,
+		AuthHandler:             authHandler,
+		FileHandler:             fileHandler,
+		NTPHandler:              ntpHandler,
+		NetworkHandler:          networkHandler,
+		CameraHandler:           cameraHandler,
+		PersonHandler:           personHandler,
+		AlgorithmHandler:        algorithmHandler,
+		TaskHandler:             taskHandler,
+		AlarmRecordHandler:      alarmRecordHandler,
+		PlateObservationHandler: plateObservationHandler,
 	}
 	engine := router.New(cfg, deps)
 	desiredStateAdapter := service.NewDesiredStateAdapter(taskRepository, zapLogger)

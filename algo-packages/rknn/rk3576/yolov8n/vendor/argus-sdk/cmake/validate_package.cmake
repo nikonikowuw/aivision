@@ -71,10 +71,10 @@ if(NOT description_error STREQUAL "NOTFOUND")
 endif()
 
 string(JSON algorithm_type GET "${manifest}" algorithm_type)
-set(allowed_algorithm_types object_detection face_recognition)
+set(allowed_algorithm_types object_detection face_recognition license_plate_recognition)
 list(FIND allowed_algorithm_types "${algorithm_type}" algorithm_type_index)
 if(algorithm_type_index EQUAL -1)
-    message(FATAL_ERROR "Unsupported algorithm_type: ${algorithm_type} (allowed: object_detection, face_recognition)")
+    message(FATAL_ERROR "Unsupported algorithm_type: ${algorithm_type} (allowed: object_detection, face_recognition, license_plate_recognition)")
 endif()
 string(JSON alarm_type_id ERROR_VARIABLE alarm_type_id_error GET "${manifest}" alarm_type_id)
 if(algorithm_type STREQUAL "object_detection")
@@ -87,10 +87,10 @@ if(algorithm_type STREQUAL "object_detection")
         message(FATAL_ERROR "Manifest alarm_type_id is invalid")
     endif()
 else()
-    # face_recognition：首版 manifest 不声明 alarm_type_id；若声明必须明确拒绝，
-    # 避免产生隐式告警语义（见 face_recognition design.md §3.3）。
+    # 识别类算法（face_recognition、license_plate_recognition）：首版 manifest 不声明 alarm_type_id；
+    # 若声明必须明确拒绝，避免产生隐式告警语义。
     if(NOT alarm_type_id_error)
-        message(FATAL_ERROR "face_recognition manifests must not declare alarm_type_id")
+        message(FATAL_ERROR "${algorithm_type} manifests must not declare alarm_type_id")
     endif()
 endif()
 

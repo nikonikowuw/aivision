@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "Manifest validation and plates recognition schema"}
+{"file": ".trellis/spec/engine/algo-package-spec.md", "reason": "C ABI, memory boundaries, and algorithm package layout"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "Image generation, IPC report and idempotency guidelines"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Plate observations schema and soft-delete uniqueness"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "End-to-end data flow between Engine, Go, and Frontend"}

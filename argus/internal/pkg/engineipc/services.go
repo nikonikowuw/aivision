@@ -104,6 +104,19 @@ func (s *reportService) ReportAlarm(ctx context.Context, req *argusv1.ReportAlar
 	return &argusv1.ReportAlarmResponse{Code: code, ErrorMessage: msg}, nil
 }
 
+// ReportPlateObservation 接收车牌抓拍过车记录上报。
+func (s *reportService) ReportPlateObservation(ctx context.Context, req *argusv1.ReportPlateObservationRequest) (*argusv1.ReportPlateObservationResponse, error) {
+	const method = "/argus.v1.ReportService/ReportPlateObservation"
+	if req == nil || req.Observation == nil {
+		return nil, invalidArgument(method)
+	}
+	code, msg, transportErr := s.adapterResult(method, s.adapter.AcceptPlateObservation(ctx, req.Observation))
+	if transportErr != nil {
+		return nil, transportErr
+	}
+	return &argusv1.ReportPlateObservationResponse{Code: code, ErrorMessage: msg}, nil
+}
+
 // ReportTaskState 接收任务状态上报；只有 adapter 成功接受后才返回空 code。
 func (s *reportService) ReportTaskState(ctx context.Context, req *argusv1.ReportTaskStateRequest) (*argusv1.ReportTaskStateResponse, error) {
 	const method = "/argus.v1.ReportService/ReportTaskState"

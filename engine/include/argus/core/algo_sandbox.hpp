@@ -28,9 +28,10 @@ namespace argus::core {
  * manifest/ABI 边界处为字符串，Engine 内部逻辑一律使用本枚举，避免字符串拼写错误。
  */
 enum class AlgorithmType {
-    ObjectDetection,   ///< 目标检测
-    FaceRecognition,   ///< 人脸识别
-    Unknown,           ///< 未识别/不支持
+    ObjectDetection,          ///< 目标检测
+    FaceRecognition,          ///< 人脸识别
+    LicensePlateRecognition,  ///< 车牌识别
+    Unknown,                  ///< 未识别/不支持
 };
 
 /**
@@ -41,6 +42,7 @@ enum class AlgorithmType {
 inline AlgorithmType parse_algorithm_type(std::string_view type) {
     if (type == "object_detection") return AlgorithmType::ObjectDetection;
     if (type == "face_recognition") return AlgorithmType::FaceRecognition;
+    if (type == "license_plate_recognition") return AlgorithmType::LicensePlateRecognition;
     return AlgorithmType::Unknown;
 }
 

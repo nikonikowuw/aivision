@@ -40,6 +40,11 @@ public:
     bool report_alarm(const argus::v1::AlarmEvent& alarm);
 
     /**
+     * @brief 上报车牌通行观测记录
+     */
+    bool report_plate_observation(const argus::v1::PlateObservation& observation);
+
+    /**
      * @brief 上报设备性能与健康遥测数据
      */
     bool report_telemetry(const argus::v1::DeviceTelemetry& telemetry);

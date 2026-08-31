@@ -17,7 +17,7 @@
 | `version` | string | SemVer，不允许 `v` 前缀 |
 | `name` | string | 1-64 字符 |
 | `description` | string | 可选，最多 256 字符 |
-| `algorithm_type` | string | `object_detection` 或 `face_recognition`（识别类，无告警语义） |
+| `algorithm_type` | string | `object_detection`、`face_recognition` 或 `license_plate_recognition`（识别类，无告警语义） |
 | `alarm_type_id` | string | 单一告警类型 id，前端据此 i18n 显示告警 |
 | `platform_id` | string | `^[a-z0-9]+(?:-[a-z0-9]+)+$`，唯一确定平台与架构 |
 | `min_adapter_version` | string | SemVer，SDK/适配层 ABI 最低版本 |
@@ -29,7 +29,7 @@
 
 ### 2.2 告警类型 id
 
-`object_detection` 算法包恰好声明**一个**告警类型 id，表示它产出的业务告警（如安全帽告警、反光衣检测）。`algorithm_type` 决定处理管线，`alarm_type_id` 决定业务告警语义与前端展示；`face_recognition` 包不声明 `alarm_type_id`（ABI 中写入空字符串），若声明则安装校验必须明确拒绝，避免产生隐式告警语义。
+`object_detection` 算法包恰好声明**一个**告警类型 id，表示它产出的业务告警（如安全帽告警、反光衣检测）。`algorithm_type` 决定处理管线，`alarm_type_id` 决定业务告警语义与前端展示；识别类算法包（`face_recognition`、`license_plate_recognition`）不声明 `alarm_type_id`（ABI 中写入空字符串），若声明则安装校验必须明确拒绝，避免产生隐式告警语义。
 
 ```json
 "alarm_type_id": "helmet_warning"
@@ -276,6 +276,38 @@ InstanceDesiredConfig {
 - `embedding`：满足通用嵌入表示规范。在开启轨迹抓拍优选时，非关键帧或质量未达标的人脸 `embedding` 可为 `null`；
 - `embedding.data`：当存在时为 512 个 IEEE 754 little-endian `float32` 原始字节的 Base64 字符串，已做 L2 归一化；
 - 只有在至少关联并成功提取一张人脸 embedding 时触发 `AV_RESULT_RECOGNITION` 结果回调。
+
+### 4.4 车牌识别结果（`AV_RESULT_RECOGNITION`）
+
+车牌识别类结果顶层固定包含 `schema_version: 1` 和 `plates` 数组。坐标全部是原图归一化坐标：`bbox` 为 `[x, y, w, h]`，可选包含关联的 `vehicle_bbox`。
+
+```json
+{
+  "schema_version": 1,
+  "plates": [
+    {
+      "track_id": 1024,
+      "plate_text": "粤B12345",
+      "normalized_text": "粤B12345",
+      "plate_color": "blue",
+      "plate_type": "standard",
+      "confidence": 0.96,
+      "ocr_confidence": 0.94,
+      "bbox": [0.35, 0.42, 0.18, 0.09],
+      "vehicle_bbox": [0.18, 0.20, 0.54, 0.65]
+    }
+  ]
+}
+```
+
+约束：
+- 顶层 `schema_version` 固定为 `1`；
+- `plates` 数组非空且元素数量不超过 4096；
+- `plate_text` 为原始识别文本，`normalized_text` 为规范化查询文本；
+- `plate_color` 支持 `blue`、`yellow`、`green`、`white`、`black` 等规范枚举；`plate_type` 支持 `standard`、`new_energy`、`double_layer` 等；
+- `confidence` 和 `ocr_confidence` 均为有限值且在 `[0, 1]`；
+- `bbox` 和 `vehicle_bbox`（若存在）为 `[x, y, w, h]`，所有分量在 `[0, 1]` 范围内；
+- Engine 根据 `algorithm_type` 路由 parser：`face_recognition` 解析 `persons`，`license_plate_recognition` 解析 `plates`。
 
 ## 5. Validation & Error Matrix
 

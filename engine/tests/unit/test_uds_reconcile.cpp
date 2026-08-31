@@ -82,6 +82,18 @@ public:
         alarm_cv_.wait(lock, [this] { return !block_alarm_ || release_alarm_; });
         return grpc::Status::OK; // code 留空 = 接受
     }
+    grpc::Status ReportPlateObservation(grpc::ServerContext*,
+                                        const argus::v1::ReportPlateObservationRequest* request,
+                                        argus::v1::ReportPlateObservationResponse* response) override {
+        if (!request || !request->has_observation()) {
+            response->set_code("INVALID_ARG");
+            return grpc::Status::OK;
+        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        observations_.push_back(request->observation());
+        plate_cv_.notify_all();
+        return grpc::Status::OK; // code 留空 = 接受
+    }
     grpc::Status ReportTaskState(grpc::ServerContext*, const argus::v1::ReportTaskStateRequest*,
                                  argus::v1::ReportTaskStateResponse*) override {
         return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not used in this test");
@@ -119,6 +131,16 @@ public:
         return alarms_;
     }
 
+    std::vector<argus::v1::PlateObservation> observations() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return observations_;
+    }
+
+    bool wait_for_observation(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return plate_cv_.wait_for(lock, timeout, [this] { return !observations_.empty(); });
+    }
+
     std::vector<argus::v1::InstanceState> captured() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return states_;
@@ -127,8 +149,10 @@ public:
 private:
     mutable std::mutex mutex_;
     std::condition_variable alarm_cv_;
+    std::condition_variable plate_cv_;
     std::vector<argus::v1::InstanceState> states_;
     std::vector<argus::v1::AlarmEvent> alarms_;
+    std::vector<argus::v1::PlateObservation> observations_;
     bool block_alarm_ = false;
     bool release_alarm_ = false;
     bool alarm_started_ = false;
@@ -889,6 +913,59 @@ TEST(UdsReconcileTest, ReconcilesExactDetectionRuleFromUI) {
     server.stop();
     argus::core::ResourceLedger::instance().clear();
     std::filesystem::remove_all(pkg_dir);
+}
+
+TEST(UdsReconcileTest, PlateObservationReportAndClient) {
+    const std::string app_sock = "/tmp/argus-test-plate-client-app.sock";
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start(app_sock));
+
+    argus::core::UdsClient client(app_sock);
+
+    argus::v1::PlateObservation obs;
+    obs.set_event_id("inst-run-1/1001-1");
+    obs.set_instance_id("inst-1");
+    obs.set_camera_id("cam-1");
+    obs.set_algorithm_id("license_plate_recognition");
+    obs.set_algorithm_version("1.0.0");
+    obs.set_wall_time_ns(1788185888187000000LL);
+    obs.set_time_synced(true);
+    obs.set_track_id(101);
+    obs.set_plate_text("粤B12345");
+    obs.set_normalized_text("粤B12345");
+    obs.set_plate_color("blue");
+    obs.set_plate_type("standard");
+    obs.set_confidence(0.96f);
+    obs.set_ocr_confidence(0.94f);
+    obs.mutable_plate_bbox()->set_x_min(0.35f);
+    obs.mutable_plate_bbox()->set_y_min(0.42f);
+    obs.mutable_plate_bbox()->set_x_max(0.53f);
+    obs.mutable_plate_bbox()->set_y_max(0.51f);
+    obs.mutable_vehicle_bbox()->set_x_min(0.18f);
+    obs.mutable_vehicle_bbox()->set_y_min(0.20f);
+    obs.mutable_vehicle_bbox()->set_x_max(0.72f);
+    obs.mutable_vehicle_bbox()->set_y_max(0.85f);
+    obs.set_image_id("img_pano_1001");
+    obs.set_image_rel_path("2026-08-31/img_pano_1001.jpg");
+    obs.set_plate_image_id("img_plate_1001");
+    obs.set_plate_image_rel_path("2026-08-31/img_plate_1001.jpg");
+
+    EXPECT_TRUE(client.report_plate_observation(obs));
+    ASSERT_TRUE(app_server.service().wait_for_observation(std::chrono::seconds(2)));
+
+    const auto observations = app_server.service().observations();
+    ASSERT_EQ(observations.size(), 1U);
+    EXPECT_EQ(observations[0].event_id(), "inst-run-1/1001-1");
+    EXPECT_EQ(observations[0].plate_text(), "粤B12345");
+    EXPECT_EQ(observations[0].normalized_text(), "粤B12345");
+    EXPECT_EQ(observations[0].plate_color(), "blue");
+    EXPECT_EQ(observations[0].plate_type(), "standard");
+    EXPECT_FLOAT_EQ(observations[0].confidence(), 0.96f);
+    EXPECT_FLOAT_EQ(observations[0].ocr_confidence(), 0.94f);
+    EXPECT_EQ(observations[0].image_id(), "img_pano_1001");
+    EXPECT_EQ(observations[0].plate_image_id(), "img_plate_1001");
+
+    app_server.stop();
 }
 
 #endif // !defined(ARGUS_SKIP_IPC_TESTS)

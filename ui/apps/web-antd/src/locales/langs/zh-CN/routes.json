@@ -14,6 +14,7 @@
   },
   "record": {
     "alarm": "告警记录",
+    "plate": "车牌记录",
     "record": "智能记录"
   },
   "resource": {

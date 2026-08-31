@@ -42,6 +42,7 @@ func (a *recordingDesiredStateAdapter) callCount() int {
 type recordingReportAdapter struct {
 	mu            sync.Mutex
 	alarms        []*argusv1.AlarmEvent
+	observations  []*argusv1.PlateObservation
 	taskStates    []*argusv1.TaskState
 	instStates    []*argusv1.InstanceState
 	metrics       []*argusv1.DeviceTelemetry
@@ -61,6 +62,19 @@ func (a *recordingReportAdapter) AcceptAlarm(_ context.Context, alarm *argusv1.A
 		return a.err
 	}
 	a.alarms = append(a.alarms, alarm)
+	return nil
+}
+
+func (a *recordingReportAdapter) AcceptPlateObservation(_ context.Context, obs *argusv1.PlateObservation) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.panic {
+		panic("boom")
+	}
+	if a.err != nil {
+		return a.err
+	}
+	a.observations = append(a.observations, obs)
 	return nil
 }
 

@@ -200,6 +200,60 @@ TEST(SandboxValidatorTest, FaceRecognitionManifestWithoutAlarmTypeIdValidates) {
     std::filesystem::remove_all(install_base);
 }
 
+TEST(PackageValidatorTest, RejectsLicensePlateRecognitionWithAlarmTypeId) {
+    const std::filesystem::path temp_dir = "var/test_lpr_package";
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir / "lib");
+
+    std::filesystem::copy_file(std::filesystem::path(ARGUS_FIXTURE_PACKAGE_DIR) / "testimage.jpg",
+                               temp_dir / "testimage.jpg");
+    std::filesystem::copy_file(std::filesystem::path(ARGUS_FIXTURE_PACKAGE_DIR) / "lib/libmock-detector.dylib",
+                               temp_dir / "lib/libmock-lpr.dylib");
+
+    nlohmann::json manifest = {
+        {"manifest_version", 1},
+        {"algorithm_id", "mock-lpr"},
+        {"version", "1.0.0"},
+        {"name", "Mock License Plate Recognizer"},
+        {"description", "License plate recognition test package"},
+        {"algorithm_type", "license_plate_recognition"},
+        {"platform_id", "mock"},
+        {"min_adapter_version", "1.0.0"},
+        {"runtime_constraints", {{"min_os_version", "0.0"}}},
+        {"resource_profile", {
+            {"min_free_memory_mb", 1},
+            {"fps_tiers", {{{"fps", 1}, {"units", 1}}}}
+        }},
+        {"self_test", {
+            {"timeout_ms", 10000},
+            {"input_mode", "test_image"}
+        }}
+    };
+
+    std::ofstream ofs(temp_dir / "manifest.json");
+    ofs << manifest.dump(2);
+    ofs.close();
+
+    const std::string install_base = "var/packages_lpr";
+    std::filesystem::remove_all(install_base);
+    auto res = argus::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
+    EXPECT_FALSE(res.success);
+    EXPECT_EQ(res.error_stage, "library_query");
+
+    // With alarm_type_id declared, license_plate_recognition manifest must be rejected at manifest stage
+    manifest["alarm_type_id"] = "plate_alarm";
+    std::ofstream ofs_invalid(temp_dir / "manifest.json");
+    ofs_invalid << manifest.dump(2);
+    ofs_invalid.close();
+
+    auto res_invalid = argus::core::PackageValidator::validate_and_extract(temp_dir.string(), install_base);
+    EXPECT_FALSE(res_invalid.success);
+    EXPECT_EQ(res_invalid.error_stage, "manifest");
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::remove_all(install_base);
+}
+
 #if !defined(ARGUS_SKIP_IPC_TESTS)
 TEST(ProtoTest, ApplyResponseLifecycle) {
     argus::v1::ApplyDesiredStateResponse response;

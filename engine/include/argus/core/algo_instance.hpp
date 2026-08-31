@@ -51,7 +51,8 @@ public:
         int32_t target_fps,
         const std::string& params_json,
         const av_algo_abi* abi,
-        av_algo_library lib_handle
+        av_algo_library lib_handle,
+        const std::string& algorithm_type = "object_detection"
     );
     ~AlgorithmInstance();
 
@@ -95,6 +96,7 @@ public:
     [[nodiscard]] std::string get_instance_id() const { return instance_id_; }
     [[nodiscard]] std::string get_camera_id() const { return camera_id_; }
     [[nodiscard]] std::string get_algorithm_id() const { return algorithm_id_; }
+    [[nodiscard]] std::string get_algorithm_type() const { return algorithm_type_; }
     [[nodiscard]] std::string get_version() const { return version_; }
     [[nodiscard]] std::string get_run_id() const { return run_id_; }
     [[nodiscard]] std::string get_alarm_type_id() const { return alarm_type_id_; }
@@ -142,6 +144,7 @@ private:
     std::string instance_id_;
     std::string camera_id_;
     std::string algorithm_id_;
+    std::string algorithm_type_ = "object_detection";
     std::string version_;
     std::string alarm_type_id_;
     int32_t target_fps_ = 25;

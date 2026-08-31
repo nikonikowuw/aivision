@@ -791,8 +791,10 @@ bool validate_manifest_files(const fs::path& root, const nlohmann::json& manifes
     if (algorithm_type == AlgorithmType::ObjectDetection && !required_string("alarm_type_id", alarm_type_id)) {
         return false;
     }
-    if (algorithm_type == AlgorithmType::FaceRecognition && manifest.contains("alarm_type_id")) {
-        error = "face_recognition manifests must not declare alarm_type_id";
+    if ((algorithm_type == AlgorithmType::FaceRecognition ||
+         algorithm_type == AlgorithmType::LicensePlateRecognition) &&
+        manifest.contains("alarm_type_id")) {
+        error = algorithm_type_raw + " manifests must not declare alarm_type_id";
         return false;
     }
     if (algorithm_id.size() < 3 || algorithm_id.size() > 32 ||

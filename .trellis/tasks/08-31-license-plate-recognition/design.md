@@ -20,6 +20,10 @@
 ### 算法包
 
 `algo-packages/macos/arm64/license_plate_recognition/` 自包含模型、配置、预处理、推理、后处理、跟踪和结果序列化。
+基于 YOLOv5-plate 与 CRNN 双阶段流水线：
+- 检测模型采用 640x384 尺寸（适配 16:9 IPC 监控视频流，消除 40% 无效黑边计算），输出 15 通道张量（`[cx, cy, w, h, obj_score, 8 landmarks, single_score, double_score]`）；
+- 透视变换拉正为 168x48 车牌图像；
+- CRNN 识别网络采用 OpenCV BGR 通道输入，输出 CTC 字符序列（78 字符）与 5 类车牌颜色（黑/蓝/绿/白/黄）。
 
 算法包负责：
 

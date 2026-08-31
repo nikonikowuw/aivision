@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 28
+- **Total Sessions**: 29
 - **Last Active**: 2026-08-31
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1106 | Active |
+| `journal-1.md` | ~1128 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -28,7 +28,8 @@
 
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
-|---|------|-------|---------|--------|
+| --- | ------ | ------- | --------- | -------- |
+| 29 | 2026-08-31 | 完成 Frigate 风格运动检测推理门控归档 | `7359b6f`, `a657d68` | `dev` |
 | 28 | 2026-08-31 | 完成 Linux 平台层真实化 (rtnetlink/DHCP/Bond) 实施与归档 | `52e4c28`, `17d0415`, `8a4f43b` | `dev` |
 | 27 | 2026-08-30 | 告警记录模块端到端开发与质量验收归档 | `c757f60` | `dev` |
 | 26 | 2026-08-28 | Algorithm Package Management & Face Recognition Package Implementation | `a2cdd2d`, `e45a4d9` | `dev` |

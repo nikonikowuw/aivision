@@ -61,6 +61,7 @@ type DesiredStateAdapter interface {
 // 未注入适配器时统一 fail closed 返回 IPC_UNAVAILABLE。
 type ReportAdapter interface {
 	AcceptAlarm(ctx context.Context, alarm *argusv1.AlarmEvent) error
+	AcceptPlateObservation(ctx context.Context, obs *argusv1.PlateObservation) error
 	AcceptTaskState(ctx context.Context, state *argusv1.TaskState) error
 	AcceptInstanceState(ctx context.Context, state *argusv1.InstanceState) error
 	AcceptMetrics(ctx context.Context, telemetry *argusv1.DeviceTelemetry) error
@@ -111,6 +112,10 @@ func (unavailableDesiredStateAdapter) DesiredState(context.Context, uint64) (*ar
 type unavailableReportAdapter struct{}
 
 func (unavailableReportAdapter) AcceptAlarm(context.Context, *argusv1.AlarmEvent) error {
+	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
+}
+
+func (unavailableReportAdapter) AcceptPlateObservation(context.Context, *argusv1.PlateObservation) error {
 	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
 }
 

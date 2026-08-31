@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LicensePlateRecognitionConfig",
+  "type": "object",
+  "properties": {
+    "confidence_threshold": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.5,
+      "description": "Plate detection confidence threshold"
+    },
+    "iou_threshold": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.45,
+      "description": "NMS IoU threshold"
+    },
+    "ocr_confidence_threshold": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.6,
+      "description": "OCR text recognition minimum confidence threshold"
+    },
+    "voting_window_frames": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30,
+      "default": 5,
+      "description": "Multi-frame tracking observation voting window size"
+    },
+    "observation_cooldown_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600,
+      "default": 10,
+      "description": "Cooldown period in seconds before repeating identical plate report for same track"
+    }
+  },
+  "additionalProperties": false
+}

@@ -88,6 +88,7 @@ type Deps struct {
 	AlgorithmHandler       *api.AlgorithmHandler
 	TaskHandler            *api.TaskHandler
 	AlarmRecordHandler     *api.AlarmRecordHandler
+	PlateObservationHandler *api.PlateObservationHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -340,10 +341,30 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			recordGroup.GET(alarmsRoutePath, deps.AlarmRecordHandler.ListPage)
 			recordGroup.GET(alarmsRoutePath+idRoutePath, deps.AlarmRecordHandler.GetDetail)
 			recordGroup.GET(imagesRoutePath+idRoutePath, deps.AlarmRecordHandler.ReadImageStream)
+			recordGroup.GET("/plates", deps.PlateObservationHandler.ListPage)
+			recordGroup.GET("/plates"+idRoutePath, deps.PlateObservationHandler.GetDetail)
+			recordGroup.GET("/plates"+idRoutePath+"/panorama", deps.PlateObservationHandler.ReadPanoramaImage)
+			recordGroup.GET("/plates"+idRoutePath+"/plate", deps.PlateObservationHandler.ReadPlateImage)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath, "record:alarm")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath+idRoutePath, "record:alarm")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+imagesRoutePath+idRoutePath, middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/plates", "record:plate")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/plates"+idRoutePath, "record:plate")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/plates"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/plates"+idRoutePath+"/plate", middleware.PermCodeAuthenticated)
+
+		plateObsGroup := apiGroup.Group("/v1/plate-observations")
+		{
+			plateObsGroup.GET("", deps.PlateObservationHandler.ListPage)
+			plateObsGroup.GET(idRoutePath, deps.PlateObservationHandler.GetDetail)
+			plateObsGroup.GET(idRoutePath+"/panorama", deps.PlateObservationHandler.ReadPanoramaImage)
+			plateObsGroup.GET(idRoutePath+"/plate", deps.PlateObservationHandler.ReadPlateImage)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/plate-observations", "record:plate")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/plate-observations"+idRoutePath, "record:plate")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/plate-observations"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/plate-observations"+idRoutePath+"/plate", middleware.PermCodeAuthenticated)
 	}
 
 	// 外部开放同步 API：位于认证与权限中间件之外，使用受控 IP 白名单保护

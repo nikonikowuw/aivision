@@ -38,6 +38,40 @@ message ReportAlarmResponse {
   string error_message = 2; // 诊断信息，客户端不得解析其文本
 }
 
+// 车牌识别通行观测事件上报
+message PlateObservation {
+  // 目标级全局事件 ID = "<instance_run_id>/<batch_event_id>-<track_id>"
+  string event_id = 1;
+  string instance_id = 2;
+  string camera_id = 3;
+  string algorithm_id = 4;
+  string algorithm_version = 5;
+  int64 wall_time_ns = 6;
+  bool time_synced = 7;
+  int64 track_id = 8;
+  string plate_text = 9;
+  string normalized_text = 10;
+  string plate_color = 11;
+  string plate_type = 12;
+  float confidence = 13;
+  float ocr_confidence = 14;
+  BoundingBox plate_bbox = 15;
+  BoundingBox vehicle_bbox = 16;
+  string image_id = 17;
+  string image_rel_path = 18;
+  string plate_image_id = 19;
+  string plate_image_rel_path = 20;
+}
+
+message ReportPlateObservationRequest {
+  PlateObservation observation = 1;
+}
+
+message ReportPlateObservationResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
 // 任务运行状态
 enum TaskStatusCode {
   TASK_STATUS_UNSPECIFIED = 0;
@@ -140,6 +174,7 @@ service ControlPlaneService {
 // ReportService: 运行在 Go 服务（绑定 app.sock），供 C++ 引擎异步上报事件与指标
 service ReportService {
   rpc ReportAlarm(ReportAlarmRequest) returns (ReportAlarmResponse);
+  rpc ReportPlateObservation(ReportPlateObservationRequest) returns (ReportPlateObservationResponse);
   rpc ReportTaskState(ReportTaskStateRequest) returns (ReportTaskStateResponse);
   rpc ReportInstanceState(ReportInstanceStateRequest) returns (ReportInstanceStateResponse);
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsResponse);

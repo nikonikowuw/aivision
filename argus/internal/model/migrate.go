@@ -22,5 +22,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&AlgorithmInstance{},
 		&DesiredStateRevision{},
 		&AlarmRecord{},
+		&PlateObservation{},
 	)
 }

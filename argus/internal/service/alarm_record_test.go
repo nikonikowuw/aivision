@@ -44,7 +44,7 @@ func TestReportAdapter_AcceptAlarmAndIdempotency(t *testing.T) {
 	db := newTestAlarmDB(t)
 	taskRepo := repository.NewTaskRepository(db)
 	alarmRepo := repository.NewAlarmRecordRepository(db)
-	adapter := service.NewReportAdapterWithAlarm(taskRepo, alarmRepo, zap.NewNop())
+	adapter := service.NewReportAdapterWithAlarm(taskRepo, alarmRepo, nil, zap.NewNop())
 	ctx := context.Background()
 
 	event := &argusv1.AlarmEvent{
@@ -96,7 +96,7 @@ func TestReportAdapter_ReconcileOrphanImages(t *testing.T) {
 	db := newTestAlarmDB(t)
 	taskRepo := repository.NewTaskRepository(db)
 	alarmRepo := repository.NewAlarmRecordRepository(db)
-	adapter := service.NewReportAdapterWithAlarm(taskRepo, alarmRepo, zap.NewNop())
+	adapter := service.NewReportAdapterWithAlarm(taskRepo, alarmRepo, nil, zap.NewNop())
 	ctx := context.Background()
 
 	// 插入一条已持久化的告警记录

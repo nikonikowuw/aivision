@@ -30,6 +30,18 @@ bool UdsClient::report_alarm(const argus::v1::AlarmEvent& alarm) {
     return status.ok() && resp.code().empty();
 }
 
+bool UdsClient::report_plate_observation(const argus::v1::PlateObservation& observation) {
+    if (!report_stub_) return false;
+    argus::v1::ReportPlateObservationRequest req;
+    *req.mutable_observation() = observation;
+    argus::v1::ReportPlateObservationResponse resp;
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
+
+    grpc::Status status = report_stub_->ReportPlateObservation(&ctx, req, &resp);
+    return status.ok() && resp.code().empty();
+}
+
 bool UdsClient::report_telemetry(const argus::v1::DeviceTelemetry& telemetry) {
     if (!report_stub_) return false;
     argus::v1::ReportMetricsRequest req;

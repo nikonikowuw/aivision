@@ -42,11 +42,13 @@ type InstanceRuntimeState struct {
 // ReportAdapter 实现 engineipc.ReportAdapter：
 //   - AcceptTaskState / AcceptInstanceState 更新内存缓存，仅状态码变化时落库（D6）；
 //   - AcceptAlarm 幂等持久化单目标告警到 alarm_records 表；
+//   - AcceptPlateObservation 幂等持久化车牌抓拍过车记录到 plate_observations 表；
 //   - ReconcileOrphanImages 针对已落库图片保留（retain），超期未落库图片删除（delete）；
 //   - AcceptMetrics 保持 fail-closed。
 type ReportAdapter struct {
 	repo      repository.TaskRepository
 	alarmRepo repository.AlarmRecordRepository
+	plateRepo repository.PlateObservationRepository
 	log       *zap.Logger
 
 	mu    sync.RWMutex
@@ -62,13 +64,14 @@ type ReportAdapter struct {
 
 // NewReportAdapter 创建 ReportAdapter（保持原有两参数构造函数签名，兼容既有单测与调用者）。
 func NewReportAdapter(repo repository.TaskRepository, log *zap.Logger) *ReportAdapter {
-	return NewReportAdapterWithAlarm(repo, nil, log)
+	return NewReportAdapterWithAlarm(repo, nil, nil, log)
 }
 
-// NewReportAdapterWithAlarm 具备告警落库与孤儿图片对账能力的完整构造函数。
+// NewReportAdapterWithAlarm 具备告警落库与车牌观测记录落库能力的完整构造函数。
 func NewReportAdapterWithAlarm(
 	repo repository.TaskRepository,
 	alarmRepo repository.AlarmRecordRepository,
+	plateRepo repository.PlateObservationRepository,
 	log *zap.Logger,
 ) *ReportAdapter {
 	if log == nil {
@@ -77,6 +80,7 @@ func NewReportAdapterWithAlarm(
 	return &ReportAdapter{
 		repo:      repo,
 		alarmRepo: alarmRepo,
+		plateRepo: plateRepo,
 		log:       log,
 		tasks:     make(map[string]TaskRuntimeState),
 		insts:     make(map[string]InstanceRuntimeState),
@@ -100,6 +104,7 @@ func (a *ReportAdapter) AcceptTaskState(ctx context.Context, state *argusv1.Task
 	defer a.taskUpdateMu.Unlock()
 
 	status := int8(state.GetStatus())
+	lastFrameAt := timeFromWallNs(state.GetLastFrameWallTimeNs())
 	now := time.Now()
 
 	a.mu.Lock()
@@ -108,7 +113,7 @@ func (a *ReportAdapter) AcceptTaskState(ctx context.Context, state *argusv1.Task
 	a.tasks[cameraID] = TaskRuntimeState{
 		Status:      status,
 		Message:     state.GetMessage(),
-		LastFrameAt: timeFromWallNs(state.GetLastFrameWallTimeNs()),
+		LastFrameAt: lastFrameAt,
 		ReportedAt:  now,
 	}
 	a.mu.Unlock()
@@ -134,7 +139,8 @@ func (a *ReportAdapter) AcceptTaskState(ctx context.Context, state *argusv1.Task
 	return nil
 }
 
-// AcceptInstanceState 缓存实例实时状态；落库规则同 AcceptTaskState。
+// AcceptInstanceState 缓存实例实时状态；仅状态码或状态消息变化时写库（D6）。
+// 落库失败时把内存状态码回退为上一值并返回错误（非空 code，Engine 下轮重试）。
 func (a *ReportAdapter) AcceptInstanceState(ctx context.Context, state *argusv1.InstanceState) error {
 	if state == nil {
 		return errors.New("instance state is nil")
@@ -264,6 +270,82 @@ func (a *ReportAdapter) AcceptAlarm(ctx context.Context, event *argusv1.AlarmEve
 	return nil
 }
 
+// AcceptPlateObservation 车牌抓拍过车记录持久化：根据 event_id 幂等落库。
+func (a *ReportAdapter) AcceptPlateObservation(ctx context.Context, obs *argusv1.PlateObservation) error {
+	if a.plateRepo == nil {
+		return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "plate observation report service unavailable")
+	}
+	if obs == nil {
+		return errors.New("plate observation is nil")
+	}
+	eventID := strings.TrimSpace(obs.GetEventId())
+	if eventID == "" {
+		return errors.New("plate observation event_id is empty")
+	}
+
+	// 校验图片路径安全性
+	for _, p := range []string{obs.GetImageRelPath(), obs.GetPlateImageRelPath()} {
+		if p != "" {
+			cleanPath := filepath.Clean(p)
+			if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+				return errors.New("plate observation image path is invalid")
+			}
+		}
+	}
+
+	var bbox []float32
+	if pbBBox := obs.GetPlateBbox(); pbBBox != nil {
+		bbox = []float32{pbBBox.GetXMin(), pbBBox.GetYMin(), pbBBox.GetXMax(), pbBBox.GetYMax()}
+	}
+	bboxJSON, err := json.Marshal(bbox)
+	if err != nil {
+		return fmt.Errorf("marshal plate bbox: %w", err)
+	}
+
+	var vehicleBBox []float32
+	if pbVBBox := obs.GetVehicleBbox(); pbVBBox != nil {
+		vehicleBBox = []float32{pbVBBox.GetXMin(), pbVBBox.GetYMin(), pbVBBox.GetXMax(), pbVBBox.GetYMax()}
+	}
+	vehicleBBoxJSON, err := json.Marshal(vehicleBBox)
+	if err != nil {
+		return fmt.Errorf("marshal vehicle bbox: %w", err)
+	}
+
+	observedAt := time.Now()
+	if obs.GetWallTimeNs() > 0 {
+		observedAt = time.Unix(0, obs.GetWallTimeNs())
+	}
+
+	record := &model.PlateObservation{
+		EventID:         eventID,
+		InstanceID:      obs.GetInstanceId(),
+		CameraID:        obs.GetCameraId(),
+		PlateText:       obs.GetPlateText(),
+		NormalizedText:  obs.GetNormalizedText(),
+		PlateColor:      obs.GetPlateColor(),
+		PlateType:       obs.GetPlateType(),
+		Confidence:      obs.GetConfidence(),
+		OcrConfidence:   obs.GetOcrConfidence(),
+		TrackID:         obs.GetTrackId(),
+		BBoxJSON:        bboxJSON,
+		VehicleBBoxJSON: vehicleBBoxJSON,
+		PanoramaImage:   obs.GetImageRelPath(),
+		PlateImage:      obs.GetPlateImageRelPath(),
+		ObservedAt:      observedAt,
+	}
+
+	if err := a.plateRepo.Create(ctx, record); err != nil {
+		if errors.Is(err, repository.ErrDuplicateKey) {
+			a.log.Info("duplicate plate observation received, treated as idempotent success", zap.String("event_id", eventID))
+			return nil
+		}
+		a.log.Error("persist plate observation failed", zap.String("event_id", eventID), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // AcceptMetrics 设备遥测时序落库属后续任务，语义保持 fail-closed。
 func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry) error {
 	return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "metrics report service unavailable")
@@ -276,7 +358,7 @@ func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry)
 // 4. 未命中但在保护期内的图片不做处理（等待下轮对账或落库）。
 func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*argusv1.OrphanImageEntry) (engineipc.OrphanDisposition, error) {
 	if a.alarmRepo == nil {
-		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "reconcile orphan images service unavailable")
+		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "alarm repository unavailable")
 	}
 
 	if len(entries) == 0 {

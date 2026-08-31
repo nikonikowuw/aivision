@@ -1,1 +1,4 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "C++ memory safety, ASan/TSan, and test guidelines"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "Manifest validation and schema compliance"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend test coverage and idempotency check"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend type safety, i18n, and component guidelines"}

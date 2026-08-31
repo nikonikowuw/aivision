@@ -20,10 +20,12 @@ AlgorithmInstance::AlgorithmInstance(
     int32_t target_fps,
     const std::string& params_json,
     const av_algo_abi* abi,
-    av_algo_library lib_handle
+    av_algo_library lib_handle,
+    const std::string& algorithm_type
 ) : instance_id_(instance_id),
     camera_id_(camera_id),
     algorithm_id_(algorithm_id),
+    algorithm_type_(algorithm_type),
     version_(version),
     target_fps_(target_fps),
     params_json_(params_json),

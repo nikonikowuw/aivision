@@ -47,9 +47,75 @@
       "imageAnnotation": "全景圖與智慧標註",
       "legendRoi": "檢測區域 (ROI)",
       "legendMask": "屏蔽區域 (Mask)",
-      "legendLine": "警戒線 (Line)",
+      "legendLine": "警戒线 (Line)",
       "legendTarget": "目標邊界框",
       "noImage": "暫無全景圖片"
+    }
+  },
+  "plate": {
+    "title": "車牌記錄",
+    "filter": {
+      "camera": "攝影機",
+      "cameraPlaceholder": "請選擇攝影機",
+      "plateText": "車牌號碼",
+      "plateTextPlaceholder": "輸入車牌號(支援模糊比對)",
+      "plateColor": "車牌顏色",
+      "plateColorPlaceholder": "選擇車牌顏色",
+      "plateType": "車牌類型",
+      "plateTypePlaceholder": "選擇車牌類型",
+      "timeRange": "抓拍時間",
+      "minConfidence": "最低信賴度",
+      "minOcrConfidence": "最低 OCR 信賴度",
+      "search": "查詢",
+      "reset": "重設"
+    },
+    "columns": {
+      "id": "ID",
+      "plateCrop": "車牌特寫",
+      "panorama": "全景圖",
+      "plateText": "車牌號碼",
+      "plateColor": "顏色",
+      "plateType": "類型",
+      "confidence": "檢測信賴度",
+      "ocrConfidence": "OCR 信賴度",
+      "cameraName": "攝影機",
+      "observedAt": "抓拍時間",
+      "trackId": "Track ID",
+      "action": "操作"
+    },
+    "detail": {
+      "title": "過車抓拍詳情",
+      "eventInfo": "抓拍資訊",
+      "eventId": "事件標識",
+      "camera": "抓拍攝影機",
+      "observedAt": "抓拍時間",
+      "plateText": "車牌號碼",
+      "normalizedText": "標準車牌號",
+      "plateColor": "車牌顏色",
+      "plateType": "車牌類型",
+      "confidence": "檢測信賴度",
+      "ocrConfidence": "OCR 信賴度",
+      "trackId": "Track ID",
+      "plateCrop": "車牌特寫圖",
+      "panorama": "全景抓拍圖",
+      "noImage": "暫無圖片"
+    },
+    "colors": {
+      "blue": "藍色 (藍牌)",
+      "yellow": "黃色 (黃牌)",
+      "green": "綠色 (新能源)",
+      "white": "白色 (警/軍)",
+      "black": "黑色 (領/使/港澳)"
+    },
+    "types": {
+      "standard": "單層標準車牌",
+      "double_yellow": "雙層黃色車牌",
+      "new_energy": "新能源車牌",
+      "police": "警車車牌",
+      "coach": "教練車牌",
+      "embassy": "使領館車牌",
+      "hk_macau": "港澳車牌",
+      "other": "其他車牌"
     }
   }
 }

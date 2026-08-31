@@ -1069,6 +1069,7 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Summary
 
 完成 C++ Engine 框架及 macOS 运行平台（T1）全量测试验证与任务归档：
+
 1. **测试用例修复**：更新 `engine/tests/unit/test_uds_reconcile.cpp` 中的 `UdsReconcileTest.ReconcilesExactDetectionRuleFromUI`，将已废弃的 yolov8n 路径引用替换为 `mock-detector` fixture 包，补齐 ResourceLedger 初始化与 results 断言。
 2. **全量测试通过**：执行 `make -C engine test`，全部 61 个单元测试及真实流集成测试（H.264/H.265 解码、重连、分辨率动态切换等）100% PASS。
 3. **归档任务**：将 `08-22-cpp-engine-skeleton-macos` 归档至 `archive/2026-08/`。
@@ -1080,8 +1081,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Status
 
 [OK] **Completed**
-
-
 
 ## Session 28: 完成 Linux 平台层真实化 (rtnetlink/DHCP/Bond) 实施与归档
 
@@ -1096,10 +1095,31 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Git Commits
 
 | Hash | Message |
-|------|---------|
+| ------ | --------- |
 | `52e4c28` | (see git log) |
 | `17d0415` | (see git log) |
 | `8a4f43b` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+## Session 29: 完成 Frigate 风格运动检测推理门控归档
+
+**Date**: 2026-08-31
+**Task**: 完成 Frigate 风格运动检测推理门控归档
+**Branch**: `dev`
+
+### Summary
+
+实现 C++ Engine 核心低成本 MotionGate 运动门控（低分辨率采样、背景差分、mask 排除、keepalive 推理调度），完成 gRPC/UDS 协议同步、后端模型/DB 迁移与前端配置支持，全量通过单元测试并归档任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7359b6f` | (see git log) |
+| `a657d68` | (see git log) |
 
 ### Status
 

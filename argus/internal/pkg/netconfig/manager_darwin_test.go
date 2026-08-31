@@ -23,3 +23,15 @@ func TestDarwinPlatformCapabilities(t *testing.T) {
 		t.Errorf("DarwinPlatform must not declare active-backup (parent D2)")
 	}
 }
+
+func TestDarwinPlatformDiscover(t *testing.T) {
+	p, err := NewDarwinPlatform(false)
+	if err != nil {
+		t.Fatalf("NewDarwinPlatform failed: %v", err)
+	}
+	ifaces, err := p.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("Darwin Discover failed: %v", err)
+	}
+	t.Logf("Darwin discovered %d network interfaces", len(ifaces))
+}

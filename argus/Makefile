@@ -1,4 +1,4 @@
-.PHONY: wire dev dev-raw build test vet swagger air migrate-up migrate-version bootstrap-admin proto proto-check grpc-e2e
+.PHONY: wire dev dev-raw build test vet swagger air migrate-up migrate-version bootstrap-admin proto proto-check grpc-e2e test-netconfig-integration
 
 # 从 engine/proto/aivision/v1 权威 proto 重新生成 Go protobuf/gRPC 代码（提交目录）
 proto:
@@ -46,6 +46,10 @@ test:
 
 vet:
 	go vet ./...
+
+# Linux netns 特权集成测试（需要 root/CAP_NET_ADMIN）
+test-netconfig-integration:
+	NETCONFIG_NETNS_TEST=1 sudo -E go test -tags=netconfig_integration -v ./internal/pkg/netconfig/...
 
 # 跨语言 E2E：构建 mock aivision-engine 并验证 Go <-> C++ 双向 gRPC 通信（独立于普通 test）
 grpc-e2e:

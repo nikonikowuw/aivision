@@ -87,7 +87,7 @@ func NewNetworkService(
 		log = zap.NewNop()
 	}
 
-	platform, err := netconfig.NewPlatform(cfg.Network.ProfilePath, cfg.Network.FakePlatform)
+	platform, err := netconfig.NewPlatform(cfg.Network.ProfilePath, cfg.Network.StateDir, cfg.Network.FakePlatform)
 	if err != nil {
 		return nil, fmt.Errorf("create network platform: %w", err)
 	}
@@ -170,6 +170,14 @@ func (s *networkService) Start(ctx context.Context) error {
 				if _, err := s.gatewayRuntime.Apply(ctx, *lv.Plan.Gateway, st, &iface); err != nil {
 					s.log.Error("failed to restore confirmed gateway runtime on startup", zap.Error(err))
 				}
+			}
+		}
+
+		// 6. 确认配置重放 reconcile（针对 Linux/macOS 重启后未持久化到内核的静态地址/网关/DNS/主接口）
+		if lv, err := s.store.GetLastValid(); err == nil && lv != nil && planNeedsReconcile(lv.Plan, currentSnapshot) {
+			s.log.Info("reconciling network configuration with last-valid plan on startup")
+			if _, err := s.platform.Apply(ctx, lv.Plan); err != nil {
+				s.log.Error("failed to reconcile last-valid network plan on startup", zap.Error(err))
 			}
 		}
 	}
@@ -429,7 +437,7 @@ func (s *networkService) ApplyInterface(ctx context.Context, ifaceID string, inp
 		s.log.Error("platform apply failed, restoring before snapshot", zap.Error(err))
 		_, _ = s.platform.Restore(ctx, currentSnapshot)
 		_ = s.store.ClearPending()
-		return nil, errno.New(errno.CodeNetworkApplyFailed)
+		return nil, mapPlatformError(err)
 	}
 
 	// 8. 启动超时自动回滚定时器
@@ -1140,4 +1148,53 @@ func (s *networkService) restoreGatewayState(ctx context.Context, gwState *netco
 	} else {
 		_, _ = s.gatewayRuntime.Restore(ctx, netconfig.GatewayState{}, nil)
 	}
+}
+
+// planNeedsReconcile 检查系统当前快照是否偏离已持久化的确认配置（如重启后静态配置未自动生效）。
+func planNeedsReconcile(plan netconfig.HostPlan, snap netconfig.HostSnapshot) bool {
+	if plan.Mode != "" && plan.Mode != snap.Mode {
+		return true
+	}
+	if plan.PrimaryInterfaceID != nil {
+		if snap.PrimaryInterfaceID == nil || *plan.PrimaryInterfaceID != *snap.PrimaryInterfaceID {
+			return true
+		}
+	}
+	for id, pIf := range plan.Interfaces {
+		cIf, ok := snap.Interfaces[id]
+		if !ok || cIf.IPv4.Mode != pIf.Mode {
+			return true
+		}
+		if pIf.Mode == netconfig.IPModeStatic {
+			if (pIf.Address != nil && (cIf.IPv4.Address == nil || *cIf.IPv4.Address != *pIf.Address)) ||
+				(pIf.Prefix != nil && (cIf.IPv4.Prefix == nil || *cIf.IPv4.Prefix != *pIf.Prefix)) ||
+				(pIf.Gateway != nil && (cIf.IPv4.Gateway == nil || *cIf.IPv4.Gateway != *pIf.Gateway)) {
+				return true
+			}
+			if len(pIf.DNSServers) > 0 && !slices.Equal(pIf.DNSServers, snap.SystemDNSServers) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// mapPlatformError 将底层平台错误映射为业务 errno。
+func mapPlatformError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, netconfig.ErrOwnershipConflict) {
+		return errno.New(errno.CodeNetworkOwnershipConflict)
+	}
+	if errors.Is(err, netconfig.ErrExternalDrift) {
+		return errno.New(errno.CodeNetworkExternalDrift)
+	}
+	if errors.Is(err, netconfig.ErrUnsupported) {
+		return errno.New(errno.CodeNetworkUnsupported)
+	}
+	if errors.Is(err, netconfig.ErrLacpNegotiationFailed) {
+		return errno.New(errno.CodeNetworkLacpNegotiationFailed)
+	}
+	return errno.New(errno.CodeNetworkApplyFailed)
 }

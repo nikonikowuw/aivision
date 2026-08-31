@@ -4,7 +4,7 @@ package netconfig
 
 import "fmt"
 
-func NewLinuxPlatform(profilePath string, fakePlatform bool) (Platform, error) {
+func NewLinuxPlatform(profilePath string, stateDir string, fakePlatform bool) (Platform, error) {
 	if fakePlatform {
 		return NewFakePlatform(PlatformLinux), nil
 	}

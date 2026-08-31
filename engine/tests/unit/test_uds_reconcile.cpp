@@ -788,16 +788,40 @@ TEST(UdsReconcileTest, AlarmReportedEvenWhenFrameRetainFails) {
 TEST(UdsReconcileTest, ReconcilesExactDetectionRuleFromUI) {
     const std::string pkg_dir = "/tmp/argus-test-pkg-roi";
     std::filesystem::remove_all(pkg_dir);
-    std::filesystem::create_directories(pkg_dir + "/yolov8n");
-    const std::filesystem::path source_pkg = std::filesystem::path(ARGUS_SOURCE_DIR) / "var/packages/yolov8n";
-    std::filesystem::copy(source_pkg, pkg_dir + "/yolov8n",
-                          std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::create_directories(pkg_dir + "/mock-detector");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        ARGUS_FIXTURE_PACKAGE_DIR,
+        pkg_dir + "/mock-detector/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    const std::filesystem::path manifest_path = pkg_dir + "/mock-detector/1.0.0/manifest.json";
+    nlohmann::json manifest;
+    {
+        std::ifstream input(manifest_path);
+        ASSERT_TRUE(input.is_open());
+        input >> manifest;
+    }
+    manifest["resource_profile"]["fps_tiers"] = nlohmann::json::array({
+        {{"fps", 25}, {"units", 220}},
+    });
+    {
+        std::ofstream output(manifest_path);
+        ASSERT_TRUE(output.is_open());
+        output << manifest.dump(2);
+    }
     ::setenv("ARGUS_PACKAGE_DIR", pkg_dir.c_str(), 1);
-    auto adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
     auto backend = std::make_shared<NoopBackend>();
     auto& registry = argus::platform::PlatformRegistry::instance();
-    registry.register_adapter("macos-arm64-coreml", adapter);
-    registry.set_active_platform("macos-arm64-coreml");
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    argus::core::ResourceLedger::instance().clear();
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
+        return uint64_t{2} * 1024 * 1024 * 1024;
+    });
     argus::core::UdsServer server("/tmp/argus-test-roi-reconcile.sock", adapter, backend, "");
     ASSERT_TRUE(server.start());
 
@@ -812,19 +836,24 @@ TEST(UdsReconcileTest, ReconcilesExactDetectionRuleFromUI) {
     auto* i1 = d1.add_instances();
     i1->set_instance_id("inst-1");
     i1->set_camera_id("cam-1");
-    i1->set_algorithm_id("yolov8n");
+    i1->set_algorithm_id("mock-detector");
     i1->set_algorithm_version("1.0.0");
     i1->set_analysis_fps(25);
     i1->set_params_json("{\"confidence_threshold\":0.5,\"iou_threshold\":0.45}");
     i1->set_enabled(true);
 
     auto* p1 = d1.add_active_package_versions();
-    p1->set_algorithm_id("yolov8n");
+    p1->set_algorithm_id("mock-detector");
     p1->set_version("1.0.0");
 
     argus::v1::ApplyDesiredStateResponse r1;
     ASSERT_TRUE(server.apply_desired_state(d1, &r1));
-    ASSERT_TRUE(r1.code().empty()) << r1.error_message();
+    for (int i = 0; i < r1.results_size(); ++i) {
+        const auto& item = r1.results(i);
+        EXPECT_EQ(item.status(), argus::v1::RECONCILE_ITEM_STATUS_OK)
+            << item.id() << " failed: " << item.code() << " (" << item.error_message() << ")";
+    }
+    ASSERT_TRUE(r1.code().empty()) << r1.code() << ": " << r1.error_message();
 
     auto inst = argus::core::AlgoManager::instance().get("inst-1");
     ASSERT_NE(inst, nullptr);

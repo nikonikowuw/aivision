@@ -5,8 +5,6 @@
 
 ---
 
-
-
 ## Session 1: frontend-trim 归档 + 会话收尾
 
 **Date**: 2026-08-16
@@ -40,7 +38,6 @@
 
 - None - task complete
 
-
 ## Session 2: 菜单管理 CRUD + JWT 认证中间件 + 统一错误处理
 
 **Date**: 2026-08-16
@@ -72,7 +69,6 @@
 ### Next Steps
 
 - None - task complete
-
 
 ## Session 3: 完成操作日志与权限中间件
 
@@ -106,7 +102,6 @@
 
 - None - task complete
 
-
 ## Session 4: backend-role 角色 CRUD + 分配菜单（simplify 清理）
 
 **Date**: 2026-08-16
@@ -138,7 +133,6 @@
 ### Next Steps
 
 - None - task complete
-
 
 ## Session 5: Implement department tree CRUD operations
 
@@ -173,7 +167,6 @@ Refactored tree node generic logic into tree.go for reuse across menu and depart
 
 - None - task complete
 
-
 ## Session 6: Implement User Management CRUD
 
 **Date**: 2026-08-17
@@ -205,7 +198,6 @@ Implemented user management CRUD operations, role assignment, and password reset
 ### Next Steps
 
 - None - task complete
-
 
 ## Session 7: Implement backend authentication
 
@@ -239,7 +231,6 @@ Implemented JWT login, refresh-token rotation, logout, user info, access codes, 
 
 - None - task complete
 
-
 ## Session 8: Backend and Frontend Batch Operations
 
 **Date**: 2026-08-19
@@ -257,7 +248,7 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Git Commits
 
 | Hash | Message |
-|------|---------|
+| ------ | --------- |
 | `9fc7eea` | (see git log) |
 | `be1f41d` | (see git log) |
 | `1068a93` | (see git log) |
@@ -275,7 +266,6 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Next Steps
 
 - None - task complete
-
 
 ## Session 9: 修复登出审计日志操作人记录
 
@@ -296,7 +286,6 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 10: 个人中心资料与密码修改功能交付与归档
 
@@ -330,7 +319,6 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 
 [OK] **Completed**
 
-
 ## Session 11: 完成项目部署物、文档与脚手架总任务归档
 
 **Date**: 2026-08-20
@@ -362,7 +350,6 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 
 [OK] **Completed**
 
-
 ## Session 12: 全量审查并补齐项目规范文档与完成引导任务归档
 
 **Date**: 2026-08-20
@@ -382,7 +369,6 @@ Implemented batch operations for user, role, and oplog in the backend and fronte
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 13: Add pluggable file upload API
 
@@ -404,7 +390,6 @@ Implemented authenticated multipart file upload with local and MinIO storage pro
 
 [OK] **Completed**
 
-
 ## Session 14: Adopt golang-migrate for PostgreSQL migrations
 
 **Date**: 2026-08-21
@@ -422,7 +407,6 @@ Migrated backend schema and data initialization to golang-migrate with embedded 
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 15: Quality-check and commit personal profile avatar feature
 
@@ -444,7 +428,6 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 
 [OK] **Completed**
 
-
 ## Session 16: 完成对时服务与前端时间管理集成
 
 **Date**: 2026-08-23
@@ -458,7 +441,7 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Git Commits
 
 | Hash | Message |
-|------|---------|
+| ------ | --------- |
 | `f8b9244` | (see git log) |
 | `be5f718` | (see git log) |
 | `b5e33d1` | (see git log) |
@@ -468,7 +451,6 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 17: 实现网络主备容错模式与候选事务
 
@@ -489,7 +471,6 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 18: 简化 LACP 802.3ad 聚合实现
 
@@ -545,7 +526,6 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 
 [OK] **Completed**
 
-
 ## Session 20: 完成真实 RTSP 与 VideoToolbox 媒体链路验证
 
 **Date**: 2026-08-24
@@ -579,6 +559,7 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Next Steps
 
 - 实现 P0-1 Go gRPC stub/E2E 与 P0-3 永久阻塞插件的进程隔离设计。
+
 ## Session 20: 完成 RK3576 YOLOv8n RKNN 算法包验证与归档
 
 **Date**: 2026-08-24
@@ -599,7 +580,6 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 
 [OK] **Completed**
 
-
 ## Session 21: C++ Engine structured logging (JSONL)
 
 **Date**: 2026-08-25
@@ -619,7 +599,6 @@ Follow-up to the file upload task: added avatar support to the personal profile.
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 22: Go gRPC integration
 
@@ -642,11 +621,11 @@ Add Go gRPC IPC between app and engine: engineipc package provides inbound gRPC 
 
 [OK] **Completed**
 
-
 ## Session 23: RTSP Camera Source MVP
 
 **Date**: 2026-08-27
 **Task**: RTSP Camera Source MVP
+
 ## Session 23: RTSP 摄像头视频源管理 MVP 全链路实现与分批提交
 
 **Date**: 2026-08-26
@@ -661,7 +640,7 @@ Completed the RTSP camera source MVP across the engine, app, and web UI: RTSP pr
 ### Git Commits
 
 | Hash | Message |
-|------|---------|
+| ------ | --------- |
 | `cee5031` | (see git log) |
 | `f000819` | (see git log) |
 | `86ac888` | (see git log) |
@@ -671,7 +650,6 @@ Completed the RTSP camera source MVP across the engine, app, and web UI: RTSP pr
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 24: Person Management MVP
 
@@ -686,7 +664,7 @@ Implement person management MVP with backend CRUD, sync APIs, and frontend pages
 ### Git Commits
 
 | Hash | Message |
-|------|---------|
+| ------ | --------- |
 | `de26c68` | (see git log) |
 | `f000819` | (see git log) |
 | `cee5031` | (see git log) |
@@ -699,7 +677,6 @@ Implement person management MVP with backend CRUD, sync APIs, and frontend pages
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 25: macOS Face Recognition Algorithm Package & Best-Shot Selection
 
@@ -730,8 +707,6 @@ Implement person management MVP with backend CRUD, sync APIs, and frontend pages
 ### Status
 
 [OK] **Completed**
-
-
 
 ## Session 25: 完成摄像头实时预览功能
 
@@ -765,7 +740,6 @@ Implement person management MVP with backend CRUD, sync APIs, and frontend pages
 
 [OK] **Completed**
 
-
 ## Session 26: Algorithm Package Management & Face Recognition Package Implementation
 
 **Date**: 2026-08-28
@@ -786,7 +760,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 27: 目标检测告警记录模块端到端开发
 
@@ -816,7 +789,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 28: 硬件双图管线与分级秒开加载性能优化
 
@@ -851,7 +823,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 
 [OK] **Completed**
 
-
 ## Session 29: 目标抠图高清无损放大与详情联动
 
 **Date**: 2026-08-30
@@ -878,7 +849,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 
 [OK] **Completed**
 
-
 ## Session 30: 全景图列表与放大预览原图分级无损对齐
 
 **Date**: 2026-08-30
@@ -902,7 +872,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 31: 100 条大数据量渲染与并发拥塞深度优化
 
@@ -934,7 +903,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 
 [OK] **Completed**
 
-
 ## Session 33: 原生图片直链流水线消除 100 条渲染阻塞
 
 **Date**: 2026-08-30
@@ -960,7 +928,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Status
 
 [OK] **Completed**
-
 
 ## Session 34: 零 JS 开销的 GPU 级 CSS 视口切图与媒体 URL Token 鉴权
 
@@ -993,7 +960,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 
 [OK] **Completed**
 
-
 ## Session 35: 移除 VXE Table scrollY 截断恢复正常表格全高展开
 
 **Date**: 2026-08-30
@@ -1019,7 +985,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 
 [OK] **Completed**
 
-
 ## Session 36: 修复详情弹窗图片残影与列表行 keyField 绑定
 
 **Date**: 2026-08-30
@@ -1029,6 +994,7 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Summary
 
 定位并彻底解决了列表第一条在点击详情或切换分页时可能与缩略图对不上的原因：
+
 1. **VXE Table rowConfig.keyField 显式绑定**：为表格添加 `rowConfig: { keyField: 'id' }`，确保分页切换时 DOM 节点基于行唯一 ID 精确刷新，避免复用第 0 行组件实例导致属性同步延迟。
 2. **DetailModal 响应式与 ObjectURL 残影消除**：在 `handleViewDetail` 触发时重置 `currentDetail`，并在 `AlarmAnnotationCanvas` 加载新图前彻底销毁旧 ObjectURL 并清空绑定。
 3. **组件级别 Key 隔离**：为 `DetailModal` 和缩略图组件绑定 `:key="props.imageId"`，确保图片 ID 变化时状态完全隔离。
@@ -1041,9 +1007,6 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 ### Status
 
 [OK] **Completed**
-
-
-
 
 ## Session 27: 告警记录模块端到端开发与质量验收归档
 
@@ -1060,6 +1023,38 @@ Completed end-to-end algorithm package lifecycle management: backend tar safety 
 | Hash | Message |
 |------|---------|
 | `c757f60` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+## Session 37: 目标检测批次回调与目标级独立事件重构
+
+**Date**: 2026-08-31
+**Task**: 单帧检测批次回调 + Engine 目标级事件 fan-out + 同批次共享抓拍图片 (`08-31-batch-detection-object-alarms`)
+**Branch**: `dev`
+
+### Summary
+
+将 YOLOv8n 及推理引擎结果处理体系重构为“单帧单次批次回调 + 引擎按目标 fan-out + 共享抓拍”模式：
+
+1. **SDK 与 ABI 语义**：明确 `AV_RESULT_ALARM` 承载单帧检测批次；顶层 `event_id` 为算法批次 ID，`objects[]` 承载该批次全部可告警目标对象。
+2. **YOLOv8n 算法包重构**：逐目标进行类别冷却检查后聚合为 `alarm_objects`，一帧仅触发一次 `on_result` 回调并携带单份全景图抓拍请求。同步更新 standalone runner，消除多次回调覆盖问题，完整打印 4 个目标并成功输出 `result.jpg`。
+3. **Engine Fan-out 与单图编码**：
+   - 提取批次内全部合法目标，生成 `<instance_run_id>/<batch_id>-<target_sequence>` 全局目标级事件 ID 并入临界区去重；
+   - 帧 token 仅 retain 一次，异步 worker 队列单次编码 JPEG 并落盘；
+   - 批次内全部拆分出的单目标 `AlarmEvent` 共享相同的 `image_id` 与 `image_rel_path`；
+   - 将 `ImageManager` 的图片关联语义统一更新为 `capture_id`。
+4. **Go 后端消费防护**：`ReportAdapter.AcceptAlarm` 严格校验 `len(objects) == 1`，防止多目标事件未拆分造成静默丢弃。
+5. **协议与规范同步**：更新 `app.proto` 注释与 Go pb 映射，同步更新 `.trellis/spec/engine/` 下的 SDK 契约、manifest 约束与 runtime 指南。
+
+### Testing
+
+- [OK] `make -C algo-packages/macos/arm64/yolov8n build && test && run`（4 个目标全部输出，Visualizer 成功渲染保存 `result.jpg`）
+- [OK] `bash algo-packages/scripts/check-consistency.sh`（SDK 一致性校验 100% 通过）
+- [OK] `make -C engine build && ./engine/build/tests/unit_tests --gtest_filter='-RealMediaIntegrationTest.*'`（54/54 单元测试 PASS）
+- [OK] `./engine/build/tests/contract_tests`（C ABI 契约测试 PASS）
+- [OK] `cd argus && go test ./...`（后端全部单元测试 PASS）
 
 ### Status
 

@@ -37,7 +37,7 @@
 
 - `alarm_type_id`：`^[a-z0-9_]{3,32}$`；前端根据 id 做 i18n 显示，算法包不携带显示名。
 - 全局筛选键由宿主组合为 `<algorithm_id>:<alarm_type_id>`。
-- 结果中的 `alarm_type_id` 固定等于本字段；一次 `process` 可回调多个同类型事件。
+- 结果中的 `alarm_type_id` 固定等于本字段；一次 `process` 最多回调一个检测批次，Engine 再按目标拆分同类型事件。
 
 ### 2.3 离散资源档位
 
@@ -191,11 +191,13 @@ InstanceDesiredConfig {
 
 ### 4.1 正常告警
 
+算法对一帧中所有完成规则和冷却判定的目标只回调一次，批次内目标保持算法输出顺序。顶层 `event_id` 是算法生成的批次 ID；Engine 生成目标级 `AlarmEvent` 时追加从 1 开始的目标序号，确保每个目标有独立幂等键。
+
 算法输出不包含 `algorithm_id`、算法版本、实例 ID、业务时间或图片路径，这些字段由 Engine 从可信上下文补齐。
 
 ```json
 {
-  "event_id": "ev_42",
+  "event_id": "batch_42",
   "alarm_type_id": "helmet_warning",
   "objects": [
     {
@@ -209,12 +211,12 @@ InstanceDesiredConfig {
 ```
 
 约束：
-
-- `event_id`：`^[A-Za-z0-9._-]{1,128}$`，在 `instance_run_id` 内唯一；**禁止 `/`**，因为全局事件 ID 是 `<instance_run_id>/<algo_event_id>`，`/` 会破坏无歧义拆分；
+- `event_id`：`^[A-Za-z0-9._-]{1,128}$`，是批次 ID，在 `instance_run_id` 内唯一；**禁止 `/`**，因为 Engine 组合目标事件 ID 时使用 `<instance_run_id>/<batch_event_id>-<target_sequence>`；
 - `alarm_type_id`：必须等于 manifest 的 `alarm_type_id`；
-- `objects`：数组，可为空但字段必填；每个 `confidence` 在 `[0,1]`；
+- `objects`：必须为非空数组；每个对象必须包含 `label`、`confidence`、`bbox` 和 `track_id`，`confidence` 在 `[0,1]`；
 - `bbox`：`[x,y,w,h]`，值在 `[0,1]` 且不越界；
-- 序列化后结果总大小不得超过 `AV_MAX_RESULT_JSON_BYTES`。
+- 序列化后结果总大小不得超过 `AV_MAX_RESULT_JSON_BYTES`；
+- Engine 为同一批次编码一张共享抓拍，并在每条目标级 `AlarmEvent` 中复用其 `image_id` 和相对路径。
 
 ### 4.2 安装自测结果
 
@@ -285,7 +287,7 @@ InstanceDesiredConfig {
 | 请求 FPS 无对应档位或总 units 超限 | `RESOURCE_LIMIT_EXCEEDED` |
 | 算法配置 Schema 失败 | `CONFIG_SCHEMA_INVALID` |
 | 算法最终校验失败 | `AV_ERR_CONFIG_INVALID`，旧配置保留 |
-| alarm_type_id 与 manifest 声明不一致、bbox 越界、JSON 超限 | 丢弃该结果并记录 `ALGO_RESULT_INVALID` |
+- `alarm_type_id` 与 manifest 声明不一致、批次为空、对象缺字段、bbox 越界、JSON 超限 | 丢弃该结果并记录 `ALGO_RESULT_INVALID`
 | self-test 格式错误 | 拒绝安装 |
 
 ## 6. Good / Base / Bad Cases
@@ -301,7 +303,7 @@ InstanceDesiredConfig {
 - `.env` 包内隔离读取、三层配置优先级（Go 下发 > .env > 硬编码默认值）覆盖测试。
 - FPS 精确命中、向上取档、超最大档、units 超限和内存门槛测试。
 - 配置 good/base/bad、检测规则几何校验（越界/自交/点数）、revision 过期和原子回滚测试。
-- 告警零/多对象、未声明类型、重复 event ID、bbox 越界和大小上限测试。
+- 告警批次包含多个目标、Engine fan-out 后目标事件 ID 唯一、同批次目标事件共享图片、未声明类型、重复目标事件 ID、bbox 越界和大小上限测试。
 - self-test 零检测成功与非法 stages/status 测试。
 
 ## 8. Wrong vs Correct

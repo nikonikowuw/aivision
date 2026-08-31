@@ -881,9 +881,10 @@ public:
         return grpc::Status::OK;
     }
 private:
-    // 告警异步任务拥有一份 protobuf 副本；有抓拍时额外持有对应帧 token，直到图片处理结束。
+    // 一个异步 pending 对应一个检测批次：多个目标事件共享同一帧引用和一张抓拍图片。
     struct PendingAlarm {
-        argus::v1::AlarmEvent alarm;
+        std::vector<argus::v1::AlarmEvent> alarms;
+        std::string capture_id;
         av_frame_desc frame{};
         av_rect image_roi{};
         const av_frame_ops* frame_ops = nullptr;
@@ -895,8 +896,9 @@ private:
         PendingAlarm& operator=(const PendingAlarm&) = delete;
 
         PendingAlarm(PendingAlarm&& other) noexcept
-            : alarm(std::move(other.alarm)), frame(other.frame), image_roi(other.image_roi),
-              frame_ops(other.frame_ops), has_image(other.has_image), frame_retained(other.frame_retained) {
+            : alarms(std::move(other.alarms)), capture_id(std::move(other.capture_id)), frame(other.frame),
+              image_roi(other.image_roi), frame_ops(other.frame_ops), has_image(other.has_image),
+              frame_retained(other.frame_retained) {
             other.frame_retained = false;
             other.frame.frame_token = nullptr;
         }
@@ -904,7 +906,8 @@ private:
         PendingAlarm& operator=(PendingAlarm&& other) noexcept {
             if (this == &other) return *this;
             release_frame();
-            alarm = std::move(other.alarm);
+            alarms = std::move(other.alarms);
+            capture_id = std::move(other.capture_id);
             frame = other.frame;
             image_roi = other.image_roi;
             frame_ops = other.frame_ops;
@@ -939,8 +942,16 @@ private:
         {
             std::lock_guard<std::mutex> queue_lock(capture_mutex_);
             if (capture_accepting_.load(std::memory_order_acquire) && capture_worker_running_) {
-                // 去重与入队在同一临界区完成，避免两个结果回调同时接受同一个 event_id。
-                if (reported_events_.insert(pending.alarm.event_id()).second) {
+                // 去重与入队在同一临界区完成，避免两个结果回调同时接受同一个目标 event_id。
+                std::vector<argus::v1::AlarmEvent> new_alarms;
+                new_alarms.reserve(pending.alarms.size());
+                for (auto& alarm : pending.alarms) {
+                    if (reported_events_.insert(alarm.event_id()).second) {
+                        new_alarms.push_back(std::move(alarm));
+                    }
+                }
+                if (!new_alarms.empty()) {
+                    pending.alarms = std::move(new_alarms);
                     if (capture_queue_.size() >= kMaxPendingAlarmQueueSize) {
                         dropped = std::move(capture_queue_.front());
                         capture_queue_.pop_front();
@@ -960,15 +971,21 @@ private:
 
     void process_pending_alarm(PendingAlarm& pending) noexcept {
         try {
+            std::string image_id;
+            std::string image_rel_path;
             if (pending.has_image) {
                 ImageRecord record;
                 const av_status image_status = ImageManager::instance().save_detection_image(
-                    &pending.frame, &pending.image_roi, pending.alarm.event_id(), &record);
+                    &pending.frame, &pending.image_roi, pending.capture_id, &record);
                 // 图片编码落盘后立即归还帧缓冲，避免持有帧引用跨越同步 IPC 阻塞等待。
                 pending.release_frame();
                 if (image_status == AV_OK) {
-                    pending.alarm.set_image_id(record.image_id);
-                    pending.alarm.set_image_rel_path(record.rel_path);
+                    image_id = record.image_id;
+                    image_rel_path = record.rel_path;
+                    for (auto& alarm : pending.alarms) {
+                        alarm.set_image_id(image_id);
+                        alarm.set_image_rel_path(image_rel_path);
+                    }
                 } else {
                     capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
                 }
@@ -976,11 +993,17 @@ private:
                 pending.release_frame();
             }
 
-            const bool reported = app_client_ && app_client_->report_alarm(pending.alarm);
-            if (!reported) {
-                capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
-            } else if (!pending.alarm.image_id().empty() &&
-                       ImageManager::instance().mark_reported(pending.alarm.image_id()) != AV_OK) {
+            bool reported_any = false;
+            for (const auto& alarm : pending.alarms) {
+                if (!app_client_ || !app_client_->report_alarm(alarm)) {
+                    capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    reported_any = true;
+                }
+            }
+            // 图片是批次级资源；至少一个目标事件获得 ACK 后即可把共享图片标为 reported。
+            if (reported_any && !image_id.empty() &&
+                ImageManager::instance().mark_reported(image_id) != AV_OK) {
                 capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
             }
         } catch (...) {
@@ -1408,9 +1431,10 @@ private:
             const auto value = nlohmann::json::parse(result.json, result.json + result.json_len);
             if (!value.is_object() || !value.contains("event_id") || !value["event_id"].is_string() ||
                 !value.contains("alarm_type_id") || !value["alarm_type_id"].is_string() ||
-                !value.contains("objects") || !value["objects"].is_array() || value["objects"].size() > 4096) return;
+                !value.contains("objects") || !value["objects"].is_array() ||
+                value["objects"].empty() || value["objects"].size() > 4096) return;
 
-            const std::string algorithm_event_id = value["event_id"].get<std::string>();
+            const std::string batch_event_id = value["event_id"].get<std::string>();
             const std::string alarm_type_id = value["alarm_type_id"].get<std::string>();
             const auto is_safe_component = [](const std::string& component) {
                 if (component.empty() || component.size() > 128) return false;
@@ -1419,21 +1443,16 @@ private:
                 }
                 return true;
             };
-            if (!is_safe_component(algorithm_event_id) || !is_safe_component(alarm_type_id) ||
+            if (!is_safe_component(batch_event_id) || !is_safe_component(alarm_type_id) ||
                 (!instance->get_alarm_type_id().empty() && alarm_type_id != instance->get_alarm_type_id())) return;
 
-            argus::v1::AlarmEvent alarm;
-            alarm.set_instance_id(instance->get_instance_id());
-            alarm.set_camera_id(instance->get_camera_id());
-            alarm.set_algorithm_id(instance->get_algorithm_id());
-            alarm.set_algorithm_version(instance->get_version());
-            alarm.set_alarm_type_id(alarm_type_id);
-            alarm.set_wall_time_ns(frame.wall_time_ns);
-            alarm.set_time_synced(frame.time_synced != 0);
+            std::vector<argus::v1::DetectedObject> detected_objects;
+            detected_objects.reserve(value["objects"].size());
             for (const auto& object : value["objects"]) {
                 if (!object.is_object() || !object.contains("label") || !object["label"].is_string() ||
                     !object.contains("confidence") || !object["confidence"].is_number() ||
-                    !object.contains("bbox") || !object["bbox"].is_array() || object["bbox"].size() != 4) return;
+                    !object.contains("bbox") || !object["bbox"].is_array() || object["bbox"].size() != 4 ||
+                    !object.contains("track_id") || !object["track_id"].is_number_integer()) return;
                 const double confidence = object["confidence"].get<double>();
                 if (!std::isfinite(confidence) || confidence < 0.0 || confidence > 1.0) return;
                 std::array<double, 4> bbox{};
@@ -1443,26 +1462,38 @@ private:
                     if (!std::isfinite(bbox[index]) || bbox[index] < 0.0 || bbox[index] > 1.0) return;
                 }
                 if (bbox[0] + bbox[2] > 1.0 || bbox[1] + bbox[3] > 1.0) return;
-                int64_t track_id = 0;
-                if (object.contains("track_id")) {
-                    if (!object["track_id"].is_number_integer()) return;
-                    track_id = object["track_id"].get<int64_t>();
-                }
-                auto* destination = alarm.add_objects();
-                destination->set_label(object["label"].get<std::string>());
-                destination->set_confidence(static_cast<float>(confidence));
-                destination->mutable_bbox()->set_x_min(static_cast<float>(bbox[0]));
-                destination->mutable_bbox()->set_y_min(static_cast<float>(bbox[1]));
-                destination->mutable_bbox()->set_x_max(static_cast<float>(bbox[0] + bbox[2]));
-                destination->mutable_bbox()->set_y_max(static_cast<float>(bbox[1] + bbox[3]));
-                destination->set_track_id(track_id);
+
+                argus::v1::DetectedObject detected;
+                detected.set_label(object["label"].get<std::string>());
+                detected.set_confidence(static_cast<float>(confidence));
+                detected.mutable_bbox()->set_x_min(static_cast<float>(bbox[0]));
+                detected.mutable_bbox()->set_y_min(static_cast<float>(bbox[1]));
+                detected.mutable_bbox()->set_x_max(static_cast<float>(bbox[0] + bbox[2]));
+                detected.mutable_bbox()->set_y_max(static_cast<float>(bbox[1] + bbox[3]));
+                detected.set_track_id(object["track_id"].get<int64_t>());
+                detected_objects.push_back(std::move(detected));
             }
 
-            const std::string event_id = instance->get_run_id() + "/" + algorithm_event_id;
-            alarm.set_event_id(event_id);
-
             PendingAlarm pending;
-            pending.alarm = std::move(alarm);
+            pending.capture_id = instance->get_run_id() + "/" + batch_event_id;
+            pending.alarms.reserve(detected_objects.size());
+            std::unordered_set<std::string> batch_event_ids;
+            for (size_t index = 0; index < detected_objects.size(); ++index) {
+                argus::v1::AlarmEvent alarm;
+                alarm.set_instance_id(instance->get_instance_id());
+                alarm.set_camera_id(instance->get_camera_id());
+                alarm.set_algorithm_id(instance->get_algorithm_id());
+                alarm.set_algorithm_version(instance->get_version());
+                alarm.set_alarm_type_id(alarm_type_id);
+                alarm.set_wall_time_ns(frame.wall_time_ns);
+                alarm.set_time_synced(frame.time_synced != 0);
+                const std::string event_id = pending.capture_id + "-" + std::to_string(index + 1);
+                if (!batch_event_ids.insert(event_id).second) return;
+                alarm.set_event_id(event_id);
+                *alarm.add_objects() = detected_objects[index];
+                pending.alarms.push_back(std::move(alarm));
+            }
+
             if (result.image_count > 0) {
                 const auto& request = result.images[0];
                 if (request.size < sizeof(av_algo_image_req) || request.api_version != AV_ALGO_API_VERSION ||
@@ -1489,7 +1520,7 @@ private:
                     pending.frame_retained = true;
                 }
             }
-            // 仅在任务成功进入有界队列后记录 event_id；满队列/停机丢弃不会阻塞算法线程。
+            // 仅在任务成功进入有界队列后记录各目标 event_id；满队列/停机丢弃不会阻塞算法线程。
             enqueue_pending_alarm(std::move(pending));
         } catch (...) {
             // Malformed plugin output is isolated to this result callback.

@@ -195,9 +195,12 @@ typedef struct av_algo_result {
 
 ### 4.1 正常结果
 
-- 一次 `instance_process` 可回调零次、一次或多次；每个 `AV_RESULT_ALARM` 是一条完整告警。
-- 算法生成在 `instance_run_id` 内唯一的 `event_id` 和 manifest 已声明的 `alarm_type_id`；`event_id` 字符集必须排除 `/`（见 `manifest-schema.md` §4.1）。
-- Engine 使用 `<instance_run_id>/<algo_event_id>` 形成全局事件 ID 并在落图前去重；`instance_run_id` 为 UUID/ULID，`algo_event_id` 不含 `/`，组合可无歧义拆分。
+- 一次 `instance_process` 最多回调一次正常 `AV_RESULT_ALARM`；没有可告警目标时必须零回调。
+- 一个 `AV_RESULT_ALARM` 是一帧检测批次，不是业务告警边界。其 JSON 顶层 `event_id` 是批次 ID，`objects[]` 按算法输出顺序包含该批次全部可告警目标。
+- 批次内每个目标对象必须包含 `label`、`confidence`、`bbox` 和 `track_id`；目标级冷却/规则已经在算法回调前完成。
+- 算法生成在 `instance_run_id` 内唯一的批次 `event_id` 和 manifest 已声明的 `alarm_type_id`；`event_id` 字符集必须排除 `/`（见 `manifest-schema.md` §4.1）。
+- Engine 为第 `n` 个目标生成 `<instance_run_id>/<batch_event_id>-<n>` 的独立全局事件 ID（`n` 从 1 开始），不得把同一个批次 ID作为多个事件的幂等键；Go 必须按目标事件 ID 幂等。
+- Engine 将同一批次的目标事件拆成各自只含一个对象的 `AlarmEvent`，并让它们共享同一个 `image_id`/相对路径；批次只编码一张抓拍图片。
 - 算法只提交归一化 ROI；裁剪、JPEG、图片 ID、落盘与 gRPC 上报归 Engine。
 - 回调只能发生在 `instance_process` 或 `instance_flush` 的调用栈内。Engine 必须在回调返回前复制 JSON 和图片请求。
 
@@ -289,7 +292,7 @@ typedef enum av_algo_status {
 - Library/Instance 创建销毁顺序及失败中途清理测试。
 - 同实例无重入、不同实例并发、update_config/set_rules/process 互斥和 flush/join 测试。
 - 规则过滤：ROI/Mask/分界线组合、空规则全通过、锚点判定、几何非法拒绝和热更新测试；分界线跨帧方向判定测试。
-- 正常零/一/多回调及重复 event ID 去重测试。
+- 正常结果的批次 ID、目标序号和 Engine 生成的目标事件 ID 必须在重复批次/重试测试中保持可区分；目标事件 ID 不能只由 `track_id` 构成。
 - self-test 零检测仍成功、缺回调、多回调、超时和非法 JSON 测试。
 - 跨 ABI 异常转换和 `last_error` 截断/NUL 结尾测试。
 

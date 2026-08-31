@@ -4,7 +4,7 @@ package main
 import (
 	"sync"
 
-	pb "stub_server/gen/aivision/v1"
+	pb "stub_server/gen/argus/v1"
 )
 
 

@@ -50,6 +50,10 @@ int main(int argc, char* argv[]) {
 
     mINI::Instance()[Protocol::kEnableRtsp] = 1;
     mINI::Instance()[Protocol::kEnableMP4] = 0;
+    mINI::Instance()[Protocol::kEnableHls] = 0;
+    mINI::Instance()[Protocol::kEnableTS] = 0;
+    mINI::Instance()[Protocol::kEnableFMP4] = 0;
+    mINI::Instance()[Protocol::kEnableRtmp] = 0;
     mINI::Instance()[Record::kFileRepeat] = true;
 
     std::shared_ptr<MP4Reader> reader;

@@ -17,7 +17,7 @@ ENGINE_SOCK="${TEST_TMP_DIR}/engine.sock"
 HTTP_PORT="9199"
 HTTP_URL="http://127.0.0.1:${HTTP_PORT}"
 VALIDATOR_BIN="${BUILD_DIR}/package_validator"
-ENGINE_BIN="${BUILD_DIR}/aivision-engine"
+ENGINE_BIN="${BUILD_DIR}/argus-engine"
 STUB_BIN="${TEST_TMP_DIR}/stub_server"
 CLIENT_BIN="${TEST_TMP_DIR}/stub_client"
 
@@ -60,11 +60,12 @@ echo "    Stub Server is ready."
 
 # 3. Start C++ Engine
 echo "--> Launching Engine (Engine Sock: ${ENGINE_SOCK}, App Sock: ${APP_SOCK})..."
-export AIVISION_ENGINE_SOCKET="${ENGINE_SOCK}"
-export AIVISION_APP_SOCKET="${APP_SOCK}"
-export AIVISION_PACKAGE_DIR="${TEST_TMP_DIR}/var/packages"
-export AIVISION_IMAGE_DIR="${TEST_TMP_DIR}/var/images"
-export AIVISION_PACKAGE_VALIDATOR_PATH="${VALIDATOR_BIN}"
+export ARGUS_ENGINE_SOCKET="${ENGINE_SOCK}"
+export ARGUS_APP_SOCKET="${APP_SOCK}"
+export ARGUS_PACKAGE_DIR="${TEST_TMP_DIR}/var/packages"
+export ARGUS_IMAGE_DIR="${TEST_TMP_DIR}/var/images"
+export ARGUS_PACKAGE_VALIDATOR_PATH="${VALIDATOR_BIN}"
+export ARGUS_LIVE_HTTP_PORT="9080"
 
 "${ENGINE_BIN}" &
 ENGINE_PID=$!

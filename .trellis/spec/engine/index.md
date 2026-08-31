@@ -23,7 +23,7 @@
 3. **SDK 分层**：`sdk/include/aivision/*.h` 是纯 C ABI；平台 C++/Objective-C++ 辅助实现位于 `sdk/toolkit/`，不能污染 ABI 头。
 4. **推理归插件**：模型加载、推理运行时和实例推理上下文归算法包；平台只提供能力档案、帧、图像原语、资源和指标。
 5. **帧双句柄**：`opaque` 是只读平台句柄；`frame_token` 只供 `av_frame_ops retain/release`，二者不得混用。
-6. **两种结果**：正常实例允许零/多告警；安装 self-test 实例必须返回恰好一条 self-test 结果，零检测仍可成功。
+6. **两种结果**：正常实例按帧最多回调一个检测批次；Engine 将批次 fan-out 为零/多条目标级告警。安装 self-test 实例必须返回恰好一条 self-test 结果，零检测仍可成功。
 7. **状态所有权**：Go 持久化 DesiredState/config revision；Engine 执行并报告 applied revision，不维护第二份业务配置真相。
 8. **进程隔离安装**：主进程通过 `posix_spawn/exec` 启动独立 validator；禁止多线程进程 fork 后直接加载 Core ML/插件。
 9. **图片单一管理方**：Engine image 模块拥有 catalog、原子写入和幂等删除；算法只提交 ROI，Go 只持有 ID/受限相对路径。

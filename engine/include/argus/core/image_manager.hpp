@@ -35,10 +35,10 @@ enum class ImageDeleteStatus {
  */
 struct ImageRecord {
     std::string image_id;                   ///< 图片唯一标识
-    std::string event_id;                   ///< 关联的告警事件 ID
+    std::string event_id;                   ///< 关联的批次/抓拍拥有者 ID；同一图片可被多个目标事件引用
     std::string rel_path;                   ///< 相对于 images 存储根目录的相对路径
     int64_t created_at_ns = 0;              ///< 生成时间戳（纳秒）
-    std::string report_status = "unreported"; ///< 上报状态："unreported" 或 "reported"
+    std::string report_status = "unreported"; ///< 图片级上报状态："unreported" 或 "reported"
 };
 
 /**
@@ -59,16 +59,16 @@ public:
     void init(const std::string& base_dir, std::shared_ptr<platform::IImageProcessor> processor);
 
     /**
-     * @brief 裁剪并编码保存告警抓拍图片
+     * @brief 裁剪并编码保存一个检测批次的共享抓拍图片
      * @param frame 原始视频帧
      * @param crop_roi 裁剪区域（为空表示全帧抓拍）
-     * @param event_id 关联事件 ID
-     * @param out_record 输出生成的元数据记录
+     * @param capture_id 批次级抓拍拥有者 ID，不是单个目标事件 ID
+     * @param out_record 输出生成的元数据记录；调用方可将 image_id 复制到多个目标事件
      */
     av_status save_detection_image(
         const av_frame_desc* frame,
         const av_rect* crop_roi,
-        const std::string& event_id,
+        const std::string& capture_id,
         ImageRecord* out_record
     );
 
@@ -107,7 +107,7 @@ private:
     bool persist_catalog_locked();
     bool is_safe_image_id(const std::string& image_id) const;
     bool is_path_within_base(const std::filesystem::path& path) const;
-    std::string make_image_id(const std::string& event_id, int64_t created_at_ns) const;
+    std::string make_image_id(const std::string& capture_id, int64_t created_at_ns) const;
     std::string date_directory(int64_t created_at_ns) const;
 
     std::string base_dir_ = "var/images";

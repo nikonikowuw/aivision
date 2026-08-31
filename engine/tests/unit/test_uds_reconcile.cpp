@@ -409,11 +409,12 @@ TEST(UdsReconcileTest, AlarmCaptureRunsOffAlgorithmWorker) {
 
     auto& pool = argus::core::FramePool::instance();
     for (uint64_t frame_id = 1; frame_id <= 2; ++frame_id) {
+        const uint64_t source_frame_id = frame_id == 1 ? 999 : 2;
         av_frame_desc* frame = pool.acquire_frame();
         ASSERT_NE(frame, nullptr);
-        frame->frame_id = frame_id;
-        frame->wall_time_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
-        frame->pts_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->frame_id = source_frame_id;
+        frame->wall_time_ns = static_cast<int64_t>(source_frame_id) * 1'000'000'000;
+        frame->pts_ns = static_cast<int64_t>(source_frame_id) * 1'000'000'000;
         frame->memory_type = AV_MEM_HOST;
         frame->pixel_format = AV_PIX_NV12;
         frame->width = 1920;
@@ -425,8 +426,26 @@ TEST(UdsReconcileTest, AlarmCaptureRunsOffAlgorithmWorker) {
         }
     }
 
+    {
+        // 相同批次 ID 的重复回调不应再次生成四条目标告警。
+        av_frame_desc* duplicate = pool.acquire_frame();
+        ASSERT_NE(duplicate, nullptr);
+        duplicate->frame_id = 999;
+        duplicate->wall_time_ns = 99'000'000'000;
+        duplicate->pts_ns = 99'000'000'000;
+        duplicate->memory_type = AV_MEM_HOST;
+        duplicate->pixel_format = AV_PIX_NV12;
+        duplicate->width = 1920;
+        duplicate->height = 1080;
+        instance->push_frame(*duplicate);
+        EXPECT_EQ(pool.release_frame(duplicate->frame_token), AV_OK);
+    }
+
     const auto alarms = app_server.service().alarms();
+    // 批次的第一条目标事件已进入阻塞 RPC，其余三个目标事件仍在同一 pending 中。
     ASSERT_EQ(alarms.size(), 1);
+    ASSERT_EQ(alarms[0].objects_size(), 1);
+    EXPECT_TRUE(alarms[0].event_id().ends_with("/mock-event-999-1"));
     EXPECT_FALSE(alarms[0].image_id().empty());
     EXPECT_TRUE(std::filesystem::exists(image_dir + "/" + alarms[0].image_rel_path()));
     EXPECT_GE(pool.active_frame_count(), 1U);
@@ -442,7 +461,23 @@ TEST(UdsReconcileTest, AlarmCaptureRunsOffAlgorithmWorker) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     EXPECT_EQ(pool.active_frame_count(), 0U);
-    EXPECT_EQ(app_server.service().alarms().size(), 2U);
+    const auto completed_alarms = app_server.service().alarms();
+    ASSERT_EQ(completed_alarms.size(), 5U);
+    ASSERT_EQ(completed_alarms[0].objects_size(), 1);
+    const std::string shared_image_id = completed_alarms[0].image_id();
+    ASSERT_FALSE(shared_image_id.empty());
+    for (int index = 0; index < 4; ++index) {
+        ASSERT_EQ(completed_alarms[static_cast<size_t>(index)].objects_size(), 1);
+        EXPECT_EQ(completed_alarms[static_cast<size_t>(index)].image_id(), shared_image_id);
+        EXPECT_EQ(completed_alarms[static_cast<size_t>(index)].image_rel_path(), completed_alarms[0].image_rel_path());
+        EXPECT_TRUE(completed_alarms[static_cast<size_t>(index)].event_id().ends_with(
+            "/mock-event-999-" + std::to_string(index + 1)));
+        for (int other = index + 1; other < 4; ++other) {
+            EXPECT_NE(completed_alarms[static_cast<size_t>(index)].event_id(),
+                      completed_alarms[static_cast<size_t>(other)].event_id());
+        }
+    }
+    EXPECT_TRUE(completed_alarms[4].event_id().ends_with("/mock-event-2-1"));
 
     server.stop();
     app_server.stop();
@@ -555,7 +590,7 @@ TEST(UdsReconcileTest, AlarmQueueDropsOldestWhenFullAndReleasesFrames) {
     // 总共收到 1（第1帧） + 256（第3~258帧） = 257 条告警，第 2 帧被 drop
     EXPECT_EQ(alarms.size(), 257U);
     for (const auto& alarm : alarms) {
-        EXPECT_FALSE(alarm.event_id().ends_with("/mock-event-2"));
+        EXPECT_FALSE(alarm.event_id().ends_with("/mock-event-2-1"));
     }
 
     server.stop();
@@ -740,7 +775,7 @@ TEST(UdsReconcileTest, AlarmReportedEvenWhenFrameRetainFails) {
     // 告警元数据正常上报，但因为 retain 失败，抓拍图像为空
     EXPECT_TRUE(alarms[0].image_id().empty());
     EXPECT_TRUE(alarms[0].image_rel_path().empty());
-    EXPECT_TRUE(alarms[0].event_id().ends_with("/mock-event-42"));
+    EXPECT_TRUE(alarms[0].event_id().ends_with("/mock-event-42-1"));
 
     server.stop();
     app_server.stop();
@@ -754,7 +789,8 @@ TEST(UdsReconcileTest, ReconcilesExactDetectionRuleFromUI) {
     const std::string pkg_dir = "/tmp/argus-test-pkg-roi";
     std::filesystem::remove_all(pkg_dir);
     std::filesystem::create_directories(pkg_dir + "/yolov8n");
-    std::filesystem::copy("/Users/niko/dev/go/argus/engine/var/packages/yolov8n", pkg_dir + "/yolov8n",
+    const std::filesystem::path source_pkg = std::filesystem::path(ARGUS_SOURCE_DIR) / "var/packages/yolov8n";
+    std::filesystem::copy(source_pkg, pkg_dir + "/yolov8n",
                           std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
     ::setenv("ARGUS_PACKAGE_DIR", pkg_dir.c_str(), 1);
     auto adapter = std::make_shared<argus::platform::MacosPlatformAdapter>();

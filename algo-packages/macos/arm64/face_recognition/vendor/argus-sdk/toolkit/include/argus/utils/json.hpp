@@ -41,13 +41,14 @@ inline std::string escape_json_string(std::string_view value) {
 }
 
 inline std::string serialize_alarm_json(
-    const std::string& event_id,
+    const std::string& batch_id,
     const std::string& alarm_type_id,
     const std::vector<argus::cv::DetectionBox>& objects
 ) {
+    // `event_id` 是一次检测批次的 ID；Engine 会按 objects 顺序生成目标级事件 ID。
     std::ostringstream ss;
     ss << "{\n";
-    ss << "  \"event_id\": \"" << escape_json_string(event_id) << "\",\n";
+    ss << "  \"event_id\": \"" << escape_json_string(batch_id) << "\",\n";
     ss << "  \"alarm_type_id\": \"" << escape_json_string(alarm_type_id) << "\",\n";
     ss << "  \"objects\": [";
     for (size_t i = 0; i < objects.size(); ++i) {

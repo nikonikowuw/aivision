@@ -88,10 +88,20 @@ static int mock_instance_process(av_algo_instance inst, const av_frame_desc* fra
             // 特意提前释放 frame_token，模拟帧在捕获阶段 retain 失败但告警事件仍须正常递送的容错场景
             st->frame_ops->release(st->frame_ops->ctx, frame->frame_token);
         }
-        char alarm_json[128];
-        snprintf(alarm_json, sizeof(alarm_json),
-                 "{\"event_id\":\"mock-event-%llu\",\"alarm_type_id\":\"mock_alarm\",\"objects\":[]}",
-                 frame ? (unsigned long long)frame->frame_id : 0ULL);
+        char alarm_json[1024];
+        if (frame && frame->frame_id == 999) {
+            snprintf(alarm_json, sizeof(alarm_json),
+                     "{\"event_id\":\"mock-event-999\",\"alarm_type_id\":\"mock_alarm\",\"objects\":["
+                     "{\"label\":\"person\",\"confidence\":0.91,\"bbox\":[0.05,0.10,0.20,0.30],\"track_id\":1},"
+                     "{\"label\":\"person\",\"confidence\":0.87,\"bbox\":[0.35,0.15,0.18,0.28],\"track_id\":2},"
+                     "{\"label\":\"car\",\"confidence\":0.84,\"bbox\":[0.60,0.20,0.25,0.30],\"track_id\":3},"
+                     "{\"label\":\"bus\",\"confidence\":0.82,\"bbox\":[0.15,0.55,0.30,0.35],\"track_id\":4}]}" );
+        } else {
+            snprintf(alarm_json, sizeof(alarm_json),
+                     "{\"event_id\":\"mock-event-%llu\",\"alarm_type_id\":\"mock_alarm\",\"objects\":["
+                     "{\"label\":\"person\",\"confidence\":0.90,\"bbox\":[0.10,0.10,0.20,0.30],\"track_id\":1}]}" ,
+                     frame ? (unsigned long long)frame->frame_id : 0ULL);
+        }
         static const av_algo_image_req kImageRequest = {
             sizeof(av_algo_image_req), AV_ALGO_API_VERSION, 0.1f, 0.1f, 0.8f, 0.8f, 0, 0
         };

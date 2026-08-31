@@ -41,7 +41,7 @@ type InstanceRuntimeState struct {
 
 // ReportAdapter 实现 engineipc.ReportAdapter：
 //   - AcceptTaskState / AcceptInstanceState 更新内存缓存，仅状态码变化时落库（D6）；
-//   - AcceptAlarm 幂等持久化到 alarm_records 表；
+//   - AcceptAlarm 幂等持久化单目标告警到 alarm_records 表；
 //   - ReconcileOrphanImages 针对已落库图片保留（retain），超期未落库图片删除（delete）；
 //   - AcceptMetrics 保持 fail-closed。
 type ReportAdapter struct {
@@ -204,20 +204,24 @@ func (a *ReportAdapter) AcceptAlarm(ctx context.Context, event *argusv1.AlarmEve
 		}
 	}
 
+	// 告警事件已经由 Engine fan-out 为单目标事件；Go 端拒绝多目标载荷，避免静默丢弃后续目标。
+	objects := event.GetObjects()
+	if len(objects) != 1 || objects[0] == nil {
+		return errors.New("alarm event must contain exactly one object")
+	}
+
 	// 提取单个检测目标信息（1 Target = 1 Record）
 	var targetLabel string
 	var confidence float32
 	var trackID int64
 	var bbox []float32
 
-	if len(event.GetObjects()) > 0 && event.GetObjects()[0] != nil {
-		firstObj := event.GetObjects()[0]
-		targetLabel = firstObj.GetLabel()
-		confidence = firstObj.GetConfidence()
-		trackID = firstObj.GetTrackId()
-		if pbBBox := firstObj.GetBbox(); pbBBox != nil {
-			bbox = []float32{pbBBox.GetXMin(), pbBBox.GetYMin(), pbBBox.GetXMax(), pbBBox.GetYMax()}
-		}
+	firstObj := objects[0]
+	targetLabel = firstObj.GetLabel()
+	confidence = firstObj.GetConfidence()
+	trackID = firstObj.GetTrackId()
+	if pbBBox := firstObj.GetBbox(); pbBBox != nil {
+		bbox = []float32{pbBBox.GetXMin(), pbBBox.GetYMin(), pbBBox.GetXMax(), pbBBox.GetYMax()}
 	}
 
 	bboxJSON, err := json.Marshal(bbox)

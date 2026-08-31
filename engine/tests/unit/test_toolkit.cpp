@@ -94,11 +94,24 @@ TEST(UtilsToolkitTest, EventIdAndJson) {
     obj.h = 0.4f;
     obj.track_id = 101;
     objs.push_back(obj);
+    auto second = obj;
+    second.label = "car";
+    second.confidence = 0.77f;
+    second.track_id = 202;
+    objs.push_back(second);
 
     std::string json_str = argus::utils::serialize_alarm_json(evt_id, "person_intrude", objs);
     EXPECT_NE(json_str.find("person_intrude"), std::string::npos);
     EXPECT_NE(json_str.find("0.8800"), std::string::npos);
+    EXPECT_NE(json_str.find("0.7700"), std::string::npos);
     EXPECT_NE(json_str.find("[0.1000, 0.2000, 0.3000, 0.4000]"), std::string::npos);
+
+    argus::utils::ParsedAlarmJson parsed;
+    std::string error;
+    ASSERT_TRUE(argus::utils::parse_alarm_json(json_str, parsed, error)) << error;
+    EXPECT_EQ(parsed.event_id, evt_id);
+    EXPECT_EQ(parsed.objects.size(), 2U);
+    EXPECT_EQ(parsed.objects[1].label, "car");
 }
 
 TEST(UtilsToolkitTest, ProfilerStats) {

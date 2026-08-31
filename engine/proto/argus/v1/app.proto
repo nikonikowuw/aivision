@@ -9,8 +9,8 @@ option go_package = "argus/app/internal/proto/argus/v1;argusv1";
 
 // 告警事件上报
 message AlarmEvent {
-  // 全局事件 ID = "<instance_run_id>/<algo_event_id>"（Engine 生成，
-  // instance_run_id 为每次激活唯一的 UUID/ULID，algo_event_id 不含 "/"）；
+  // 目标级全局事件 ID = "<instance_run_id>/<batch_event_id>-<target_sequence>"（Engine 生成）；
+  // 一个检测批次会被 Engine fan-out 为多条 AlarmEvent，因此该 ID 不能复用批次 ID，
   // Go 必须按本字段幂等去重（对齐 runtime-guidelines §6）
   string event_id = 1;
   // 稳定实例配置 ID（对应 AlgorithmInstanceConfig.instance_id）
@@ -21,9 +21,10 @@ message AlarmEvent {
   string alarm_type_id = 6;
   int64 wall_time_ns = 7;
   bool time_synced = 8;
+  // 目标级事件恰好包含一个检测目标；同一批次的事件可共享 image_id。
   repeated DetectedObject objects = 9;
   string image_id = 10;
-  string image_rel_path = 11; // 规范化相对路径；禁止绝对路径
+  string image_rel_path = 11; // 规范化相对路径；禁止绝对路径；同批次事件可复用
   int64 inference_duration_us = 12;
   int64 e2e_duration_us = 13;
 }

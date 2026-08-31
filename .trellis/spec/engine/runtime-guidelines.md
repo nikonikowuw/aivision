@@ -21,7 +21,7 @@ Image 模块独占：
 └── catalog/                  # image_id -> relative_path/status 的持久索引
 ```
 
-目录实现技术可替换，但 catalog 必须在进程重启后恢复以下字段：`image_id`、`relative_path`、`created_at_ns`、`event_id`、`report_status`。其他模块禁止直接写图片根目录或修改 catalog。
+目录实现技术可替换，但 catalog 必须在进程重启后恢复以下字段：`image_id`、`relative_path`、`created_at_ns`、`event_id`、`report_status`。其中 catalog 的 `event_id` 是批次级抓拍拥有者/兼容元数据，不是图片所引用的唯一目标事件；多个目标事件可以通过同一个 `image_id` 引用该记录。其他模块禁止直接写图片根目录或修改 catalog。
 
 ### 2.2 原子写入
 
@@ -51,7 +51,7 @@ DeleteImageResult {image_id, status: deleted|already_absent|failed, error?}
 
 `deleted` 和 `already_absent` 均为成功。路径必须从 catalog 获取并在打开/删除前验证仍位于 `image_root`；禁止接受对端提供的路径。
 
-告警上报 ACK 后 catalog 标记 `reported`。写图成功但未收到 ACK 的条目是 orphan candidate；重连后通过 `ReportOrphanImages` 报告，由 Go 返回已引用/可删除 ID，再执行清理。Engine 不得仅按时间单方面删除业务可能已引用的图片。
+告警上报 ACK 后 catalog 按图片 ID 标记为 `reported`；同一检测批次拆出的多条 `AlarmEvent` 可以共享这条图片记录，Engine 只编码一次并在各事件中复用 `image_id`/相对路径。写图成功但未收到任何 ACK 的条目是 orphan candidate；重连后通过 `ReportOrphanImages` 报告，由 Go 返回已引用/可删除 ID，再执行清理。Engine 不得仅按时间单方面删除业务可能已引用的图片。
 
 Go 也可主动发起对账：通过 `ReconcileImages` 推送权威保留 ID 集合，Engine 删除不在保留集合中、且非 `unreported` 的孤儿图片并逐项返回结果；两个方向互补（Engine 主动上报走 `ReportOrphanImages`，Go 主动对账走 `ReconcileImages`）。
 
@@ -160,7 +160,7 @@ validated
 
 ## 6. 上报与断线语义
 
-`ReportAlarm` 使用 Engine 生成的全局 event ID，Go 必须幂等。算法结果回调只负责校验结果、复制 `AlarmEvent`，并在包含抓拍时通过 `av_frame_ops.retain` 持有帧；图片编码、原子写盘、catalog 更新、IPC 上报和 ACK 后的 `mark_reported` 都在固定容量为 `256` 的独立 worker 队列中执行。队列满时丢弃最旧任务并释放其帧引用，不得阻塞算法 worker；停机时先停止接收新结果，再停止实例，最后释放未处理任务的帧引用。RPC 失败时图片保持 `unreported` 并成为 orphan candidate；任务继续本地分析。
+`ReportAlarm` 使用 Engine 生成的目标级全局 event ID，Go 必须按目标事件幂等。算法结果回调只负责校验一个检测批次、复制多个单目标 `AlarmEvent`，并在包含抓拍时通过 `av_frame_ops.retain` 持有一份帧；图片编码、原子写盘、catalog 更新、批次内所有事件的 IPC 上报和 ACK 后的图片级 `mark_reported` 都在固定容量为 `256` 的独立 worker 队列中执行。队列满时丢弃最旧批次并释放其帧引用，不得阻塞算法 worker；停机时先停止接收新结果，再停止实例，最后释放未处理批次的帧引用。RPC 失败时图片保持 `unreported` 并成为 orphan candidate；任务继续本地分析。
 
 当前规范不承诺跨 Engine 进程崩溃的告警消息可靠投递。若产品要求告警零丢失，必须单独引入有容量、fsync 和磁盘水位策略的 durable outbox，并增加对应 PRD/AC；禁止把无界内存队列描述为可靠缓存。
 
@@ -190,7 +190,7 @@ validated
 - DesiredState 重复/过期/部分失败/全量删除/重启恢复测试。
 - 合法与非法配置、插件拒绝、资源拒绝及 applied/desired revision 测试。
 - 图片写入各失败点、fsync/rename、catalog 恢复、双删和路径逃逸测试。
-- 上报 ACK、断线 orphan、对账确认和幂等 event ID 测试。
+- 上报 ACK、断线 orphan、对账确认和按目标事件 ID 幂等测试；同批次多个目标事件必须保留同一 `image_id`。
 - 告警回调与抓拍上报异步隔离、队列满时丢弃旧任务并释放 `frame_token`、阻塞 `ReportAlarm` 时算法 worker 仍可继续处理，以及停机清理测试。
 - 升级只影响目标算法、初始化失败回滚、回滚失败 degraded 和引用卸载保护测试。
 - Proto lint：任何常规 message 不得出现 frame/tensor/image bytes 字段。

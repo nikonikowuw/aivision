@@ -282,6 +282,9 @@ catalogs:
     lodash.clonedeep:
       specifier: ^4.5.0
       version: 4.5.0
+    mpegts.js:
+      specifier: ^1.8.2
+      version: 1.8.2
     nitropack:
       specifier: ^2.13.4
       version: 2.13.4
@@ -629,7 +632,7 @@ importers:
         specifier: 'catalog:'
         version: 1.11.21
       mpegts.js:
-        specifier: ^1.8.2
+        specifier: 'catalog:'
         version: 1.8.2
       pinia:
         specifier: ^4.0.2

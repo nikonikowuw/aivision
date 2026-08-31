@@ -182,10 +182,10 @@ bool ImageManager::is_path_within_base(const fs::path& path) const {
     return root_it == root.end();
 }
 
-std::string ImageManager::make_image_id(const std::string& event_id, int64_t created_at_ns) const {
+std::string ImageManager::make_image_id(const std::string& capture_id, int64_t created_at_ns) const {
     std::string safe;
-    safe.reserve(event_id.size());
-    for (const unsigned char ch : event_id) {
+    safe.reserve(capture_id.size());
+    for (const unsigned char ch : capture_id) {
         safe.push_back((std::isalnum(ch) || ch == '-' || ch == '_') ? static_cast<char>(ch) : '_');
     }
     if (safe.empty()) safe = "event";
@@ -207,10 +207,10 @@ std::string ImageManager::date_directory(int64_t created_at_ns) const {
 av_status ImageManager::save_detection_image(
     const av_frame_desc* frame,
     const av_rect* crop_roi,
-    const std::string& event_id,
+    const std::string& capture_id,
     ImageRecord* out_record
 ) {
-    if (!frame || event_id.empty() || !out_record) return AV_ERR_INVALID_ARG;
+    if (!frame || capture_id.empty() || !out_record) return AV_ERR_INVALID_ARG;
 
     std::lock_guard<std::mutex> lock(mutex_);
     if (!processor_) return AV_ERR_INVALID_ARG;
@@ -228,7 +228,7 @@ av_status ImageManager::save_detection_image(
     // 2. 生成安全 image_id 并按 UTC 日期构建存储子目录（如 2025-05-18/img-xxx.jpg）
     const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    const std::string image_id = make_image_id(event_id, now_ns);
+    const std::string image_id = make_image_id(capture_id, now_ns);
     const std::string relative_path = date_directory(now_ns) + "/" + image_id + ".jpg";
     const std::string thumb_rel_path = date_directory(now_ns) + "/" + image_id + "_thumb.jpg";
     const fs::path final_path = fs::path(base_dir_) / relative_path;
@@ -256,7 +256,7 @@ av_status ImageManager::save_detection_image(
     // 5. 更新本地内存 Catalog 记录并原子刷盘 catalog.json
     ImageRecord record{
         .image_id = image_id,
-        .event_id = event_id,
+        .event_id = capture_id,
         .rel_path = relative_path,
         .created_at_ns = now_ns,
         .report_status = "unreported"

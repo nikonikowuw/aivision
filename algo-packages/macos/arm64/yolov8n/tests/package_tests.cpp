@@ -32,10 +32,10 @@ int main() {
     }
 
     {
-        constexpr int kAnchors = 5040;
-        std::vector<float> output(84 * kAnchors, 0.0f);
-        output[4 * kAnchors] = 0.9f;
-        output[0] = std::numeric_limits<float>::quiet_NaN();
+        constexpr int kDetections = 300;
+        std::vector<float> output(kDetections * 6, 0.0f);
+        output[0 * 6 + 4] = 0.9f; // score
+        output[0 * 6 + 0] = std::numeric_limits<float>::quiet_NaN(); // invalid x1
         require_condition(yolov8n::Postprocessor::postprocess(output, 0.5f, 0.45f, 640, 384).empty());
     }
 

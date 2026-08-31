@@ -29,64 +29,58 @@ std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
     uint32_t orig_w,
     uint32_t orig_h
 ) {
-    constexpr int kAnchors = 5040;
+    constexpr int kDetections = 300;
     std::vector<argus::cv::DetectionBox> candidates;
-    if (net_out.size() != static_cast<size_t>(84 * kAnchors) || orig_w == 0 || orig_h == 0 ||
+    if (net_out.size() != static_cast<size_t>(kDetections * 6) || orig_w == 0 || orig_h == 0 ||
         !std::isfinite(conf_thresh) || !std::isfinite(iou_thresh)) return candidates;
 
     auto lb = argus::cv::compute_letterbox(orig_w, orig_h, 640, 384);
 
-    for (int i = 0; i < kAnchors; ++i) {
-        float max_score = 0.0f;
-        int max_cls = -1;
-        for (int c = 0; c < 80; ++c) {
-            const float score = net_out[(4 + c) * kAnchors + i];
-            if (std::isfinite(score) && score > max_score) {
-                max_score = score;
-                max_cls = c;
-            }
+    for (int i = 0; i < kDetections; ++i) {
+        float x1 = net_out[i * 6 + 0];
+        float y1 = net_out[i * 6 + 1];
+        float x2 = net_out[i * 6 + 2];
+        float y2 = net_out[i * 6 + 3];
+        float score = net_out[i * 6 + 4];
+        int cls_id = static_cast<int>(std::round(net_out[i * 6 + 5]));
+
+        if (!std::isfinite(score) || score < conf_thresh || cls_id < 0 || cls_id >= 80) {
+            continue;
         }
 
-        if (max_score > conf_thresh && max_cls >= 0) {
-            float cx = net_out[0 * kAnchors + i];
-            float cy = net_out[1 * kAnchors + i];
-            float w = net_out[2 * kAnchors + i];
-            float h = net_out[3 * kAnchors + i];
-
-            if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(w) || !std::isfinite(h) ||
-                w <= 0.0f || h <= 0.0f) {
-                continue;
-            }
-
-            argus::cv::NormalizedBBox box{
-                .x_min = (cx - w * 0.5f) / 640.0f,
-                .y_min = (cy - h * 0.5f) / 384.0f,
-                .x_max = (cx + w * 0.5f) / 640.0f,
-                .y_max = (cy + h * 0.5f) / 384.0f
-            };
-
-            auto unbox = lb.unletterbox_bbox(box, orig_w, orig_h);
-
-            if (!std::isfinite(unbox.x_min) || !std::isfinite(unbox.y_min) ||
-                !std::isfinite(unbox.x_max) || !std::isfinite(unbox.y_max) ||
-                unbox.x_min >= unbox.x_max || unbox.y_min >= unbox.y_max) {
-                continue;
-            }
-
-            argus::cv::DetectionBox det{};
-            det.class_id = max_cls;
-            det.label = (max_cls < 80) ? COCO_CLASSES[max_cls] : "object";
-            det.confidence = max_score;
-            det.x = unbox.x_min;
-            det.y = unbox.y_min;
-            det.w = unbox.x_max - unbox.x_min;
-            det.h = unbox.y_max - unbox.y_min;
-            det.track_id = -1; // Unassigned before tracker
-            candidates.push_back(det);
+        if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) || !std::isfinite(y2) ||
+            x2 <= x1 || y2 <= y1) {
+            continue;
         }
+
+        argus::cv::NormalizedBBox box{
+            .x_min = x1 / 640.0f,
+            .y_min = y1 / 384.0f,
+            .x_max = x2 / 640.0f,
+            .y_max = y2 / 384.0f
+        };
+
+        auto unbox = lb.unletterbox_bbox(box, orig_w, orig_h);
+
+        if (!std::isfinite(unbox.x_min) || !std::isfinite(unbox.y_min) ||
+            !std::isfinite(unbox.x_max) || !std::isfinite(unbox.y_max) ||
+            unbox.x_min >= unbox.x_max || unbox.y_min >= unbox.y_max) {
+            continue;
+        }
+
+        argus::cv::DetectionBox det{};
+        det.class_id = cls_id;
+        det.label = (cls_id < 80) ? COCO_CLASSES[cls_id] : "object";
+        det.confidence = score;
+        det.x = unbox.x_min;
+        det.y = unbox.y_min;
+        det.w = unbox.x_max - unbox.x_min;
+        det.h = unbox.y_max - unbox.y_min;
+        det.track_id = -1; // Unassigned before tracker
+        candidates.push_back(det);
     }
 
-    return argus::cv::nms_filter(candidates, iou_thresh);
+    return candidates;
 }
 
 } // namespace yolov8n

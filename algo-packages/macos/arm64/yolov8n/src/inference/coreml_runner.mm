@@ -131,8 +131,8 @@ bool CoreMLRunner::run_pixelbuffer(void* pixel_buffer, std::vector<float>& out_t
 
         MLMultiArray* array = output_value.multiArrayValue;
         if (!array || array.shape.count != 3 || array.strides.count != 3 || array.shape[0].integerValue != 1 ||
-            array.shape[1].integerValue != 84 || array.shape[2].integerValue != 5040 || array.count != 84 * 5040) {
-            log_message(*impl_, "CoreML output tensor shape is not [1,84,5040]");
+            array.shape[1].integerValue != 300 || array.shape[2].integerValue != 6 || array.count != 300 * 6) {
+            log_message(*impl_, "CoreML output tensor shape is not [1,300,6]");
             return false;
         }
 
@@ -143,35 +143,35 @@ bool CoreMLRunner::run_pixelbuffer(void* pixel_buffer, std::vector<float>& out_t
 
         if (array.dataType == MLMultiArrayDataTypeFloat32) {
             const float* data = static_cast<const float*>(array.dataPointer);
-            for (NSInteger channel = 0; channel < 84; ++channel) {
-                for (NSInteger item = 0; item < 5040; ++item) {
-                    const float value = data[channel * stride1 + item * stride2];
+            for (NSInteger i = 0; i < 300; ++i) {
+                for (NSInteger j = 0; j < 6; ++j) {
+                    const float value = data[i * stride1 + j * stride2];
                     if (!std::isfinite(value)) {
                         log_message(*impl_, "CoreML output tensor contains a non-finite Float32 value");
                         return false;
                     }
-                    out_tensor[static_cast<size_t>(channel * 5040 + item)] = value;
+                    out_tensor[static_cast<size_t>(i * 6 + j)] = value;
                 }
             }
         } else if (array.dataType == MLMultiArrayDataTypeDouble) {
             const double* data = static_cast<const double*>(array.dataPointer);
-            for (NSInteger channel = 0; channel < 84; ++channel) {
-                for (NSInteger item = 0; item < 5040; ++item) {
-                    const double value = data[channel * stride1 + item * stride2];
+            for (NSInteger i = 0; i < 300; ++i) {
+                for (NSInteger j = 0; j < 6; ++j) {
+                    const double value = data[i * stride1 + j * stride2];
                     if (!std::isfinite(value) || value < -std::numeric_limits<float>::max() ||
                         value > std::numeric_limits<float>::max()) {
                         return false;
                     }
-                    out_tensor[static_cast<size_t>(channel * 5040 + item)] = static_cast<float>(value);
+                    out_tensor[static_cast<size_t>(i * 6 + j)] = static_cast<float>(value);
                 }
             }
         } else if (array.dataType == MLMultiArrayDataTypeFloat16) {
             std::vector<uint16_t> float16_values(static_cast<size_t>(count));
             const uint16_t* data = static_cast<const uint16_t*>(array.dataPointer);
-            for (NSInteger channel = 0; channel < 84; ++channel) {
-                for (NSInteger item = 0; item < 5040; ++item) {
-                    float16_values[static_cast<size_t>(channel * 5040 + item)] =
-                        data[channel * stride1 + item * stride2];
+            for (NSInteger i = 0; i < 300; ++i) {
+                for (NSInteger j = 0; j < 6; ++j) {
+                    float16_values[static_cast<size_t>(i * 6 + j)] =
+                        data[i * stride1 + j * stride2];
                 }
             }
             vImage_Buffer source{float16_values.data(), 1, static_cast<vImagePixelCount>(count),

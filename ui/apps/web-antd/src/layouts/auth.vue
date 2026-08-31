@@ -17,6 +17,7 @@ const logoDark = computed(() => preferences.logo.sourceDark);
     :copyright="false"
     :logo="logo"
     :logo-dark="logoDark"
+    :slogan-image="logo"
     :page-description="$t('authentication.pageDesc')"
     :page-title="$t('authentication.pageTitle')"
   >

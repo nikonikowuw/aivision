@@ -137,6 +137,14 @@ class PreferenceManager {
 
     // 加载缓存的偏好设置，并仅用缓存补齐初始化配置中未显式设置的字段
     const cachedPreferences = (await this.loadFromCache()) || {};
+    // 如果缓存中的 logo 仍然是旧的默认外部图片，清理它以使用新配置
+    const cachedRecord = cachedPreferences as Record<string, any>;
+    if (
+      cachedRecord.logo?.source?.includes('unpkg.com/@vbenjs') ||
+      cachedRecord.logo?.sourceDark?.includes('unpkg.com/@vbenjs')
+    ) {
+      delete cachedRecord.logo;
+    }
     // 修复历史脏数据：早期版本用 defu(merge) 合并数组，导致 widget.order
     // 在每次 updatePreferences 时被 concat 追加，膨胀到几十/上百条重复 key。
     // 这里在加载缓存后做一次去重，保留首次出现的 key。

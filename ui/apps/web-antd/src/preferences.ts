@@ -30,6 +30,11 @@ export const overridesPreferences = defineOverridesPreferences({
     icp: '',
     icpLink: '',
   },
+  logo: {
+    enable: true,
+    source: '/logo.svg',
+    sourceDark: '/logo.svg',
+  },
   shortcutKeys: {
     enable: true,
     globalEscape: true,

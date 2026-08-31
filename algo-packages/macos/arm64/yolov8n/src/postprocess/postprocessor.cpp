@@ -29,17 +29,18 @@ std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
     uint32_t orig_w,
     uint32_t orig_h
 ) {
+    constexpr int kAnchors = 5040;
     std::vector<argus::cv::DetectionBox> candidates;
-    if (net_out.size() != static_cast<size_t>(84 * 8400) || orig_w == 0 || orig_h == 0 ||
+    if (net_out.size() != static_cast<size_t>(84 * kAnchors) || orig_w == 0 || orig_h == 0 ||
         !std::isfinite(conf_thresh) || !std::isfinite(iou_thresh)) return candidates;
 
-    auto lb = argus::cv::compute_letterbox(orig_w, orig_h, 640, 640);
+    auto lb = argus::cv::compute_letterbox(orig_w, orig_h, 640, 384);
 
-    for (int i = 0; i < 8400; ++i) {
+    for (int i = 0; i < kAnchors; ++i) {
         float max_score = 0.0f;
         int max_cls = -1;
         for (int c = 0; c < 80; ++c) {
-            const float score = net_out[(4 + c) * 8400 + i];
+            const float score = net_out[(4 + c) * kAnchors + i];
             if (std::isfinite(score) && score > max_score) {
                 max_score = score;
                 max_cls = c;
@@ -47,10 +48,10 @@ std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
         }
 
         if (max_score > conf_thresh && max_cls >= 0) {
-            float cx = net_out[0 * 8400 + i];
-            float cy = net_out[1 * 8400 + i];
-            float w = net_out[2 * 8400 + i];
-            float h = net_out[3 * 8400 + i];
+            float cx = net_out[0 * kAnchors + i];
+            float cy = net_out[1 * kAnchors + i];
+            float w = net_out[2 * kAnchors + i];
+            float h = net_out[3 * kAnchors + i];
 
             if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(w) || !std::isfinite(h) ||
                 w <= 0.0f || h <= 0.0f) {
@@ -59,9 +60,9 @@ std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
 
             argus::cv::NormalizedBBox box{
                 .x_min = (cx - w * 0.5f) / 640.0f,
-                .y_min = (cy - h * 0.5f) / 640.0f,
+                .y_min = (cy - h * 0.5f) / 384.0f,
                 .x_max = (cx + w * 0.5f) / 640.0f,
-                .y_max = (cy + h * 0.5f) / 640.0f
+                .y_max = (cy + h * 0.5f) / 384.0f
             };
 
             auto unbox = lb.unletterbox_bbox(box, orig_w, orig_h);

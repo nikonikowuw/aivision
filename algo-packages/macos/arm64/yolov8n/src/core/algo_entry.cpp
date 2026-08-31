@@ -192,7 +192,7 @@ void log_color_fallback_once(InstanceContext* inst, const av_frame_desc* frame) 
 bool run_pipeline(InstanceContext* inst, const av_frame_desc* frame,
                   std::vector<argus::cv::DetectionBox>& objects) {
     log_color_fallback_once(inst, frame);
-    void* input_pixelbuffer = Preprocessor::create_input_pixelbuffer(frame, inst->image_ops, 640, 640);
+    void* input_pixelbuffer = Preprocessor::create_input_pixelbuffer(frame, inst->image_ops, 640, 384);
     if (!input_pixelbuffer) {
         set_error(inst, "failed to preprocess NV12 CVPixelBuffer");
         return false;
@@ -455,6 +455,8 @@ int yolo_instance_process_impl(av_algo_instance inst_handle, const av_frame_desc
 
     const int64_t current_time_ns = frame->wall_time_ns > 0 ? frame->wall_time_ns : frame->pts_ns;
     constexpr int64_t kCooldownNs = 5LL * 1000 * 1000 * 1000; // 默认 5 秒冷却
+    std::vector<argus::cv::DetectionBox> alarm_objects;
+    alarm_objects.reserve(objects.size());
 
     for (const auto& object : objects) {
         if (object.track_id > 0) {
@@ -465,37 +467,40 @@ int yolo_instance_process_impl(av_algo_instance inst_handle, const av_frame_desc
             }
             inst->track_alarm_cooldown_[object.track_id] = current_time_ns;
         }
-
-        if (inst->event_counter == std::numeric_limits<uint32_t>::max()) {
-            return fail(inst, AV_ERR_INTERNAL, "event counter exhausted");
-        }
-        ++inst->event_counter;
-        const std::string event_id = argus::utils::EventIdGenerator::next_event_id(inst->event_counter);
-        std::vector<argus::cv::DetectionBox> single_object = {object};
-        const std::string result_json = argus::utils::serialize_alarm_json(event_id, kAlarmTypeId, single_object);
-        if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "alarm result is too large");
-
-        // 请求全景大图 [0, 0, 1, 1]
-        av_algo_image_req request{};
-        request.size = sizeof(request);
-        request.api_version = AV_ALGO_API_VERSION;
-        request.x = 0.0f;
-        request.y = 0.0f;
-        request.w = 1.0f;
-        request.h = 1.0f;
-        request.purpose = 0; // 0: 全景大图
-
-        av_algo_result result{};
-        result.size = sizeof(result);
-        result.api_version = AV_ALGO_API_VERSION;
-        result.kind = AV_RESULT_ALARM;
-        result.frame_id = frame->frame_id;
-        result.json = result_json.c_str();
-        result.json_len = static_cast<uint32_t>(result_json.size());
-        result.image_count = 1;
-        result.images = &request;
-        inst->on_result(&result, inst->result_user);
+        alarm_objects.push_back(object);
     }
+
+    if (alarm_objects.empty()) return AV_OK;
+    if (inst->event_counter == std::numeric_limits<uint32_t>::max()) {
+        return fail(inst, AV_ERR_INTERNAL, "event counter exhausted");
+    }
+
+    // 一次 process 只生成一个批次 ID、一个 JSON 和一次回调；Engine 再按目标拆分业务事件。
+    ++inst->event_counter;
+    const std::string batch_id = argus::utils::EventIdGenerator::next_event_id(inst->event_counter);
+    const std::string result_json = argus::utils::serialize_alarm_json(batch_id, kAlarmTypeId, alarm_objects);
+    if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "alarm result is too large");
+
+    // 请求一张全景大图 [0, 0, 1, 1]，批次内所有目标共享该抓拍。
+    av_algo_image_req request{};
+    request.size = sizeof(request);
+    request.api_version = AV_ALGO_API_VERSION;
+    request.x = 0.0f;
+    request.y = 0.0f;
+    request.w = 1.0f;
+    request.h = 1.0f;
+    request.purpose = 0; // 0: 全景大图
+
+    av_algo_result result{};
+    result.size = sizeof(result);
+    result.api_version = AV_ALGO_API_VERSION;
+    result.kind = AV_RESULT_ALARM;
+    result.frame_id = frame->frame_id;
+    result.json = result_json.c_str();
+    result.json_len = static_cast<uint32_t>(result_json.size());
+    result.image_count = 1;
+    result.images = &request;
+    inst->on_result(&result, inst->result_user);
     return AV_OK;
 }
 

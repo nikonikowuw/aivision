@@ -203,7 +203,7 @@ int main() {
         constexpr uint32_t kSourceWidth = 320;
         constexpr uint32_t kSourceHeight = 480;
         constexpr uint32_t kTargetWidth = 640;
-        constexpr uint32_t kTargetHeight = 640;
+        constexpr uint32_t kTargetHeight = 384;
         CVPixelBufferRef source = make_gray_nv12(kSourceWidth, kSourceHeight);
         require_condition(source != nullptr, "failed to create NV12 test frame");
         const av_frame_desc frame = make_frame(source);

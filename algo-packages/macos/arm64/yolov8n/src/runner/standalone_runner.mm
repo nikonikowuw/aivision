@@ -60,6 +60,7 @@ struct ResultCapture {
     std::vector<argus::cv::DetectionBox> objects;
     std::string error;
     bool self_test = false;
+    uint32_t alarm_callback_count = 0;
 };
 
 struct RunnerPackageRoot {
@@ -123,6 +124,11 @@ void result_callback(const av_algo_result* result, void* user) noexcept {
         capture->json.assign(result->json, result->json_len);
         capture->self_test = result->kind == AV_RESULT_SELF_TEST;
         if (result->kind == AV_RESULT_ALARM) {
+            ++capture->alarm_callback_count;
+            if (capture->alarm_callback_count != 1) {
+                capture->error = "algorithm returned more than one alarm batch";
+                return;
+            }
             argus::utils::ParsedAlarmJson parsed;
             if (!argus::utils::parse_alarm_json(capture->json, parsed, capture->error)) return;
             capture->objects = std::move(parsed.objects);
@@ -418,7 +424,7 @@ bool run_direct_pipeline(const av_frame_desc& frame, yolov8n::CoreMLRunner& runn
                          float confidence, float iou, StageSamples* samples) {
     const auto end_to_end_begin = std::chrono::steady_clock::now();
     const auto preprocess_begin = std::chrono::steady_clock::now();
-    void* input_pixelbuffer = yolov8n::Preprocessor::create_input_pixelbuffer(&frame, nullptr, 640, 640);
+    void* input_pixelbuffer = yolov8n::Preprocessor::create_input_pixelbuffer(&frame, nullptr, 640, 384);
     const auto preprocess_end = std::chrono::steady_clock::now();
     if (!input_pixelbuffer) return false;
     struct PixelBufferGuard {

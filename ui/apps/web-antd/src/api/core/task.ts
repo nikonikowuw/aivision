@@ -112,6 +112,14 @@ export namespace TaskApi {
     protocol: string;
   }
 
+  export interface MotionGateConfig {
+    enabled: boolean;
+    threshold?: number;
+    contourArea?: number;
+    frameAlpha?: number;
+    keepaliveIntervalMs?: number;
+  }
+
   /** 算法实例项 */
   export interface InstanceItem {
     instanceId: string;
@@ -120,6 +128,7 @@ export namespace TaskApi {
     analysisFps: number;
     paramsJson: Record<string, unknown> | string;
     rules: DetectionRule[];
+    motionGate?: MotionGateConfig;
     enabled: boolean;
     actualStatus: InstanceStatusCode;
     statusMessage: string;
@@ -133,6 +142,7 @@ export namespace TaskApi {
     analysisFps?: number;
     paramsJson?: Record<string, unknown> | string;
     rules?: DetectionRule[];
+    motionGate?: MotionGateConfig;
     enabled?: boolean;
   }
 
@@ -140,6 +150,7 @@ export namespace TaskApi {
     analysisFps: number;
     paramsJson: Record<string, unknown> | string;
     rules: DetectionRule[];
+    motionGate?: MotionGateConfig;
   }
 }
 

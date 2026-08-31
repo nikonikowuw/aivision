@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <nlohmann/json.hpp>
 
 namespace argus::core {
 
@@ -76,7 +77,7 @@ av_status AlgorithmInstance::init(const av_frame_ops* frame_ops, const av_image_
                 return AV_ERR_INVALID_ARG;
             }
 
-            // 构造传递给 C ABI instance_create 的初始化参数
+            // 构造传递给 C ABI instance_create 的初始化参数（params_json_ 为纯净算法参数）
             av_algo_instance_args args{};
             args.size = sizeof(av_algo_instance_args);
             args.api_version = AV_ALGO_API_VERSION;
@@ -162,6 +163,9 @@ av_status AlgorithmInstance::init(const av_frame_ops* frame_ops, const av_image_
         }
     }
 
+    // 解析 motion_gate 配置
+    motion_gate_.update_config_from_json(params_json_);
+
     // 标记运行状态并启动后台工作线程
     received_frames_.store(0, std::memory_order_relaxed);
     sampled_frames_.store(0, std::memory_order_relaxed);
@@ -246,7 +250,7 @@ void AlgorithmInstance::push_frame(const av_frame_desc& frame) {
 av_status AlgorithmInstance::update_params(const std::string& new_params) {
     if (new_params.size() > std::numeric_limits<uint32_t>::max()) return AV_ERR_INVALID_ARG;
     std::lock_guard<std::mutex> lock(abi_mutex_);
-    // 调用 C ABI 的 instance_update_config 热更新实例参数
+    // 调用 C ABI 的 instance_update_config 热更新实例参数（原样下发纯净算法参数）
     if (abi_ && abi_->instance_update_config && inst_handle_) {
         const av_status status = static_cast<av_status>(abi_->instance_update_config(
             inst_handle_, new_params.c_str(), static_cast<uint32_t>(new_params.length())));
@@ -256,9 +260,17 @@ av_status AlgorithmInstance::update_params(const std::string& new_params) {
     return AV_OK;
 }
 
+void AlgorithmInstance::update_motion_gate(const MotionGateConfig& config) {
+    motion_gate_.update_config(config);
+}
+
 av_status AlgorithmInstance::set_rules(const std::vector<av_rule>& rules) {
     if (rules.size() > std::numeric_limits<uint32_t>::max()) return AV_ERR_INVALID_ARG;
     std::lock_guard<std::mutex> lock(abi_mutex_);
+
+    // 自动联动：提取 AV_RULE_MASK 规则作为 MotionGate 的排除 Mask
+    motion_gate_.sync_rule_masks(rules.data(), rules.size());
+
     // 调用 C ABI 的 instance_set_rules 下发检测规则（ROI/屏蔽区/警戒线）
     if (abi_ && inst_handle_ && abi_->instance_set_rules) {
         return static_cast<av_status>(abi_->instance_set_rules(
@@ -326,6 +338,25 @@ void AlgorithmInstance::worker_loop() {
             frame_queue_.pop();
         }
 
+        // 执行 MotionGate 运动检测评估
+        const MotionDecision decision = motion_gate_.evaluate(frame);
+        if (decision == MotionDecision::SKIP) {
+            motion_skipped_total_.fetch_add(1, std::memory_order_relaxed);
+            motion_skipped_frames_.fetch_add(1, std::memory_order_relaxed);
+            if (frame_ops_ && frame_ops_->release) {
+                frame_ops_->release(frame_ops_->ctx, frame.frame_token);
+            }
+            log_debug_metrics();
+            continue;
+        }
+        if (decision == MotionDecision::MOTION) {
+            motion_passed_total_.fetch_add(1, std::memory_order_relaxed);
+            motion_passed_frames_.fetch_add(1, std::memory_order_relaxed);
+        } else if (decision == MotionDecision::KEEPALIVE) {
+            keepalive_passed_total_.fetch_add(1, std::memory_order_relaxed);
+            keepalive_passed_frames_.fetch_add(1, std::memory_order_relaxed);
+        }
+
         // 执行单帧推理处理，并测量 instance_process 本身的完整耗时（包含插件回调）
         bool process_called = false;
         av_status process_status = AV_OK;
@@ -381,6 +412,9 @@ void AlgorithmInstance::log_debug_metrics() {
     const uint64_t sample_drops = sample_dropped_frames_.exchange(0, std::memory_order_relaxed);
     const uint64_t caps_drops = caps_dropped_frames_.exchange(0, std::memory_order_relaxed);
     const uint64_t retain_failures = retain_failed_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t motion_skips = motion_skipped_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t motion_passes = motion_passed_frames_.exchange(0, std::memory_order_relaxed);
+    const uint64_t keepalive_passes = keepalive_passed_frames_.exchange(0, std::memory_order_relaxed);
     const uint64_t queued_frames = queued_frames_.exchange(0, std::memory_order_relaxed);
     const uint64_t queue_drops = queue_dropped_frames_.exchange(0, std::memory_order_relaxed);
     const uint64_t process_calls = process_calls_.exchange(0, std::memory_order_relaxed);
@@ -409,6 +443,10 @@ void AlgorithmInstance::log_debug_metrics() {
          {"sample_drops", static_cast<int64_t>(sample_drops)},
          {"caps_drops", static_cast<int64_t>(caps_drops)},
          {"queue_drops", static_cast<int64_t>(queue_drops)},
+         {"motion_skips", static_cast<int64_t>(motion_skips)},
+         {"motion_passes", static_cast<int64_t>(motion_passes)},
+         {"keepalive_passes", static_cast<int64_t>(keepalive_passes)},
+         {"motion_last_changed_pixels", static_cast<int64_t>(motion_gate_.get_stats().last_changed_pixels)},
          {"retain_failures", static_cast<int64_t>(retain_failures)},
          {"process_failures", static_cast<int64_t>(process_failures)},
          {"average_process_ms", average_process_ms},

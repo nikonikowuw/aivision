@@ -24,6 +24,7 @@ add_library(engine_core STATIC
     algo/algo_manager.cpp
     algo/algo_instance.cpp
     algo/algo_sandbox.cpp
+    algo/motion_gate.cpp
     image/image_manager.cpp
     resource/resource_ledger.cpp
     telemetry/telemetry_collector.cpp

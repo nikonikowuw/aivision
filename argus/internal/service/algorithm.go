@@ -153,9 +153,9 @@ func (s *algorithmService) UploadAndInstall(ctx context.Context, reader io.Reade
 		PlatformID:        extracted.PlatformID,
 		MinAdapterVersion: extracted.MinAdapterVersion,
 		PackageRoot:       fmt.Sprintf("var/packages/%s/%s", extracted.AlgorithmID, extracted.Version),
-		FPSTiers:          fpsTiersJSON,
-		ConfigSchema:      extracted.ConfigSchemaRaw,
-		ManifestRaw:       extracted.ManifestRaw,
+		FPSTiers:          model.JSONRaw(fpsTiersJSON),
+		ConfigSchema:      model.JSONRaw(extracted.ConfigSchemaRaw),
+		ManifestRaw:       model.JSONRaw(extracted.ManifestRaw),
 		PackageSizeBytes:  extracted.TotalSizeBytes,
 		IsActive:          true,
 	}

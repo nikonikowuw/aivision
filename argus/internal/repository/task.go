@@ -321,12 +321,12 @@ func (r *taskRepository) ListInstancesByCameraIDs(ctx context.Context, cameraIDs
 // AlgoExists 为空表示算法行缺失（LEFT JOIN 未命中）；ActiveVersion 为空表示算法未激活；
 // FPSTiers 为空表示激活版本行缺失或已软删——service 层均按「不占资源」跳过（与原 N+1 语义一致）。
 type EnabledInstanceQuotaRow struct {
-	InstanceID    string          `gorm:"column:instance_id"`
-	AlgorithmID   string          `gorm:"column:algorithm_id"`
-	AlgoExists    string          `gorm:"column:algo_exists"`
-	ActiveVersion string          `gorm:"column:active_version"`
-	AnalysisFPS   int32           `gorm:"column:analysis_fps"`
-	FPSTiers      json.RawMessage `gorm:"column:fps_tiers"`
+	InstanceID    string         `gorm:"column:instance_id"`
+	AlgorithmID   string         `gorm:"column:algorithm_id"`
+	AlgoExists    string         `gorm:"column:algo_exists"`
+	ActiveVersion string         `gorm:"column:active_version"`
+	AnalysisFPS   int32          `gorm:"column:analysis_fps"`
+	FPSTiers      model.JSONRaw  `gorm:"column:fps_tiers"`
 }
 
 // ListEnabledInstanceQuotaRows 一次 JOIN 返回全部实际调度实例的配额计价行，
@@ -439,13 +439,14 @@ type taskSnapshotRow struct {
 
 // instanceSnapshotRow 快照组装行：enabled=true 的实例及其算法激活版本。
 type instanceSnapshotRow struct {
-	InstanceID    string          `gorm:"column:instance_id"`
-	CameraID      string          `gorm:"column:camera_id"`
-	AlgorithmID   string          `gorm:"column:algorithm_id"`
-	ActiveVersion string          `gorm:"column:active_version"`
-	AnalysisFPS   int32           `gorm:"column:analysis_fps"`
-	ParamsJSON    json.RawMessage `gorm:"column:params_json"`
-	RulesJSON     json.RawMessage `gorm:"column:rules_json"`
+	InstanceID     string        `gorm:"column:instance_id"`
+	CameraID       string        `gorm:"column:camera_id"`
+	AlgorithmID    string        `gorm:"column:algorithm_id"`
+	ActiveVersion  string        `gorm:"column:active_version"`
+	AnalysisFPS    int32         `gorm:"column:analysis_fps"`
+	ParamsJSON     model.JSONRaw `gorm:"column:params_json"`
+	RulesJSON      model.JSONRaw `gorm:"column:rules_json"`
+	MotionGateJSON model.JSONRaw `gorm:"column:motion_gate_json"`
 }
 
 // activeVersionRow 算法激活版本行。
@@ -502,7 +503,7 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 		Model(&model.AlgorithmInstance{}).
 		Select("algorithm_instances.instance_id, algorithm_instances.camera_id, algorithm_instances.algorithm_id, "+
 			"algorithms.active_version, algorithm_instances.analysis_fps, "+
-			"algorithm_instances.params_json, algorithm_instances.rules_json").
+			"algorithm_instances.params_json, algorithm_instances.rules_json, algorithm_instances.motion_gate_json").
 		Joins("JOIN algorithms ON algorithms.algorithm_id = algorithm_instances.algorithm_id AND algorithms.deleted_at = 0").
 		Where("algorithm_instances.enabled = ?", true).
 		Order("algorithm_instances.id ASC").
@@ -545,6 +546,19 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 		if err != nil {
 			return nil, err
 		}
+		var mgCfg *argusv1.MotionGateConfig
+		if len(row.MotionGateJSON) > 0 {
+			var mg model.MotionGateConfig
+			if err := json.Unmarshal(row.MotionGateJSON, &mg); err == nil {
+				mgCfg = &argusv1.MotionGateConfig{
+					Enabled:             mg.Enabled,
+					Threshold:           mg.Threshold,
+					ContourArea:         mg.ContourArea,
+					FrameAlpha:          mg.FrameAlpha,
+					KeepaliveIntervalMs: mg.KeepaliveIntervalMs,
+				}
+			}
+		}
 		state.Instances = append(state.Instances, &argusv1.AlgorithmInstanceConfig{
 			InstanceId:       row.InstanceID,
 			CameraId:         row.CameraID,
@@ -554,6 +568,7 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 			ParamsJson:       string(row.ParamsJSON),
 			Enabled:          true,
 			Rules:            rules,
+			MotionGate:       mgCfg,
 		})
 	}
 	for _, row := range versionRows {
@@ -567,7 +582,7 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 
 // parseRulesJSON 解析实例规则 JSON 并转换为 proto 形态；非法 JSON 视为内部数据损坏，
 // 返回错误让快照组装 fail closed（Engine 不拿到部分规则）。
-func parseRulesJSON(instanceID string, raw json.RawMessage) ([]*argusv1.DetectionRule, error) {
+func parseRulesJSON(instanceID string, raw model.JSONRaw) ([]*argusv1.DetectionRule, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}

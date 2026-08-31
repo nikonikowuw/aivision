@@ -132,9 +132,9 @@ func seedTaskFixture(t *testing.T, db *gorm.DB) {
 	mustCreate(&model.AlgorithmVersion{
 		AlgorithmID:  "yolov8n",
 		Version:      "1.0.0",
-		FPSTiers:     json.RawMessage(testTiers),
-		ConfigSchema: json.RawMessage(testConfigSchema),
-		ManifestRaw:  json.RawMessage("{}"), // 非空避免 sqlite 把 NULL 扫进 json.RawMessage 报错
+		FPSTiers:     model.JSONRaw(testTiers),
+		ConfigSchema: model.JSONRaw(testConfigSchema),
+		ManifestRaw:  model.JSONRaw("{}"), // 非空避免 sqlite 把 NULL 扫进 json.RawMessage 报错
 	})
 	mustCreate(&model.AnalysisTask{CameraID: "cam-a", Name: "大门任务", DesiredEnabled: true, ActualStatus: model.TaskStatusRunning})
 }

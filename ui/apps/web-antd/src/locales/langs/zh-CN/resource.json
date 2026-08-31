@@ -167,7 +167,11 @@
       "schemaMultiSelectPlaceholder": "请选择一项或多项",
       "autoEnable": "立即启用",
       "autoEnableOn": "创建后立即尝试调度运行（须消耗计算配额）",
-      "autoEnableOff": "先以停用状态保存（不消耗算力，可离线编排）"
+      "autoEnableOff": "先以停用状态保存（不消耗算力，可离线编排）",
+      "motionGate": "运动检测门控 (Motion Gate)",
+      "motionGateHint": "画面静止时跳过 AI 推理以节省算力功耗；检测到运动或达到保活周期时自动放行",
+      "motionGateKeepalive": "保活推理周期 (ms)",
+      "motionGateKeepaliveHint": "静止状态下定期放行基准帧的间隔"
     },
     "ruleEditor": {
       "role": {

@@ -1,7 +1,6 @@
 package model
 
 import (
-	"encoding/json"
 	"time"
 
 	"gorm.io/plugin/soft_delete"
@@ -98,22 +97,32 @@ type AnalysisTask struct {
 // TableName 显式声明表名。
 func (AnalysisTask) TableName() string { return "analysis_tasks" }
 
+// MotionGateConfig 运动门控配置（系统/引擎级）。
+type MotionGateConfig struct {
+	Enabled             bool    `json:"enabled"`
+	Threshold           uint32  `json:"threshold,omitempty"`
+	ContourArea         uint32  `json:"contourArea,omitempty"`
+	FrameAlpha          float32 `json:"frameAlpha,omitempty"`
+	KeepaliveIntervalMs uint64  `json:"keepaliveIntervalMs,omitempty"`
+}
+
 // AlgorithmInstance 算法实例表模型。
 // 挂在 camera_id 下（不经 analysis_tasks.id，与 Engine 寻址一致，见 design D2/D9）。
 // 无 algorithm_version 列（D11）：组装 DesiredState 时从 algorithms.active_version 动态填充。
 type AlgorithmInstance struct {
 	BaseModel
 	// 覆写 BaseModel.DeletedAt 以加入 instance_id 复合唯一索引。
-	DeletedAt     soft_delete.DeletedAt `gorm:"column:deleted_at;softDelete:milli;default:0;uniqueIndex:uk_algorithm_instances_instance_id" json:"-"`
-	InstanceID    string                `gorm:"column:instance_id;size:36;not null;uniqueIndex:uk_algorithm_instances_instance_id" json:"instanceId"`
-	CameraID      string                `gorm:"column:camera_id;size:36;not null;index:idx_algorithm_instances_camera_id" json:"cameraId"`
-	AlgorithmID   string                `gorm:"column:algorithm_id;size:64;not null;index:idx_algorithm_instances_algorithm_id" json:"algorithmId"`
-	AnalysisFPS   int32                 `gorm:"column:analysis_fps;not null;default:0" json:"analysisFps"`
-	ParamsJSON    json.RawMessage       `gorm:"column:params_json;type:jsonb;not null;default:'{}'" json:"paramsJson"`
-	RulesJSON     json.RawMessage       `gorm:"column:rules_json;type:jsonb;not null;default:'[]'" json:"rulesJson"`
-	Enabled       bool                  `gorm:"column:enabled;not null;default:false" json:"enabled"`
-	ActualStatus  int8                  `gorm:"column:actual_status;not null" json:"actualStatus"`
-	StatusMessage string                `gorm:"column:status_message;size:255;not null;default:''" json:"statusMessage"`
+	DeletedAt      soft_delete.DeletedAt `gorm:"column:deleted_at;softDelete:milli;default:0;uniqueIndex:uk_algorithm_instances_instance_id" json:"-"`
+	InstanceID     string                `gorm:"column:instance_id;size:36;not null;uniqueIndex:uk_algorithm_instances_instance_id" json:"instanceId"`
+	CameraID       string                `gorm:"column:camera_id;size:36;not null;index:idx_algorithm_instances_camera_id" json:"cameraId"`
+	AlgorithmID    string                `gorm:"column:algorithm_id;size:64;not null;index:idx_algorithm_instances_algorithm_id" json:"algorithmId"`
+	AnalysisFPS    int32                 `gorm:"column:analysis_fps;not null;default:0" json:"analysisFps"`
+	ParamsJSON     JSONRaw               `gorm:"column:params_json;type:jsonb;not null;default:'{}'" json:"paramsJson"`
+	RulesJSON      JSONRaw               `gorm:"column:rules_json;type:jsonb;not null;default:'[]'" json:"rulesJson"`
+	MotionGateJSON JSONRaw               `gorm:"column:motion_gate_json;type:jsonb;not null;default:'{}'" json:"motionGateJson"`
+	Enabled        bool                  `gorm:"column:enabled;not null;default:false" json:"enabled"`
+	ActualStatus   int8                  `gorm:"column:actual_status;not null" json:"actualStatus"`
+	StatusMessage  string                `gorm:"column:status_message;size:255;not null;default:''" json:"statusMessage"`
 }
 
 // TableName 显式声明表名。

@@ -243,6 +243,7 @@ type InstanceItem struct {
 	AnalysisFPS   int32                 `json:"analysisFps"`
 	ParamsJSON    json.RawMessage       `json:"paramsJson"`
 	Rules         []model.DetectionRule `json:"rules"`
+	MotionGate    *model.MotionGateConfig `json:"motionGate,omitempty"`
 	Enabled       bool                  `json:"enabled"`
 	ActualStatus  int8                  `json:"actualStatus"`
 	StatusMessage string                `json:"statusMessage"`
@@ -258,6 +259,7 @@ type CreateInstanceInput struct {
 	AnalysisFPS int32                 `json:"analysisFps"`
 	ParamsJSON  json.RawMessage       `json:"paramsJson"`
 	Rules       []model.DetectionRule `json:"rules"`
+	MotionGate  *model.MotionGateConfig `json:"motionGate"`
 	Enabled     bool                  `json:"enabled"`
 }
 
@@ -269,6 +271,7 @@ type UpdateInstanceInput struct {
 	AnalysisFPS *int32                `json:"analysisFps" binding:"required"`
 	ParamsJSON  json.RawMessage       `json:"paramsJson" binding:"required"`
 	Rules       []model.DetectionRule `json:"rules" binding:"required"`
+	MotionGate  *model.MotionGateConfig `json:"motionGate"`
 }
 
 // ── TaskService ─────────────────────────────────────────────────────────
@@ -637,8 +640,9 @@ func (s *taskService) mergeInstance(inst *model.AlgorithmInstance) *InstanceItem
 		CameraID:      inst.CameraID,
 		AlgorithmID:   inst.AlgorithmID,
 		AnalysisFPS:   inst.AnalysisFPS,
-		ParamsJSON:    inst.ParamsJSON,
+		ParamsJSON:    json.RawMessage(inst.ParamsJSON),
 		Rules:         s.parseStoredRules(inst),
+		MotionGate:    s.parseStoredMotionGate(inst),
 		Enabled:       inst.Enabled,
 		ActualStatus:  inst.ActualStatus,
 		StatusMessage: inst.StatusMessage,
@@ -653,6 +657,18 @@ func (s *taskService) mergeInstance(inst *model.AlgorithmInstance) *InstanceItem
 		}
 	}
 	return item
+}
+
+// parseStoredMotionGate 解析实例运动门控 JSON。
+func (s *taskService) parseStoredMotionGate(inst *model.AlgorithmInstance) *model.MotionGateConfig {
+	if len(inst.MotionGateJSON) == 0 {
+		return nil
+	}
+	var mg model.MotionGateConfig
+	if err := json.Unmarshal(inst.MotionGateJSON, &mg); err != nil {
+		return nil
+	}
+	return &mg
 }
 
 // parseStoredRules 解析实例规则 JSON；损坏时记 warn 并返回空列表（列表展示不 500）。
@@ -729,15 +745,22 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 	if err != nil {
 		return nil, err
 	}
+	motionGateJSON := model.JSONRaw("{}")
+	if input.MotionGate != nil {
+		if b, err := json.Marshal(input.MotionGate); err == nil {
+			motionGateJSON = model.JSONRaw(b)
+		}
+	}
 	inst := &model.AlgorithmInstance{
-		InstanceID:   uuid.NewString(),
-		CameraID:     cameraID,
-		AlgorithmID:  algorithmID,
-		AnalysisFPS:  input.AnalysisFPS,
-		ParamsJSON:   paramsJSON,
-		RulesJSON:    rulesJSON,
-		Enabled:      input.Enabled,
-		ActualStatus: model.InstanceStatusStopped,
+		InstanceID:     uuid.NewString(),
+		CameraID:       cameraID,
+		AlgorithmID:    algorithmID,
+		AnalysisFPS:    input.AnalysisFPS,
+		ParamsJSON:     model.JSONRaw(paramsJSON),
+		RulesJSON:      model.JSONRaw(rulesJSON),
+		MotionGateJSON: motionGateJSON,
+		Enabled:        input.Enabled,
+		ActualStatus:   model.InstanceStatusStopped,
 	}
 	if input.Enabled {
 		// 乐观提交（D3）：Go 预校验通过即写库，Engine ≤2s 内应用并回报真实状态；
@@ -813,9 +836,16 @@ func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, inp
 	if err != nil {
 		return err
 	}
+	if input.MotionGate != nil {
+		if b, err := json.Marshal(input.MotionGate); err == nil {
+			inst.MotionGateJSON = model.JSONRaw(b)
+		}
+	} else {
+		inst.MotionGateJSON = model.JSONRaw("{}")
+	}
 	inst.AnalysisFPS = fps
-	inst.ParamsJSON = paramsJSON
-	inst.RulesJSON = rulesJSON
+	inst.ParamsJSON = model.JSONRaw(paramsJSON)
+	inst.RulesJSON = model.JSONRaw(rulesJSON)
 	if inst.Enabled {
 		inst.ActualStatus = model.InstanceStatusStarting
 		inst.StatusMessage = ""
@@ -876,7 +906,7 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 		}
 		var errVal error
 		requested, errVal = s.validateInstanceConfig(ctx, inst.AlgorithmID, algo.ActiveVersion,
-			inst.AnalysisFPS, inst.ParamsJSON, rules, inst.InstanceID, true)
+			inst.AnalysisFPS, json.RawMessage(inst.ParamsJSON), rules, inst.InstanceID, true)
 		if errVal != nil {
 			return errVal
 		}
@@ -984,7 +1014,7 @@ func (s *taskService) validateInstanceConfig(
 	}
 
 	// 1. schema 校验（服务端复校，不信任前端）。
-	schema, err := CompileSchema(version.ConfigSchema)
+	schema, err := CompileSchema(json.RawMessage(version.ConfigSchema))
 	if err != nil {
 		// 已安装算法包的 schema 非法属数据问题，按内部错误处理并记 warn。
 		s.log.Warn("stored config schema invalid",

@@ -58,6 +58,8 @@ const algorithmList = ref<AlgorithmApi.AlgorithmItem[]>([]);
 const selectedAlgorithmId = ref<string>('');
 const analysisFps = ref<number>(25);
 const autoEnable = ref<boolean>(true);
+const motionGateEnabled = ref<boolean>(true);
+const motionGateKeepaliveMs = ref<number>(2000);
 const paramsJson = ref<Record<string, unknown>>({});
 const rules = ref<TaskApi.DetectionRule[]>([]);
 const ruleEditorRef = ref<InstanceType<typeof DetectionRuleEditor>>();
@@ -89,7 +91,7 @@ const fpsTiers = computed(() => {
 
 const maxFps = computed(() => {
   if (fpsTiers.value.length === 0) return 30;
-  const sorted = [...fpsTiers.value].sort((a, b) => b.fps - a.fps);
+  const sorted = fpsTiers.value.toSorted((a, b) => b.fps - a.fps);
   return sorted[0]?.fps || 30;
 });
 
@@ -158,10 +160,25 @@ watch(
       } else {
         paramsJson.value = props.instance.paramsJson || {};
       }
+
+      // 解析 motion_gate 配置回显
+      const mg = props.instance.motionGate;
+      if (mg && typeof mg === 'object') {
+        motionGateEnabled.value = mg.enabled !== false;
+        motionGateKeepaliveMs.value =
+          typeof mg.keepaliveIntervalMs === 'number'
+            ? mg.keepaliveIntervalMs
+            : 2000;
+      } else {
+        motionGateEnabled.value = true;
+        motionGateKeepaliveMs.value = 2000;
+      }
     } else {
       // 新建默认
       analysisFps.value = 25;
       autoEnable.value = true;
+      motionGateEnabled.value = true;
+      motionGateKeepaliveMs.value = 2000;
       paramsJson.value = {};
       rules.value = [];
       // 保证每次新建时都重新选择默认算法并触发 schema 变化
@@ -210,6 +227,11 @@ async function handleOk() {
     role: rule.role,
   }));
 
+  const motionGatePayload: TaskApi.MotionGateConfig = {
+    enabled: motionGateEnabled.value,
+    keepaliveIntervalMs: motionGateKeepaliveMs.value || 2000,
+  };
+
   submitting.value = true;
   try {
     if (isEdit.value && props.instance) {
@@ -217,6 +239,7 @@ async function handleOk() {
         analysisFps: analysisFps.value,
         paramsJson: paramsJson.value,
         rules: submittedRules,
+        motionGate: motionGatePayload,
       });
       message.success($t('system.common.success'));
     } else {
@@ -226,6 +249,7 @@ async function handleOk() {
         analysisFps: analysisFps.value,
         paramsJson: paramsJson.value,
         rules: submittedRules,
+        motionGate: motionGatePayload,
         enabled: autoEnable.value,
       });
       message.success($t('system.common.success'));
@@ -301,6 +325,49 @@ async function handleOk() {
           <span v-if="maxFps" class="ml-2">
             ({{ $t('resource.task.instance.maxFpsHint', { max: maxFps }) }})
           </span>
+        </div>
+      </FormItem>
+
+      <!-- 运动检测门控 (Motion Gate) -->
+      <FormItem :label="$t('resource.task.instance.motionGate')" class="mb-3">
+        <div class="flex flex-col gap-2 rounded-md border p-3">
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col">
+              <span class="text-xs font-medium text-foreground">
+                {{
+                  motionGateEnabled
+                    ? $t('system.common.enable')
+                    : $t('system.common.disable')
+                }}
+              </span>
+              <span class="text-xs text-muted-foreground">
+                {{ $t('resource.task.instance.motionGateHint') }}
+              </span>
+            </div>
+            <Switch v-model:checked="motionGateEnabled" />
+          </div>
+
+          <div
+            v-if="motionGateEnabled"
+            class="mt-2 flex items-center justify-between border-t pt-2"
+          >
+            <div class="flex flex-col">
+              <span class="text-xs font-medium text-foreground">
+                {{ $t('resource.task.instance.motionGateKeepalive') }}
+              </span>
+              <span class="text-xs text-muted-foreground">
+                {{ $t('resource.task.instance.motionGateKeepaliveHint') }}
+              </span>
+            </div>
+            <InputNumber
+              v-model:value="motionGateKeepaliveMs"
+              :min="500"
+              :max="30000"
+              :step="500"
+              :precision="0"
+              class="w-32"
+            />
+          </div>
         </div>
       </FormItem>
 

@@ -23,6 +23,7 @@
 #include "argus/algo.h"
 #include "argus/media/media_api.hpp"
 #include "argus/platform/platform_api.hpp"
+#include "argus/core/motion_gate.hpp"
 
 namespace argus::core {
 
@@ -75,6 +76,12 @@ public:
     av_status update_params(const std::string& new_params);
 
     /**
+     * @brief 热更新实例运动门控参数
+     * @param config 门控配置结构
+     */
+    void update_motion_gate(const MotionGateConfig& config);
+
+    /**
      * @brief 设置布防区域/屏蔽区/分界线等检测规则
      * @param rules 规则列表
      */
@@ -95,6 +102,9 @@ public:
     [[nodiscard]] bool is_running() const { return running_.load(std::memory_order_acquire); }
     [[nodiscard]] uint64_t get_processed_frames() const { return processed_frames_.load(); }
     [[nodiscard]] uint64_t get_dropped_frames() const { return dropped_frames_.load(); }
+    [[nodiscard]] uint64_t get_motion_skips() const { return motion_skipped_total_.load(); }
+    [[nodiscard]] uint64_t get_motion_passes() const { return motion_passed_total_.load(); }
+    [[nodiscard]] uint64_t get_keepalive_passes() const { return keepalive_passed_total_.load(); }
 
     /**
      * @brief 获取当前推理帧率（FPS）
@@ -107,6 +117,9 @@ public:
      * @param now 当前时间点（单调时钟）
      */
     [[nodiscard]] double get_current_fps(std::chrono::steady_clock::time_point now) const;
+
+    [[nodiscard]] MotionGate& get_motion_gate() { return motion_gate_; }
+    [[nodiscard]] const MotionGate& get_motion_gate() const { return motion_gate_; }
 
     /**
      * @brief 设置推理结果到达时的外部处理回调
@@ -170,6 +183,14 @@ private:
     std::chrono::steady_clock::time_point last_debug_log_{};
     int64_t last_sample_pts_ns_ = 0;
     std::chrono::time_point<std::chrono::steady_clock> last_sample_time_{};
+
+    MotionGate motion_gate_;
+    std::atomic<uint64_t> motion_skipped_total_{0};
+    std::atomic<uint64_t> motion_passed_total_{0};
+    std::atomic<uint64_t> keepalive_passed_total_{0};
+    std::atomic<uint64_t> motion_skipped_frames_{0};
+    std::atomic<uint64_t> motion_passed_frames_{0};
+    std::atomic<uint64_t> keepalive_passed_frames_{0};
 
     /// FPS 滑动窗口统计（worker 线程无锁累加，上报线程互斥结算）
     mutable std::mutex fps_calc_mutex_;

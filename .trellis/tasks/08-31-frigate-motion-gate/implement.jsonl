@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/engine/index.md", "reason": "C++ 引擎与算法包规范总览，包含架构原则与生命周期"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "引擎调度、工作线程串行与内存/队列契约"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "C++ 测试、fake clock、无泄漏与 CI 质量要求"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "可观测指标计数与错误处理规范"}

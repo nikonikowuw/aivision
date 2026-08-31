@@ -167,7 +167,11 @@
       "schemaMultiSelectPlaceholder": "Please select one or more",
       "autoEnable": "Auto Enable",
       "autoEnableOn": "Enable immediately upon creation (requires compute quota)",
-      "autoEnableOff": "Save as disabled (no compute units consumed, offline-ready)"
+      "autoEnableOff": "Save as disabled (no compute units consumed, offline-ready)",
+      "motionGate": "Motion Gate",
+      "motionGateHint": "Skip AI inference during static scenes to save compute power; resume immediately on motion or keepalive intervals",
+      "motionGateKeepalive": "Keepalive Interval (ms)",
+      "motionGateKeepaliveHint": "Interval between periodic baseline frames during static scenes"
     },
     "ruleEditor": {
       "role": {

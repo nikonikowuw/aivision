@@ -1306,6 +1306,20 @@ private:
         return {};
     }
 
+    void apply_motion_gate_proto(const std::shared_ptr<AlgorithmInstance>& instance,
+                                 const argus::v1::MotionGateConfig& proto_mg) const {
+        if (!instance) return;
+        MotionGateConfig mg_cfg = instance->get_motion_gate().get_config();
+        mg_cfg.enabled = proto_mg.enabled();
+        if (proto_mg.threshold() > 0) mg_cfg.threshold = proto_mg.threshold();
+        if (proto_mg.contour_area() > 0) mg_cfg.contour_area = proto_mg.contour_area();
+        if (proto_mg.frame_alpha() > 0.0f) mg_cfg.frame_alpha = proto_mg.frame_alpha();
+        if (proto_mg.keepalive_interval_ms() > 0) {
+            mg_cfg.keepalive_interval = std::chrono::milliseconds(proto_mg.keepalive_interval_ms());
+        }
+        instance->update_motion_gate(mg_cfg);
+    }
+
     bool has_desired_instance_reference(const std::string& algorithm_id) const {
         // active_package_versions 只是激活标记，不代表有任务使用该算法包。
         for (const auto& instance : applied_desired_state_.instances()) {
@@ -1358,6 +1372,9 @@ private:
                 const av_status status = current->update_params(config.params_json());
                 if (status != AV_OK) return "CONFIG_UPDATE_FAILED";
             }
+            if (config.has_motion_gate()) {
+                apply_motion_gate_proto(current, config.motion_gate());
+            }
             if (current->set_rules(rules) != AV_OK) return "CONFIG_INVALID";
             task->add_instance(current);
             instance_configs_[config.instance_id()] = config;
@@ -1398,6 +1415,9 @@ private:
         if (!adapter || instance->init(FramePool::instance().get_frame_ops(), adapter->get_c_image_ops()) != AV_OK) {
             ResourceLedger::instance().release(config.instance_id());
             return "INSTANCE_CREATE_FAILED";
+        }
+        if (config.has_motion_gate()) {
+            apply_motion_gate_proto(instance, config.motion_gate());
         }
         std::vector<av_rule> rules;
         std::vector<std::vector<av_point>> points;

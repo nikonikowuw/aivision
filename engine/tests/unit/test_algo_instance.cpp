@@ -111,6 +111,63 @@ TEST(AlgoInstanceFpsTest, BurstDeliveryUsesMediaPtsForSampling) {
 
     EXPECT_EQ(inst->get_processed_frames(), kFrames);
     EXPECT_EQ(inst->get_dropped_frames(), 0);
+}
+
+// MotionGate 开启时：静止帧应被 MotionGate 跳过并释放 FramePool token，同时递增 motion_skips
+TEST(AlgoInstanceFpsTest, MotionGateSkippingReleasesFrame) {
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    const std::string motion_cfg = R"({
+        "motion_gate": {
+            "enabled": true,
+            "frame_height": 50,
+            "threshold": 25,
+            "contour_area": 50,
+            "keepalive_interval_ms": 10000
+        }
+    })";
+
+    auto inst = std::make_shared<argus::core::AlgorithmInstance>(
+        "inst-motion", "cam-1", "algo-1", "1.0.0", 0, motion_cfg, nullptr, nullptr);
+    ASSERT_EQ(inst->init(argus::core::FramePool::instance().get_frame_ops(),
+                         adapter->get_c_image_ops()),
+              AV_OK);
+
+    auto& pool = argus::core::FramePool::instance();
+
+    // 连续推送 5 个全黑静止帧 (640x480 NV12)
+    std::vector<uint8_t> dummy_luma(640 * 480 + 640 * 240, 128);
+
+    for (int i = 0; i < 5; ++i) {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->width = 640;
+        frame->height = 480;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->memory_type = AV_MEM_HOST;
+        frame->plane_count = 2;
+        frame->stride[0] = 640;
+        frame->stride[1] = 640;
+        frame->opaque = dummy_luma.data();
+
+        inst->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+    }
+
+    // 等待 worker 处理
+    for (int i = 0; i < 400; ++i) {
+        if (inst->get_motion_skips() >= 4) {
+            break;
+        }
+        std::this_thread::sleep_for(5ms);
+    }
+
+    // 第 1 帧用于初始化背景（KEEPALIVE，放行处理）
+    // 后续 4 帧均应静止被 SKIP
+    EXPECT_EQ(inst->get_motion_skips(), 4U);
+    EXPECT_EQ(inst->get_processed_frames(), 1U);
+
     inst->stop();
+    // 确保所有 frame token 都被正确 release，FramePool 计数归零
     EXPECT_EQ(pool.active_frame_count(), 0);
 }
+

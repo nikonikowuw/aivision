@@ -79,9 +79,9 @@ func setupTaskAPIEngine(t *testing.T) (*gin.Engine, *gorm.DB) {
 		AlgorithmID:  "yolov8n",
 		Version:      "1.0.0",
 		PlatformID:   "macos",
-		FPSTiers:     json.RawMessage(taskTestTiers),
-		ConfigSchema: json.RawMessage(taskTestConfigSchema),
-		ManifestRaw:  json.RawMessage("{}"),
+		FPSTiers:     model.JSONRaw(taskTestTiers),
+		ConfigSchema: model.JSONRaw(taskTestConfigSchema),
+		ManifestRaw:  model.JSONRaw("{}"),
 	}).Error; err != nil {
 		t.Fatalf("seed algorithm version: %v", err)
 	}

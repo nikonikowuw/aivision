@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "单元测试覆盖、构建要求与静态/动态检查门禁"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "验证线程模型与帧释放/生命周期"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "验证日志无敏感内容及 telemetry 统计一致性"}

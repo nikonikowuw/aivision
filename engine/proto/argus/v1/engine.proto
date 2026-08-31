@@ -42,6 +42,15 @@ message DetectionRule {
   repeated DetectionPoint points = 3;        // 区域 >=3 首尾相连多边形；线 >=2 折线顶点
 }
 
+// 运动门控配置（系统/引擎级，不进入算法 params_json）
+message MotionGateConfig {
+  bool enabled = 1;
+  uint32 threshold = 2;
+  uint32 contour_area = 3;
+  float frame_alpha = 4;
+  uint64 keepalive_interval_ms = 5;
+}
+
 // 算法实例运行配置
 message AlgorithmInstanceConfig {
   string instance_id = 1;
@@ -53,6 +62,7 @@ message AlgorithmInstanceConfig {
   string params_json = 6;        // 算法自有参数（仅含 config.schema.json 声明字段）
   bool enabled = 7;
   repeated DetectionRule rules = 8; // 任务级检测规则；空表示不过滤
+  MotionGateConfig motion_gate = 9; // 系统级运动门控配置
 }
 
 // 算法包版本信息

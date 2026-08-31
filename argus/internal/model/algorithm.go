@@ -1,8 +1,6 @@
 package model
 
 import (
-	"encoding/json"
-
 	"gorm.io/plugin/soft_delete"
 )
 
@@ -43,9 +41,9 @@ type AlgorithmVersion struct {
 	PlatformID        string                `gorm:"column:platform_id;not null;size:64;uniqueIndex:uk_algorithm_versions" json:"platformId"`
 	MinAdapterVersion string                `gorm:"column:min_adapter_version;not null;size:32;default:''" json:"minAdapterVersion"`
 	PackageRoot       string                `gorm:"column:package_root;not null;size:255;default:''" json:"packageRoot"`
-	FPSTiers          json.RawMessage       `gorm:"column:fps_tiers;type:jsonb;not null;default:'[]'" json:"fpsTiers"`
-	ConfigSchema      json.RawMessage       `gorm:"column:config_schema;type:jsonb;not null;default:'{}'" json:"configSchema"`
-	ManifestRaw       json.RawMessage       `gorm:"column:manifest_raw;type:jsonb;not null;default:'{}'" json:"manifestRaw"`
+	FPSTiers          JSONRaw               `gorm:"column:fps_tiers;type:jsonb;not null;default:'[]'" json:"fpsTiers"`
+	ConfigSchema      JSONRaw               `gorm:"column:config_schema;type:jsonb;not null;default:'{}'" json:"configSchema"`
+	ManifestRaw       JSONRaw               `gorm:"column:manifest_raw;type:jsonb;not null;default:'{}'" json:"manifestRaw"`
 	PackageSizeBytes  int64                 `gorm:"column:package_size_bytes;not null;default:0" json:"packageSizeBytes"`
 	IsActive          bool                  `gorm:"column:is_active;not null;default:false" json:"isActive"`
 }

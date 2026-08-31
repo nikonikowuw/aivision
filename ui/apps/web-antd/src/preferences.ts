@@ -32,8 +32,11 @@ export const overridesPreferences = defineOverridesPreferences({
   },
   logo: {
     enable: true,
-    source: '/logo.svg',
-    sourceDark: '/logo.svg',
+    fit: 'contain',
+    fullLogoHeight: 36,
+    logoMode: 'full',
+    source: '/logo-with-text.svg',
+    sourceDark: '/logo-with-text-dark.svg',
   },
   shortcutKeys: {
     enable: true,

@@ -137,13 +137,19 @@ class PreferenceManager {
 
     // 加载缓存的偏好设置，并仅用缓存补齐初始化配置中未显式设置的字段
     const cachedPreferences = (await this.loadFromCache()) || {};
-    // 如果缓存中的 logo 仍然是旧的默认外部图片，清理它以使用新配置
     const cachedRecord = cachedPreferences as Record<string, any>;
+    // 如果缓存中的 logo source 不是最新的 overrides 配置或旧配置，强制清理以使用最新 SVG 组合标
     if (
       cachedRecord.logo?.source?.includes('unpkg.com/@vbenjs') ||
-      cachedRecord.logo?.sourceDark?.includes('unpkg.com/@vbenjs')
+      cachedRecord.logo?.sourceDark?.includes('unpkg.com/@vbenjs') ||
+      (overrides?.logo?.source &&
+        cachedRecord.logo?.source !== overrides.logo.source)
     ) {
       delete cachedRecord.logo;
+    }
+    // 如果缓存中的应用名不是最新的 overrides 配置，强制清理以使用新配置 (如 "Argus")
+    if (overrides?.app?.name && cachedRecord.app?.name !== overrides.app.name) {
+      delete cachedRecord.app?.name;
     }
     // 修复历史脏数据：早期版本用 defu(merge) 合并数组，导致 widget.order
     // 在每次 updatePreferences 时被 concat 追加，膨胀到几十/上百条重复 key。

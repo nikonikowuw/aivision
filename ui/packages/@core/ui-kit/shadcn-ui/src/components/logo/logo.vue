@@ -129,7 +129,7 @@ const fullLogoStyle = computed(() => ({
         :alt="text"
         :src="logoSrc"
         :style="fullLogoStyle"
-        class="w-full"
+        class="h-full max-w-full object-contain"
       />
 
       <VbenAvatar

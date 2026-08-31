@@ -1,54 +1,27 @@
 services:
-  # Database Service (PostgreSQL 16 default, or MySQL 8)
-  postgres:
-    image: postgres:16-alpine
-    container_name: niko-admin-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: niko_vue_admin_go
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: devpassword123
-      TZ: Asia/Shanghai
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d niko_vue_admin_go"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # Backend Go API Service
+  # Backend Go API Service (Embedded SQLite with WAL mode)
   server:
     build:
-      context: ../app
+      context: ../argus
       dockerfile: Dockerfile
-    container_name: niko-admin-server
+    container_name: argus-backend
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       APP_SERVER_PORT: 8000
-      APP_DB_DRIVER: postgres
-      APP_DB_HOST: postgres
-      APP_DB_PORT: 5432
-      APP_DB_USER: postgres
-      APP_DB_PASSWORD: devpassword123
-      APP_DB_NAME: niko_vue_admin_go
+      APP_DB_PATH: /app/data/argus.db
       APP_JWT_SECRET: dev-secret-change-me-in-production
       APP_JWT_SECURE_COOKIE: "false"
       APP_LOG_LEVEL: info
     ports:
       - "8000:8000"
     volumes:
+      - argus_data:/app/data
       - uploads_data:/app/uploads
 
   # Frontend Web & Nginx Proxy
   web:
     image: nginx:alpine
-    container_name: niko-admin-web
+    container_name: argus-web
     restart: unless-stopped
     depends_on:
       - server
@@ -59,5 +32,5 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
 
 volumes:
-  postgres_data:
+  argus_data:
   uploads_data:

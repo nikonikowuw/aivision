@@ -9,7 +9,7 @@
 ## 特性亮点
 
 - **技术栈纯粹**：Go 1.26 后端分层架构（`model` / `repository` / `service` / `api`）+ google/wire 依赖注入。
-- **多数据库支持**：GORM 双驱动，一键切换 **PostgreSQL** 或 **MySQL**，支持软删除唯一索引兼容与幂等 Seed 数据初始化。
+- **轻量嵌入式存储**：GORM 纯 SQLite 驱动（默认启用 WAL 高并发模式与忙等待控制），无需单独安装部署外置数据库即可开箱即用。
 - **RBAC 权限管理**：用户管理、角色管理、菜单与按钮权限分配、部门组织架构。
 - **自动化操作日志**：全自动中间件拦截写操作，敏感字段脱敏，请求耗时与操作明细追溯。
 - **个人中心与国际化**：支持用户修改个人资料与密码、全站中/繁/英三语切换。
@@ -24,7 +24,7 @@
 - **Go**：>= 1.26
 - **Node.js**：>= 22.18.0 或 >= 24.12.0
 - **pnpm**：>= 11.0.0
-- **数据库**：PostgreSQL >= 14 或 MySQL >= 8.0
+- **数据库**：内置嵌入式 SQLite（无需额外安装外部数据库服务）
 - **Docker & Docker Compose**（可选，容器化部署使用）
 
 ---
@@ -62,17 +62,12 @@ cd argus
     - `algo-packages/rknn/rk3576/yolov8n/model/yolov8n.rknn`
     - `algo-packages/rknn/rk3576/yolov8n/model/yolov8n.onnx`
 
-### 3. 启动数据库
+### 3. 启动后端 (`argus` 或 `app`)
 
-在本地启动 PostgreSQL（默认端口 `5432`）或 MySQL（默认端口 `3306`），并创建数据库 `niko_vue_admin_go`。
-
-### 4. 启动后端 (`app`)
+> 提示：系统采用纯 SQLite 嵌入式存储，启动时会自动在 `data/` 目录下创建数据库并完成表结构初始化及 Seed 数据播种，无需预先搭建外部数据库！
 
 ```bash
-cd app
-
-# 复制或根据本地环境修改配置文件
-# configs/config.yaml
+cd argus # 或 app
 
 # 运行测试
 make test
@@ -104,7 +99,15 @@ pnpm dev:antd
 
 ---
 
-## Docker Compose 容器化部署
+## 生产环境部署与运维
+
+关于生产环境的 **Linux FHS 目录规范、版本化 Profile 配置、systemd 守护进程托管、Nginx 反代与故障排查**，请参阅专门的运维指南：
+
+📖 **[生产部署与运维指南 (deploy/README.md)](deploy/README.md)**
+
+---
+
+## Docker Compose 本地容器化演示
 
 项目中提供了一键编排部署配置，包含数据库、后端 API 与 Nginx 托管前端。
 

@@ -25,7 +25,7 @@ void write_file(const fs::path& path, const std::string& content) {
 
 int main() {
     const auto suffix = std::chrono::steady_clock::now().time_since_epoch().count();
-    const fs::path root = fs::temp_directory_path() / ("argus-yolov8n-loader-" + std::to_string(suffix));
+    const fs::path root = fs::temp_directory_path() / ("argus-yolo26n-loader-" + std::to_string(suffix));
     std::error_code cleanup_error;
     fs::remove_all(root, cleanup_error);
     require_condition(!cleanup_error);
@@ -39,7 +39,7 @@ int main() {
 
     std::string model_path;
     std::string error;
-    require_condition(yolov8n::resolve_manifest_model_path(root.string(), model_path, error));
+    require_condition(yolo26n::resolve_manifest_model_path(root.string(), model_path, error));
     require_condition(model_path == fs::weakly_canonical(model_package).string());
 
     const fs::path linked_model_root = root / "linked";
@@ -47,7 +47,7 @@ int main() {
     fs::create_symlink(root / "weights", linked_model_root, symlink_error);
     require_condition(!symlink_error);
     write_file(root / ".env", "MODEL_PATH=linked/custom.mlpackage\n");
-    require_condition(!yolov8n::resolve_manifest_model_path(root.string(), model_path, error));
+    require_condition(!yolo26n::resolve_manifest_model_path(root.string(), model_path, error));
     fs::remove(linked_model_root, cleanup_error);
     require_condition(!cleanup_error);
 
@@ -58,7 +58,7 @@ int main() {
     symlink_error.clear();
     fs::create_symlink(outside_env, root / ".env", symlink_error);
     require_condition(!symlink_error);
-    require_condition(!yolov8n::resolve_manifest_model_path(root.string(), model_path, error));
+    require_condition(!yolo26n::resolve_manifest_model_path(root.string(), model_path, error));
     fs::remove(root / ".env", cleanup_error);
     require_condition(!cleanup_error);
     write_file(root / ".env", "MODEL_PATH=weights/custom.mlpackage\n");
@@ -70,7 +70,7 @@ int main() {
     symlink_error.clear();
     fs::create_symlink(outside_model, model_file, symlink_error);
     require_condition(!symlink_error);
-    require_condition(!yolov8n::resolve_manifest_model_path(root.string(), model_path, error));
+    require_condition(!yolo26n::resolve_manifest_model_path(root.string(), model_path, error));
 
     fs::remove_all(root, cleanup_error);
     require_condition(!cleanup_error);

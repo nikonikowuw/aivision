@@ -7,7 +7,7 @@
 #include "argus/cv/nms.hpp"
 #include "argus/cv/letterbox.hpp"
 
-namespace yolov8n {
+namespace yolo26n {
 
 // 80 COCO Classes
 static const char* COCO_CLASSES[] = {
@@ -83,4 +83,4 @@ std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
     return candidates;
 }
 
-} // namespace yolov8n
+} // namespace yolo26n

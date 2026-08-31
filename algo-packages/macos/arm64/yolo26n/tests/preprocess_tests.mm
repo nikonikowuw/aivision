@@ -216,9 +216,9 @@ int main() {
         image_ops.alloc = test_alloc;
         image_ops.free = test_free;
 
-        void* fallback = yolov8n::Preprocessor::create_input_pixelbuffer(
+        void* fallback = yolo26n::Preprocessor::create_input_pixelbuffer(
             &frame, nullptr, kTargetWidth, kTargetHeight);
-        void* injected = yolov8n::Preprocessor::create_input_pixelbuffer(
+        void* injected = yolo26n::Preprocessor::create_input_pixelbuffer(
             &frame, &image_ops, kTargetWidth, kTargetHeight);
         require_condition(fallback != nullptr, "fallback preprocessing failed");
         require_condition(injected != nullptr, "image_ops preprocessing failed");
@@ -227,8 +227,8 @@ int main() {
         const auto injected_pixels = read_bgra(injected, kTargetWidth, kTargetHeight);
         require_condition(fallback_pixels == injected_pixels, "image_ops output differs from fallback output");
 
-        yolov8n::Preprocessor::release_pixelbuffer(fallback);
-        yolov8n::Preprocessor::release_pixelbuffer(injected);
+        yolo26n::Preprocessor::release_pixelbuffer(fallback);
+        yolo26n::Preprocessor::release_pixelbuffer(injected);
         CVPixelBufferRelease(source);
     }
     return 0;

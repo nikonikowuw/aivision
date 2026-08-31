@@ -22,7 +22,7 @@ This file is source-only evidence. It is deliberately excluded from the distribu
 
 ## Model checksums
 
-- Core ML entry model `model/yolov8n.mlpackage/Data/com.apple.CoreML/model.mlmodel`:
+- Core ML entry model `model/yolo26n.mlpackage/Data/com.apple.CoreML/model.mlmodel`:
   `b3ed45077d7b345ee3462eaf199c5af787f1819cf58eef406546c9b07d8aeebf`
 - Deterministic package digest (SHA-256 over sorted `path + file SHA-256` records for every file under the `.mlpackage` directory):
   `6eaebc2e056a440811195f8b38165d04585acbd5623925ce3efc718f75aa4538`

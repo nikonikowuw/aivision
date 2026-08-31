@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace yolov8n {
+namespace yolo26n {
 namespace {
 
 const vImage_YpCbCrToARGBMatrix* select_matrix(const av_frame_desc* frame) {
@@ -235,4 +235,4 @@ void Preprocessor::release_pixelbuffer(void* pb) {
     if (pb) CVPixelBufferRelease(static_cast<CVPixelBufferRef>(pb));
 }
 
-} // namespace yolov8n
+} // namespace yolo26n

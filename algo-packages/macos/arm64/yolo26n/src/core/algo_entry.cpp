@@ -22,9 +22,9 @@
 #include <utility>
 #include <vector>
 
-namespace yolov8n {
+namespace yolo26n {
 
-constexpr const char* kAlgorithmId = "yolov8n";
+constexpr const char* kAlgorithmId = "yolo26n";
 constexpr const char* kVersion = "1.0.0";
 constexpr const char* kPlatformId = "macos-arm64-coreml";
 constexpr const char* kAlarmTypeId = "object_detect";
@@ -63,9 +63,9 @@ struct InstanceContext {
     argus::cv::SimpleTracker tracker;
 };
 
-} // namespace yolov8n
+} // namespace yolo26n
 
-using namespace yolov8n;
+using namespace yolo26n;
 
 namespace {
 

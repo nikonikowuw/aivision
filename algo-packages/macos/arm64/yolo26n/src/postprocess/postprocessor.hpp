@@ -5,7 +5,7 @@
 #include <string>
 #include "argus/cv/nms.hpp"
 
-namespace yolov8n {
+namespace yolo26n {
 
 class Postprocessor {
 public:
@@ -18,4 +18,4 @@ public:
     );
 };
 
-} // namespace yolov8n
+} // namespace yolo26n

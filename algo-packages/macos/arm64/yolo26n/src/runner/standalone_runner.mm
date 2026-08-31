@@ -77,7 +77,7 @@ struct RunnerPackageRoot {
     bool prepare(const std::string& configured_model_path) {
         const auto root = std::filesystem::current_path();
         std::error_code error;
-        const auto default_model = std::filesystem::weakly_canonical(root / "model/yolov8n.mlpackage", error);
+        const auto default_model = std::filesystem::weakly_canonical(root / "model/yolo26n.mlpackage", error);
         if (error) return false;
         error.clear();
         const auto selected_model = std::filesystem::weakly_canonical(
@@ -89,13 +89,13 @@ struct RunnerPackageRoot {
         }
 
         const auto base = std::filesystem::temp_directory_path() /
-            ("argus-yolov8n-runner-" + std::to_string(
+            ("argus-yolo26n-runner-" + std::to_string(
                 std::chrono::steady_clock::now().time_since_epoch().count()));
         error.clear();
         path = base;
         std::filesystem::create_directories(path / "model", error);
         if (error) return false;
-        std::filesystem::copy(selected_model, path / "model/yolov8n.mlpackage",
+        std::filesystem::copy(selected_model, path / "model/yolo26n.mlpackage",
                               std::filesystem::copy_options::recursive, error);
         if (error) {
             std::filesystem::remove_all(path, error);
@@ -420,16 +420,16 @@ struct StageSamples {
     std::vector<double> end_to_end_ms;
 };
 
-bool run_direct_pipeline(const av_frame_desc& frame, yolov8n::CoreMLRunner& runner,
+bool run_direct_pipeline(const av_frame_desc& frame, yolo26n::CoreMLRunner& runner,
                          float confidence, float iou, StageSamples* samples) {
     const auto end_to_end_begin = std::chrono::steady_clock::now();
     const auto preprocess_begin = std::chrono::steady_clock::now();
-    void* input_pixelbuffer = yolov8n::Preprocessor::create_input_pixelbuffer(&frame, nullptr, 640, 384);
+    void* input_pixelbuffer = yolo26n::Preprocessor::create_input_pixelbuffer(&frame, nullptr, 640, 384);
     const auto preprocess_end = std::chrono::steady_clock::now();
     if (!input_pixelbuffer) return false;
     struct PixelBufferGuard {
         void* value;
-        ~PixelBufferGuard() { yolov8n::Preprocessor::release_pixelbuffer(value); }
+        ~PixelBufferGuard() { yolo26n::Preprocessor::release_pixelbuffer(value); }
     } guard{input_pixelbuffer};
 
     std::vector<float> network_output;
@@ -439,7 +439,7 @@ bool run_direct_pipeline(const av_frame_desc& frame, yolov8n::CoreMLRunner& runn
     if (!inference_ok) return false;
 
     const auto postprocess_begin = std::chrono::steady_clock::now();
-    const auto objects = yolov8n::Postprocessor::postprocess(
+    const auto objects = yolo26n::Postprocessor::postprocess(
         network_output, confidence, iou, frame.width, frame.height);
     const auto postprocess_end = std::chrono::steady_clock::now();
     const auto end_to_end_end = std::chrono::steady_clock::now();
@@ -463,7 +463,7 @@ int run(int argc, char* argv[]) {
     const float iou = argus::utils::EnvReader::get_float("IOU_THRESH", 0.45f, env);
     const std::string input_path = argus::utils::EnvReader::get("INPUT_IMAGE", "testimage.jpg", env);
     const std::string output_path = argus::utils::EnvReader::get("OUTPUT_IMAGE", "result.jpg", env);
-    const std::string model_path = argus::utils::EnvReader::get("MODEL_PATH", "model/yolov8n.mlpackage", env);
+    const std::string model_path = argus::utils::EnvReader::get("MODEL_PATH", "model/yolo26n.mlpackage", env);
     const std::unordered_set<std::string> target_classes = parse_target_classes(
         argus::utils::EnvReader::get("TARGET_CLASSES", "", env));
     const bool benchmark = argc > 1 && std::string(argv[1]) == "--benchmark";
@@ -562,12 +562,12 @@ int run(int argc, char* argv[]) {
         return 1;
     }
 
-    std::unique_ptr<yolov8n::CoreMLRunner> direct_runner;
+    std::unique_ptr<yolo26n::CoreMLRunner> direct_runner;
     StageSamples stage_samples;
     if (benchmark) {
-        direct_runner = std::make_unique<yolov8n::CoreMLRunner>(runner_log, nullptr);
+        direct_runner = std::make_unique<yolo26n::CoreMLRunner>(runner_log, nullptr);
         const auto staged_model_path = std::filesystem::path(runner_package_root.value) /
-            "model/yolov8n.mlpackage";
+            "model/yolo26n.mlpackage";
         if (!direct_runner->load_model(staged_model_path.string())) {
             abi->instance_destroy(instance);
             abi->library_close(library);
@@ -658,7 +658,7 @@ int run(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
     std::cout << "========================================\n"
-              << "  YOLOv8n Standalone Runner (macOS ARM64)\n"
+              << "  YOLO26n Standalone Runner (macOS ARM64)\n"
               << "========================================\n";
     return run(argc, argv);
 }

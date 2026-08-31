@@ -7,10 +7,10 @@ target_include_directories(run_local PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
 target_link_libraries(run_local PRIVATE
-    yolov8n
-    yolov8n_preprocess
-    yolov8n_inference
-    yolov8n_postprocess
+    yolo26n
+    yolo26n_preprocess
+    yolo26n_inference
+    yolo26n_postprocess
     argus_sdk_headers
     "-framework Foundation"
     "-framework CoreVideo"

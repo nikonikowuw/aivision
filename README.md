@@ -53,7 +53,7 @@ cd argus
 
 - **下载地址**：[Google Drive 模型权重下载链接](https://drive.google.com/drive/folders/13eXexmJK5bIsFo-qAb-3Npb6QNt2LfSQ?usp=sharing)
 - **对应放置路径**：
-  - **macOS (arm64) YOLOv8n**：`algo-packages/macos/arm64/yolov8n/model/yolov8n.mlpackage`（或 `weights/`）
+  - **macOS (arm64) YOLO26n**：`algo-packages/macos/arm64/yolo26n/model/yolo26n.mlpackage`（或 `weights/`）
   - **macOS (arm64) 人脸识别**：
     - `algo-packages/macos/arm64/face_recognition/model/yolov8n.mlpackage`
     - `algo-packages/macos/arm64/face_recognition/model/scrfd_10g_bnkps.mlpackage`（以及 `weights/scrfd_10g_bnkps.onnx`）

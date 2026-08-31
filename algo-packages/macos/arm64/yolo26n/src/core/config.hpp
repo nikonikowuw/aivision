@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace yolov8n {
+namespace yolo26n {
 
 struct InstanceConfig {
     float confidence_threshold = 0.5f;
@@ -172,4 +172,4 @@ inline bool parse_instance_config(std::string_view json, InstanceConfig& out, st
     return true;
 }
 
-} // namespace yolov8n
+} // namespace yolo26n

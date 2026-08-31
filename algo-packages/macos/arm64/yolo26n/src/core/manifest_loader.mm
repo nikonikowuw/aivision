@@ -9,7 +9,7 @@
 
 namespace fs = std::filesystem;
 
-namespace yolov8n {
+namespace yolo26n {
 namespace {
 
 std::string foundation_error(NSError* error) {
@@ -211,4 +211,4 @@ bool resolve_manifest_model_path(const std::string& package_root,
     }
 }
 
-} // namespace yolov8n
+} // namespace yolo26n

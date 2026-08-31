@@ -24,9 +24,9 @@ C++ 引擎与算法包（在 `engine/` 或 `algo-packages/` 下）：
 - 引擎单测与契约测试：`make -C engine test`
 - 引擎 ASan 内存安全测试：`make -C engine asan`
 - 引擎代码风格与符号纯洁性检查：`make -C engine lint`
-- 算法包单机编译与调试：`make -C algo-packages/macos/arm64/yolov8n build` / `make -C algo-packages/macos/arm64/yolov8n run`
-- 算法包基准压测与分段耗时分析：`make -C algo-packages/macos/arm64/yolov8n benchmark`
-- 算法包打包：`make -C algo-packages/macos/arm64/yolov8n package`
+- 算法包单机编译与调试：`make -C algo-packages/macos/arm64/yolo26n build` / `make -C algo-packages/macos/arm64/yolo26n run`
+- 算法包基准压测与分段耗时分析：`make -C algo-packages/macos/arm64/yolo26n benchmark`
+- 算法包打包：`make -C algo-packages/macos/arm64/yolo26n package`
 - 契约与 SDK 一致性检查：`bash algo-packages/scripts/sync-sdk.sh` / `bash algo-packages/scripts/check-consistency.sh`
 
 后端（在 `app/` 下）：

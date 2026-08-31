@@ -9,7 +9,7 @@
 #include <cstring>
 #include <limits>
 
-namespace yolov8n {
+namespace yolo26n {
 
 struct CoreMLRunner::Impl {
     MLModel* model = nil;
@@ -196,4 +196,4 @@ bool CoreMLRunner::run_pixelbuffer(void* pixel_buffer, std::vector<float>& out_t
     return true;
 }
 
-} // namespace yolov8n
+} // namespace yolo26n

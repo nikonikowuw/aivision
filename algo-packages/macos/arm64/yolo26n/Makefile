@@ -27,7 +27,7 @@ asan:
 	./$(BUILD_DIR)_asan/run_local
 
 package: build
-	cmake --build $(BUILD_DIR) --target package_yolov8n
+	cmake --build $(BUILD_DIR) --target package_yolo26n
 
 clean:
 	rm -rf $(BUILD_DIR) $(BUILD_DIR)_asan

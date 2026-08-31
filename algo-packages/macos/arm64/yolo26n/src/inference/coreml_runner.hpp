@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace yolov8n {
+namespace yolo26n {
 
 class CoreMLRunner {
 public:
@@ -22,4 +22,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace yolov8n
+} // namespace yolo26n

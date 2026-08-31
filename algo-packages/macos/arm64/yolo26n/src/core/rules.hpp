@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-namespace yolov8n {
+namespace yolo26n {
 
 struct RuleState {
     uint32_t role = 0;
@@ -240,4 +240,4 @@ inline std::vector<argus::cv::DetectionBox> apply_rules(
     return filtered;
 }
 
-} // namespace yolov8n
+} // namespace yolo26n

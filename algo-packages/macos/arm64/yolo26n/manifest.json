@@ -1,9 +1,9 @@
 {
   "manifest_version": 1,
-  "algorithm_id": "yolov8n",
+  "algorithm_id": "yolo26n",
   "version": "1.0.0",
-  "name": "YOLOv8n Object Detection",
-  "description": "Ultralytics YOLOv8n object detection model powered by CoreML on Apple Silicon",
+  "name": "YOLO26n Object Detection",
+  "description": "Ultralytics YOLO26n NMS-free object detection model powered by CoreML on Apple Silicon",
   "algorithm_type": "object_detection",
   "alarm_type_id": "object_detect",
   "platform_id": "macos-arm64-coreml",

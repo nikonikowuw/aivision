@@ -3,7 +3,7 @@
 #include "argus/types.h"
 #include <vector>
 
-namespace yolov8n {
+namespace yolo26n {
 
 class Preprocessor {
 public:
@@ -16,4 +16,4 @@ public:
     static void release_pixelbuffer(void* pb);
 };
 
-} // namespace yolov8n
+} // namespace yolo26n

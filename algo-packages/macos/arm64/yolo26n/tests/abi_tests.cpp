@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <cstdlib>
 
-#ifndef YOLOV8N_PACKAGE_ROOT
-#error "YOLOV8N_PACKAGE_ROOT must be defined"
+#ifndef YOLO26N_PACKAGE_ROOT
+#error "YOLO26N_PACKAGE_ROOT must be defined"
 #endif
 
 namespace {
@@ -24,7 +24,7 @@ int main() {
     av_algo_library_args library_args{};
     library_args.size = sizeof(library_args);
     library_args.api_version = AV_ALGO_API_VERSION;
-    library_args.package_root = YOLOV8N_PACKAGE_ROOT;
+    library_args.package_root = YOLO26N_PACKAGE_ROOT;
     library_args.platform_id = "macos-arm64-coreml";
     av_algo_library library = nullptr;
     require_condition(abi->library_open(&library_args, &library) == AV_OK);

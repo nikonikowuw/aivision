@@ -3,7 +3,7 @@
   "name": "linux-platform-realization",
   "title": "Linux 平台层真实化 (rtnetlink/DHCP/Bond)",
   "description": "将 08-22 遗留的 fake 平台层替换为真实 Linux 实现：rtnetlink 地址/路由读写、DHCPv4 客户端生命周期、DNS 原子写入、所有权与漂移检测、bond netlink 原语，解锁 08-22 与三个模式 child 全部被阻塞的目标机验收。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

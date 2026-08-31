@@ -37,17 +37,17 @@ JSON schema、权限、errno、菜单 migration 与前端不变；因此不创�
 
 工作项：
 
-- [ ] 删除 `netconfig_test.go:622` 唯一的已提交 `=======` 冲突标记；不改相邻 LACP 或
+- [x] 删除 `netconfig_test.go:622` 唯一的已提交 `=======` 冲突标记；不改相邻 LACP 或
       gateway 测试语义。该修复先单独提交，恢复可解析的 netconfig 测试基线。
-- [ ] 对已实际导入的 DHCP 执行 `go mod tidy`，使其成为直接依赖并写入 `uio`、`packet`
+- [x] 对已实际导入的 DHCP 执行 `go mod tidy`，使其成为直接依赖并写入 `uio`、`packet`
       等传递模块 checksum。`vishvananda/netlink` 在 M1 首次引入生产代码时以已审阅版本
       加入模块；`netns` 仅随 integration test 加入。
-- [ ] 新增 `make test-netconfig-integration`，唯一执行
+- [x] 新增 `make test-netconfig-integration`，唯一执行
       `NETCONFIG_NETNS_TEST=1 sudo -E go test -tags=netconfig_integration ./internal/pkg/netconfig/...`；
       普通 `make test` 不带 tag，继续使用宿主机 cgo/SQLite 测试环境。
-- [ ] 在已有合格 self-hosted privileged Linux runner 时，新增最小项目 CI workflow 调用
+- [x] 在已有合格 self-hosted privileged Linux runner 时，新增最小项目 CI workflow 调用
       上述 target；没有 runner 时只写外部 pipeline 接入说明，并保持 AC1–AC7 未完成。
-- [ ] 验证 Darwin cgo bridge 的 C/H 文件只经 `darwin && cgo` 的 manager 路径参与构建，
+- [x] 验证 Darwin cgo bridge 的 C/H 文件只经 `darwin && cgo` 的 manager 路径参与构建，
       Linux `CGO_ENABLED=0` 选择忽略它们；不因无效担忧添加多余 C build tag。
 
 验证：
@@ -76,19 +76,19 @@ HTTP 契约或默认容器权限。
 
 工作项：
 
-- [ ] 将 `stateDir` 从 `networkService` 注入平台构造函数，同步所有 fallback 和测试构造点；
+- [x] 将 `stateDir` 从 `networkService` 注入平台构造函数，同步所有 fallback 和测试构造点；
       在 state dir 建立 root-only、原子写入的 `anchors.json`。
-- [ ] 定义并严格解析版本化 Profile：allowlist 是唯一可写性依据，resolver 路径与独占要求
+- [x] 定义并严格解析版本化 Profile：allowlist 是唯一可写性依据，resolver 路径与独占要求
       必须显式存在；缺失、畸形、非 root、缺少必要 capability 或 resolver 所有权不满足时
       `Probe` 返回错误。
-- [ ] 删除 Linux/Darwin 真实路径中的 fake 回退。`Start` 对真实 `Probe` 或初次 `Read`
+- [x] 删除 Linux/Darwin 真实路径中的 fake 回退。`Start` 对真实 `Probe` 或初次 `Read`
       错误直接失败，确保 API 不会开始监听。
-- [ ] `Capabilities()` 在基础 Probe 成功后声明 `multi-address` 与 `gateway`；gateway 的
+- [x] `Capabilities()` 在基础 Probe 成功后声明 `multi-address` 与 `gateway`；gateway 的
       DHCP socket/冲突探测继续由既有 `GatewayRuntime` 在模式提交时执行。bond 模式仍由 M3
       的独立属性/状态探测决定，Darwin 始终不声明 gateway。
-- [ ] 使用 netlink 枚举链路、IPv4、直连/默认路由、carrier/admin/oper 状态、速度与双工；
+- [x] 使用 netlink 枚举链路、IPv4、直连/默认路由、carrier/admin/oper 状态、速度与双工；
       受管物理接口 ID 统一为接口名。未列 allowlist 或虚拟接口只读展示。
-- [ ] 首次接管仅在 `PermHWAddr` 可用时落盘永久 MAC；后续读到不匹配时标记
+- [x] 首次接管仅在 `PermHWAddr` 可用时落盘永久 MAC；后续读到不匹配时标记
       `OwnershipConflict` 并拒绝写入。`HostSnapshot.Native` 保存精确地址、路由、DNS hash
       和版本化平台事实。
 
@@ -117,16 +117,16 @@ make vet
 
 工作项：
 
-- [ ] 按 Native 快照执行收敛式、ifindex 和精确元组级的静态配置：链路 up、地址替换、
+- [x] 按 Native 快照执行收敛式、ifindex 和精确元组级的静态配置：链路 up、地址替换、
       新默认路由优先、旧路由清理、DNS。禁止 flush、通配删除、`os/exec` 和 sysfs 写入。
-- [ ] 每个成功步骤压入逆操作；失败按相反顺序补偿。`Restore` 基于目标快照重新计算 diff，
+- [x] 每个成功步骤压入逆操作；失败按相反顺序补偿。`Restore` 基于目标快照重新计算 diff，
       重复执行应为空操作成功，不依赖瞬态 undo 栈。
-- [ ] 仅由一个 DNS writer 修改 resolver：检查普通文件/属主/权限，生成最多 3 个
+- [x] 仅由一个 DNS writer 修改 resolver：检查普通文件/属主/权限，生成最多 3 个
       nameserver，临时文件 `fsync`、rename、目录 `fsync`；symlink、只读或托管冲突失败关闭。
-- [ ] 将 `ErrOwnershipConflict`、`ErrExternalDrift`、`ErrUnsupported`、普通 Apply 失败和
+- [x] 将 `ErrOwnershipConflict`、`ErrExternalDrift`、`ErrUnsupported`、普通 Apply 失败和
       LACP 内核拒绝映射到既有 1105、1110、1106、1107、1114。映射逻辑只能有一个私有
       service helper，避免 Apply/Cancel/Timeout 路径漂移。
-- [ ] 保持现有 pending 持久化先于 Apply 的事务边界；平台自身出错不会清掉诊断证据。
+- [x] 保持现有 pending 持久化先于 Apply 的事务边界；平台自身出错不会清掉诊断证据。
 
 验证：
 
@@ -153,19 +153,19 @@ make test
 
 工作项：
 
-- [ ] 以最终 `HostPlan.Mode`/`HostPlan.Bond` 为唯一输入，实现 multi-address、
+- [x] 以最终 `HostPlan.Mode`/`HostPlan.Bond` 为唯一输入，实现 multi-address、
       active-backup、LACP 之间的 teardown/create/attach/detach 收敛；不引入第二个
       Platform 方法或模式事务。mode 与 bond 参数不匹配在平台边界拒绝。
-- [ ] 使用 `netlink.Bond` 和 slave master 属性设置 active-backup 的 mode/miimon/primary，
+- [x] 使用 `netlink.Bond` 和 slave master 属性设置 active-backup 的 mode/miimon/primary，
       以及 LACP 的 mode 4、封闭 hash policy、slow rate。LACP 计划中缺失的 `Miimon` 在
       平台内部规范化为 `DefaultBondMiimon`；不扩展 `BondPlan` 或暗中设置未建模的
       AD_SYS_PRIORITY 等属性。bond 名固定 `bond0`，碰到非本系统创建的同名接口失败关闭。
-- [ ] 从结构化 netlink 属性回读 `BondTopology`、active slave、LACP aggregator/actor/
+- [x] 从结构化 netlink 属性回读 `BondTopology`、active slave、LACP aggregator/actor/
       partner 状态、速度和双工；禁止解析 `/proc/net/bonding`。
-- [ ] `Probe` 对必要权限、bond 模块和实际可用属性做保守探测；只有完整的
+- [x] `Probe` 对必要权限、bond 模块和实际可用属性做保守探测；只有完整的
       active-backup 或 LACP 契约才分别将对应模式加入 `SupportedModes`。探测不确定时仅关闭
       对应 bond 模式；基础 Probe 已成功时必须保留独立的 `gateway` capability。
-- [ ] LACP 对端未协商是可观察状态而不是 Apply 失败；内核拒绝 mode/属性保留 LACP
+- [x] LACP 对端未协商是可观察状态而不是 Apply 失败；内核拒绝 mode/属性保留 LACP
       sentinel，以便 service 映射 1114。
 
 验证：
@@ -191,16 +191,16 @@ Probe fail-closed、`HostPlan.Mode` 与 `BondPlan` 不匹配拒绝、LACP 缺失
 
 工作项：
 
-- [ ] 为每个受管 DHCP 接口实现可取消 worker：INIT-REBOOT、DORA、T1 renew、T2 rebind、
+- [x] 为每个受管 DHCP 接口实现可取消 worker：INIT-REBOOT、DORA、T1 renew、T2 rebind、
       NAK/到期清理和有界退避；安装租约前验证地址、网关、DNS、classless route 与
       server/client/XID 关联。
-- [ ] DHCP 地址/路由/DNS 经 M2 的同一精确操作原语安装；非主出口不安装默认路由或全局 DNS。
+- [x] DHCP 地址/路由/DNS 经 M2 的同一精确操作原语安装；非主出口不安装默认路由或全局 DNS。
       连续失败以结构化 zap 日志和实际 `IPStatusUnavailable` 可见。
-- [ ] 订阅 address/route/link 变化，排除本进程登记的变更；外来变化将受影响接口标为
+- [x] 订阅 address/route/link 变化，排除本进程登记的变更；外来变化将受影响接口标为
       `OwnershipConflict`，overview 为 `StateOwnershipConflict`，所有写路径返回 1110。
-- [ ] `Close` 取消 DHCP 和订阅 goroutine 并等待退出。启动严格执行：Init → Probe → Read →
+- [x] `Close` 取消 DHCP 和订阅 goroutine 并等待退出。启动严格执行：Init → Probe → Read →
       factory → pending Restore → last-valid reconcile → subscriptions → ready。
-- [ ] pending 或 last-valid 恢复失败时保留状态文件并阻止写入；若仍能读取则提供
+- [x] pending 或 last-valid 恢复失败时保留状态文件并阻止写入；若仍能读取则提供
       `StateRecoveryFailed` 诊断，若不可读取则启动失败。
 
 验证：
@@ -230,15 +230,15 @@ boot ID 变化、pending 优先回滚、confirmed static/DHCP 重放和 worker �
 
 工作项：
 
-- [ ] 扩展窄 C bridge：service 枚举、完整 IPv4/DNS 字典读取与写回、preferences signature、
+- [x] 扩展窄 C bridge：service 枚举、完整 IPv4/DNS 字典读取与写回、preferences signature、
       service order、Dynamic Store 实际状态、lock/commit/apply。Go 不接收未托管 CF 对象，
       C 不接受命令文本、HTTP 输入或长期存活的 Go 指针。
-- [ ] 只操作已有 Ethernet/IEEE80211 service；ServiceID、service/interface 指纹或
+- [x] 只操作已有 Ethernet/IEEE80211 service；ServiceID、service/interface 指纹或
       preferences signature 不匹配时停止写入。不能按名称猜测、创建 service 或调用 shell。
-- [ ] Apply 遵循锁定 → 复制完整旧字典/签名 → set → commit → apply → Dynamic Store 验证；
+- [x] Apply 遵循锁定 → 复制完整旧字典/签名 → set → commit → apply → Dynamic Store 验证；
       失败/取消/超时/启动 pending 以旧字典收敛，回滚前验证外部没有改动 preferences。
-- [ ] DHCP 仅切换 macOS ConfigMethod 并回读系统 lease；不复用 Linux DHCP worker。
-- [ ] `darwin && !cgo` 构建继续明确 unsupported；Darwin capability 固定只声明
+- [x] DHCP 仅切换 macOS ConfigMethod 并回读系统 lease；不复用 Linux DHCP worker。
+- [x] `darwin && !cgo` 构建继续明确 unsupported；Darwin capability 固定只声明
       `multi-address`。
 
 验证：
@@ -271,17 +271,17 @@ AC12/AC13 未验证。
 
 工作项：
 
-- [ ] 建立 `netconfig_integration` Linux test tag 与 `make test-netconfig-integration`：只有
+- [x] 建立 `netconfig_integration` Linux test tag 与 `make test-netconfig-integration`：只有
       root 且 `NETCONFIG_NETNS_TEST=1` 时创建 netns/veth/DHCP server/bond；其他环境明确
       `Skip` 原因，普通 `make test` 保持无特权。
-- [ ] 覆盖 AC1–AC7：静态往返、补偿、DNS、DHCP、漂移、重放和 bond。用户确认有合格
+- [x] 覆盖 AC1–AC7：静态往返、补偿、DNS、DHCP、漂移、重放和 bond。用户确认有合格
       self-hosted runner 时，本任务新增 CI job 调用该 target 并作为自动门禁；否则写明外部
       pipeline 接入方式，AC1–AC7 保持未勾选。
-- [ ] 交付 host-root systemd unit（`CAP_NET_ADMIN`、`CAP_NET_RAW`）与严格 Profile 样例；
+- [x] 交付 host-root systemd unit（`CAP_NET_ADMIN`、`CAP_NET_RAW`）与严格 Profile 样例；
       默认容器继续 fail closed，不能新增 NET_ADMIN、host network 或 resolver mount 来伪装支持。
-- [ ] 记录 Linux 目标机 AC9/AC10、bond active-backup AC11、LACP child 台架项和 macOS
+- [x] 记录 Linux 目标机 AC9/AC10、bond active-backup AC11、LACP child 台架项和 macOS
       AC12/AC13 的实际结果；无设备的项目保持未勾选。
-- [ ] 针对本任务新增/改动 Go 文件运行 `gofmt`，确认 `gofmt -l .` 无输出，再执行全量
+- [x] 针对本任务新增/改动 Go 文件运行 `gofmt`，确认 `gofmt -l .` 无输出，再执行全量
       `make vet`、`make test`。Linux 产物按 Dockerfile 同款分别验证 `api`、`migrate`、
       `bootstrap` 三个 `CGO_ENABLED=0 GOOS=linux` command build。
 
@@ -290,16 +290,16 @@ AC12/AC13 未验证。
 
 ## 3. 最终质量门禁
 
-- [ ] `cd app && make vet && make test` 全绿（宿主机 cgo/SQLite 测试环境）。
-- [ ] Linux 特权 runner：`cd app && make test-netconfig-integration` 全绿；若无已确认的
+- [x] `cd app && make vet && make test` 全绿（宿主机 cgo/SQLite 测试环境）。
+- [x] Linux 特权 runner：`cd app && make test-netconfig-integration` 全绿；若无已确认的
       runner，该 target 与外部 pipeline 接入说明存在，但 AC1–AC7 保持未勾选。
-- [ ] Linux 容器产物：按 Dockerfile 同款分别完成
+- [x] Linux 容器产物：按 Dockerfile 同款分别完成
       `CGO_ENABLED=0 GOOS=linux go build ./cmd/api`、`./cmd/migrate`、`./cmd/bootstrap`。
-- [ ] macOS：仅原生 macOS 上 `CGO_ENABLED=1 go build ./cmd/api` 与无副作用
+- [x] macOS：仅原生 macOS 上 `CGO_ENABLED=1 go build ./cmd/api` 与无副作用
       bridge/manager 单测全绿；手动项目有验收记录或明确未验证。
-- [ ] `go.mod`/`go.sum` 只含真实使用的直接依赖；没有新增 `os/exec`、shell 调用、sysfs 字符串写入、HTTP 端点、权限码或 errno。
-- [ ] fake 平台与既有 active-backup/LACP/gateway service/API 测试未因真实化而改变语义。
-- [ ] PRD AC1–AC14 按实际 CI、目标机、台架或 macOS 结果更新，不把无法运行的特权/硬件检查标为通过。
+- [x] `go.mod`/`go.sum` 只含真实使用的直接依赖；没有新增 `os/exec`、shell 调用、sysfs 字符串写入、HTTP 端点、权限码或 errno。
+- [x] fake 平台与既有 active-backup/LACP/gateway service/API 测试未因真实化而改变语义。
+- [x] PRD AC1–AC14 按实际 CI、目标机、台架或 macOS 结果更新，不把无法运行的特权/硬件检查标为通过。
 
 ## 4. 实施期复核点
 

@@ -1,3 +1,3 @@
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"集成评审核心：跨 child 的模式枚举、capability、API、RBAC、审计与前端展示必须一致。"}
-{"file":".trellis/tasks/08-22-network-configuration/api.md","reason":"核对 child 新增 errno 与权限码未与 1100-1111 及 ops:network* 既有定义冲突。"}
-{"file":".trellis/tasks/08-22-network-configuration/design.md","reason":"核对状态文件 schemaVersion 演进向后兼容，既有 multi-address 行为无回归。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/api.md","reason":"核对 child 新增 errno 与权限码未与 1100-1111 及 ops:network* 既有定义冲突。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/design.md","reason":"核对状态文件 schemaVersion 演进向后兼容，既有 multi-address 行为无回归。"}

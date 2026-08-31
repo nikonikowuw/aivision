@@ -1,4 +1,4 @@
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"parent 只做集成评审：核对三个 child 的模式契约、RBAC、审计与前端数据流端到端一致。"}
-{"file":".trellis/tasks/08-22-network-configuration/prd.md","reason":"本任务全部需求的上游边界与 Out of Scope 来源，集成评审时据此判断是否越界。"}
-{"file":".trellis/tasks/08-22-network-configuration/design.md","reason":"Platform 接口、HostPlan 模型、候选事务状态机与状态存储的原始定义，child 只能扩展不能重建。"}
-{"file":".trellis/tasks/08-22-network-configuration/api.md","reason":"errno 号段、权限码与审计 action 的登记基线，用于校验 child 的号段分配无冲突。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/prd.md","reason":"本任务全部需求的上游边界与 Out of Scope 来源，集成评审时据此判断是否越界。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/design.md","reason":"Platform 接口、HostPlan 模型、候选事务状态机与状态存储的原始定义，child 只能扩展不能重建。"}
+{"file":".trellis/tasks/archive/2026-08/08-22-network-configuration/api.md","reason":"errno 号段、权限码与审计 action 的登记基线，用于校验 child 的号段分配无冲突。"}

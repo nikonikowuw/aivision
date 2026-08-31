@@ -8,8 +8,7 @@
 #include <vector>
 #include <mutex>
 
-#if defined(HAVE_RKNPU2) || defined(HAVE_LIBRKNNRT) || defined(__aarch64__)
-#define HAVE_RKNNRT 1
+#if defined(HAVE_RKNNRT)
 #include "rknn_api.h"
 #endif
 

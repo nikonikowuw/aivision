@@ -19,13 +19,16 @@ public:
         int ret = rknn_dup_context(&parent_ctx, &ctx_);
         if (ret < 0) {
             ctx_ = parent_ctx; // fallback to sharing parent context
+            is_owner_ = false;
+        } else {
+            is_owner_ = true;
         }
         rknn_outputs_.resize(n_output_);
         output_buffers_.resize(n_output_);
     }
 
     ~RknnInstanceContextImpl() override {
-        if (ctx_) {
+        if (ctx_ && is_owner_) {
             rknn_destroy(ctx_);
             ctx_ = 0;
         }
@@ -75,6 +78,7 @@ public:
 
 private:
     rknn_context ctx_{0};
+    bool is_owner_{false};
     uint32_t n_input_{0};
     uint32_t n_output_{0};
     std::vector<rknn_tensor_attr> input_attrs_;

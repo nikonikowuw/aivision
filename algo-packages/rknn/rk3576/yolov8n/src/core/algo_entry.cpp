@@ -203,7 +203,7 @@ bool run_pipeline(InstanceContext* inst, const av_frame_desc* frame,
     log_color_fallback_once(inst, frame);
 
     PreparedInput prep_input{};
-    if (!Preprocessor::prepare_input(frame, inst->image_ops, 640, 640, prep_input)) {
+    if (!Preprocessor::prepare_input(frame, inst->image_ops, 640, 384, prep_input)) {
         set_error(inst, "failed to preprocess NV12 frame");
         return false;
     }

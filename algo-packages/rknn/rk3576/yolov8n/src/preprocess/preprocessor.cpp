@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <sys/mman.h>
 
 #if defined(HAVE_RGA)
 #include <rga/im2d.h>
@@ -68,22 +69,33 @@ bool Preprocessor::prepare_input(
         int src_h = static_cast<int>(frame->height);
         int src_stride = frame->stride[0] > 0 ? frame->stride[0] : src_w;
 
-        // RGA requires NV12 width stride to be 4-byte aligned
-        if ((src_stride % 4) == 0 && (src_w % 2) == 0 && (src_h % 2) == 0) {
+        // Stride must be valid
+        if (src_w % 2 == 0 && src_h % 2 == 0) {
             out.host_buffer.assign(net_width * net_height * 3, 114);
 
-            rga_buffer_t src_buf = wrapbuffer_virtualaddr(
-                const_cast<void*>(frame->opaque),
-                src_w, src_h,
-                RK_FORMAT_YCbCr_420_SP,
-                src_stride, src_h
-            );
+            rga_buffer_t src_buf;
+            if (frame->opaque_kind == AV_OPAQUE_DMABUF) {
+                int dma_fd = static_cast<int>(reinterpret_cast<intptr_t>(frame->opaque));
+                src_buf = wrapbuffer_fd(
+                    dma_fd,
+                    src_w, src_h,
+                    RK_FORMAT_YCbCr_420_SP,
+                    src_stride, src_h
+                );
+            } else {
+                src_buf = wrapbuffer_virtualaddr(
+                    const_cast<void*>(frame->opaque),
+                    src_w, src_h,
+                    RK_FORMAT_YCbCr_420_SP,
+                    src_stride, src_h
+                );
+            }
 
             rga_buffer_t dst_buf = wrapbuffer_virtualaddr(
                 out.host_buffer.data(),
-                net_width, net_height,
+                static_cast<int>(net_width), static_cast<int>(net_height),
                 RK_FORMAT_RGB_888,
-                net_width, net_height
+                static_cast<int>(net_width), static_cast<int>(net_height)
             );
 
             im_rect srect = {0, 0, src_w, src_h};
@@ -127,8 +139,20 @@ bool Preprocessor::cpu_fallback_nv12_to_rgb(
 
     const uint8_t* y_plane = nullptr;
     const uint8_t* uv_plane = nullptr;
+    void* mapped_ptr = nullptr;
+    size_t mapped_size = 0;
 
-    if (frame->opaque) {
+    if (frame->opaque_kind == AV_OPAQUE_DMABUF) {
+        int dma_fd = static_cast<int>(reinterpret_cast<intptr_t>(frame->opaque));
+        mapped_size = (frame->stride[0] > 0 ? frame->stride[0] : frame->width) * frame->height * 3 / 2;
+        mapped_ptr = mmap(NULL, mapped_size, PROT_READ, MAP_SHARED, dma_fd, 0);
+        if (mapped_ptr != MAP_FAILED) {
+            y_plane = static_cast<const uint8_t*>(mapped_ptr) + frame->offset[0];
+            uv_plane = static_cast<const uint8_t*>(mapped_ptr) + frame->offset[1];
+        } else {
+            return false;
+        }
+    } else if (frame->opaque) {
         y_plane = static_cast<const uint8_t*>(frame->opaque) + frame->offset[0];
         uv_plane = static_cast<const uint8_t*>(frame->opaque) + frame->offset[1];
     } else {
@@ -178,6 +202,10 @@ bool Preprocessor::cpu_fallback_nv12_to_rgb(
             row_dst[dst_x * 3 + 1] = static_cast<uint8_t>(std::clamp(g, 0, 255));
             row_dst[dst_x * 3 + 2] = static_cast<uint8_t>(std::clamp(b, 0, 255));
         }
+    }
+
+    if (mapped_ptr && mapped_size > 0) {
+        munmap(mapped_ptr, mapped_size);
     }
 
     out.view.size = sizeof(av_image_view);

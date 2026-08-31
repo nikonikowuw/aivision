@@ -1,9 +1,12 @@
-#include <gtest/gtest.h>
+#include <cassert>
+#include <iostream>
 #include "preprocess/preprocessor.hpp"
 
-TEST(PreprocessTest, LetterboxCalculation) {
-    auto lb = argus::cv::compute_letterbox(1920, 1080, 640, 640);
-    EXPECT_GT(lb.scale, 0.0f);
-    EXPECT_EQ(lb.net_w, 640u);
-    EXPECT_EQ(lb.net_h, 640u);
+int main() {
+    auto lb = argus::cv::compute_letterbox(1920, 1080, 640, 384);
+    assert(lb.scale > 0.0f);
+    assert(lb.net_w == 640u);
+    assert(lb.net_h == 384u);
+    std::cout << "[PASS] test_preprocess" << std::endl;
+    return 0;
 }

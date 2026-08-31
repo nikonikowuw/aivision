@@ -11,6 +11,7 @@ extern "C" {
 #define AV_MAX_RESULT_JSON_BYTES (256 * 1024)
 
 typedef enum av_result_kind {
+    /* AV_RESULT_ALARM carries one frame-level detection batch in JSON objects[]. */
     AV_RESULT_ALARM = 1,
     AV_RESULT_SELF_TEST = 2,
     AV_RESULT_RECOGNITION = 3

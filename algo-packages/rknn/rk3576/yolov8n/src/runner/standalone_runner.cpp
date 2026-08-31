@@ -19,8 +19,40 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#if defined(__linux__)
+#include <linux/dma-heap.h>
+#endif
 
 namespace {
+
+int allocate_dma_buf_fd(size_t size) {
+#if defined(__linux__) && defined(DMA_HEAP_IOCTL_ALLOC)
+    int heap_fd = open("/dev/dma_heap/system", O_RDWR | O_CLOEXEC);
+    if (heap_fd < 0) {
+        heap_fd = open("/dev/dma_heap/system-uncached", O_RDWR | O_CLOEXEC);
+    }
+    if (heap_fd < 0) return -1;
+
+    struct dma_heap_allocation_data data = {
+        .len = size,
+        .fd_flags = O_RDWR | O_CLOEXEC,
+        .heap_flags = 0,
+    };
+    if (ioctl(heap_fd, DMA_HEAP_IOCTL_ALLOC, &data) < 0) {
+        close(heap_fd);
+        return -1;
+    }
+    close(heap_fd);
+    return data.fd;
+#else
+    (void)size;
+    return -1;
+#endif
+}
 
 struct ResultCapture {
     std::string json;
@@ -257,7 +289,7 @@ int main(int argc, char** argv) {
     offered.memory_type_count = 1;
     offered.memory_types[0] = AV_MEM_HOST;
     offered.min_width = std::min(width, 640u);
-    offered.min_height = std::min(height, 640u);
+    offered.min_height = std::min(height, 384u);
     offered.max_width = std::max(width, 1920u);
     offered.max_height = std::max(height, 1080u);
 
@@ -284,6 +316,23 @@ int main(int argc, char** argv) {
     frame.offset[0] = 0;
     frame.offset[1] = width * height;
     frame.opaque = frame_buf.data();
+
+    // Check if DMA-BUF allocation is available on target system
+    int dma_fd = allocate_dma_buf_fd(frame_buf.size());
+    if (dma_fd >= 0) {
+        void* ptr = mmap(NULL, frame_buf.size(), PROT_READ | PROT_WRITE, MAP_SHARED, dma_fd, 0);
+        if (ptr != MAP_FAILED) {
+            std::memcpy(ptr, frame_buf.data(), frame_buf.size());
+            munmap(ptr, frame_buf.size());
+            frame.opaque = reinterpret_cast<void*>(static_cast<intptr_t>(dma_fd));
+            frame.opaque_kind = AV_OPAQUE_DMABUF;
+            frame.memory_type = AV_MEM_PLATFORM_SURFACE;
+            std::cout << "Using hardware DMA-BUF for zero-copy acceleration (fd=" << dma_fd << ")" << std::endl;
+        } else {
+            close(dma_fd);
+            dma_fd = -1;
+        }
+    }
 
     if (is_benchmark) {
         constexpr int kIterations = 100;
@@ -325,7 +374,7 @@ int main(int argc, char** argv) {
 
                 auto s0 = std::chrono::high_resolution_clock::now();
                 yolov8n::PreparedInput prepared;
-                bool prep_ok = yolov8n::Preprocessor::prepare_input(&frame, nullptr, 640, 640, prepared);
+                bool prep_ok = yolov8n::Preprocessor::prepare_input(&frame, nullptr, 640, 384, prepared);
                 auto s1 = std::chrono::high_resolution_clock::now();
                 t_prep = std::chrono::duration<double, std::milli>(s1 - s0).count();
 
@@ -386,5 +435,8 @@ int main(int argc, char** argv) {
 
     abi->instance_destroy(inst);
     abi->library_close(lib);
+    if (dma_fd >= 0) {
+        close(dma_fd);
+    }
     return 0;
 }

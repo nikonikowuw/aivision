@@ -1,4 +1,5 @@
 #include "argus/algo.h"
+#include "argus/utils/profiler.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -220,6 +221,10 @@ int main(int argc, char** argv) {
         std::string arg = argv[i];
         if (arg == "run" || arg == "benchmark" || arg == "selftest") {
             mode = arg;
+        } else if (arg == "--benchmark") {
+            mode = "benchmark";
+        } else if (arg == "--selftest") {
+            mode = "selftest";
         } else if (arg == "--image" && i + 1 < argc) {
             image_path = argv[++i];
         } else if (arg == "--output" && i + 1 < argc) {
@@ -354,26 +359,84 @@ int main(int argc, char** argv) {
     frame.stride[0] = width;
     frame.stride[1] = width;
 
-    // Send multiple frames to satisfy tracking & majority voting window
-    int num_frames = (mode == "benchmark") ? 50 : 5;
-    for (int iter = 1; iter <= num_frames; ++iter) {
-        frame.frame_id = iter;
-        frame.pts_ns = iter * 40'000'000LL; // 25 FPS
-        frame.wall_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                std::chrono::system_clock::now().time_since_epoch()).count();
+    if (mode == "benchmark") {
+        const int warmup = 5;
+        const int loops = 50;
+        std::cout << "Starting benchmark (" << warmup << " warmup, " << loops << " measured iterations)..." << std::endl;
 
-        rc = abi->instance_process(inst, &frame);
-        if (rc != AV_OK) {
-            char err[256] = {0};
-            abi->last_error(inst, err, sizeof(err));
-            std::cerr << "instance_process failed at frame " << iter << ": " << rc << ", " << err << std::endl;
-            break;
+        for (int iter = 1; iter <= warmup; ++iter) {
+            frame.frame_id = iter;
+            frame.pts_ns = iter * 40'000'000LL;
+            frame.wall_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                    std::chrono::system_clock::now().time_since_epoch()).count();
+            rc = abi->instance_process(inst, &frame);
+            if (rc != AV_OK) {
+                char err[256] = {0};
+                abi->last_error(inst, err, sizeof(err));
+                std::cerr << "Warmup process failed at frame " << iter << ": " << rc << ", " << err << std::endl;
+                break;
+            }
         }
-    }
 
-    if (!captured_result_json.empty() && mode == "run") {
-        if (render_results_to_image(image_path, output_path, captured_result_json)) {
-            std::cout << "[Visualizer] Saved result image to " << output_path << std::endl;
+        abi->instance_flush(inst);
+
+        std::vector<double> samples;
+        samples.reserve(loops);
+
+        for (int iter = 1; iter <= loops; ++iter) {
+            frame.frame_id = warmup + iter;
+            frame.pts_ns = (warmup + iter) * 40'000'000LL;
+            frame.wall_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                    std::chrono::system_clock::now().time_since_epoch()).count();
+
+            const auto start = std::chrono::high_resolution_clock::now();
+            rc = abi->instance_process(inst, &frame);
+            const auto end = std::chrono::high_resolution_clock::now();
+
+            if (rc != AV_OK) {
+                char err[256] = {0};
+                abi->last_error(inst, err, sizeof(err));
+                std::cerr << "Benchmark process failed at frame " << iter << ": " << rc << ", " << err << std::endl;
+                break;
+            }
+
+            double ms = std::chrono::duration<double, std::milli>(end - start).count();
+            samples.push_back(ms);
+        }
+
+        const auto stats = argus::utils::BenchmarkStats::compute(samples);
+        std::cout << "\n========================================\n"
+                  << "  License Plate Recognition Benchmark Report\n"
+                  << "========================================\n"
+                  << "  Resolution:  " << width << "x" << height << "\n"
+                  << "  Iterations:  " << samples.size() << " (Warmup: " << warmup << ")\n"
+                  << "  Avg Latency: " << stats.avg_ms << " ms\n"
+                  << "  P50 Latency: " << stats.p50_ms << " ms\n"
+                  << "  P99 Latency: " << stats.p99_ms << " ms\n"
+                  << "  Throughput:  " << stats.fps << " FPS\n"
+                  << "========================================\n" << std::endl;
+    } else {
+        // Send multiple frames to satisfy tracking & majority voting window
+        const int num_frames = (mode == "selftest") ? 1 : 5;
+        for (int iter = 1; iter <= num_frames; ++iter) {
+            frame.frame_id = iter;
+            frame.pts_ns = iter * 40'000'000LL; // 25 FPS
+            frame.wall_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                    std::chrono::system_clock::now().time_since_epoch()).count();
+
+            rc = abi->instance_process(inst, &frame);
+            if (rc != AV_OK) {
+                char err[256] = {0};
+                abi->last_error(inst, err, sizeof(err));
+                std::cerr << "instance_process failed at frame " << iter << ": " << rc << ", " << err << std::endl;
+                break;
+            }
+        }
+
+        if (!captured_result_json.empty() && mode == "run") {
+            if (render_results_to_image(image_path, output_path, captured_result_json)) {
+                std::cout << "[Visualizer] Saved result image to " << output_path << std::endl;
+            }
         }
     }
 

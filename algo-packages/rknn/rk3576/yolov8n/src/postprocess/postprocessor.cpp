@@ -113,10 +113,10 @@ std::vector<DetectionBox> Postprocessor::decode(
                     float y2 = cy + h * 0.5f;
 
                     argus::cv::NormalizedBBox norm_box{
-                        .x_min = x1 / 640.0f,
-                        .y_min = y1 / 384.0f,
-                        .x_max = x2 / 640.0f,
-                        .y_max = y2 / 384.0f
+                        .x_min = x1 / static_cast<float>(letterbox.net_w),
+                        .y_min = y1 / static_cast<float>(letterbox.net_h),
+                        .x_max = x2 / static_cast<float>(letterbox.net_w),
+                        .y_max = y2 / static_cast<float>(letterbox.net_h)
                     };
                     auto unletterboxed = letterbox.unletterbox_bbox(norm_box, src_w, src_h);
 
@@ -159,10 +159,10 @@ std::vector<DetectionBox> Postprocessor::decode(
                     float y2 = cy + h * 0.5f;
 
                     argus::cv::NormalizedBBox norm_box{
-                        .x_min = x1 / 640.0f,
-                        .y_min = y1 / 384.0f,
-                        .x_max = x2 / 640.0f,
-                        .y_max = y2 / 384.0f
+                        .x_min = x1 / static_cast<float>(letterbox.net_w),
+                        .y_min = y1 / static_cast<float>(letterbox.net_h),
+                        .x_max = x2 / static_cast<float>(letterbox.net_w),
+                        .y_max = y2 / static_cast<float>(letterbox.net_h)
                     };
                     auto unletterboxed = letterbox.unletterbox_bbox(norm_box, src_w, src_h);
 
@@ -185,8 +185,8 @@ std::vector<DetectionBox> Postprocessor::decode(
 
         for (int s = 0; s < 3; ++s) {
             int stride = strides[s];
-            int grid_w = 640 / stride;
-            int grid_h = 384 / stride;
+            int grid_w = letterbox.net_w / stride;
+            int grid_h = letterbox.net_h / stride;
             int grid_len = grid_w * grid_h;
 
             const RknnOutputBuffer* box_buf = nullptr;
@@ -269,10 +269,10 @@ std::vector<DetectionBox> Postprocessor::decode(
 
                         // Reverse letterbox mapping
                         argus::cv::NormalizedBBox norm_box{
-                            .x_min = x1 / 640.0f,
-                            .y_min = y1 / 384.0f,
-                            .x_max = x2 / 640.0f,
-                            .y_max = y2 / 384.0f
+                            .x_min = x1 / static_cast<float>(letterbox.net_w),
+                            .y_min = y1 / static_cast<float>(letterbox.net_h),
+                            .x_max = x2 / static_cast<float>(letterbox.net_w),
+                            .y_max = y2 / static_cast<float>(letterbox.net_h)
                         };
                         auto unletterboxed = letterbox.unletterbox_bbox(norm_box, src_w, src_h);
 

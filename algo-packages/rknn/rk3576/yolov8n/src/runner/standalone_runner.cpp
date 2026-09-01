@@ -345,6 +345,8 @@ int main(int argc, char** argv) {
             model_path = package_root + "/model/yolov8n.rknn";
             direct_runner.load_model(model_path);
         }
+        uint32_t net_w = 640, net_h = 640;
+        direct_runner.get_input_shape(net_w, net_h);
         auto direct_instance = direct_runner.create_instance();
 
         // Warmup
@@ -374,7 +376,7 @@ int main(int argc, char** argv) {
 
                 auto s0 = std::chrono::high_resolution_clock::now();
                 yolov8n::PreparedInput prepared;
-                bool prep_ok = yolov8n::Preprocessor::prepare_input(&frame, nullptr, 640, 384, prepared);
+                bool prep_ok = yolov8n::Preprocessor::prepare_input(&frame, nullptr, net_w, net_h, prepared);
                 auto s1 = std::chrono::high_resolution_clock::now();
                 t_prep = std::chrono::duration<double, std::milli>(s1 - s0).count();
 

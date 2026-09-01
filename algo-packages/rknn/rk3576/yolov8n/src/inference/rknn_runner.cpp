@@ -171,6 +171,24 @@ bool RknnRunner::load_model(const std::string& model_path) {
 #endif
 }
 
+bool RknnRunner::get_input_shape(uint32_t& w, uint32_t& h) const {
+#ifdef HAVE_RKNNRT
+    if (!loaded_ || input_attrs_.empty()) return false;
+    if (input_attrs_[0].fmt == RKNN_TENSOR_NHWC) {
+        h = input_attrs_[0].dims[1];
+        w = input_attrs_[0].dims[2];
+    } else {
+        h = input_attrs_[0].dims[2];
+        w = input_attrs_[0].dims[3];
+    }
+    return true;
+#else
+    w = 640;
+    h = 640;
+    return true;
+#endif
+}
+
 std::shared_ptr<RknnInstanceContext> RknnRunner::create_instance() {
     if (!loaded_) return nullptr;
 #ifdef HAVE_RKNNRT

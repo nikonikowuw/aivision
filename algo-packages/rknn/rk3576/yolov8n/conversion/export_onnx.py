@@ -30,6 +30,9 @@ class RKNNYOLOv8DetectHead(nn.Module):
         self.reg_max = original_detect.reg_max
         self.cv2 = original_detect.cv2
         self.cv3 = original_detect.cv3
+        self.f = getattr(original_detect, 'f', -1)
+        self.i = getattr(original_detect, 'i', 22)
+        self.type = getattr(original_detect, 'type', 'Detect')
 
     def forward(self, x):
         outputs = []
@@ -73,7 +76,8 @@ def main():
         opset_version=args.opset,
         input_names=["images"],
         output_names=output_names,
-        dynamic_axes=None
+        dynamic_axes=None,
+        do_constant_folding=True
     )
     print(f"[export_onnx] Successfully exported {args.output}")
 

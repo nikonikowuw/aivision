@@ -26,6 +26,7 @@ public:
     virtual ~RknnRunner();
 
     bool load_model(const std::string& model_path);
+    bool get_input_shape(uint32_t& w, uint32_t& h) const;
     std::shared_ptr<RknnInstanceContext> create_instance();
 
 private:

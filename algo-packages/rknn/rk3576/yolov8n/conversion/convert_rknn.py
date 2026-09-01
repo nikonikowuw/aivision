@@ -35,7 +35,7 @@ def main():
         std_values=[[255, 255, 255]],
         target_platform=args.target,
         quantized_algorithm="normal",
-        quantized_dtype="asymmetric_affine"
+        quantized_dtype="w8a8"
     )
 
     print(f"--> Loading ONNX model: {args.onnx}")

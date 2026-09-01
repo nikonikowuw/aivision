@@ -43,6 +43,8 @@ struct LibraryContext {
     void* log_user = nullptr;
     std::atomic_bool color_fallback_logged{false};
     std::shared_ptr<RknnRunner> model_runner;
+    uint32_t model_w = 640;
+    uint32_t model_h = 640;
 };
 
 struct InstanceContext {
@@ -192,8 +194,11 @@ bool run_pipeline(InstanceContext* inst, const av_frame_desc* frame,
                   std::vector<argus::cv::DetectionBox>& objects) {
     log_color_fallback_once(inst, frame);
 
+    const uint32_t net_w = (inst && inst->lib) ? inst->lib->model_w : 640;
+    const uint32_t net_h = (inst && inst->lib) ? inst->lib->model_h : 640;
+
     PreparedInput prep_input{};
-    if (!Preprocessor::prepare_input(frame, inst->image_ops, 640, 384, prep_input)) {
+    if (!Preprocessor::prepare_input(frame, inst->image_ops, net_w, net_h, prep_input)) {
         set_error(inst, "failed to preprocess frame");
         return false;
     }
@@ -266,6 +271,10 @@ int yolo_library_open_impl(const av_algo_library_args* args, av_algo_library* ou
     lib->model_runner = std::make_shared<RknnRunner>(lib->log, lib->log_user);
     if (!lib->model_runner->load_model(lib->model_path)) {
         return fail(lib.get(), AV_ERR_MODEL_LOAD_FAILED, "failed to load RKNN model");
+    }
+    if (!lib->model_runner->get_input_shape(lib->model_w, lib->model_h)) {
+        lib->model_w = 640;
+        lib->model_h = 640;
     }
     *out = lib.release();
     return AV_OK;

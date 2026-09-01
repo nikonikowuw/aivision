@@ -29,6 +29,9 @@ function formatAction(action?: string) {
 }
 
 const [DetailModal, detailModalApi] = useVbenModal({
+  onConfirm: () => {
+    detailModalApi.close();
+  },
   showCancelButton: false,
   title: $t('system.log.logDetail'),
 });

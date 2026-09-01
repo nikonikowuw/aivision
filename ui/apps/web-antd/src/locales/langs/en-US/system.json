@@ -23,7 +23,8 @@
     "success": "Operation Succeeded",
     "confirm": "Confirm",
     "cancel": "Cancel",
-    "detail": "Detail"
+    "detail": "Detail",
+    "view": "View"
   },
   "user": {
     "title": "User Management",
@@ -97,7 +98,8 @@
     "menuDetail": "Menu Detail",
     "confirmDelete": "Are you sure to delete this item?",
     "titleRequired": "Please enter menu title",
-    "nameRequired": "Please enter route identifier"
+    "nameRequired": "Please enter route identifier",
+    "buttonName": "Button Key/Name"
   },
   "dept": {
     "title": "Department Management",

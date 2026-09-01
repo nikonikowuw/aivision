@@ -171,7 +171,12 @@
       "motionGate": "运动检测门控 (Motion Gate)",
       "motionGateHint": "画面静止时跳过 AI 推理以节省算力功耗；检测到运动或达到保活周期时自动放行",
       "motionGateKeepalive": "保活推理周期 (ms)",
-      "motionGateKeepaliveHint": "静止状态下定期放行基准帧的间隔"
+      "motionGateKeepaliveHint": "静止状态下定期放行基准帧的间隔",
+      "tabParams": "算法与参数配置",
+      "tabRules": "区域与警戒线绘制",
+      "currentTargets": "当前生效目标",
+      "adjustTargets": "调整检测目标",
+      "allTargetsActive": "全部 80 类目标"
     },
     "ruleEditor": {
       "role": {

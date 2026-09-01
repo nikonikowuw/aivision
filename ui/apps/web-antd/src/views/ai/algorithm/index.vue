@@ -20,6 +20,11 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { getAlgorithmList } from '#/api';
+import {
+  formatAlarmTypeName,
+  formatAlgorithmDesc,
+  formatAlgorithmName,
+} from '#/utils/i18n';
 
 import SchemaModal from './components/SchemaModal.vue';
 import UploadModal from './components/UploadModal.vue';
@@ -69,6 +74,7 @@ const gridOptions: VxeTableGridOptions<AlgorithmApi.AlgorithmItem> = {
       field: 'name',
       title: $t('ai.algorithm.name'),
       minWidth: 160,
+      slots: { default: 'name' },
     },
     {
       field: 'algorithmId',
@@ -99,6 +105,7 @@ const gridOptions: VxeTableGridOptions<AlgorithmApi.AlgorithmItem> = {
       title: $t('ai.algorithm.description'),
       minWidth: 200,
       showOverflow: true,
+      slots: { default: 'description' },
     },
     {
       field: 'createdAt',
@@ -158,6 +165,10 @@ const [Grid, gridApi] = useVbenVxeGrid({
               value: 'object_detection',
             },
             { label: $t('ai.algorithm.typeFace'), value: 'face_recognition' },
+            {
+              label: $t('ai.algorithm.typePlate'),
+              value: 'license_plate_recognition',
+            },
           ],
         },
       },
@@ -227,8 +238,12 @@ function handleViewModeChange(val: any) {
         button-style="solid"
         @change="handleViewModeChange"
       >
-        <Radio.Button value="table">表格视图</Radio.Button>
-        <Radio.Button value="card">卡片视图</Radio.Button>
+        <Radio.Button value="table">
+          {{ $t('ai.algorithm.viewTable') }}
+        </Radio.Button>
+        <Radio.Button value="card">
+          {{ $t('ai.algorithm.viewCard') }}
+        </Radio.Button>
       </Radio.Group>
       <Button
         v-if="viewMode === 'card'"
@@ -247,6 +262,17 @@ function handleViewModeChange(val: any) {
           </Button>
         </template>
 
+        <template #name="{ row }">
+          <div class="flex items-center gap-1.5">
+            <span class="font-medium">{{
+              formatAlgorithmName(row.algorithmId, row.name)
+            }}</span>
+            <Tag v-if="row.isBuiltin" color="purple" class="text-xs">
+              {{ $t('ai.algorithm.builtin') }}
+            </Tag>
+          </div>
+        </template>
+
         <template #algorithmId="{ row }">
           <span class="font-mono text-xs font-semibold text-gray-800">{{
             row.algorithmId
@@ -256,7 +282,13 @@ function handleViewModeChange(val: any) {
         <template #algorithmType="{ row }">
           <Tag
             :color="
-              row.algorithmType === 'object_detection' ? 'cyan' : 'purple'
+              row.algorithmType === 'object_detection'
+                ? 'cyan'
+                : row.algorithmType === 'face_recognition'
+                  ? 'purple'
+                  : row.algorithmType === 'license_plate_recognition'
+                    ? 'orange'
+                    : 'default'
             "
           >
             {{
@@ -264,7 +296,9 @@ function handleViewModeChange(val: any) {
                 ? $t('ai.algorithm.typeDetection')
                 : row.algorithmType === 'face_recognition'
                   ? $t('ai.algorithm.typeFace')
-                  : row.algorithmType
+                  : row.algorithmType === 'license_plate_recognition'
+                    ? $t('ai.algorithm.typePlate')
+                    : row.algorithmType
             }}
           </Tag>
         </template>
@@ -276,8 +310,15 @@ function handleViewModeChange(val: any) {
         </template>
 
         <template #alarmTypeId="{ row }">
-          <span class="font-mono text-xs text-gray-600">{{
-            row.alarmTypeId || '-'
+          <Tag v-if="row.alarmTypeId" color="blue">
+            {{ formatAlarmTypeName(row.alarmTypeId) }}
+          </Tag>
+          <span v-else class="text-gray-400">-</span>
+        </template>
+
+        <template #description="{ row }">
+          <span>{{
+            formatAlgorithmDesc(row.algorithmId, row.description) || '-'
           }}</span>
         </template>
 
@@ -306,7 +347,14 @@ function handleViewModeChange(val: any) {
             <Card hoverable class="h-full flex flex-col justify-between">
               <template #title>
                 <div class="flex items-center justify-between">
-                  <span class="truncate font-semibold">{{ algo.name }}</span>
+                  <div class="flex items-center gap-1.5 truncate">
+                    <span class="truncate font-semibold">{{
+                      formatAlgorithmName(algo.algorithmId, algo.name)
+                    }}</span>
+                    <Tag v-if="algo.isBuiltin" color="purple" class="text-xs">
+                      {{ $t('ai.algorithm.builtin') }}
+                    </Tag>
+                  </div>
                   <Tag color="success" class="font-mono text-xs">
                     v{{ algo.activeVersion }}
                   </Tag>
@@ -316,12 +364,16 @@ function handleViewModeChange(val: any) {
                 <div class="mb-2 font-mono text-xs text-gray-500">
                   {{ algo.algorithmId }}
                 </div>
-                <div class="mb-2">
+                <div class="mb-2 flex flex-wrap gap-1">
                   <Tag
                     :color="
                       algo.algorithmType === 'object_detection'
                         ? 'cyan'
-                        : 'purple'
+                        : algo.algorithmType === 'face_recognition'
+                          ? 'purple'
+                          : algo.algorithmType === 'license_plate_recognition'
+                            ? 'orange'
+                            : 'default'
                     "
                   >
                     {{
@@ -329,12 +381,20 @@ function handleViewModeChange(val: any) {
                         ? $t('ai.algorithm.typeDetection')
                         : algo.algorithmType === 'face_recognition'
                           ? $t('ai.algorithm.typeFace')
-                          : algo.algorithmType
+                          : algo.algorithmType === 'license_plate_recognition'
+                            ? $t('ai.algorithm.typePlate')
+                            : algo.algorithmType
                     }}
+                  </Tag>
+                  <Tag v-if="algo.alarmTypeId" color="blue">
+                    {{ formatAlarmTypeName(algo.alarmTypeId) }}
                   </Tag>
                 </div>
                 <p class="line-clamp-2 text-xs text-gray-600">
-                  {{ algo.description || '-' }}
+                  {{
+                    formatAlgorithmDesc(algo.algorithmId, algo.description) ||
+                    '-'
+                  }}
                 </p>
               </div>
               <template #actions>
@@ -353,7 +413,9 @@ function handleViewModeChange(val: any) {
             :current="cardCurrentPage"
             :page-size="cardPageSize"
             :total="cardTotal"
-            :show-total="(total: number) => `共 ${total} 条`"
+            :show-total="
+              (total: number) => $t('ai.algorithm.totalCount', { total })
+            "
             @change="
               (page: number, pageSize: number) => loadCardData(page, pageSize)
             "

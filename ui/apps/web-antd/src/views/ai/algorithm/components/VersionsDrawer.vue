@@ -14,9 +14,11 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
 } from 'ant-design-vue';
 
 import { activateAlgorithmVersion, uninstallAlgorithmVersion } from '#/api';
+import { formatAlgorithmName } from '#/utils/i18n';
 
 interface Props {
   open: boolean;
@@ -109,7 +111,7 @@ function handleShowSchema(record: AlgorithmApi.AlgorithmVersionItem) {
 <template>
   <Drawer
     v-model:open="visible"
-    :title="`${$t('ai.algorithm.versionList')} - ${algorithm?.name || ''} (${algorithm?.algorithmId || ''})`"
+    :title="`${$t('ai.algorithm.versionList')} - ${formatAlgorithmName(algorithm?.algorithmId, algorithm?.name)} (${algorithm?.algorithmId || ''})`"
     width="900px"
     destroy-on-close
   >
@@ -130,13 +132,18 @@ function handleShowSchema(record: AlgorithmApi.AlgorithmVersionItem) {
             <Tag color="blue">{{ item.platformId }}</Tag>
           </template>
           <template v-else-if="column.dataIndex === 'isActive'">
-            <Tag :color="item.isActive ? 'success' : 'default'">
-              {{
-                item.isActive
-                  ? $t('ai.algorithm.statusActive')
-                  : $t('ai.algorithm.statusHistory')
-              }}
-            </Tag>
+            <div class="flex items-center gap-1">
+              <Tag :color="item.isActive ? 'success' : 'default'">
+                {{
+                  item.isActive
+                    ? $t('ai.algorithm.statusActive')
+                    : $t('ai.algorithm.statusHistory')
+                }}
+              </Tag>
+              <Tag v-if="item.isBuiltin || algorithm?.isBuiltin" color="purple">
+                {{ $t('ai.algorithm.builtin') }}
+              </Tag>
+            </div>
           </template>
           <template v-else-if="column.dataIndex === 'fpsTiers'">
             <span class="text-xs text-gray-600">{{
@@ -163,7 +170,16 @@ function handleShowSchema(record: AlgorithmApi.AlgorithmVersionItem) {
                   {{ $t('ai.algorithm.activate') }}
                 </Button>
               </Popconfirm>
+              <Tooltip
+                v-if="item.isBuiltin || algorithm?.isBuiltin"
+                :title="$t('ai.algorithm.builtinCannotUninstall')"
+              >
+                <Button type="link" danger size="small" disabled>
+                  {{ $t('ai.algorithm.uninstall') }}
+                </Button>
+              </Tooltip>
               <Popconfirm
+                v-else
                 :title="$t('ai.algorithm.uninstallConfirm')"
                 :ok-text="$t('system.common.confirm')"
                 :cancel-text="$t('system.common.cancel')"

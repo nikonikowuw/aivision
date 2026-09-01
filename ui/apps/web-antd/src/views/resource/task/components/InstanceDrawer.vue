@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { TaskApi } from '#/api';
+
 import { computed, onUnmounted, ref, watch } from 'vue';
 
 import { $t } from '@vben/locales';
@@ -19,8 +21,8 @@ import {
   deleteInstanceApi,
   getInstanceListApi,
   setInstanceEnabledApi,
-  type TaskApi,
 } from '#/api';
+import { formatAlgorithmName } from '#/utils/i18n';
 
 import InstanceFormModal from './InstanceFormModal.vue';
 
@@ -212,7 +214,7 @@ const columns = [
   {
     title: $t('system.common.action'),
     key: 'action',
-    width: 120,
+    width: 140,
     fixed: 'right' as const,
   },
 ];
@@ -279,7 +281,12 @@ function getStatusTag(status: number) {
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'algorithmId'">
-              <span class="font-medium">{{ record.algorithmId }}</span>
+              <span class="font-medium">
+                {{ formatAlgorithmName(record.algorithmId) }}
+              </span>
+              <span class="text-xs text-muted-foreground ml-1">
+                ({{ record.algorithmId }})
+              </span>
             </template>
 
             <template v-else-if="column.key === 'analysisFps'">
@@ -336,14 +343,14 @@ function getStatusTag(status: number) {
             </template>
 
             <template v-else-if="column.key === 'action'">
-              <Space :size="8">
+              <Space :size="8" class="flex-nowrap">
                 <Button
                   v-access:code="['resource:task:edit']"
                   type="link"
                   size="small"
                   @click="handleEdit(record as TaskApi.InstanceItem)"
                 >
-                  {{ $t('resource.task.instance.edit') }}
+                  {{ $t('system.common.edit') }}
                 </Button>
                 <Popconfirm
                   :title="$t('resource.task.instance.deleteConfirm')"
@@ -355,7 +362,7 @@ function getStatusTag(status: number) {
                     danger
                     size="small"
                   >
-                    {{ $t('resource.task.instance.delete') }}
+                    {{ $t('system.common.delete') }}
                   </Button>
                 </Popconfirm>
               </Space>

@@ -121,15 +121,15 @@ bool ModelInferenceManager::load_models(const std::string& package_root,
             if (shape.count >= 2) {
                 NSInteger dim0 = shape[shape.count - 2].integerValue;
                 NSInteger dim1 = shape[shape.count - 1].integerValue;
-                if (dim0 == 12800 && dim1 == 1) impl_->scrfd_score_8_name = out_name;
-                else if (dim0 == 3200 && dim1 == 1) impl_->scrfd_score_16_name = out_name;
-                else if (dim0 == 800 && dim1 == 1) impl_->scrfd_score_32_name = out_name;
-                else if (dim0 == 12800 && dim1 == 4) impl_->scrfd_bbox_8_name = out_name;
-                else if (dim0 == 3200 && dim1 == 4) impl_->scrfd_bbox_16_name = out_name;
-                else if (dim0 == 800 && dim1 == 4) impl_->scrfd_bbox_32_name = out_name;
-                else if (dim0 == 12800 && dim1 == 10) impl_->scrfd_kps_8_name = out_name;
-                else if (dim0 == 3200 && dim1 == 10) impl_->scrfd_kps_16_name = out_name;
-                else if (dim0 == 800 && dim1 == 10) impl_->scrfd_kps_32_name = out_name;
+                if ((dim0 == 7680 || dim0 == 12800) && dim1 == 1) impl_->scrfd_score_8_name = out_name;
+                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 1) impl_->scrfd_score_16_name = out_name;
+                else if ((dim0 == 480 || dim0 == 800) && dim1 == 1) impl_->scrfd_score_32_name = out_name;
+                else if ((dim0 == 7680 || dim0 == 12800) && dim1 == 4) impl_->scrfd_bbox_8_name = out_name;
+                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 4) impl_->scrfd_bbox_16_name = out_name;
+                else if ((dim0 == 480 || dim0 == 800) && dim1 == 4) impl_->scrfd_bbox_32_name = out_name;
+                else if ((dim0 == 7680 || dim0 == 12800) && dim1 == 10) impl_->scrfd_kps_8_name = out_name;
+                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 10) impl_->scrfd_kps_16_name = out_name;
+                else if ((dim0 == 480 || dim0 == 800) && dim1 == 10) impl_->scrfd_kps_32_name = out_name;
             }
         }
 
@@ -152,12 +152,16 @@ bool ModelInferenceManager::load_models(const std::string& package_root,
     }
 }
 
-bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x640, YoloOutput& out, std::string& error) {
+bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out, std::string& error) {
     @autoreleasepool {
         if (!impl_->yolo_model) {
             error = "yolov8n model not loaded";
             return false;
         }
+
+        constexpr int kNetW = 640;
+        constexpr int kNetH = 384;
+        constexpr int kPixels = kNetW * kNetH;
 
         // Check if YOLO expects Image or MultiArray
         MLFeatureDescription* input_desc = impl_->yolo_model.modelDescription.inputDescriptionsByName[impl_->yolo_input_name];
@@ -165,14 +169,14 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x640, YoloOutput& out
         NSError* ns_error = nil;
 
         if (input_desc.type == MLFeatureTypeImage) {
-            // Create 640x640 32BGRA CVPixelBuffer
+            // Create 640x384 32BGRA CVPixelBuffer
             NSDictionary* options = @{
                 (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
                 (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
             };
             CVPixelBufferRef pb = nullptr;
             CVReturn status = CVPixelBufferCreate(
-                kCFAllocatorDefault, 640, 640, kCVPixelFormatType_32BGRA,
+                kCFAllocatorDefault, kNetW, kNetH, kCVPixelFormatType_32BGRA,
                 (__bridge CFDictionaryRef)options, &pb);
             if (status != kCVReturnSuccess || !pb) {
                 error = "failed to create pixel buffer for YOLO input";
@@ -182,10 +186,10 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x640, YoloOutput& out
             CVPixelBufferLockBaseAddress(pb, 0);
             uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
             size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
-            for (int y = 0; y < 640; ++y) {
+            for (int y = 0; y < kNetH; ++y) {
                 uint8_t* row = dst + y * bytes_per_row;
-                for (int x = 0; x < 640; ++x) {
-                    const uint8_t* src_px = rgb_640x640 + (y * 640 + x) * 3;
+                for (int x = 0; x < kNetW; ++x) {
+                    const uint8_t* src_px = rgb_640x384 + (y * kNetW + x) * 3;
                     row[x * 4 + 0] = src_px[2]; // B
                     row[x * 4 + 1] = src_px[1]; // G
                     row[x * 4 + 2] = src_px[0]; // R
@@ -196,7 +200,7 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x640, YoloOutput& out
             input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
             CVPixelBufferRelease(pb);
         } else {
-            NSArray<NSNumber*>* shape = @[@1, @3, @640, @640];
+            NSArray<NSNumber*>* shape = @[@1, @3, @(kNetH), @(kNetW)];
             MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
             if (!input_array || ns_error) {
                 error = "failed to allocate YOLO input multiarray";
@@ -205,9 +209,9 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x640, YoloOutput& out
 
             float* dst = static_cast<float*>(input_array.dataPointer);
             for (int c = 0; c < 3; ++c) {
-                float* channel_ptr = dst + c * (640 * 640);
-                for (int i = 0; i < 640 * 640; ++i) {
-                    channel_ptr[i] = static_cast<float>(rgb_640x640[i * 3 + c]) / 255.0f;
+                float* channel_ptr = dst + c * kPixels;
+                for (int i = 0; i < kPixels; ++i) {
+                    channel_ptr[i] = static_cast<float>(rgb_640x384[i * 3 + c]) / 255.0f;
                 }
             }
             input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
@@ -237,15 +241,19 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x640, YoloOutput& out
     }
 }
 
-bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x640, ScrfdOutput& out, std::string& error) {
+bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& out, std::string& error) {
     @autoreleasepool {
         if (!impl_->scrfd_model) {
             error = "scrfd model not loaded";
             return false;
         }
 
+        constexpr int kNetW = 640;
+        constexpr int kNetH = 384;
+        constexpr int kPixels = kNetW * kNetH;
+
         NSError* ns_error = nil;
-        NSArray<NSNumber*>* shape = @[@1, @3, @640, @640];
+        NSArray<NSNumber*>* shape = @[@1, @3, @(kNetH), @(kNetW)];
         MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
         if (!input_array || ns_error) {
             error = "failed to allocate SCRFD input multiarray";
@@ -255,9 +263,9 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x640, ScrfdOutput& o
         float* dst = static_cast<float*>(input_array.dataPointer);
         // Normalize SCRFD: (x - 127.5f) / 128.0f, RGB planar
         for (int c = 0; c < 3; ++c) {
-            float* channel_ptr = dst + c * (640 * 640);
-            for (int i = 0; i < 640 * 640; ++i) {
-                channel_ptr[i] = (static_cast<float>(rgb_640x640[i * 3 + c]) - 127.5f) / 128.0f;
+            float* channel_ptr = dst + c * kPixels;
+            for (int i = 0; i < kPixels; ++i) {
+                channel_ptr[i] = (static_cast<float>(rgb_640x384[i * 3 + c]) - 127.5f) / 128.0f;
             }
         }
 
@@ -270,11 +278,14 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x640, ScrfdOutput& o
             return false;
         }
 
-        const auto copy_head = [&](NSString* name, std::vector<float>& target, size_t dim0, size_t dim1) -> bool {
+        const auto copy_head = [&](NSString* name, std::vector<float>& target, size_t dim1) -> bool {
             MLFeatureValue* fv = [prediction featureValueForName:name];
             MLMultiArray* arr = fv.multiArrayValue;
             if (!arr) return false;
             
+            size_t total_elements = arr.count;
+            size_t dim0 = total_elements / dim1;
+
             NSInteger row_stride = dim1;
             if (arr.strides.count >= 2) {
                 row_stride = arr.strides[arr.strides.count - 2].integerValue;
@@ -282,7 +293,7 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x640, ScrfdOutput& o
                 row_stride = arr.strides[0].integerValue;
             }
 
-            target.resize(dim0 * dim1);
+            target.resize(total_elements);
             if (arr.dataType == MLMultiArrayDataTypeFloat16) {
                 const _Float16* src16 = static_cast<const _Float16*>(arr.dataPointer);
                 for (size_t r = 0; r < dim0; ++r) {
@@ -295,7 +306,7 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x640, ScrfdOutput& o
             } else {
                 const float* src = static_cast<const float*>(arr.dataPointer);
                 if (static_cast<size_t>(row_stride) == dim1) {
-                    std::memcpy(target.data(), src, dim0 * dim1 * sizeof(float));
+                    std::memcpy(target.data(), src, total_elements * sizeof(float));
                 } else {
                     for (size_t r = 0; r < dim0; ++r) {
                         std::memcpy(target.data() + r * dim1, src + r * row_stride, dim1 * sizeof(float));
@@ -305,15 +316,15 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x640, ScrfdOutput& o
             return true;
         };
 
-        if (!copy_head(impl_->scrfd_score_8_name, out.score_8, 12800, 1) ||
-            !copy_head(impl_->scrfd_score_16_name, out.score_16, 3200, 1) ||
-            !copy_head(impl_->scrfd_score_32_name, out.score_32, 800, 1) ||
-            !copy_head(impl_->scrfd_bbox_8_name, out.bbox_8, 12800, 4) ||
-            !copy_head(impl_->scrfd_bbox_16_name, out.bbox_16, 3200, 4) ||
-            !copy_head(impl_->scrfd_bbox_32_name, out.bbox_32, 800, 4) ||
-            !copy_head(impl_->scrfd_kps_8_name, out.kps_8, 12800, 10) ||
-            !copy_head(impl_->scrfd_kps_16_name, out.kps_16, 3200, 10) ||
-            !copy_head(impl_->scrfd_kps_32_name, out.kps_32, 800, 10)) {
+        if (!copy_head(impl_->scrfd_score_8_name, out.score_8, 1) ||
+            !copy_head(impl_->scrfd_score_16_name, out.score_16, 1) ||
+            !copy_head(impl_->scrfd_score_32_name, out.score_32, 1) ||
+            !copy_head(impl_->scrfd_bbox_8_name, out.bbox_8, 4) ||
+            !copy_head(impl_->scrfd_bbox_16_name, out.bbox_16, 4) ||
+            !copy_head(impl_->scrfd_bbox_32_name, out.bbox_32, 4) ||
+            !copy_head(impl_->scrfd_kps_8_name, out.kps_8, 10) ||
+            !copy_head(impl_->scrfd_kps_16_name, out.kps_16, 10) ||
+            !copy_head(impl_->scrfd_kps_32_name, out.kps_32, 10)) {
             error = "failed to copy SCRFD output head tensors";
             return false;
         }

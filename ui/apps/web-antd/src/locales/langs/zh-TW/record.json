@@ -1,6 +1,8 @@
 {
   "alarm": {
     "title": "告警記錄",
+    "query": "查詢告警",
+    "export": "匯出告警",
     "filter": {
       "camera": "攝影機",
       "cameraPlaceholder": "請選擇攝影機",
@@ -50,10 +52,17 @@
       "legendLine": "警戒线 (Line)",
       "legendTarget": "目標邊界框",
       "noImage": "暫無全景圖片"
+    },
+    "types": {
+      "object_detect": "通用目標檢測告警",
+      "plate_detect": "車牌識別告警",
+      "face_detect": "人臉識別告警"
     }
   },
   "plate": {
     "title": "車牌記錄",
+    "query": "查詢車牌",
+    "export": "匯出車牌",
     "filter": {
       "camera": "攝影機",
       "cameraPlaceholder": "請選擇攝影機",

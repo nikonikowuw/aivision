@@ -1,9 +1,6 @@
 <script lang="ts" setup>
-defineOptions({
-  name: 'ResourceTask',
-});
-
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type { TaskApi } from '#/api';
 
 import {
   computed,
@@ -38,12 +35,16 @@ import {
   getTaskStatsApi,
   setInstanceEnabledApi,
   setTaskEnabledApi,
-  type TaskApi,
 } from '#/api';
+import { formatAlgorithmName } from '#/utils/i18n';
 
 import InstanceDrawer from './components/InstanceDrawer.vue';
 import InstanceFormModal from './components/InstanceFormModal.vue';
 import TaskFormModal from './components/TaskFormModal.vue';
+
+defineOptions({
+  name: 'ResourceTask',
+});
 
 // 选中的任务项（供批量删除）
 const selectedTasks = ref<TaskApi.TaskItem[]>([]);
@@ -363,7 +364,7 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
       showOverflow: false,
       slots: { default: 'actions' },
       title: $t('system.common.action'),
-      width: 200,
+      width: 240,
       align: 'center',
     },
   ],
@@ -728,7 +729,7 @@ function handleFormSuccess() {
               <!-- 算法名与帧率 -->
               <div class="flex flex-col leading-tight">
                 <span class="font-medium text-xs text-card-foreground">
-                  {{ inst.algorithmId }}
+                  {{ formatAlgorithmName(inst.algorithmId) }}
                 </span>
                 <span
                   class="text-[10px] text-muted-foreground font-mono mt-0.5"
@@ -787,7 +788,7 @@ function handleFormSuccess() {
 
       <!-- 操作列 -->
       <template #actions="{ row }">
-        <Space :size="4">
+        <Space :size="4" class="flex-nowrap">
           <Button type="link" size="small" @click="handleOpenDrawer(row)">
             {{ $t('resource.task.instanceDrawer') }}
           </Button>
@@ -797,7 +798,7 @@ function handleFormSuccess() {
             size="small"
             @click="handleEdit(row)"
           >
-            {{ $t('resource.task.edit') }}
+            {{ $t('system.common.edit') }}
           </Button>
           <Popconfirm
             :title="$t('resource.task.deleteConfirm')"
@@ -809,7 +810,7 @@ function handleFormSuccess() {
               danger
               size="small"
             >
-              {{ $t('resource.task.delete') }}
+              {{ $t('system.common.delete') }}
             </Button>
           </Popconfirm>
         </Space>
@@ -858,7 +859,7 @@ function handleFormSuccess() {
                   danger
                   ghost
                 >
-                  {{ $t('resource.task.instance.deleteTask') }}
+                  {{ $t('system.common.delete') }}
                 </Button>
               </Popconfirm>
             </div>
@@ -898,7 +899,7 @@ function handleFormSuccess() {
                     <div
                       class="font-medium text-sm text-foreground flex items-center gap-2"
                     >
-                      <span>{{ inst.algorithmId }}</span>
+                      <span>{{ formatAlgorithmName(inst.algorithmId) }}</span>
                       <span
                         class="text-[10px] font-mono px-1 rounded bg-muted text-muted-foreground"
                       >
@@ -935,8 +936,7 @@ function handleFormSuccess() {
                       </span>
                       <span v-else>-</span>
                       <span class="text-muted-foreground">
-                        / {{ inst.analysisFps }} FPS</span
-                      >
+                        / {{ inst.analysisFps }} FPS</span>
                     </span>
                   </div>
 
@@ -962,18 +962,14 @@ function handleFormSuccess() {
                   <div
                     class="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40"
                   >
-                    <span
-                      >{{ $t('resource.task.instance.rulesCountLabel') }}:
-                      <strong>{{ inst.rulesCount }}</strong></span
-                    >
-                    <span
-                      >{{ $t('resource.task.instance.enableLabel') }}:
+                    <span>{{ $t('resource.task.instance.rulesCountLabel') }}:
+                      <strong>{{ inst.rulesCount }}</strong></span>
+                    <span>{{ $t('resource.task.instance.enableLabel') }}:
                       <strong>{{
                         inst.enabled
                           ? $t('resource.task.instance.statusEnabled')
                           : $t('resource.task.instance.statusDisabled')
-                      }}</strong></span
-                    >
+                      }}</strong></span>
                   </div>
                 </div>
 
@@ -991,9 +987,7 @@ function handleFormSuccess() {
                 class="flex items-center justify-between pt-2 border-t border-border/60 text-xs"
               >
                 <div class="flex items-center gap-1.5">
-                  <span class="text-muted-foreground text-xs"
-                    >{{ $t('resource.task.instance.enableLabel') }}:</span
-                  >
+                  <span class="text-muted-foreground text-xs">{{ $t('resource.task.instance.enableLabel') }}:</span>
                   <Switch
                     v-access:code="['resource:task:edit']"
                     :checked="inst.enabled"
@@ -1011,7 +1005,7 @@ function handleFormSuccess() {
                     class="p-0 text-xs"
                     @click="handleOpenEditInstance(row, inst)"
                   >
-                    {{ $t('resource.task.instance.paramConfig') }}
+                    {{ $t('system.common.edit') }}
                   </Button>
                   <span class="text-border">|</span>
                   <Popconfirm
@@ -1025,7 +1019,7 @@ function handleFormSuccess() {
                       size="small"
                       class="p-0 text-xs"
                     >
-                      {{ $t('resource.task.instance.remove') }}
+                      {{ $t('system.common.delete') }}
                     </Button>
                   </Popconfirm>
                 </Space>

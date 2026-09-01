@@ -1,6 +1,8 @@
 {
   "alarm": {
     "title": "Alarm Records",
+    "query": "Query Alarms",
+    "export": "Export Alarms",
     "filter": {
       "camera": "Camera",
       "cameraPlaceholder": "Select camera",
@@ -50,10 +52,17 @@
       "legendLine": "Warning Line",
       "legendTarget": "Target BBox",
       "noImage": "No Image Available"
+    },
+    "types": {
+      "object_detect": "Object Detection Alarm",
+      "plate_detect": "License Plate Recognition Alarm",
+      "face_detect": "Face Recognition Alarm"
     }
   },
   "plate": {
     "title": "License Plate Records",
+    "query": "Query Plates",
+    "export": "Export Plates",
     "filter": {
       "camera": "Camera",
       "cameraPlaceholder": "Select camera",

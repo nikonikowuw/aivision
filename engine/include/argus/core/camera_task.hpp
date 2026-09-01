@@ -79,9 +79,31 @@ public:
      */
     void remove_instance(const std::string& instance_id);
 
+    /**
+     * @brief 申请实时预览流消费租约（使任务保持全速解码）
+     */
+    void acquire_preview_lease();
+
+    /**
+     * @brief 释放实时预览流消费租约
+     */
+    void release_preview_lease();
+
+    /**
+     * @brief 获取当前活跃消费者总数（活跃算法实例 + 预览租约）
+     */
+    [[nodiscard]] uint32_t active_consumers_count() const;
+
+    /**
+     * @brief 获取当前运行中的算法实例数量
+     */
+    [[nodiscard]] size_t active_instances_count() const;
+
     [[nodiscard]] std::string get_camera_id() const { return camera_id_; }
     [[nodiscard]] CameraState get_state() const { return state_.load(); }
     [[nodiscard]] uint64_t get_decoded_frames() const { return decoded_frames_.load(); }
+    [[nodiscard]] bool is_probing_mode() const { return is_probing_mode_.load(std::memory_order_acquire); }
+    [[nodiscard]] uint64_t get_probing_gate_drops() const { return probing_gate_drops_.load(std::memory_order_relaxed); }
     /**
      * @brief 返回最近一次成功解码帧的 wall clock 纳秒时间；尚无帧时返回 0
      */
@@ -111,6 +133,8 @@ private:
     void wait_for_reconnect(std::chrono::seconds delay);
     /// 每秒输出一次媒体输入、解码和输出帧率汇总
     void log_debug_metrics();
+    /// 已加锁状态下获取当前运行中的算法实例数量
+    [[nodiscard]] size_t active_instances_count_locked() const;
 
     std::string camera_id_;
     std::string rtsp_url_;
@@ -129,8 +153,9 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> saw_idr_keyframe_{false};
 
-    std::mutex instances_mutex_;
+    mutable std::mutex instances_mutex_;
     std::vector<std::shared_ptr<AlgorithmInstance>> instances_;
+    std::atomic<uint32_t> preview_leases_{0};
 
     std::atomic<uint64_t> decoded_frames_{0};
     /// 最近一次成功解码帧的墙上时钟纳秒值，供跨进程任务状态上报。
@@ -143,7 +168,10 @@ private:
     std::atomic<uint64_t> decoder_send_errors_{0};
     std::atomic<uint64_t> packet_parse_drops_{0};
     std::atomic<uint64_t> packet_gate_drops_{0};
+    std::atomic<uint64_t> probing_gate_drops_{0};
     std::atomic<uint64_t> decoded_frame_window_{0};
+    std::atomic<bool> is_probing_mode_{false};
+    std::chrono::steady_clock::time_point last_probe_decode_time_{};
     std::atomic<int64_t> last_packet_pts_us_{0};
     std::atomic<int64_t> last_packet_pts_delta_us_{0};
     std::atomic<int64_t> last_decoded_pts_ns_{0};

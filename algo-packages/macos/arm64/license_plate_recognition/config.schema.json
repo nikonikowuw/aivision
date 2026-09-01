@@ -5,41 +5,47 @@
   "properties": {
     "confidence_threshold": {
       "type": "number",
+      "title": "置信度阈值",
       "minimum": 0.0,
       "maximum": 1.0,
       "default": 0.5,
-      "description": "Plate detection confidence threshold"
+      "description": "车牌检测框置信度阈值，低于该值的候选目标将被过滤"
     },
     "iou_threshold": {
       "type": "number",
+      "title": "IoU 阈值",
       "minimum": 0.0,
       "maximum": 1.0,
       "default": 0.45,
-      "description": "NMS IoU threshold"
+      "description": "非极大值抑制（NMS）使用的交并比重叠度阈值"
     },
     "ocr_confidence_threshold": {
       "type": "number",
+      "title": "字符识别置信度阈值",
       "minimum": 0.0,
       "maximum": 1.0,
       "default": 0.6,
-      "description": "OCR text recognition minimum confidence threshold"
+      "description": "车牌文本识别最低置信度阈值，低于该阈值的模糊字符将被过滤"
     },
     "voting_window_frames": {
       "type": "integer",
+      "title": "多帧平滑投票窗口",
       "minimum": 1,
       "maximum": 30,
       "default": 5,
-      "description": "Multi-frame tracking observation voting window size"
+      "description": "连续跟踪观测窗口帧数，用于多帧置信度加权投票以获得最稳定的识别结果"
     },
     "observation_cooldown_seconds": {
       "type": "integer",
+      "title": "抓拍冷却时间 (秒)",
       "minimum": 1,
       "maximum": 3600,
       "default": 10,
-      "description": "Cooldown period in seconds before repeating identical plate report for same track"
+      "description": "同一车辆轨迹连续被捕获时，两次上报抓拍记录之间的最小冷却时间（秒）"
     },
     "allowed_plate_colors": {
       "type": "array",
+      "title": "允许上报车牌颜色",
       "items": {
         "type": "string",
         "enum": ["black", "blue", "green", "white", "yellow"]
@@ -47,12 +53,13 @@
       "minItems": 1,
       "uniqueItems": true,
       "default": ["black", "blue", "green", "white", "yellow"],
-      "description": "Plate colors eligible for reporting"
+      "description": "选择允许抓拍上报的车牌颜色集合（支持多选，默认全部）"
     },
     "save_plate_crop": {
       "type": "boolean",
+      "title": "保存车牌特写抠图",
       "default": true,
-      "description": "Request a cropped image for every reported plate"
+      "description": "是否在生成抓拍记录时自动保存车牌局部特写高清切图"
     }
   },
   "additionalProperties": false

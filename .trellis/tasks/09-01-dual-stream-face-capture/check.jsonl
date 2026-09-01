@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "检查双流媒体边界、并发、停止顺序和资源生命周期"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "检查帧引用、ROI 契约和 ABI 边界"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "检查测试、sanitizer、lint 和注释质量"}

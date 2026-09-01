@@ -171,7 +171,12 @@
       "motionGate": "Motion Gate",
       "motionGateHint": "Skip AI inference during static scenes to save compute power; resume immediately on motion or keepalive intervals",
       "motionGateKeepalive": "Keepalive Interval (ms)",
-      "motionGateKeepaliveHint": "Interval between periodic baseline frames during static scenes"
+      "motionGateKeepaliveHint": "Interval between periodic baseline frames during static scenes",
+      "tabParams": "Algorithm & Parameters",
+      "tabRules": "Detection Zones & Rules",
+      "currentTargets": "Active Target Classes",
+      "adjustTargets": "Adjust Targets",
+      "allTargetsActive": "All 80 Targets"
     },
     "ruleEditor": {
       "role": {

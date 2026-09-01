@@ -735,3 +735,122 @@ func TestTaskServiceTaskStatsNoQuota(t *testing.T) {
 		t.Fatalf("available units = %d, want 0 when quota not ready", stats.AvailableUnits)
 	}
 }
+
+// TestTaskServiceSetTaskEnabledTransition 测试任务启停时运行状态的正确流转与内存覆盖防护。
+func TestTaskServiceSetTaskEnabledTransition(t *testing.T) {
+	svc, db, _, _, report := newTaskServiceTestEnv(t, 1000, 100)
+	seedTaskFixture(t, db) // cam-a, DesiredEnabled: true, RUNNING
+	waitQuotaReady(t, svc)
+	ctx := context.Background()
+
+	// 1. 创建实例并模拟 Engine 持续上报 TaskState 和 InstanceState 为 RUNNING
+	inst, err := svc.CreateInstance(ctx, &CreateInstanceInput{
+		CameraID:    "cam-a",
+		AlgorithmID: "yolov8n",
+		AnalysisFPS: 25,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	report.AcceptTaskState(ctx, &argusv1.TaskState{
+		CameraId: "cam-a",
+		Status:   argusv1.TaskStatusCode_TASK_STATUS_RUNNING,
+	})
+	report.AcceptInstanceState(ctx, &argusv1.InstanceState{
+		InstanceId: inst.InstanceID,
+		Status:     argusv1.InstanceStatusCode_INSTANCE_STATUS_RUNNING,
+		CurrentFps: 24.5,
+	})
+
+	// 此时 ListTasks 应为 RUNNING
+	list, err := svc.ListTasks(ctx, &TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil || len(list.Items) == 0 {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if list.Items[0].ActualStatus != model.TaskStatusRunning {
+		t.Fatalf("expected running, got %d", list.Items[0].ActualStatus)
+	}
+	if list.Items[0].Instances[0].ActualStatus != model.InstanceStatusRunning {
+		t.Fatalf("expected instance running, got %d", list.Items[0].Instances[0].ActualStatus)
+	}
+
+	// 2. 将任务期望状态改为关闭（enabled=false）
+	if err := svc.SetTaskEnabled(ctx, "cam-a", false); err != nil {
+		t.Fatalf("set task enabled false: %v", err)
+	}
+
+	// 3. 再次查询，任务运行状态必须为 STOPPED，实例运行状态也必须为 STOPPED，不得残留 RUNNING
+	list, err = svc.ListTasks(ctx, &TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil || len(list.Items) == 0 {
+		t.Fatalf("list tasks after disable: %v", err)
+	}
+	if list.Items[0].DesiredEnabled != false {
+		t.Fatalf("expected desiredEnabled=false, got true")
+	}
+	if list.Items[0].ActualStatus != model.TaskStatusStopped {
+		t.Fatalf("expected task actualStatus=%d (STOPPED), got %d", model.TaskStatusStopped, list.Items[0].ActualStatus)
+	}
+	if list.Items[0].Instances[0].ActualStatus != model.InstanceStatusStopped {
+		t.Fatalf("expected instance actualStatus=%d (STOPPED), got %d", model.InstanceStatusStopped, list.Items[0].Instances[0].ActualStatus)
+	}
+
+	// 4. 再次开启任务，状态应流转为 STARTING
+	if err := svc.SetTaskEnabled(ctx, "cam-a", true); err != nil {
+		t.Fatalf("set task enabled true: %v", err)
+	}
+	list, err = svc.ListTasks(ctx, &TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil || len(list.Items) == 0 {
+		t.Fatalf("list tasks after enable: %v", err)
+	}
+	if list.Items[0].DesiredEnabled != true {
+		t.Fatalf("expected desiredEnabled=true, got false")
+	}
+	if list.Items[0].ActualStatus != model.TaskStatusStarting {
+		t.Fatalf("expected task actualStatus=%d (STARTING), got %d", model.TaskStatusStarting, list.Items[0].ActualStatus)
+	}
+}
+
+// TestTaskServiceSetInstanceEnabledTransition 测试算法实例单独停用时的状态流转。
+func TestTaskServiceSetInstanceEnabledTransition(t *testing.T) {
+	svc, db, _, _, report := newTaskServiceTestEnv(t, 1000, 100)
+	seedTaskFixture(t, db)
+	waitQuotaReady(t, svc)
+	ctx := context.Background()
+
+	inst, err := svc.CreateInstance(ctx, &CreateInstanceInput{
+		CameraID:    "cam-a",
+		AlgorithmID: "yolov8n",
+		AnalysisFPS: 25,
+		ParamsJSON:  json.RawMessage(`{"confidence_threshold":0.5}`),
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	report.AcceptInstanceState(ctx, &argusv1.InstanceState{
+		InstanceId: inst.InstanceID,
+		Status:     argusv1.InstanceStatusCode_INSTANCE_STATUS_RUNNING,
+		CurrentFps: 25.0,
+	})
+
+	// 停用实例
+	if err := svc.SetInstanceEnabled(ctx, inst.InstanceID, false); err != nil {
+		t.Fatalf("set instance enabled false: %v", err)
+	}
+
+	// 实例列表中状态必须为 STOPPED
+	insts, err := svc.ListInstances(ctx, "cam-a")
+	if err != nil || len(insts) == 0 {
+		t.Fatalf("list instances: %v", err)
+	}
+	if insts[0].Enabled != false {
+		t.Fatalf("expected enabled=false, got true")
+	}
+	if insts[0].ActualStatus != model.InstanceStatusStopped {
+		t.Fatalf("expected actualStatus=%d (STOPPED), got %d", model.InstanceStatusStopped, insts[0].ActualStatus)
+	}
+}

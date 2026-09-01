@@ -447,6 +447,46 @@ func newAlgorithmServiceSQLiteEnv(t *testing.T) (*algorithmService, *fakeEngineC
 	return svc, engine, db, repository.NewTaskRepository(db)
 }
 
+// TestAlgorithmService_UninstallBuiltinProtected 系统内置算法版本受保护，禁止卸载。
+func TestAlgorithmService_UninstallBuiltinProtected(t *testing.T) {
+	svc, _, db, _ := newAlgorithmServiceSQLiteEnv(t)
+	ctx := context.Background()
+
+	mustCreate := func(v any) {
+		if err := db.Create(v).Error; err != nil {
+			t.Fatalf("create fixture: %v", err)
+		}
+	}
+	mustCreate(&model.Algorithm{
+		AlgorithmID:   "license_plate_recognition",
+		Name:          "车牌识别",
+		AlgorithmType: "license_plate_recognition",
+		ActiveVersion: "1.0.0",
+		IsBuiltin:     true,
+	})
+	mustCreate(&model.AlgorithmVersion{
+		AlgorithmID:  "license_plate_recognition",
+		Version:      "1.0.0",
+		IsActive:     true,
+		IsBuiltin:    true,
+		FPSTiers:     []byte(`[]`),
+		ConfigSchema: []byte(`{}`),
+		ManifestRaw:  []byte(`{}`),
+	})
+
+	err := svc.UninstallVersion(ctx, "license_plate_recognition", "1.0.0")
+	if !errno.Is(err, errno.CodeBuiltinAlgoProtected) {
+		t.Fatalf("uninstall builtin algorithm = %v, want CodeBuiltinAlgoProtected", err)
+	}
+
+	// 确认数据库中的版本与主记录依然存在
+	repo := repository.NewAlgorithmRepository(db)
+	ver, err := repo.GetVersion(ctx, "license_plate_recognition", "1.0.0")
+	if err != nil || ver == nil {
+		t.Fatalf("builtin version should remain intact: %v", err)
+	}
+}
+
 // TestAlgorithmServiceUninstallBlockedWhenInstancesExist 存在未软删实例引用时禁止卸载（R7/§7.5.5）。
 func TestAlgorithmServiceUninstallBlockedWhenInstancesExist(t *testing.T) {
 	svc, _, db, _ := newAlgorithmServiceSQLiteEnv(t)

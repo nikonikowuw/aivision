@@ -503,7 +503,7 @@ TEST(UdsReconcileTest, AlarmCaptureRunsOffAlgorithmWorker) {
     EXPECT_GE(instance->get_processed_frames(), 2U);
 
     app_server.service().release_alarm();
-    for (int attempt = 0; attempt < 400 && pool.active_frame_count() != 0; ++attempt) {
+    for (int attempt = 0; attempt < 400 && (pool.active_frame_count() != 0 || app_server.service().alarms().size() < 5U); ++attempt) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     EXPECT_EQ(pool.active_frame_count(), 0U);

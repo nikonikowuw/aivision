@@ -22,7 +22,10 @@
     "action": "Action",
     "typeDetection": "Detection",
     "typeFace": "Face",
+    "typePlate": "Plate Recognition",
     "typeOther": "Other",
+    "builtin": "Built-in",
+    "builtinCannotUninstall": "System built-in algorithm is protected and cannot be uninstalled",
     "statusActive": "Active",
     "statusHistory": "History",
     "keywordPlaceholder": "Enter algorithm ID or name",
@@ -49,6 +52,179 @@
     "validatingTip": "Archive extracted safely. Triggering Engine sandbox self-test and symbol audit...",
     "installSuccess": "Package passed self-test and installed successfully!",
     "installFailed": "Installation validation failed",
-    "onlySupportedFormats": "Only .zip, .tar.gz, and .tar formats are supported!"
+    "onlySupportedFormats": "Only .zip, .tar.gz, and .tar formats are supported!",
+    "viewTable": "Table View",
+    "viewCard": "Card View",
+    "totalCount": "Total: {total}",
+    "builtInAlgos": {
+      "general_detection": {
+        "name": "General Object Detection",
+        "description": "Built-in general object detection algorithm with customizable target class filtering and scene labels"
+      },
+      "face_recognition": {
+        "name": "Face Recognition",
+        "description": "Built-in face recognition algorithm supporting face detection, feature extraction, and identity matching"
+      },
+      "license_plate_recognition": {
+        "name": "License Plate Recognition",
+        "description": "Built-in license plate recognition algorithm supporting vehicle plate detection and high-accuracy OCR"
+      }
+    }
+  },
+  "alarmTypes": {
+    "object_detect": "Object Detection Alarm",
+    "plate_detect": "License Plate Recognition Alarm",
+    "face_detect": "Face Recognition Alarm"
+  },
+  "classes": {
+    "person": "Person",
+    "bicycle": "Bicycle",
+    "car": "Car",
+    "motorcycle": "Motorcycle",
+    "airplane": "Airplane",
+    "bus": "Bus",
+    "train": "Train",
+    "truck": "Truck",
+    "boat": "Boat",
+    "traffic light": "Traffic Light",
+    "fire hydrant": "Fire Hydrant",
+    "stop sign": "Stop Sign",
+    "parking meter": "Parking Meter",
+    "bench": "Bench",
+    "bird": "Bird",
+    "cat": "Cat",
+    "dog": "Dog",
+    "horse": "Horse",
+    "sheep": "Sheep",
+    "cow": "Cow",
+    "elephant": "Elephant",
+    "bear": "Bear",
+    "zebra": "Zebra",
+    "giraffe": "Giraffe",
+    "backpack": "Backpack",
+    "umbrella": "Umbrella",
+    "handbag": "Handbag",
+    "tie": "Tie",
+    "suitcase": "Suitcase",
+    "frisbee": "Frisbee",
+    "skis": "Skis",
+    "snowboard": "Snowboard",
+    "sports ball": "Sports Ball",
+    "kite": "Kite",
+    "baseball bat": "Baseball Bat",
+    "baseball glove": "Baseball Glove",
+    "skateboard": "Skateboard",
+    "surfboard": "Surfboard",
+    "tennis racket": "Tennis Racket",
+    "bottle": "Bottle",
+    "wine glass": "Wine Glass",
+    "cup": "Cup",
+    "fork": "Fork",
+    "knife": "Knife",
+    "spoon": "Spoon",
+    "bowl": "Bowl",
+    "banana": "Banana",
+    "apple": "Apple",
+    "sandwich": "Sandwich",
+    "orange": "Orange",
+    "broccoli": "Broccoli",
+    "carrot": "Carrot",
+    "hot dog": "Hot Dog",
+    "pizza": "Pizza",
+    "donut": "Donut",
+    "cake": "Cake",
+    "chair": "Chair",
+    "couch": "Couch",
+    "potted plant": "Potted Plant",
+    "bed": "Bed",
+    "dining table": "Dining Table",
+    "toilet": "Toilet",
+    "tv": "TV",
+    "laptop": "Laptop",
+    "mouse": "Mouse",
+    "remote": "Remote",
+    "keyboard": "Keyboard",
+    "cell phone": "Cell Phone",
+    "microwave": "Microwave",
+    "oven": "Oven",
+    "toaster": "Toaster",
+    "sink": "Sink",
+    "refrigerator": "Refrigerator",
+    "book": "Book",
+    "clock": "Clock",
+    "vase": "Vase",
+    "scissors": "Scissors",
+    "teddy bear": "Teddy Bear",
+    "hair drier": "Hair Dryer",
+    "toothbrush": "Toothbrush",
+    "groups": {
+      "person": "People & Pedestrians",
+      "vehicle": "Vehicles & Traffic",
+      "animal": "Animals & Pets",
+      "accessory": "Accessories & Bags",
+      "indoor": "Indoor & Furniture",
+      "sports_food": "Sports & Food"
+    },
+    "presets": {
+      "common": "People & Vehicles",
+      "personOnly": "Person Only",
+      "vehicles": "Vehicles",
+      "pets": "Pets",
+      "accessories": "Bags & Packages",
+      "all": "Select All",
+      "clear": "Clear",
+      "selectAllGroup": "Select All in Group",
+      "unselectAllGroup": "Unselect Group",
+      "searchPlaceholder": "Search target class (e.g. person, car, dog)...",
+      "selectedCount": "Selected {count} items",
+      "moreCount": "Show {count} more items",
+      "collapse": "Collapse",
+      "emptySearch": "No matching target classes found"
+    }
+  },
+  "params": {
+    "confidence_threshold": {
+      "title": "Confidence Threshold",
+      "description": "Detection results with confidence below this threshold will be filtered out"
+    },
+    "iou_threshold": {
+      "title": "IoU Threshold",
+      "description": "Non-Maximum Suppression (NMS) Intersection-over-Union threshold"
+    },
+    "ocr_confidence_threshold": {
+      "title": "OCR Confidence Threshold",
+      "description": "Minimum recognition confidence threshold for plate characters"
+    },
+    "voting_window_frames": {
+      "title": "Voting Window Frames",
+      "description": "Tracking window size in frames for weighted multi-frame plate voting"
+    },
+    "observation_cooldown_seconds": {
+      "title": "Cooldown Period (s)",
+      "description": "Cooldown period in seconds before repeating identical plate report for same track"
+    },
+    "allowed_plate_colors": {
+      "title": "Allowed Plate Colors",
+      "description": "Select plate colors eligible for observation reporting"
+    },
+    "save_plate_crop": {
+      "title": "Save Plate Crop",
+      "description": "Save cropped license plate image for each observation record"
+    },
+    "target_classes": {
+      "title": "Target Classes",
+      "description": "Select target object classes to detect and track"
+    },
+    "custom_alarm_label": {
+      "title": "Custom Alarm Label",
+      "description": "Optional custom scenario label or note attached to alarms"
+    }
+  },
+  "colors": {
+    "black": "Black",
+    "blue": "Blue",
+    "green": "Green (NEV)",
+    "white": "White",
+    "yellow": "Yellow"
   }
 }

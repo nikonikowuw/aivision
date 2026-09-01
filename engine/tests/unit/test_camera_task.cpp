@@ -199,7 +199,10 @@ TEST(CameraTaskTest, DecoderWatchdogResetsSilentDecoder) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     EXPECT_EQ(task.get_decoded_frames(), 0);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(3100));
+    for (int i = 0; i < 31; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        backend->last_source_->emit_nal(0x41, false, 1200 + i * 10);
+    }
     task.trigger_watchdog_check();
     for (int i = 0; i < 100 && reset_count->load() == 0; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -228,5 +231,97 @@ TEST(CameraTaskTest, ReconnectsAfterMediaError) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     EXPECT_GE(source->start_count(), 2);
+    task.stop();
+}
+
+TEST(CameraTaskTest, ZeroConsumerProbingModeThrottlesTo1FPS) {
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<DummyMediaBackend>();
+    argus::core::CameraTask task("cam-probe", "rtsp://127.0.0.1/live/probe", adapter, backend);
+    ASSERT_EQ(task.start(), AV_OK);
+    ASSERT_NE(backend->last_source_, nullptr);
+
+    EXPECT_EQ(task.active_consumers_count(), 0);
+    EXPECT_EQ(task.active_instances_count(), 0);
+
+    // 发送参数集
+    backend->last_source_->emit_nal(0x67, false, 1000);
+    backend->last_source_->emit_nal(0x68, false, 1100);
+
+    // 快速发送多个 IDR 关键帧与 P 帧（模拟 25fps 流，但在 0 消费者下应被探测门控拦截）
+    // 第一次 IDR 应被放行解码
+    backend->last_source_->emit_nal(0x65, true, 1200);
+
+    for (int i = 0; i < 200 && task.get_decoded_frames() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(task.get_decoded_frames(), 1);
+    EXPECT_TRUE(task.is_probing_mode());
+
+    // 随后 1 秒内连续发送 P 帧和 IDR 帧，都应被丢弃
+    for (int i = 0; i < 5; ++i) {
+        backend->last_source_->emit_nal(0x41, false, 1300 + i * 40);
+        backend->last_source_->emit_nal(0x65, true, 1320 + i * 40);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(task.get_decoded_frames(), 1);
+
+    // 经过 1.1 秒后发送 IDR 帧，应成功解码第 2 帧
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    backend->last_source_->emit_nal(0x65, true, 2500);
+
+    for (int i = 0; i < 200 && task.get_decoded_frames() < 2; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(task.get_decoded_frames(), 2);
+
+    task.stop();
+}
+
+TEST(CameraTaskTest, PreviewLeaseAndInstanceTransitionResyncIDR) {
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<DummyMediaBackend>();
+    argus::core::CameraTask task("cam-lease", "rtsp://127.0.0.1/live/lease", adapter, backend);
+    ASSERT_EQ(task.start(), AV_OK);
+    ASSERT_NE(backend->last_source_, nullptr);
+
+    // 初始 0 消费者 -> Probing
+    EXPECT_EQ(task.active_consumers_count(), 0);
+
+    // 模拟获取预览租约
+    task.acquire_preview_lease();
+    EXPECT_EQ(task.active_consumers_count(), 1);
+
+    // 发送参数集与关键帧
+    backend->last_source_->emit_nal(0x67, false, 1000);
+    backend->last_source_->emit_nal(0x68, false, 1100);
+    backend->last_source_->emit_nal(0x65, true, 1200);
+
+    for (int i = 0; i < 200 && task.get_decoded_frames() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(task.get_decoded_frames(), 1);
+    EXPECT_FALSE(task.is_probing_mode());
+
+    // 释放预览租约 -> 恢复 Probing 模式
+    task.release_preview_lease();
+    EXPECT_EQ(task.active_consumers_count(), 0);
+
+    // 再次获取租约，应要求重新等待 IDR
+    task.acquire_preview_lease();
+    EXPECT_EQ(task.active_consumers_count(), 1);
+
+    // 发送非关键帧 P 帧 -> 必须被 IDR 门控拦截
+    backend->last_source_->emit_nal(0x41, false, 1300);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(task.get_decoded_frames(), 1);
+
+    // 重新发送 IDR -> 解码第 2 帧
+    backend->last_source_->emit_nal(0x65, true, 1400);
+    for (int i = 0; i < 200 && task.get_decoded_frames() < 2; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(task.get_decoded_frames(), 2);
+
     task.stop();
 }

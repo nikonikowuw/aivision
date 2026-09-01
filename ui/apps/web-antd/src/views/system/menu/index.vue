@@ -89,6 +89,10 @@ const [Form, formApi] = useVbenForm<MenuFormValues>({
                 ? $t('system.menu.nameButtonPlaceholder')
                 : $t('system.menu.namePlaceholder'),
           },
+          label:
+            values.type === 'button'
+              ? $t('system.menu.buttonName')
+              : $t('system.menu.name'),
         }),
         triggerFields: ['type'],
       },
@@ -101,9 +105,16 @@ const [Form, formApi] = useVbenForm<MenuFormValues>({
       componentProps: {
         placeholder: $t('system.menu.menuTitlePlaceholder'),
       },
+      dependencies: {
+        rules: (values) =>
+          values.type === 'button'
+            ? z.string().optional()
+            : z.string().min(1, $t('system.menu.titleRequired')),
+        show: (values) => values.type !== 'button',
+        triggerFields: ['type'],
+      },
       fieldName: 'title',
       label: $t('system.menu.menuTitle'),
-      rules: z.string().min(1, $t('system.menu.titleRequired')),
     },
     {
       component: 'Input',
@@ -188,7 +199,7 @@ const [Modal, modalApi] = useVbenModal({
       path: values.path,
       sort: values.sort,
       status: values.status,
-      title: values.title,
+      title: values.type === 'button' ? '' : values.title,
       type: values.type,
     };
     try {
@@ -212,14 +223,19 @@ const gridOptions: VxeGridProps<MenuApi.MenuItem> = {
   columns: [
     {
       field: 'title',
-      formatter: ({ cellValue }) => translateMenuLabel(cellValue),
+      formatter: ({ row }) => {
+        if (row.type === 'button') {
+          return translateMenuLabel(row.name);
+        }
+        return translateMenuLabel(row.title || row.name);
+      },
       title: $t('system.menu.menuTitle'),
       treeNode: true,
       width: 220,
     },
     {
       field: 'name',
-      formatter: ({ cellValue }) => translateMenuLabel(cellValue),
+      formatter: ({ row }) => (row.type === 'button' ? '-' : row.name),
       title: $t('system.menu.name'),
       width: 140,
     },

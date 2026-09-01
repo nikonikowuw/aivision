@@ -22,6 +22,11 @@ import {
   getAlgorithmList,
   getCameraPageApi,
 } from '#/api';
+import {
+  formatAlarmTypeName,
+  formatAlgorithmName,
+  formatTargetClass,
+} from '#/utils/i18n';
 
 import AlarmAnnotationCanvas from './components/AlarmAnnotationCanvas.vue';
 import AlarmThumbnail from './components/AlarmThumbnail.vue';
@@ -32,6 +37,9 @@ const currentDetail = ref<AlarmRecordApi.AlarmRecordDetail | null>(null);
 const [DetailModal, detailModalApi] = useVbenModal({
   class: 'w-[1100px] max-w-[95vw]',
   fullscreenButton: true,
+  onConfirm: () => {
+    detailModalApi.close();
+  },
   showCancelButton: false,
   title: $t('record.alarm.detail.title'),
 });
@@ -264,15 +272,17 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
       </template>
 
       <template #algorithmName="{ row }">
-        <span>{{ row.algorithmName || row.algorithmId }}</span>
+        <span>{{
+          formatAlgorithmName(row.algorithmId, row.algorithmName)
+        }}</span>
       </template>
 
       <template #alarmTypeId="{ row }">
-        <Tag color="blue">{{ row.alarmTypeId }}</Tag>
+        <Tag color="blue">{{ formatAlarmTypeName(row.alarmTypeId) }}</Tag>
       </template>
 
       <template #targetLabel="{ row }">
-        <span>{{ row.targetLabel || 'Target' }}</span>
+        <span>{{ formatTargetClass(row.targetLabel) }}</span>
       </template>
 
       <template #confidence="{ row }">
@@ -315,7 +325,7 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
                 {{ $t('record.alarm.detail.targetCard') }}
               </span>
               <Tag color="blue" class="m-0 font-medium">
-                {{ currentDetail.alarmTypeId }}
+                {{ formatAlarmTypeName(currentDetail.alarmTypeId) }}
               </Tag>
             </div>
 
@@ -335,7 +345,7 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
               <div class="flex flex-1 flex-col gap-1.5 overflow-hidden">
                 <div class="flex items-center gap-1.5 truncate">
                   <span class="text-sm font-bold text-foreground truncate">
-                    {{ currentDetail.targetLabel || 'Target' }}
+                    {{ formatTargetClass(currentDetail.targetLabel) }}
                   </span>
                   <Tag
                     v-if="currentDetail.trackId"
@@ -359,37 +369,66 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
           </div>
 
           <!-- 事件元数据详细表格 -->
-          <div class="rounded-lg border border-border/80 bg-card p-3.5 shadow-xs">
+          <div
+            class="rounded-lg border border-border/80 bg-card p-3.5 shadow-xs"
+          >
             <div class="mb-2.5 font-semibold text-xs text-foreground">
               {{ $t('record.alarm.detail.eventInfo') }}
             </div>
 
-            <Descriptions :column="1" size="small" class="alarm-detail-desc" :label-style="{ width: '85px' }">
+            <Descriptions
+              :column="1"
+              size="small"
+              class="alarm-detail-desc"
+              :label-style="{ width: '85px' }"
+            >
               <DescriptionsItem :label="$t('record.alarm.detail.occurredAt')">
-                <span class="text-xs text-foreground">{{ currentDetail.occurredAt }}</span>
+                <span class="text-xs text-foreground">{{
+                  currentDetail.occurredAt
+                }}</span>
               </DescriptionsItem>
               <DescriptionsItem :label="$t('record.alarm.detail.camera')">
-                <span class="text-xs font-medium text-foreground truncate" :title="currentDetail.cameraName || currentDetail.cameraId">
+                <span
+                  class="text-xs font-medium text-foreground truncate"
+                  :title="currentDetail.cameraName || currentDetail.cameraId"
+                >
                   {{ currentDetail.cameraName || currentDetail.cameraId }}
                 </span>
               </DescriptionsItem>
               <DescriptionsItem :label="$t('record.alarm.detail.algorithm')">
                 <div class="flex flex-wrap items-center gap-1">
                   <span class="text-xs text-foreground">
-                    {{ currentDetail.algorithmName || currentDetail.algorithmId }}
+                    {{
+                      formatAlgorithmName(
+                        currentDetail.algorithmId,
+                        currentDetail.algorithmName,
+                      )
+                    }}
                   </span>
-                  <Tag v-if="currentDetail.algorithmVersion" class="m-0 text-[10px] px-1 py-0">
+                  <Tag
+                    v-if="currentDetail.algorithmVersion"
+                    class="m-0 text-[10px] px-1 py-0"
+                  >
                     v{{ currentDetail.algorithmVersion }}
                   </Tag>
                 </div>
               </DescriptionsItem>
               <DescriptionsItem :label="$t('record.alarm.detail.timeSynced')">
-                <Tag :color="currentDetail.timeSynced ? 'success' : 'warning'" class="m-0 text-[11px]">
-                  {{ currentDetail.timeSynced ? $t('record.alarm.detail.synced') : $t('record.alarm.detail.notSynced') }}
+                <Tag
+                  :color="currentDetail.timeSynced ? 'success' : 'warning'"
+                  class="m-0 text-[11px]"
+                >
+                  {{
+                    currentDetail.timeSynced
+                      ? $t('record.alarm.detail.synced')
+                      : $t('record.alarm.detail.notSynced')
+                  }}
                 </Tag>
               </DescriptionsItem>
               <DescriptionsItem :label="$t('record.alarm.detail.eventId')">
-                <span class="font-mono text-[11px] text-muted-foreground break-all">
+                <span
+                  class="font-mono text-[11px] text-muted-foreground break-all"
+                >
                   {{ currentDetail.eventId }}
                 </span>
               </DescriptionsItem>
@@ -403,13 +442,13 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
 
 <style scoped>
 :deep(.alarm-detail-desc .ant-descriptions-item-label) {
-  font-size: 12px;
-  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.45));
   padding-bottom: 6px;
+  font-size: 12px;
+  color: var(--ant-color-text-secondary, rgb(0 0 0 / 45%));
 }
+
 :deep(.alarm-detail-desc .ant-descriptions-item-content) {
-  font-size: 12px;
   padding-bottom: 6px;
+  font-size: 12px;
 }
 </style>
-

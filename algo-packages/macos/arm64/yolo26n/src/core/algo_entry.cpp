@@ -24,7 +24,7 @@
 
 namespace yolo26n {
 
-constexpr const char* kAlgorithmId = "yolo26n";
+constexpr const char* kAlgorithmId = "general_detection";
 constexpr const char* kVersion = "1.0.0";
 constexpr const char* kPlatformId = "macos-arm64-coreml";
 constexpr const char* kAlarmTypeId = "object_detect";
@@ -212,6 +212,7 @@ bool run_pipeline(InstanceContext* inst, const av_frame_desc* frame,
         network_output,
         inst->config.confidence_threshold,
         inst->config.iou_threshold,
+        &inst->config.enabled_classes_mask,
         frame->width,
         frame->height);
     objects = inst->tracker.update(raw_objects);

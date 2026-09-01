@@ -18,6 +18,7 @@ export namespace AlgorithmApi {
     manifestRaw: Record<string, unknown>;
     packageSizeBytes: number;
     isActive: boolean;
+    isBuiltin?: boolean;
     createdAt: string;
     updatedAt: string;
   }
@@ -30,6 +31,7 @@ export namespace AlgorithmApi {
     alarmTypeId: string;
     activeVersion: string;
     description: string;
+    isBuiltin?: boolean;
     createdAt: string;
     updatedAt: string;
     versions?: AlgorithmVersionItem[];

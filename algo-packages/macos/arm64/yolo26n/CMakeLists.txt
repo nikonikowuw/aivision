@@ -38,7 +38,7 @@ add_subdirectory(src)
 # The production dylib contains only the C ABI object; implementation modules
 # remain separate targets so they can be rebuilt independently.
 argus_add_algo_package(yolo26n
-    ALGORITHM_ID yolo26n
+    ALGORITHM_ID general_detection
     VERSION 1.0.0
     PLATFORM_ID macos-arm64-coreml
     SRCS "$<TARGET_OBJECTS:yolo26n_core>"

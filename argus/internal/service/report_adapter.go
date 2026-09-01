@@ -450,12 +450,54 @@ func (a *ReportAdapter) TaskRuntime(cameraID string) (TaskRuntimeState, bool) {
 	return state, ok
 }
 
+// SetTaskRuntimeStatus 手动更新/重置任务的内存实时状态（如启停控制）。
+func (a *ReportAdapter) SetTaskRuntimeStatus(cameraID string, status int8, message string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	state := a.tasks[cameraID]
+	state.Status = status
+	state.Message = message
+	state.ReportedAt = time.Now()
+	if status == model.TaskStatusStopped {
+		state.LastFrameAt = nil
+	}
+	a.tasks[cameraID] = state
+}
+
+// RemoveTaskRuntime 移除任务的内存实时状态（如删除任务）。
+func (a *ReportAdapter) RemoveTaskRuntime(cameraID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.tasks, cameraID)
+}
+
 // InstanceRuntime 返回 instance_id 对应的内存实时状态；未上报过返回 ok=false。
 func (a *ReportAdapter) InstanceRuntime(instanceID string) (InstanceRuntimeState, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	state, ok := a.insts[instanceID]
 	return state, ok
+}
+
+// SetInstanceRuntimeStatus 手动更新/重置实例的内存实时状态（如启停控制）。
+func (a *ReportAdapter) SetInstanceRuntimeStatus(instanceID string, status int8, message string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	state := a.insts[instanceID]
+	state.Status = status
+	state.Message = message
+	state.ReportedAt = time.Now()
+	if status == model.InstanceStatusStopped {
+		state.CurrentFps = 0
+	}
+	a.insts[instanceID] = state
+}
+
+// RemoveInstanceRuntime 移除实例的内存实时状态（如删除实例）。
+func (a *ReportAdapter) RemoveInstanceRuntime(instanceID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.insts, instanceID)
 }
 
 // timeFromWallNs 把 Engine 的 wall-clock 纳秒转成时间指针；非正值视为未上报（nil）。

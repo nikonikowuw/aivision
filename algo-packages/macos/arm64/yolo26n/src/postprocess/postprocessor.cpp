@@ -1,11 +1,11 @@
 #include "postprocessor.hpp"
-#include <vector>
-#include <string>
-#include <cstring>
 #include <algorithm>
 #include <cmath>
-#include "argus/cv/nms.hpp"
+#include <cstring>
+#include <string>
+#include <vector>
 #include "argus/cv/letterbox.hpp"
+#include "argus/cv/nms.hpp"
 
 namespace yolo26n {
 
@@ -26,6 +26,7 @@ std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
     const std::vector<float>& net_out,
     float conf_thresh,
     float iou_thresh,
+    const std::bitset<80>* class_mask,
     uint32_t orig_w,
     uint32_t orig_h
 ) {
@@ -37,16 +38,22 @@ std::vector<argus::cv::DetectionBox> Postprocessor::postprocess(
     auto lb = argus::cv::compute_letterbox(orig_w, orig_h, 640, 384);
 
     for (int i = 0; i < kDetections; ++i) {
-        float x1 = net_out[i * 6 + 0];
-        float y1 = net_out[i * 6 + 1];
-        float x2 = net_out[i * 6 + 2];
-        float y2 = net_out[i * 6 + 3];
         float score = net_out[i * 6 + 4];
         int cls_id = static_cast<int>(std::round(net_out[i * 6 + 5]));
 
         if (!std::isfinite(score) || score < conf_thresh || cls_id < 0 || cls_id >= 80) {
             continue;
         }
+
+        // O(1) bitset early-exit filter
+        if (class_mask && !class_mask->test(static_cast<size_t>(cls_id))) {
+            continue;
+        }
+
+        float x1 = net_out[i * 6 + 0];
+        float y1 = net_out[i * 6 + 1];
+        float x2 = net_out[i * 6 + 2];
+        float y2 = net_out[i * 6 + 3];
 
         if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) || !std::isfinite(y2) ||
             x2 <= x1 || y2 <= y1) {

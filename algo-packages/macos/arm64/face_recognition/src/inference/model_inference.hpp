@@ -8,27 +8,27 @@
 namespace face_recognition {
 
 /**
- * @brief YOLOv8n 输出张量 (8400, 84) 或 (84, 8400)
+ * @brief YOLOv8n 输出张量 (5040, 84) 或 (84, 5040)
  */
 struct YoloOutput {
     std::vector<float> data;
-    uint32_t num_boxes = 8400;
+    uint32_t num_boxes = 5040;
     uint32_t num_classes_and_coords = 84;
 };
 
 /**
- * @brief SCRFD 9-head 输出张量
+ * @brief SCRFD 9-head 输出张量 (640x384 输入下 anchor 数分别缩减为 7680 / 1920 / 480)
  */
 struct ScrfdOutput {
-    std::vector<float> score_8;   // (12800, 1)
-    std::vector<float> score_16;  // (3200, 1)
-    std::vector<float> score_32;  // (800, 1)
-    std::vector<float> bbox_8;    // (12800, 4)
-    std::vector<float> bbox_16;   // (3200, 4)
-    std::vector<float> bbox_32;   // (800, 4)
-    std::vector<float> kps_8;     // (12800, 10)
-    std::vector<float> kps_16;    // (3200, 10)
-    std::vector<float> kps_32;    // (800, 10)
+    std::vector<float> score_8;   // (7680, 1)
+    std::vector<float> score_16;  // (1920, 1)
+    std::vector<float> score_32;  // (480, 1)
+    std::vector<float> bbox_8;    // (7680, 4)
+    std::vector<float> bbox_16;   // (1920, 4)
+    std::vector<float> bbox_32;   // (480, 4)
+    std::vector<float> kps_8;     // (7680, 10)
+    std::vector<float> kps_16;    // (1920, 10)
+    std::vector<float> kps_32;    // (480, 10)
 };
 
 /**
@@ -54,8 +54,8 @@ public:
                      const std::string& glintr_rel_path,
                      std::string& error);
 
-    bool run_yolo(const uint8_t* rgb_640x640, YoloOutput& out, std::string& error);
-    bool run_scrfd(const uint8_t* rgb_640x640, ScrfdOutput& out, std::string& error);
+    bool run_yolo(const uint8_t* rgb_640x384, YoloOutput& out, std::string& error);
+    bool run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& out, std::string& error);
     bool run_glintr(const uint8_t* rgb_112x112, GlintrOutput& out, std::string& error);
 
 private:

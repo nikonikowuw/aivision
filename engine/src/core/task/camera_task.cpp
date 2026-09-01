@@ -324,7 +324,12 @@ void CameraTask::add_instance(std::shared_ptr<AlgorithmInstance> instance) {
     const auto it = std::find_if(instances_.begin(), instances_.end(), [&](const auto& current) {
         return current && current->get_instance_id() == instance->get_instance_id();
     });
-    if (it == instances_.end()) instances_.push_back(std::move(instance));
+    if (it == instances_.end()) {
+        if (active_instances_count_locked() == 0 && preview_leases_.load(std::memory_order_acquire) == 0) {
+            saw_idr_keyframe_.store(false, std::memory_order_release);
+        }
+        instances_.push_back(std::move(instance));
+    }
 }
 
 void CameraTask::remove_instance(const std::string& instance_id) {
@@ -337,8 +342,45 @@ void CameraTask::remove_instance(const std::string& instance_id) {
         if (it == instances_.end()) return;
         removed = *it;
         instances_.erase(it);
+        if (active_instances_count_locked() == 0 && preview_leases_.load(std::memory_order_acquire) == 0) {
+            saw_idr_keyframe_.store(false, std::memory_order_release);
+        }
     }
     if (removed) removed->stop();
+}
+
+void CameraTask::acquire_preview_lease() {
+    const uint32_t prev = preview_leases_.fetch_add(1, std::memory_order_acq_rel);
+    if (prev == 0 && active_instances_count() == 0) {
+        saw_idr_keyframe_.store(false, std::memory_order_release);
+    }
+}
+
+void CameraTask::release_preview_lease() {
+    uint32_t current = preview_leases_.load(std::memory_order_acquire);
+    while (current > 0) {
+        if (preview_leases_.compare_exchange_weak(current, current - 1, std::memory_order_acq_rel)) {
+            if (current == 1 && active_instances_count() == 0) {
+                saw_idr_keyframe_.store(false, std::memory_order_release);
+            }
+            break;
+        }
+    }
+}
+
+size_t CameraTask::active_instances_count_locked() const {
+    return static_cast<size_t>(std::count_if(instances_.begin(), instances_.end(), [](const auto& inst) {
+        return inst && inst->is_running();
+    }));
+}
+
+size_t CameraTask::active_instances_count() const {
+    std::lock_guard<std::mutex> lock(instances_mutex_);
+    return active_instances_count_locked();
+}
+
+uint32_t CameraTask::active_consumers_count() const {
+    return static_cast<uint32_t>(active_instances_count()) + preview_leases_.load(std::memory_order_acquire);
 }
 
 void CameraTask::on_encoded_packet(const media::EncodedPacket& packet) {
@@ -375,6 +417,7 @@ void CameraTask::decode_loop() {
         saw_vps_ = false;
         saw_sps_ = false;
         saw_pps_ = false;
+        last_probe_decode_time_ = {};
         last_decoder_input_time_ms_.store(0, std::memory_order_release);
         decoder_waiting_for_output_.store(false, std::memory_order_release);
     };
@@ -444,20 +487,43 @@ void CameraTask::decode_loop() {
         saw_vps_ = saw_vps_ || nal_flags.has_vps;
         saw_sps_ = saw_sps_ || nal_flags.has_sps;
         saw_pps_ = saw_pps_ || nal_flags.has_pps;
-        const bool parameter_sets_ready = decoder_codec_ == "H265"
-            ? saw_vps_ && saw_sps_ && saw_pps_
-            : saw_sps_ && saw_pps_;
+        const bool is_hevc = (decoder_codec_ == "H265" || decoder_codec_ == "HEVC");
+        const bool parameter_sets_ready = is_hevc
+            ? (saw_vps_ && saw_sps_ && saw_pps_)
+            : (saw_sps_ && saw_pps_);
         const bool waiting_for_idr = !saw_idr_keyframe_.load(std::memory_order_acquire);
-        bool is_param_set = false;
-        if (decoder_codec_ == "H265" || decoder_codec_ == "HEVC") {
-            is_param_set = nal_flags.has_vps || nal_flags.has_sps || nal_flags.has_pps;
-        } else {
-            is_param_set = nal_flags.has_sps || nal_flags.has_pps;
-        }
+        const bool is_param_set = is_hevc
+            ? (nal_flags.has_vps || nal_flags.has_sps || nal_flags.has_pps)
+            : (nal_flags.has_sps || nal_flags.has_pps);
+
         if (waiting_for_idr && !is_param_set &&
             !(parameter_sets_ready && nal_flags.has_random_access)) {
             packet_gate_drops_.fetch_add(1, std::memory_order_relaxed);
             continue;
+        }
+
+        const uint32_t total_consumers = active_consumers_count();
+        const bool probing_mode = (total_consumers == 0);
+        is_probing_mode_.store(probing_mode, std::memory_order_release);
+
+        if (probing_mode) {
+            // 探测保活模式：非参数集且非关键帧直接丢弃
+            if (!nal_flags.has_random_access && !is_param_set) {
+                probing_gate_drops_.fetch_add(1, std::memory_order_relaxed);
+                packet_gate_drops_.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            // 若包含关键帧，限制解码频率为 1 FPS
+            if (nal_flags.has_random_access) {
+                const auto now_steady = std::chrono::steady_clock::now();
+                if (last_probe_decode_time_.time_since_epoch().count() != 0 &&
+                    now_steady - last_probe_decode_time_ < std::chrono::milliseconds(1000)) {
+                    probing_gate_drops_.fetch_add(1, std::memory_order_relaxed);
+                    packet_gate_drops_.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
+                last_probe_decode_time_ = now_steady;
+            }
         }
 
         // 向硬件/软件解码器喂入压缩数据包
@@ -549,17 +615,16 @@ void CameraTask::log_debug_metrics() {
     const uint64_t decoder_send_errors = decoder_send_errors_.exchange(0, std::memory_order_relaxed);
     const uint64_t packet_parse_drops = packet_parse_drops_.exchange(0, std::memory_order_relaxed);
     const uint64_t packet_gate_drops = packet_gate_drops_.exchange(0, std::memory_order_relaxed);
+    const uint64_t probing_drops = probing_gate_drops_.exchange(0, std::memory_order_relaxed);
     const uint64_t decoded_frames = decoded_frame_window_.exchange(0, std::memory_order_relaxed);
     size_t encoded_queue_depth = 0;
     {
         std::lock_guard<std::mutex> lock(encoded_mutex_);
         encoded_queue_depth = encoded_queue_.size();
     }
-    size_t instance_count = 0;
-    {
-        std::lock_guard<std::mutex> lock(instances_mutex_);
-        instance_count = instances_.size();
-    }
+    const size_t active_inst_count = active_instances_count();
+    const uint32_t preview_leases = preview_leases_.load(std::memory_order_acquire);
+    const uint32_t active_consumers = static_cast<uint32_t>(active_inst_count) + preview_leases;
 
     LOG_DEBUG(
         "engine.camera_task", "camera.pipeline_metrics", "camera pipeline metrics", "",
@@ -569,6 +634,11 @@ void CameraTask::log_debug_metrics() {
          {"input_bytes_per_second", static_cast<double>(received_packet_bytes) / elapsed_seconds},
          {"decoder_input_fps", static_cast<double>(decoder_packets_sent) / elapsed_seconds},
          {"decoded_fps", static_cast<double>(decoded_frames) / elapsed_seconds},
+         {"probing_mode", is_probing_mode_.load(std::memory_order_acquire)},
+         {"probing_drops", static_cast<int64_t>(probing_drops)},
+         {"active_instances", static_cast<int64_t>(active_inst_count)},
+         {"preview_leases", static_cast<int64_t>(preview_leases)},
+         {"active_consumers", static_cast<int64_t>(active_consumers)},
          {"encoded_queue_depth", static_cast<int64_t>(encoded_queue_depth)},
          {"encoded_queue_drops", static_cast<int64_t>(encoded_queue_drops)},
          {"packet_parse_drops", static_cast<int64_t>(packet_parse_drops)},
@@ -585,7 +655,7 @@ void CameraTask::log_debug_metrics() {
          {"memory_type", static_cast<int64_t>(last_frame_memory_type_.load(std::memory_order_relaxed))},
          {"keyframe_ready", saw_idr_keyframe_.load(std::memory_order_acquire)},
          {"decoder_waiting_for_output", decoder_waiting_for_output_.load(std::memory_order_acquire)},
-         {"instance_count", static_cast<int64_t>(instance_count)},
+         {"instance_count", static_cast<int64_t>(active_inst_count)},
          {"total_decoded_frames", static_cast<int64_t>(decoded_frames_.load(std::memory_order_relaxed))}});
 }
 

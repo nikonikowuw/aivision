@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file postprocessor.hpp
+ * @brief 车牌检测 NMS、通用多语言 CTC 解码、多目标跟踪与多数表决
+ */
+
 #include "core/config.hpp"
 #include "inference/model_inference.hpp"
 #include "preprocess/preprocessor.hpp"
@@ -17,8 +22,8 @@ struct PlateObject {
     float y_min = 0.0f;
     float x_max = 0.0f;
     float y_max = 0.0f;
-    float landmarks_8[8] = {0.0f}; // 原图像素坐标
-    float landmarks_norm[8] = {0.0f}; // 原图归一化 0..1 坐标
+    float landmarks_8[8] = {0.0f};     // 原图像素坐标
+    float landmarks_norm[8] = {0.0f};  // 原图归一化 0..1 坐标
     float confidence = 0.0f;
     bool is_double_layer = false;
 
@@ -34,9 +39,12 @@ struct PlateObject {
 
 struct TrackObservationState {
     int64_t track_id = 0;
-    std::unordered_map<std::string, int> text_votes;
-    std::unordered_map<std::string, int> color_votes;
-    std::unordered_map<std::string, int> type_votes;
+    std::unordered_map<std::string, float> text_weights;
+    std::unordered_map<std::string, float> color_weights;
+    std::unordered_map<std::string, float> type_weights;
+    std::string best_text;
+    std::string best_color;
+    std::string best_type;
     float highest_score = 0.0f;
     float highest_ocr_conf = 0.0f;
     int observed_count = 0;
@@ -60,7 +68,7 @@ public:
                                             uint32_t orig_w, uint32_t orig_h) const;
 
     /**
-     * @brief CTC 解码字符序列与颜色分类
+     * @brief 通用多语言 CTC 解码、格式规范化与颜色/类型属性判定
      */
     void decode_plate_recognition(const PlateRecOutput& rec_out,
                                   bool is_double_layer,

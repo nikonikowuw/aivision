@@ -78,6 +78,7 @@ if(BUILD_TESTING)
     target_link_libraries(lpr_tests PRIVATE
         lpr_postprocess
         argus_sdk_headers
+        "-framework Accelerate"
     )
     add_test(NAME lpr_tests COMMAND lpr_tests)
 

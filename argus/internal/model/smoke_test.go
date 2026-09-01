@@ -49,6 +49,13 @@ func TestAutoMigrateCreatesAllTables(t *testing.T) {
 			t.Errorf("plate_observations column %s missing", column)
 		}
 	}
+
+	if !gdb.Migrator().HasColumn(&Algorithm{}, "is_builtin") {
+		t.Errorf("algorithms column is_builtin missing")
+	}
+	if !gdb.Migrator().HasColumn(&AlgorithmVersion{}, "is_builtin") {
+		t.Errorf("algorithm_versions column is_builtin missing")
+	}
 }
 
 func TestSeedIdempotentAndStructure(t *testing.T) {
@@ -76,8 +83,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 57 {
-		t.Errorf("menu rows = %d, want 57", menuCount)
+	if menuCount != 60 {
+		t.Errorf("menu rows = %d, want 60", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -137,6 +144,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"resource:task", "resource:task:add", "resource:task:edit", "resource:task:delete",
 		"ai:algorithm", "ai:algorithm:upload", "ai:algorithm:activate", "ai:algorithm:uninstall",
 		"record:alarm", "record:alarm:query", "record:alarm:export",
+		"record:plate", "record:plate:query", "record:plate:export",
 		"live:preview", "live:preview:stream",
 	}
 	sort.Strings(got)
@@ -151,11 +159,11 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		}
 	}
 
-	// super 角色绑定全部 57 条菜单
+	// super 角色绑定全部 60 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 57 {
-		t.Errorf("role_menus for super = %d, want 57", rmCount)
+	if rmCount != 60 {
+		t.Errorf("role_menus for super = %d, want 60", rmCount)
 	}
 
 	// 初始系统配置与 desired_state_revision
@@ -166,6 +174,22 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	var rev DesiredStateRevision
 	if err := gdb.Where("id = ?", 1).First(&rev).Error; err != nil {
 		t.Fatalf("desired_state_revision missing: %v", err)
+	}
+
+	// 验证内置算法种子
+	var lpr Algorithm
+	if err := gdb.Where("algorithm_id = ?", "license_plate_recognition").First(&lpr).Error; err != nil {
+		t.Fatalf("license_plate_recognition algorithm missing: %v", err)
+	}
+	if !lpr.IsBuiltin {
+		t.Errorf("license_plate_recognition.is_builtin = false, want true")
+	}
+	var lprVer AlgorithmVersion
+	if err := gdb.Where("algorithm_id = ? AND version = ?", "license_plate_recognition", "1.0.0").First(&lprVer).Error; err != nil {
+		t.Fatalf("license_plate_recognition version 1.0.0 missing: %v", err)
+	}
+	if !lprVer.IsBuiltin {
+		t.Errorf("license_plate_recognition version 1.0.0 is_builtin = false, want true")
 	}
 }
 

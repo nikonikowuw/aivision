@@ -22,7 +22,10 @@
     "action": "操作",
     "typeDetection": "目標檢測",
     "typeFace": "人臉分析",
+    "typePlate": "車牌識別",
     "typeOther": "其他",
+    "builtin": "系統內置",
+    "builtinCannotUninstall": "系統內置演算法受保護，禁止解除安裝",
     "statusActive": "當前激活",
     "statusHistory": "歷史版本",
     "keywordPlaceholder": "請輸入演算法標識或名稱",
@@ -178,5 +181,50 @@
       "collapse": "收起",
       "emptySearch": "未搜尋到匹配的目標類別"
     }
+  },
+  "params": {
+    "confidence_threshold": {
+      "title": "信心度閾值",
+      "description": "檢測框信心度低於該值的檢測結果將被過濾"
+    },
+    "iou_threshold": {
+      "title": "IoU 閾值",
+      "description": "非極大值抑制（NMS）使用的交並比重疊度閾值"
+    },
+    "ocr_confidence_threshold": {
+      "title": "字元識別信心度閾值",
+      "description": "車牌文字識別最低信心度閾值，低於該閾值的模糊字元將被過濾"
+    },
+    "voting_window_frames": {
+      "title": "多幀平滑投票視窗",
+      "description": "連續跟踪觀測視窗幀數，用於多幀信心度加權投票以獲得最穩定的識別結果"
+    },
+    "observation_cooldown_seconds": {
+      "title": "抓拍冷卻時間 (秒)",
+      "description": "同一車輛軌跡連續被捕獲時，兩次回報抓拍記錄之間的最小冷卻時間（秒）"
+    },
+    "allowed_plate_colors": {
+      "title": "允許回報車牌顏色",
+      "description": "選擇允許抓拍回報的車牌顏色集合（支援多選，默認全部）"
+    },
+    "save_plate_crop": {
+      "title": "保存車牌特寫摳圖",
+      "description": "是否在生成抓拍記錄時自動保存車牌局部特寫高清切圖"
+    },
+    "target_classes": {
+      "title": "檢測目標類別",
+      "description": "選擇需要檢測和跟踪的目標類別（支援多選）"
+    },
+    "custom_alarm_label": {
+      "title": "自定義業務標籤",
+      "description": "為該任務生成的告警附加自定義場景標識或業務備註（可選）"
+    }
+  },
+  "colors": {
+    "black": "黑色",
+    "blue": "藍色",
+    "green": "綠色(新能源)",
+    "white": "白色",
+    "yellow": "黃色"
   }
 }

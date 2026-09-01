@@ -17,6 +17,8 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
+import { formatPropertyDesc, formatPropertyTitle } from '#/utils/i18n';
+
 import CategorizedClassSelector from './CategorizedClassSelector.vue';
 
 type PrimitiveValue = boolean | number | string;
@@ -87,9 +89,15 @@ function toPrimitiveOptions(value: unknown) {
     const str = String(item);
     const i18nKey = `ai.classes.${str}`;
     const translated = $t(i18nKey);
-    const label =
-      translated && translated !== i18nKey ? `${translated} (${str})` : str;
-    return { label, value: item };
+    if (translated && translated !== i18nKey) {
+      return { label: `${translated} (${str})`, value: item };
+    }
+    const i18nColorKey = `ai.colors.${str}`;
+    const colorTranslated = $t(i18nColorKey);
+    if (colorTranslated && colorTranslated !== i18nColorKey) {
+      return { label: `${colorTranslated} (${str})`, value: item };
+    }
+    return { label: str, value: item };
   });
 }
 
@@ -135,13 +143,19 @@ const properties = computed<PropertyField[]>(() => {
       ];
     }
 
+    const rawTitle =
+      typeof rawValue.title === 'string' ? rawValue.title : undefined;
+    const rawDesc =
+      typeof rawValue.description === 'string'
+        ? rawValue.description
+        : undefined;
+
     result.push({
       key,
-      title: typeof rawValue.title === 'string' ? rawValue.title : key,
+      title: formatPropertyTitle(key, rawTitle),
       type,
       itemType,
-      description:
-        typeof rawValue.description === 'string' ? rawValue.description : '',
+      description: formatPropertyDesc(key, rawDesc),
       defaultValue: rawValue.default as SchemaValue,
       required: requiredKeys.has(key),
       enumOptions,

@@ -69,6 +69,7 @@ func (r *algorithmRepository) UpsertAlgorithm(ctx context.Context, algo *model.A
 			"algorithm_type": algo.AlgorithmType,
 			"alarm_type_id":  algo.AlarmTypeID,
 			"description":    algo.Description,
+			"is_builtin":     algo.IsBuiltin,
 			"updated_at":     time.Now(),
 		}
 		if algo.ActiveVersion != "" {
@@ -170,6 +171,7 @@ func (r *algorithmRepository) UpsertVersion(ctx context.Context, version *model.
 			"manifest_raw":        version.ManifestRaw,
 			"package_size_bytes":  version.PackageSizeBytes,
 			"is_active":           version.IsActive,
+			"is_builtin":          version.IsBuiltin,
 			"updated_at":          time.Now(),
 		}
 		return tx.Model(&model.AlgorithmVersion{}).Where("id = ?", existing.ID).Updates(updates).Error

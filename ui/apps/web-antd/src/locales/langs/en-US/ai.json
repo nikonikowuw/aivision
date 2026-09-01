@@ -22,7 +22,10 @@
     "action": "Action",
     "typeDetection": "Detection",
     "typeFace": "Face",
+    "typePlate": "Plate Recognition",
     "typeOther": "Other",
+    "builtin": "Built-in",
+    "builtinCannotUninstall": "System built-in algorithm is protected and cannot be uninstalled",
     "statusActive": "Active",
     "statusHistory": "History",
     "keywordPlaceholder": "Enter algorithm ID or name",
@@ -178,5 +181,50 @@
       "collapse": "Collapse",
       "emptySearch": "No matching target classes found"
     }
+  },
+  "params": {
+    "confidence_threshold": {
+      "title": "Confidence Threshold",
+      "description": "Detection results with confidence below this threshold will be filtered out"
+    },
+    "iou_threshold": {
+      "title": "IoU Threshold",
+      "description": "Non-Maximum Suppression (NMS) Intersection-over-Union threshold"
+    },
+    "ocr_confidence_threshold": {
+      "title": "OCR Confidence Threshold",
+      "description": "Minimum recognition confidence threshold for plate characters"
+    },
+    "voting_window_frames": {
+      "title": "Voting Window Frames",
+      "description": "Tracking window size in frames for weighted multi-frame plate voting"
+    },
+    "observation_cooldown_seconds": {
+      "title": "Cooldown Period (s)",
+      "description": "Cooldown period in seconds before repeating identical plate report for same track"
+    },
+    "allowed_plate_colors": {
+      "title": "Allowed Plate Colors",
+      "description": "Select plate colors eligible for observation reporting"
+    },
+    "save_plate_crop": {
+      "title": "Save Plate Crop",
+      "description": "Save cropped license plate image for each observation record"
+    },
+    "target_classes": {
+      "title": "Target Classes",
+      "description": "Select target object classes to detect and track"
+    },
+    "custom_alarm_label": {
+      "title": "Custom Alarm Label",
+      "description": "Optional custom scenario label or note attached to alarms"
+    }
+  },
+  "colors": {
+    "black": "Black",
+    "blue": "Blue",
+    "green": "Green (NEV)",
+    "white": "White",
+    "yellow": "Yellow"
   }
 }

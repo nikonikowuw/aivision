@@ -290,6 +290,7 @@ func seedAll(tx *gorm.DB) error {
 		AlarmTypeID:   "object_detect",
 		ActiveVersion: "1.0.0",
 		Description:   "系统内置通用目标检测算法，支持人员、车辆、动物、随身物品等多类别自由过滤与自定义业务标签",
+		IsBuiltin:     true,
 	}
 	if err := tx.Where("algorithm_id = ?", builtinAlgo.AlgorithmID).FirstOrCreate(&builtinAlgo).Error; err != nil {
 		return fmt.Errorf("seed builtin algorithm (%s): %w", builtinAlgo.AlgorithmID, err)
@@ -310,9 +311,45 @@ func seedAll(tx *gorm.DB) error {
 		ManifestRaw:       manifestRaw,
 		PackageSizeBytes:  0,
 		IsActive:          true,
+		IsBuiltin:         true,
 	}
 	if err := tx.Where("algorithm_id = ? AND version = ? AND platform_id = ?", builtinVersion.AlgorithmID, builtinVersion.Version, builtinVersion.PlatformID).FirstOrCreate(&builtinVersion).Error; err != nil {
 		return fmt.Errorf("seed builtin algorithm version (%s:%s): %w", builtinVersion.AlgorithmID, builtinVersion.Version, err)
+	}
+
+	// 内置算法: 车牌识别 (license_plate_recognition)
+	lprAlgo := Algorithm{
+		AlgorithmID:   "license_plate_recognition",
+		Name:          "车牌识别",
+		AlgorithmType: "license_plate_recognition",
+		AlarmTypeID:   "",
+		ActiveVersion: "1.0.0",
+		Description:   "系统内置多语言车牌识别算法，支持中国标准车牌及国际车牌检测与高精度文本识别",
+		IsBuiltin:     true,
+	}
+	if err := tx.Where("algorithm_id = ?", lprAlgo.AlgorithmID).FirstOrCreate(&lprAlgo).Error; err != nil {
+		return fmt.Errorf("seed builtin algorithm (%s): %w", lprAlgo.AlgorithmID, err)
+	}
+
+	lprFpsTiersRaw := []byte(`[{"fps":5,"units":100},{"fps":15,"units":250},{"fps":30,"units":500}]`)
+	lprConfigSchemaRaw := []byte(`{"$schema":"http://json-schema.org/draft-07/schema#","title":"车牌识别配置","type":"object","properties":{"confidence_threshold":{"type":"number","title":"置信度阈值","minimum":0,"maximum":1,"default":0.5,"description":"车牌检测框置信度阈值，低于该值的候选目标将被过滤"},"iou_threshold":{"type":"number","title":"IoU 阈值","minimum":0,"maximum":1,"default":0.45,"description":"非极大值抑制（NMS）使用的交并比重叠度阈值"},"ocr_confidence_threshold":{"type":"number","title":"字符识别置信度阈值","minimum":0,"maximum":1,"default":0.6,"description":"车牌文本识别最低置信度阈值，低于该阈值的模糊字符将被过滤"},"voting_window_frames":{"type":"integer","title":"多帧平滑投票窗口","minimum":1,"maximum":30,"default":5,"description":"连续跟踪观测窗口帧数，用于多帧置信度加权投票以获得最稳定的识别结果"},"observation_cooldown_seconds":{"type":"integer","title":"抓拍冷却时间 (秒)","minimum":1,"maximum":3600,"default":10,"description":"同一车辆轨迹连续被捕获时，两次上报抓拍记录之间的最小冷却时间（秒）"},"allowed_plate_colors":{"type":"array","title":"允许上报车牌颜色","items":{"type":"string","enum":["black","blue","green","white","yellow"]},"minItems":1,"uniqueItems":true,"default":["black","blue","green","white","yellow"],"description":"选择允许抓拍上报的车牌颜色集合（支持多选，默认全部）"},"save_plate_crop":{"type":"boolean","title":"保存车牌特写抠图","default":true,"description":"是否在生成抓拍记录时自动保存车牌局部特写高清切图"}},"additionalProperties":false}`)
+	lprManifestRaw := []byte(`{"manifest_version":1,"algorithm_id":"license_plate_recognition","version":"1.0.0","name":"License Plate Recognition","description":"Universal multilingual vehicle license plate detection, perspective rectification, and PP-OCRv4 text recognition on Apple Silicon Core ML","algorithm_type":"license_plate_recognition","platform_id":"macos-arm64-coreml","min_adapter_version":"1.0.0","runtime_constraints":{"min_os_version":"14.0"},"resource_profile":{"min_free_memory_mb":256,"fps_tiers":[{"fps":5,"units":100},{"fps":15,"units":250},{"fps":30,"units":500}]},"self_test":{"timeout_ms":10000,"input_mode":"test_image"}}`)
+
+	lprVersion := AlgorithmVersion{
+		AlgorithmID:       "license_plate_recognition",
+		Version:           "1.0.0",
+		PlatformID:        "macos-arm64-coreml",
+		MinAdapterVersion: "1.0.0",
+		PackageRoot:       "var/packages/license_plate_recognition/1.0.0",
+		FPSTiers:          lprFpsTiersRaw,
+		ConfigSchema:      lprConfigSchemaRaw,
+		ManifestRaw:       lprManifestRaw,
+		PackageSizeBytes:  0,
+		IsActive:          true,
+		IsBuiltin:         true,
+	}
+	if err := tx.Where("algorithm_id = ? AND version = ? AND platform_id = ?", lprVersion.AlgorithmID, lprVersion.Version, lprVersion.PlatformID).FirstOrCreate(&lprVersion).Error; err != nil {
+		return fmt.Errorf("seed builtin algorithm version (%s:%s): %w", lprVersion.AlgorithmID, lprVersion.Version, err)
 	}
 
 	return nil

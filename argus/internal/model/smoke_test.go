@@ -49,6 +49,13 @@ func TestAutoMigrateCreatesAllTables(t *testing.T) {
 			t.Errorf("plate_observations column %s missing", column)
 		}
 	}
+
+	if !gdb.Migrator().HasColumn(&Algorithm{}, "is_builtin") {
+		t.Errorf("algorithms column is_builtin missing")
+	}
+	if !gdb.Migrator().HasColumn(&AlgorithmVersion{}, "is_builtin") {
+		t.Errorf("algorithm_versions column is_builtin missing")
+	}
 }
 
 func TestSeedIdempotentAndStructure(t *testing.T) {
@@ -167,6 +174,22 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	var rev DesiredStateRevision
 	if err := gdb.Where("id = ?", 1).First(&rev).Error; err != nil {
 		t.Fatalf("desired_state_revision missing: %v", err)
+	}
+
+	// 验证内置算法种子
+	var lpr Algorithm
+	if err := gdb.Where("algorithm_id = ?", "license_plate_recognition").First(&lpr).Error; err != nil {
+		t.Fatalf("license_plate_recognition algorithm missing: %v", err)
+	}
+	if !lpr.IsBuiltin {
+		t.Errorf("license_plate_recognition.is_builtin = false, want true")
+	}
+	var lprVer AlgorithmVersion
+	if err := gdb.Where("algorithm_id = ? AND version = ?", "license_plate_recognition", "1.0.0").First(&lprVer).Error; err != nil {
+		t.Fatalf("license_plate_recognition version 1.0.0 missing: %v", err)
+	}
+	if !lprVer.IsBuiltin {
+		t.Errorf("license_plate_recognition version 1.0.0 is_builtin = false, want true")
 	}
 }
 

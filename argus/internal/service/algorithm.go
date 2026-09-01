@@ -283,6 +283,9 @@ func (s *algorithmService) UninstallVersion(ctx context.Context, algorithmID, ve
 		}
 		return err
 	}
+	if algo.IsBuiltin || target.IsBuiltin {
+		return errno.New(errno.CodeBuiltinAlgoProtected)
+	}
 	previousAlgo := *algo
 	previousTarget := *target
 	activeCount, err := s.repo.CountActiveInstances(ctx, algorithmID, version)

@@ -31,28 +31,29 @@ const (
 	CodeForbidden = 403
 
 	// 业务错误码 1xxx。
-	CodeBadCredential      = 1001 // 用户名或密码错误
-	CodeUserNotFound       = 1002 // 用户不存在
-	CodeUsernameTaken      = 1003 // 用户名已存在
-	CodeRoleCodeTaken      = 1004 // 角色 code 已存在
-	CodeWrongOldPassword   = 1005 // 旧密码错误
-	CodeMenuHasChildren    = 1006 // 菜单存在子节点
-	CodeDeptHasChildren    = 1007 // 部门存在子部门
-	CodeUserDisabled       = 1008 // 用户被禁用
-	CodeInvalidParam       = 1009 // 请求参数错误
-	CodeParentIsSelf       = 1010 // 父节点不能是自身
-	CodeNotFound           = 1011 // 资源不存在
-	CodeMethodNotAllowed   = 1012 // 请求方法不允许
-	CodeParentIsDescendant = 1013 // 父节点不能是当前节点的后代
-	CodeSuperRoleProtected = 1014 // 超级管理员角色不可删除、停用或修改编码
-	CodeAdminUserProtected = 1015 // 超级管理员账号不可删除、停用或修改用户名
-	CodeFileTooLarge       = 1016 // 文件超过大小限制
-	CodeFileTypeNotAllowed = 1017 // 文件类型不允许
-	CodePersonIDTaken      = 1018 // 人员标识已存在
-	CodeAlgoPackageInvalid = 1019 // 算法包格式非法或解析失败
-	CodeAlgoInstallFailed  = 1020 // 算法包安装或自测失败
-	CodeAlgoInUse          = 1021 // 算法包正在被任务使用，禁止卸载
-	CodeEngineUnavailable  = 1022 // 推理引擎服务不可用
+	CodeBadCredential        = 1001 // 用户名或密码错误
+	CodeUserNotFound         = 1002 // 用户不存在
+	CodeUsernameTaken        = 1003 // 用户名已存在
+	CodeRoleCodeTaken        = 1004 // 角色 code 已存在
+	CodeWrongOldPassword     = 1005 // 旧密码错误
+	CodeMenuHasChildren      = 1006 // 菜单存在子节点
+	CodeDeptHasChildren      = 1007 // 部门存在子部门
+	CodeUserDisabled         = 1008 // 用户被禁用
+	CodeInvalidParam         = 1009 // 请求参数错误
+	CodeParentIsSelf         = 1010 // 父节点不能是自身
+	CodeNotFound             = 1011 // 资源不存在
+	CodeMethodNotAllowed     = 1012 // 请求方法不允许
+	CodeParentIsDescendant   = 1013 // 父节点不能是当前节点的后代
+	CodeSuperRoleProtected   = 1014 // 超级管理员角色不可删除、停用或修改编码
+	CodeAdminUserProtected   = 1015 // 超级管理员账号不可删除、停用或修改用户名
+	CodeFileTooLarge         = 1016 // 文件超过大小限制
+	CodeFileTypeNotAllowed   = 1017 // 文件类型不允许
+	CodePersonIDTaken        = 1018 // 人员标识已存在
+	CodeAlgoPackageInvalid   = 1019 // 算法包格式非法或解析失败
+	CodeAlgoInstallFailed    = 1020 // 算法包安装或自测失败
+	CodeAlgoInUse            = 1021 // 算法包正在被任务使用，禁止卸载
+	CodeEngineUnavailable    = 1022 // 推理引擎服务不可用
+	CodeBuiltinAlgoProtected = 1023 // 系统内置算法受保护，禁止卸载
 
 	// 网络配置业务错误码 1100 ~ 1113
 	CodeNetworkInvalidConfig         = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
@@ -129,6 +130,7 @@ var messages = map[string]map[int]string{
 		CodeAlgoInstallFailed:             "算法包安装或自测失败",
 		CodeAlgoInUse:                     "算法包正在被任务使用，禁止卸载",
 		CodeEngineUnavailable:             "推理引擎服务不可用",
+		CodeBuiltinAlgoProtected:          "系统内置算法受保护，禁止卸载",
 		CodeNetworkInvalidConfig:          "网络配置参数非法或冲突",
 		CodeNetworkTransactionPending:     "已有待确认的网络配置事务，请先确认或取消",
 		CodeNetworkTransactionNotFound:    "网络事务不存在或已处理",
@@ -191,6 +193,7 @@ var messages = map[string]map[int]string{
 		CodeAlgoInstallFailed:             "Algorithm package installation or self-test failed",
 		CodeAlgoInUse:                     "Algorithm package is currently in use and cannot be uninstalled",
 		CodeEngineUnavailable:             "Inference engine service unavailable",
+		CodeBuiltinAlgoProtected:          "System built-in algorithm is protected and cannot be uninstalled",
 		CodeNetworkInvalidConfig:          "Invalid or conflicting network configuration",
 		CodeNetworkTransactionPending:     "A network transaction is already pending confirmation",
 		CodeNetworkTransactionNotFound:    "Network transaction not found or already completed",
@@ -253,6 +256,7 @@ var messages = map[string]map[int]string{
 		CodeAlgoInstallFailed:             "演算法包安裝或自我檢測失敗",
 		CodeAlgoInUse:                     "演算法包正在被任務使用，禁止解除安裝",
 		CodeEngineUnavailable:             "推論引擎服務不可用",
+		CodeBuiltinAlgoProtected:          "系統內置演算法受保護，禁止解除安裝",
 		CodeNetworkInvalidConfig:          "網路設定參數非法或衝突",
 		CodeNetworkTransactionPending:     "已有待確認的網路設定事務，請先確認或取消",
 		CodeNetworkTransactionNotFound:    "網路事務不存在或已處理",

@@ -5,6 +5,8 @@ import { $t } from '@vben/locales';
 
 import { Modal, Table } from 'ant-design-vue';
 
+import { formatPropertyDesc, formatPropertyTitle } from '#/utils/i18n';
+
 interface Props {
   open: boolean;
   schema: null | Record<string, unknown>;
@@ -65,7 +67,9 @@ const dataSource = computed<SchemaPropertyRow[]>(() => {
 
   return Object.keys(properties).map((key) => {
     const field = properties[key] || {};
-    let desc = field.description || '-';
+    const baseDesc =
+      formatPropertyDesc(key, field.description) || field.description || '-';
+    let desc = baseDesc;
     if (field.minimum !== undefined || field.maximum !== undefined) {
       desc += ` [${field.minimum ?? '-'}, ${field.maximum ?? '-'}]`;
     }
@@ -75,7 +79,7 @@ const dataSource = computed<SchemaPropertyRow[]>(() => {
 
     return {
       key,
-      title: field.title || key,
+      title: formatPropertyTitle(key, field.title),
       type: field.type || 'any',
       defaultValue:
         field.default === undefined ? '-' : JSON.stringify(field.default),

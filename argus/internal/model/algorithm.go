@@ -21,6 +21,7 @@ type Algorithm struct {
 	AlarmTypeID   string                `gorm:"column:alarm_type_id;not null;size:64;default:''" json:"alarmTypeId"`
 	ActiveVersion string                `gorm:"column:active_version;not null;size:32;default:''" json:"activeVersion"`
 	Description   string                `gorm:"column:description;not null;default:''" json:"description"`
+	IsBuiltin     bool                  `gorm:"column:is_builtin;not null;default:false" json:"isBuiltin"`
 
 	// 关联的版本列表（可按需 Preload，不创建物理外键约束以对齐项目不建物理外键规范）
 	Versions []*AlgorithmVersion `gorm:"foreignKey:AlgorithmID;references:AlgorithmID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;-:migration" json:"versions,omitempty"`
@@ -46,6 +47,7 @@ type AlgorithmVersion struct {
 	ManifestRaw       JSONRaw               `gorm:"column:manifest_raw;type:jsonb;not null;default:'{}'" json:"manifestRaw"`
 	PackageSizeBytes  int64                 `gorm:"column:package_size_bytes;not null;default:0" json:"packageSizeBytes"`
 	IsActive          bool                  `gorm:"column:is_active;not null;default:false" json:"isActive"`
+	IsBuiltin         bool                  `gorm:"column:is_builtin;not null;default:false" json:"isBuiltin"`
 }
 
 // TableName 显式声明表名。

@@ -165,6 +165,10 @@ const [Grid, gridApi] = useVbenVxeGrid({
               value: 'object_detection',
             },
             { label: $t('ai.algorithm.typeFace'), value: 'face_recognition' },
+            {
+              label: $t('ai.algorithm.typePlate'),
+              value: 'license_plate_recognition',
+            },
           ],
         },
       },
@@ -259,9 +263,14 @@ function handleViewModeChange(val: any) {
         </template>
 
         <template #name="{ row }">
-          <span class="font-medium">{{
-            formatAlgorithmName(row.algorithmId, row.name)
-          }}</span>
+          <div class="flex items-center gap-1.5">
+            <span class="font-medium">{{
+              formatAlgorithmName(row.algorithmId, row.name)
+            }}</span>
+            <Tag v-if="row.isBuiltin" color="purple" class="text-xs">
+              {{ $t('ai.algorithm.builtin') }}
+            </Tag>
+          </div>
         </template>
 
         <template #algorithmId="{ row }">
@@ -273,7 +282,13 @@ function handleViewModeChange(val: any) {
         <template #algorithmType="{ row }">
           <Tag
             :color="
-              row.algorithmType === 'object_detection' ? 'cyan' : 'purple'
+              row.algorithmType === 'object_detection'
+                ? 'cyan'
+                : row.algorithmType === 'face_recognition'
+                  ? 'purple'
+                  : row.algorithmType === 'license_plate_recognition'
+                    ? 'orange'
+                    : 'default'
             "
           >
             {{
@@ -281,7 +296,9 @@ function handleViewModeChange(val: any) {
                 ? $t('ai.algorithm.typeDetection')
                 : row.algorithmType === 'face_recognition'
                   ? $t('ai.algorithm.typeFace')
-                  : row.algorithmType
+                  : row.algorithmType === 'license_plate_recognition'
+                    ? $t('ai.algorithm.typePlate')
+                    : row.algorithmType
             }}
           </Tag>
         </template>
@@ -330,9 +347,14 @@ function handleViewModeChange(val: any) {
             <Card hoverable class="h-full flex flex-col justify-between">
               <template #title>
                 <div class="flex items-center justify-between">
-                  <span class="truncate font-semibold">{{
-                    formatAlgorithmName(algo.algorithmId, algo.name)
-                  }}</span>
+                  <div class="flex items-center gap-1.5 truncate">
+                    <span class="truncate font-semibold">{{
+                      formatAlgorithmName(algo.algorithmId, algo.name)
+                    }}</span>
+                    <Tag v-if="algo.isBuiltin" color="purple" class="text-xs">
+                      {{ $t('ai.algorithm.builtin') }}
+                    </Tag>
+                  </div>
                   <Tag color="success" class="font-mono text-xs">
                     v{{ algo.activeVersion }}
                   </Tag>
@@ -347,7 +369,11 @@ function handleViewModeChange(val: any) {
                     :color="
                       algo.algorithmType === 'object_detection'
                         ? 'cyan'
-                        : 'purple'
+                        : algo.algorithmType === 'face_recognition'
+                          ? 'purple'
+                          : algo.algorithmType === 'license_plate_recognition'
+                            ? 'orange'
+                            : 'default'
                     "
                   >
                     {{
@@ -355,7 +381,9 @@ function handleViewModeChange(val: any) {
                         ? $t('ai.algorithm.typeDetection')
                         : algo.algorithmType === 'face_recognition'
                           ? $t('ai.algorithm.typeFace')
-                          : algo.algorithmType
+                          : algo.algorithmType === 'license_plate_recognition'
+                            ? $t('ai.algorithm.typePlate')
+                            : algo.algorithmType
                     }}
                   </Tag>
                   <Tag v-if="algo.alarmTypeId" color="blue">

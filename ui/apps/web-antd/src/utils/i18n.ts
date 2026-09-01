@@ -32,11 +32,15 @@ function formatAlgorithmName(
   algorithmId?: string,
   fallbackName?: string,
 ): string {
-  if (!algorithmId) return fallbackName || '';
-  const key = `ai.algorithm.builtInAlgos.${algorithmId}.name`;
-  const translated = $t(key);
-  if (translated && translated !== key) return translated;
-  return fallbackName || algorithmId;
+  if (algorithmId) {
+    const key = `ai.algorithm.builtInAlgos.${algorithmId}.name`;
+    const translated = $t(key);
+    if (translated && translated !== key) return translated;
+  }
+  if (fallbackName) {
+    return translateI18nKey(fallbackName);
+  }
+  return algorithmId || '';
 }
 
 /**
@@ -46,11 +50,15 @@ function formatAlgorithmDesc(
   algorithmId?: string,
   fallbackDesc?: string,
 ): string {
-  if (!algorithmId) return fallbackDesc || '';
-  const key = `ai.algorithm.builtInAlgos.${algorithmId}.description`;
-  const translated = $t(key);
-  if (translated && translated !== key) return translated;
-  return fallbackDesc || '';
+  if (algorithmId) {
+    const key = `ai.algorithm.builtInAlgos.${algorithmId}.description`;
+    const translated = $t(key);
+    if (translated && translated !== key) return translated;
+  }
+  if (fallbackDesc) {
+    return translateI18nKey(fallbackDesc);
+  }
+  return '';
 }
 
 /**
@@ -82,10 +90,48 @@ function formatTargetClass(targetClass?: string): string {
     : targetClass;
 }
 
+/**
+ * 获取算法配置参数字段标题的本地化文本。
+ * 1. 优先查 ai.params.<key>.title
+ * 2. 查 $t(fallbackTitle)（若 fallbackTitle 本身是 i18n key 或已知前缀）
+ * 3. 回退至 fallbackTitle 或 key
+ */
+function formatPropertyTitle(key?: string, fallbackTitle?: string): string {
+  if (key) {
+    const i18nKey = `ai.params.${key}.title`;
+    const translated = $t(i18nKey);
+    if (translated && translated !== i18nKey) return translated;
+  }
+  if (fallbackTitle) {
+    return translateI18nKey(fallbackTitle);
+  }
+  return key || '';
+}
+
+/**
+ * 获取算法配置参数字段描述的本地化文本。
+ * 1. 优先查 ai.params.<key>.description
+ * 2. 查 $t(fallbackDesc)
+ * 3. 回退至 fallbackDesc
+ */
+function formatPropertyDesc(key?: string, fallbackDesc?: string): string {
+  if (key) {
+    const i18nKey = `ai.params.${key}.description`;
+    const translated = $t(i18nKey);
+    if (translated && translated !== i18nKey) return translated;
+  }
+  if (fallbackDesc) {
+    return translateI18nKey(fallbackDesc);
+  }
+  return '';
+}
+
 export {
   formatAlarmTypeName,
   formatAlgorithmDesc,
   formatAlgorithmName,
+  formatPropertyDesc,
+  formatPropertyTitle,
   formatTargetClass,
   translateI18nKey,
 };

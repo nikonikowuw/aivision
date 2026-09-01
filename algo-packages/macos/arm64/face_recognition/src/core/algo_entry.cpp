@@ -913,7 +913,9 @@ extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
             .width = static_cast<vImagePixelCount>(nw),
             .rowBytes = kTargetWidth * 3
         };
-        vImageConvert_ARGB8888toRGB888(&scaled_argb_buf, &roi_rgb_buf, kvImageNoFlags);
+        // CGBitmapContext 产出的字节序为 RGBA，须用 RGBA 语义丢弃 alpha；
+        // 误用 ARGB8888toRGB888 会丢掉 R 通道并把 alpha 当作 B，导致 SCRFD 漏检。
+        vImageConvert_RGBA8888toRGB888(&scaled_argb_buf, &roi_rgb_buf, kvImageNoFlags);
 
         ScrfdOutput scrfd_out;
         std::string scrfd_err;

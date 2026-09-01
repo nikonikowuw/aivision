@@ -1,6 +1,8 @@
 #include "argus/algo.h"
 #include <cassert>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 #include <dlfcn.h>
@@ -147,6 +149,51 @@ int main() {
     st = extract_fn(lib, &ext_in, &ext_out);
     assert(st == AV_OK);
     assert(ext_out.status_code == 4); // decode error / empty
+
+    // 真实图片端到端提取：覆盖解码 → letterbox → SCRFD → 对齐 → GlintR 全链路。
+    // 使用单人脸 fixture 而非 testimage.jpg：后者服务于 runner 的多目标跟踪场景，
+    // 而 av_algo_extract_face 的契约是单人脸，多人脸会返回 status_code=2。
+    // Release 构建会定义 NDEBUG 使 assert 失效，此段用显式判断保证校验真正执行。
+    std::string image_path = std::string(FACE_RECOGNITION_PACKAGE_ROOT) + "/tests/fixtures/single_face.jpg";
+    std::ifstream image_file(image_path, std::ios::binary);
+    if (!image_file) {
+        std::cerr << "Failed to open " << image_path << std::endl;
+        return 1;
+    }
+    std::vector<uint8_t> image_bytes((std::istreambuf_iterator<char>(image_file)),
+                                     std::istreambuf_iterator<char>());
+    image_file.close();
+    if (image_bytes.empty()) {
+        std::cerr << "single_face.jpg is empty" << std::endl;
+        return 1;
+    }
+
+    av_face_extract_input real_in{};
+    real_in.size = sizeof(real_in);
+    real_in.api_version = AV_ALGO_API_VERSION;
+    real_in.image_bytes = image_bytes.data();
+    real_in.image_bytes_len = static_cast<uint32_t>(image_bytes.size());
+    real_in.min_detection_score = 0.50f;
+    real_in.min_face_size = 40.0f;
+    real_in.min_quality_score = 35.0f;
+
+    av_face_extract_output real_out{};
+    real_out.size = sizeof(real_out);
+    real_out.api_version = AV_ALGO_API_VERSION;
+
+    st = extract_fn(lib, &real_in, &real_out);
+    if (st != AV_OK || real_out.status_code != 0) {
+        std::cerr << "extract_face on single_face.jpg failed: st=" << st
+                  << " status_code=" << real_out.status_code
+                  << " message=" << real_out.error_message << std::endl;
+        return 1;
+    }
+    if (real_out.embedding_dim != 512 || real_out.aligned_jpeg_len == 0) {
+        std::cerr << "extract_face returned invalid payload: embedding_dim="
+                  << real_out.embedding_dim
+                  << " aligned_jpeg_len=" << real_out.aligned_jpeg_len << std::endl;
+        return 1;
+    }
 
     abi->library_close(lib);
     dlclose(handle);

@@ -23,7 +23,8 @@
     "success": "操作成功",
     "confirm": "確認",
     "cancel": "取消",
-    "detail": "詳情"
+    "detail": "詳情",
+    "view": "檢視"
   },
   "user": {
     "title": "使用者管理",

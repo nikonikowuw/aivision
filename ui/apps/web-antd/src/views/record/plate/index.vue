@@ -26,130 +26,136 @@ import {
 import PlateTag from './components/PlateTag.vue';
 import PlateThumbnail from './components/PlateThumbnail.vue';
 
-const currentDetail = ref<PlateObservationApi.PlateObservationItem | null>(null);
+const currentDetail = ref<null | PlateObservationApi.PlateObservationItem>(
+  null,
+);
 
 const [DetailModal, detailModalApi] = useVbenModal({
   class: 'w-[1000px] max-w-[95vw]',
   fullscreenButton: true,
+  onConfirm: () => {
+    detailModalApi.close();
+  },
   showCancelButton: false,
   title: $t('record.plate.detail.title'),
 });
 
-const gridOptions: VxeTableGridOptions<PlateObservationApi.PlateObservationItem> = {
-  rowConfig: {
-    keyField: 'id',
-    isHover: true,
-  },
-  columns: [
-    { field: 'id', title: $t('record.plate.columns.id'), width: 70 },
-    {
-      field: 'plateCrop',
-      title: $t('record.plate.columns.plateCrop'),
-      width: 120,
-      align: 'center',
-      slots: { default: 'plateCrop' },
+const gridOptions: VxeTableGridOptions<PlateObservationApi.PlateObservationItem> =
+  {
+    rowConfig: {
+      keyField: 'id',
+      isHover: true,
     },
-    {
-      field: 'panorama',
-      title: $t('record.plate.columns.panorama'),
-      width: 90,
-      align: 'center',
-      slots: { default: 'panorama' },
+    columns: [
+      { field: 'id', title: $t('record.plate.columns.id'), width: 70 },
+      {
+        field: 'plateCrop',
+        title: $t('record.plate.columns.plateCrop'),
+        width: 120,
+        align: 'center',
+        slots: { default: 'plateCrop' },
+      },
+      {
+        field: 'panorama',
+        title: $t('record.plate.columns.panorama'),
+        width: 90,
+        align: 'center',
+        slots: { default: 'panorama' },
+      },
+      {
+        field: 'plateText',
+        title: $t('record.plate.columns.plateText'),
+        minWidth: 140,
+        slots: { default: 'plateText' },
+      },
+      {
+        field: 'plateColor',
+        title: $t('record.plate.columns.plateColor'),
+        width: 100,
+        align: 'center',
+        slots: { default: 'plateColor' },
+      },
+      {
+        field: 'plateType',
+        title: $t('record.plate.columns.plateType'),
+        minWidth: 130,
+        slots: { default: 'plateType' },
+      },
+      {
+        field: 'confidence',
+        title: $t('record.plate.columns.confidence'),
+        width: 110,
+        align: 'center',
+        slots: { default: 'confidence' },
+      },
+      {
+        field: 'ocrConfidence',
+        title: $t('record.plate.columns.ocrConfidence'),
+        width: 110,
+        align: 'center',
+        slots: { default: 'ocrConfidence' },
+      },
+      {
+        field: 'cameraName',
+        title: $t('record.plate.columns.cameraName'),
+        minWidth: 140,
+      },
+      {
+        field: 'observedAt',
+        formatter: 'formatDateTime',
+        title: $t('record.plate.columns.observedAt'),
+        width: 170,
+      },
+      {
+        field: 'trackId',
+        title: $t('record.plate.columns.trackId'),
+        width: 90,
+        align: 'center',
+        formatter: ({ cellValue }) => (cellValue ? `#${cellValue}` : '-'),
+      },
+      {
+        field: 'actions',
+        fixed: 'right',
+        showOverflow: false,
+        slots: { default: 'actions' },
+        title: $t('system.common.action'),
+        width: 90,
+      },
+    ],
+    pagerConfig: {
+      enabled: true,
     },
-    {
-      field: 'plateText',
-      title: $t('record.plate.columns.plateText'),
-      minWidth: 140,
-      slots: { default: 'plateText' },
-    },
-    {
-      field: 'plateColor',
-      title: $t('record.plate.columns.plateColor'),
-      width: 100,
-      align: 'center',
-      slots: { default: 'plateColor' },
-    },
-    {
-      field: 'plateType',
-      title: $t('record.plate.columns.plateType'),
-      minWidth: 130,
-      slots: { default: 'plateType' },
-    },
-    {
-      field: 'confidence',
-      title: $t('record.plate.columns.confidence'),
-      width: 110,
-      align: 'center',
-      slots: { default: 'confidence' },
-    },
-    {
-      field: 'ocrConfidence',
-      title: $t('record.plate.columns.ocrConfidence'),
-      width: 110,
-      align: 'center',
-      slots: { default: 'ocrConfidence' },
-    },
-    {
-      field: 'cameraName',
-      title: $t('record.plate.columns.cameraName'),
-      minWidth: 140,
-    },
-    {
-      field: 'observedAt',
-      formatter: 'formatDateTime',
-      title: $t('record.plate.columns.observedAt'),
-      width: 170,
-    },
-    {
-      field: 'trackId',
-      title: $t('record.plate.columns.trackId'),
-      width: 90,
-      align: 'center',
-      formatter: ({ cellValue }) => (cellValue ? `#${cellValue}` : '-'),
-    },
-    {
-      field: 'actions',
-      fixed: 'right',
-      showOverflow: false,
-      slots: { default: 'actions' },
-      title: $t('system.common.action'),
-      width: 90,
-    },
-  ],
-  pagerConfig: {
-    enabled: true,
-  },
-  proxyConfig: {
-    ajax: {
-      query: async ({ page }, formValues) => {
-        const { timeRange, minConfidence, minOcrConfidence, ...rest } =
-          formValues || {};
-        let startTime: string | undefined;
-        let endTime: string | undefined;
-        if (timeRange && Array.isArray(timeRange) && timeRange.length === 2) {
-          startTime = timeRange[0];
-          endTime = timeRange[1];
-        }
+    proxyConfig: {
+      ajax: {
+        query: async ({ page }, formValues) => {
+          const { timeRange, minConfidence, minOcrConfidence, ...rest } =
+            formValues || {};
+          let startTime: string | undefined;
+          let endTime: string | undefined;
+          if (timeRange && Array.isArray(timeRange) && timeRange.length === 2) {
+            startTime = timeRange[0];
+            endTime = timeRange[1];
+          }
 
-        return await getPlateObservationListApi({
-          endTime,
-          minConfidence:
-            minConfidence !== undefined && minConfidence !== ''
-              ? Number(minConfidence) / 100
-              : undefined,
-          minOcrConfidence:
-            minOcrConfidence !== undefined && minOcrConfidence !== ''
-              ? Number(minOcrConfidence) / 100
-              : undefined,
-          page: page.currentPage,
-          pageSize: page.pageSize,
-          startTime,
-          ...rest,
-        });
+          return await getPlateObservationListApi({
+            endTime,
+            minConfidence:
+              minConfidence !== undefined && minConfidence !== ''
+                ? Number(minConfidence) / 100
+                : undefined,
+            minOcrConfidence:
+              minOcrConfidence !== undefined && minOcrConfidence !== ''
+                ? Number(minOcrConfidence) / 100
+                : undefined,
+            page: page.currentPage,
+            pageSize: page.pageSize,
+            startTime,
+            ...rest,
+          });
+        },
       },
     },
-  },
-};
+  };
 
 const [Grid] = useVbenVxeGrid({
   formOptions: {
@@ -200,7 +206,10 @@ const [Grid] = useVbenVxeGrid({
           allowClear: true,
           options: [
             { label: $t('record.plate.types.standard'), value: 'standard' },
-            { label: $t('record.plate.types.double_yellow'), value: 'double_yellow' },
+            {
+              label: $t('record.plate.types.double_yellow'),
+              value: 'double_yellow',
+            },
             { label: $t('record.plate.types.new_energy'), value: 'new_energy' },
             { label: $t('record.plate.types.police'), value: 'police' },
             { label: $t('record.plate.types.coach'), value: 'coach' },
@@ -318,7 +327,17 @@ function getPlateColorLabel(color?: string): string {
       </template>
 
       <template #plateColor="{ row }">
-        <Tag :color="row.plateColor === 'green' ? 'success' : row.plateColor === 'yellow' ? 'warning' : row.plateColor === 'blue' ? 'processing' : 'default'">
+        <Tag
+          :color="
+            row.plateColor === 'green'
+              ? 'success'
+              : row.plateColor === 'yellow'
+                ? 'warning'
+                : row.plateColor === 'blue'
+                  ? 'processing'
+                  : 'default'
+          "
+        >
           {{ getPlateColorLabel(row.plateColor) }}
         </Tag>
       </template>
@@ -341,7 +360,7 @@ function getPlateColorLabel(color?: string): string {
 
       <template #actions="{ row }">
         <Button size="small" type="link" @click="handleViewDetail(row)">
-          {{ $t('system.common.view') }}
+          {{ $t('system.common.detail') }}
         </Button>
       </template>
     </Grid>
@@ -401,14 +420,22 @@ function getPlateColorLabel(color?: string): string {
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.eventId')">
             <Tooltip :title="currentDetail.eventId">
-              <span class="max-w-[200px] truncate font-mono text-xs">{{ currentDetail.eventId }}</span>
+              <span class="max-w-[200px] truncate font-mono text-xs">{{
+                currentDetail.eventId
+              }}</span>
             </Tooltip>
           </DescriptionsItem>
         </Descriptions>
 
         <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <Card class="md:col-span-1" size="small" :title="$t('record.plate.detail.plateCrop')">
-            <div class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-4">
+          <Card
+            class="md:col-span-1"
+            size="small"
+            :title="$t('record.plate.detail.plateCrop')"
+          >
+            <div
+              class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-4"
+            >
               <PlateThumbnail
                 fit="contain"
                 :height="80"
@@ -418,8 +445,14 @@ function getPlateColorLabel(color?: string): string {
             </div>
           </Card>
 
-          <Card class="md:col-span-2" size="small" :title="$t('record.plate.detail.panorama')">
-            <div class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-2">
+          <Card
+            class="md:col-span-2"
+            size="small"
+            :title="$t('record.plate.detail.panorama')"
+          >
+            <div
+              class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-2"
+            >
               <PlateThumbnail
                 fit="contain"
                 :height="220"

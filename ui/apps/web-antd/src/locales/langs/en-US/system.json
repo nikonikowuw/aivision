@@ -23,7 +23,8 @@
     "success": "Operation Succeeded",
     "confirm": "Confirm",
     "cancel": "Cancel",
-    "detail": "Detail"
+    "detail": "Detail",
+    "view": "View"
   },
   "user": {
     "title": "User Management",

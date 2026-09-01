@@ -37,6 +37,9 @@ const currentDetail = ref<AlarmRecordApi.AlarmRecordDetail | null>(null);
 const [DetailModal, detailModalApi] = useVbenModal({
   class: 'w-[1100px] max-w-[95vw]',
   fullscreenButton: true,
+  onConfirm: () => {
+    detailModalApi.close();
+  },
   showCancelButton: false,
   title: $t('record.alarm.detail.title'),
 });

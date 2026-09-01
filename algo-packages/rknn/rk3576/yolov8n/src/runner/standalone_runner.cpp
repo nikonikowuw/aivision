@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
 
     std::string config_json = "{\n  \"confidence_threshold\": " +
                               std::to_string(env_config.conf_thresh) + ",\n  \"iou_threshold\": " +
-                              std::to_string(env_config.iou_thresh) + "\n}";
+                              std::to_string(env_config.iou_thresh) + ",\n  \"target_classes\": [\"person\", \"car\", \"motorcycle\", \"bicycle\", \"bus\", \"truck\"]\n}";
 
     ResultCapture capture;
     av_algo_instance_args inst_args{};
@@ -345,6 +345,8 @@ int main(int argc, char** argv) {
             model_path = package_root + "/model/yolov8n.rknn";
             direct_runner.load_model(model_path);
         }
+        uint32_t net_w = 640, net_h = 640;
+        direct_runner.get_input_shape(net_w, net_h);
         auto direct_instance = direct_runner.create_instance();
 
         // Warmup
@@ -374,7 +376,7 @@ int main(int argc, char** argv) {
 
                 auto s0 = std::chrono::high_resolution_clock::now();
                 yolov8n::PreparedInput prepared;
-                bool prep_ok = yolov8n::Preprocessor::prepare_input(&frame, nullptr, 640, 384, prepared);
+                bool prep_ok = yolov8n::Preprocessor::prepare_input(&frame, nullptr, net_w, net_h, prepared);
                 auto s1 = std::chrono::high_resolution_clock::now();
                 t_prep = std::chrono::duration<double, std::milli>(s1 - s0).count();
 
@@ -385,7 +387,9 @@ int main(int argc, char** argv) {
                 auto s2 = std::chrono::high_resolution_clock::now();
                 t_infer = std::chrono::duration<double, std::milli>(s2 - s1).count();
 
-                yolov8n::Postprocessor::decode(outputs, prepared.letterbox, env_config.conf_thresh, env_config.iou_thresh, frame.width, frame.height);
+                std::bitset<80> all_classes;
+                all_classes.set();
+                yolov8n::Postprocessor::decode(outputs, prepared.letterbox, env_config.conf_thresh, env_config.iou_thresh, all_classes, frame.width, frame.height);
                 auto s3 = std::chrono::high_resolution_clock::now();
                 t_post = std::chrono::duration<double, std::milli>(s3 - s2).count();
                 double t_e2e = std::chrono::duration<double, std::milli>(s3 - s0).count();

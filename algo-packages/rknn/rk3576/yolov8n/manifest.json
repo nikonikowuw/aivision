@@ -1,9 +1,9 @@
 {
   "manifest_version": 1,
-  "algorithm_id": "yolov8n",
+  "algorithm_id": "general_detection",
   "version": "1.0.0",
-  "name": "YOLOv8n Object Detection",
-  "description": "Ultralytics YOLOv8n object detection model powered by RKNN on Rockchip RK3576 NPU",
+  "name": "General Object Detection",
+  "description": "Built-in general object detection model powered by RKNN YOLOv8n on Rockchip RK3576 NPU with customizable target class filtering",
   "algorithm_type": "object_detection",
   "alarm_type_id": "object_detect",
   "platform_id": "rk3576-rknn",

@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -24,7 +25,7 @@
 
 namespace yolov8n {
 
-constexpr const char* kAlgorithmId = "yolov8n";
+constexpr const char* kAlgorithmId = "general_detection";
 constexpr const char* kVersion = "1.0.0";
 constexpr const char* kPlatformId = "rk3576-rknn";
 constexpr const char* kAlarmTypeId = "object_detect";
@@ -42,6 +43,8 @@ struct LibraryContext {
     void* log_user = nullptr;
     std::atomic_bool color_fallback_logged{false};
     std::shared_ptr<RknnRunner> model_runner;
+    uint32_t model_w = 640;
+    uint32_t model_h = 640;
 };
 
 struct InstanceContext {
@@ -160,23 +163,12 @@ bool contains(const uint32_t* values, uint32_t count, uint32_t value) {
 
 bool validate_frame(const av_frame_desc* frame) {
     if (!frame || frame->size < sizeof(av_frame_desc) || frame->api_version != AV_ALGO_API_VERSION) return false;
-    if (frame->pixel_format != AV_PIX_NV12 || frame->plane_count != 2) return false;
-
-    if (frame->memory_type == AV_MEM_PLATFORM_SURFACE) {
-        if (!frame->opaque || frame->opaque_kind != AV_OPAQUE_DMABUF) return false;
-    } else if (frame->memory_type == AV_MEM_HOST) {
-        if (frame->opaque_kind != AV_OPAQUE_NONE && frame->opaque_kind != AV_OPAQUE_DMABUF) return false;
-    } else {
-        return false;
-    }
-
     if (frame->width < kMinFrameWidth || frame->height < kMinFrameHeight ||
         frame->width > kMaxFrameWidth || frame->height > kMaxFrameHeight ||
         frame->alloc_width < frame->width || frame->alloc_height < frame->height) {
         return false;
     }
-    if (frame->stride[0] < static_cast<int32_t>(frame->width) ||
-        frame->stride[1] < static_cast<int32_t>(frame->width) || frame->stride[0] <= 0 || frame->stride[1] <= 0) {
+    if (frame->stride[0] <= 0) {
         return false;
     }
     if (frame->color_primaries != AV_COLOR_PRIM_UNSPECIFIED && frame->color_primaries != AV_COLOR_PRIM_BT709) return false;
@@ -202,9 +194,12 @@ bool run_pipeline(InstanceContext* inst, const av_frame_desc* frame,
                   std::vector<argus::cv::DetectionBox>& objects) {
     log_color_fallback_once(inst, frame);
 
+    const uint32_t net_w = (inst && inst->lib) ? inst->lib->model_w : 640;
+    const uint32_t net_h = (inst && inst->lib) ? inst->lib->model_h : 640;
+
     PreparedInput prep_input{};
-    if (!Preprocessor::prepare_input(frame, inst->image_ops, 640, 384, prep_input)) {
-        set_error(inst, "failed to preprocess NV12 frame");
+    if (!Preprocessor::prepare_input(frame, inst->image_ops, net_w, net_h, prep_input)) {
+        set_error(inst, "failed to preprocess frame");
         return false;
     }
 
@@ -226,6 +221,7 @@ bool run_pipeline(InstanceContext* inst, const av_frame_desc* frame,
         prep_input.letterbox,
         inst->config.confidence_threshold,
         inst->config.iou_threshold,
+        inst->config.enabled_classes_mask,
         frame->width,
         frame->height);
 
@@ -275,6 +271,10 @@ int yolo_library_open_impl(const av_algo_library_args* args, av_algo_library* ou
     lib->model_runner = std::make_shared<RknnRunner>(lib->log, lib->log_user);
     if (!lib->model_runner->load_model(lib->model_path)) {
         return fail(lib.get(), AV_ERR_MODEL_LOAD_FAILED, "failed to load RKNN model");
+    }
+    if (!lib->model_runner->get_input_shape(lib->model_w, lib->model_h)) {
+        lib->model_w = 640;
+        lib->model_h = 640;
     }
     *out = lib.release();
     return AV_OK;
@@ -359,10 +359,10 @@ int yolo_instance_create_impl(av_algo_library lib_handle, const av_algo_instance
     }
 
     if (args->config_json_len == 0) {
-        instance->config = InstanceConfig{
-            .confidence_threshold = lib->env_config.conf_thresh,
-            .iou_threshold = lib->env_config.iou_thresh
-        };
+        instance->config = InstanceConfig{};
+        instance->config.confidence_threshold = lib->env_config.conf_thresh;
+        instance->config.iou_threshold = lib->env_config.iou_thresh;
+        instance->config.update_mask();
     } else {
         std::string error;
         if (!parse_instance_config(std::string_view(args->config_json, args->config_json_len), instance->config, error)) {
@@ -389,8 +389,9 @@ int yolo_instance_negotiate_impl(av_algo_instance inst_handle, const av_frame_ca
     if (offered->required_opaque_kind != AV_OPAQUE_NONE && offered->required_opaque_kind != AV_OPAQUE_DMABUF) {
         return fail(static_cast<InstanceContext*>(inst_handle), AV_ERR_INCOMPATIBLE_FRAME, "offered opaque kind is unsupported");
     }
-    if (!contains(offered->pixel_formats, offered->pixel_format_count, AV_PIX_NV12)) {
-        return fail(static_cast<InstanceContext*>(inst_handle), AV_ERR_INCOMPATIBLE_FRAME, "offered frame has no NV12 option");
+    if (!contains(offered->pixel_formats, offered->pixel_format_count, AV_PIX_NV12) &&
+        !contains(offered->pixel_formats, offered->pixel_format_count, AV_PIX_RGB24)) {
+        return fail(static_cast<InstanceContext*>(inst_handle), AV_ERR_INCOMPATIBLE_FRAME, "offered frame has no supported format option");
     }
 
     bool has_surface = contains(offered->memory_types, offered->memory_type_count, AV_MEM_PLATFORM_SURFACE);
@@ -414,7 +415,11 @@ int yolo_instance_negotiate_impl(av_algo_instance inst_handle, const av_frame_ca
     accepted->size = capacity;
     accepted->api_version = AV_ALGO_API_VERSION;
     accepted->pixel_format_count = 1;
-    accepted->pixel_formats[0] = AV_PIX_NV12;
+    if (contains(offered->pixel_formats, offered->pixel_format_count, AV_PIX_NV12)) {
+        accepted->pixel_formats[0] = AV_PIX_NV12;
+    } else {
+        accepted->pixel_formats[0] = AV_PIX_RGB24;
+    }
 
     uint32_t mem_count = 0;
     if (has_surface) {
@@ -511,6 +516,9 @@ int yolo_instance_process_impl(av_algo_instance inst_handle, const av_frame_desc
     const int64_t current_time_ns = frame->wall_time_ns > 0 ? frame->wall_time_ns : frame->pts_ns;
     constexpr int64_t kCooldownNs = 5LL * 1000 * 1000 * 1000; // 默认 5 秒冷却
 
+    std::vector<argus::cv::DetectionBox> alarm_objects;
+    alarm_objects.reserve(objects.size());
+
     for (const auto& object : objects) {
         if (object.track_id > 0) {
             auto it = inst->track_alarm_cooldown_.find(object.track_id);
@@ -520,37 +528,40 @@ int yolo_instance_process_impl(av_algo_instance inst_handle, const av_frame_desc
             }
             inst->track_alarm_cooldown_[object.track_id] = current_time_ns;
         }
-
-        if (inst->event_counter == std::numeric_limits<uint32_t>::max()) {
-            return fail(inst, AV_ERR_INTERNAL, "event counter exhausted");
-        }
-        ++inst->event_counter;
-        const std::string event_id = argus::utils::EventIdGenerator::next_event_id(inst->event_counter);
-        std::vector<argus::cv::DetectionBox> single_object = {object};
-        const std::string result_json = argus::utils::serialize_alarm_json(event_id, kAlarmTypeId, single_object);
-        if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "alarm result is too large");
-
-        // 请求全景大图 [0, 0, 1, 1]
-        av_algo_image_req request{};
-        request.size = sizeof(request);
-        request.api_version = AV_ALGO_API_VERSION;
-        request.x = 0.0f;
-        request.y = 0.0f;
-        request.w = 1.0f;
-        request.h = 1.0f;
-        request.purpose = 0; // 0: 全景大图
-
-        av_algo_result result{};
-        result.size = sizeof(result);
-        result.api_version = AV_ALGO_API_VERSION;
-        result.kind = AV_RESULT_ALARM;
-        result.frame_id = frame->frame_id;
-        result.json = result_json.c_str();
-        result.json_len = static_cast<uint32_t>(result_json.size());
-        result.image_count = 1;
-        result.images = &request;
-        inst->on_result(&result, inst->result_user);
+        alarm_objects.push_back(object);
     }
+
+    if (alarm_objects.empty()) return AV_OK;
+
+    if (inst->event_counter == std::numeric_limits<uint32_t>::max()) {
+        return fail(inst, AV_ERR_INTERNAL, "event counter exhausted");
+    }
+    ++inst->event_counter;
+    const std::string batch_id = argus::utils::EventIdGenerator::next_event_id(inst->event_counter);
+
+    const std::string result_json = argus::utils::serialize_alarm_json(batch_id, kAlarmTypeId, alarm_objects);
+    if (result_json.size() > AV_MAX_RESULT_JSON_BYTES) return fail(inst, AV_ERR_INTERNAL, "alarm result is too large");
+
+    // 请求全景大图 [0, 0, 1, 1]，批次内所有目标共享该抓拍
+    av_algo_image_req request{};
+    request.size = sizeof(request);
+    request.api_version = AV_ALGO_API_VERSION;
+    request.x = 0.0f;
+    request.y = 0.0f;
+    request.w = 1.0f;
+    request.h = 1.0f;
+    request.purpose = 0; // 0: 全景大图
+
+    av_algo_result result{};
+    result.size = sizeof(result);
+    result.api_version = AV_ALGO_API_VERSION;
+    result.kind = AV_RESULT_ALARM;
+    result.frame_id = frame->frame_id;
+    result.json = result_json.c_str();
+    result.json_len = static_cast<uint32_t>(result_json.size());
+    result.image_count = 1;
+    result.images = &request;
+    inst->on_result(&result, inst->result_user);
     return AV_OK;
 }
 

@@ -22,9 +22,11 @@ public:
             is_owner_ = false;
         } else {
             is_owner_ = true;
+            rknn_set_core_mask(ctx_, RKNN_NPU_CORE_AUTO);
         }
         rknn_outputs_.resize(n_output_);
         output_buffers_.resize(n_output_);
+        output_data_pools_.resize(n_output_);
     }
 
     ~RknnInstanceContextImpl() override {
@@ -54,6 +56,7 @@ public:
         }
 
         for (uint32_t i = 0; i < n_output_; ++i) {
+            std::memset(&rknn_outputs_[i], 0, sizeof(rknn_output));
             rknn_outputs_[i].want_float = 0; // Receive native INT8
             rknn_outputs_[i].index = i;
             rknn_outputs_[i].is_prealloc = 0;
@@ -65,12 +68,18 @@ public:
         }
 
         for (uint32_t i = 0; i < n_output_; ++i) {
-            output_buffers_[i].data = rknn_outputs_[i].buf;
-            output_buffers_[i].size = rknn_outputs_[i].size;
+            const uint8_t* src_buf = reinterpret_cast<const uint8_t*>(rknn_outputs_[i].buf);
+            uint32_t buf_size = rknn_outputs_[i].size;
+            output_data_pools_[i].assign(src_buf, src_buf + buf_size);
+
+            output_buffers_[i].data = output_data_pools_[i].data();
+            output_buffers_[i].size = buf_size;
             output_buffers_[i].scale = output_attrs_[i].scale;
             output_buffers_[i].zero_point = output_attrs_[i].zp;
             output_buffers_[i].is_quantized = true;
         }
+
+        rknn_outputs_release(ctx_, n_output_, rknn_outputs_.data());
 
         outputs = output_buffers_;
         return true;
@@ -84,6 +93,7 @@ private:
     std::vector<rknn_tensor_attr> input_attrs_;
     std::vector<rknn_tensor_attr> output_attrs_;
     std::vector<rknn_output> rknn_outputs_;
+    std::vector<std::vector<uint8_t>> output_data_pools_;
     std::vector<RknnOutputBuffer> output_buffers_;
     av_log_fn log_{nullptr};
     void* log_user_{nullptr};
@@ -94,7 +104,7 @@ private:
 class RknnInstanceContextMock : public RknnInstanceContext {
 public:
     bool run(const void*, uint32_t, std::vector<RknnOutputBuffer>& outputs) override {
-        outputs.resize(9);
+        outputs.resize(6);
         return true;
     }
 };
@@ -157,6 +167,24 @@ bool RknnRunner::load_model(const std::string& model_path) {
     return true;
 #else
     loaded_ = true;
+    return true;
+#endif
+}
+
+bool RknnRunner::get_input_shape(uint32_t& w, uint32_t& h) const {
+#ifdef HAVE_RKNNRT
+    if (!loaded_ || input_attrs_.empty()) return false;
+    if (input_attrs_[0].fmt == RKNN_TENSOR_NHWC) {
+        h = input_attrs_[0].dims[1];
+        w = input_attrs_[0].dims[2];
+    } else {
+        h = input_attrs_[0].dims[2];
+        w = input_attrs_[0].dims[3];
+    }
+    return true;
+#else
+    w = 640;
+    h = 640;
     return true;
 #endif
 }

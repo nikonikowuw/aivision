@@ -17,6 +17,7 @@ import {
 } from 'ant-design-vue';
 
 import { activateAlgorithmVersion, uninstallAlgorithmVersion } from '#/api';
+import { formatAlgorithmName } from '#/utils/i18n';
 
 interface Props {
   open: boolean;
@@ -109,7 +110,7 @@ function handleShowSchema(record: AlgorithmApi.AlgorithmVersionItem) {
 <template>
   <Drawer
     v-model:open="visible"
-    :title="`${$t('ai.algorithm.versionList')} - ${algorithm?.name || ''} (${algorithm?.algorithmId || ''})`"
+    :title="`${$t('ai.algorithm.versionList')} - ${formatAlgorithmName(algorithm?.algorithmId, algorithm?.name)} (${algorithm?.algorithmId || ''})`"
     width="900px"
     destroy-on-close
   >

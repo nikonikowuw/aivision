@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { TaskApi } from '#/api';
+
 import { computed, onUnmounted, ref, watch } from 'vue';
 
 import { $t } from '@vben/locales';
@@ -19,8 +21,8 @@ import {
   deleteInstanceApi,
   getInstanceListApi,
   setInstanceEnabledApi,
-  type TaskApi,
 } from '#/api';
+import { formatAlgorithmName } from '#/utils/i18n';
 
 import InstanceFormModal from './InstanceFormModal.vue';
 
@@ -279,7 +281,12 @@ function getStatusTag(status: number) {
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'algorithmId'">
-              <span class="font-medium">{{ record.algorithmId }}</span>
+              <span class="font-medium">
+                {{ formatAlgorithmName(record.algorithmId) }}
+              </span>
+              <span class="text-xs text-muted-foreground ml-1">
+                ({{ record.algorithmId }})
+              </span>
             </template>
 
             <template v-else-if="column.key === 'analysisFps'">

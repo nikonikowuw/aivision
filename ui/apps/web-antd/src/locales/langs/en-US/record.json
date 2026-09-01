@@ -50,6 +50,11 @@
       "legendLine": "Warning Line",
       "legendTarget": "Target BBox",
       "noImage": "No Image Available"
+    },
+    "types": {
+      "object_detect": "Object Detection Alarm",
+      "plate_detect": "License Plate Recognition Alarm",
+      "face_detect": "Face Recognition Alarm"
     }
   },
   "plate": {

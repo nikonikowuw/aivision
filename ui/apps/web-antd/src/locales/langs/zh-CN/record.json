@@ -50,6 +50,11 @@
       "legendLine": "警戒线 (Line)",
       "legendTarget": "目标边界框",
       "noImage": "暂无全景图片"
+    },
+    "types": {
+      "object_detect": "通用目标检测告警",
+      "plate_detect": "车牌识别告警",
+      "face_detect": "人脸识别告警"
     }
   },
   "plate": {

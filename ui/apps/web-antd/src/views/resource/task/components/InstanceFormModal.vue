@@ -6,6 +6,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { $t } from '@vben/locales';
 
 import {
+  Button,
   Form,
   FormItem,
   InputNumber,
@@ -13,10 +14,17 @@ import {
   Modal,
   Select,
   Switch,
+  TabPane,
+  Tabs,
   Tag,
 } from 'ant-design-vue';
 
 import { createInstanceApi, getAlgorithmList, updateInstanceApi } from '#/api';
+import {
+  formatAlgorithmDesc,
+  formatAlgorithmName,
+  formatTargetClass,
+} from '#/utils/i18n';
 
 import DetectionRuleEditor from './DetectionRuleEditor.vue';
 import SchemaForm from './SchemaForm.vue';
@@ -49,6 +57,7 @@ const title = computed(() =>
     : $t('resource.task.instance.add'),
 );
 
+const activeTab = ref<'params' | 'rules'>('params');
 const loading = ref(false);
 const submitting = ref(false);
 const schemaFormRef = ref<InstanceType<typeof SchemaForm>>();
@@ -115,9 +124,18 @@ const algorithmOptions = computed(() => {
   return algorithmList.value
     .filter((a) => Boolean(a.activeVersion))
     .map((a) => ({
-      label: `${a.name} (${a.algorithmId})`,
+      label: `${formatAlgorithmName(a.algorithmId, a.name)} (${a.algorithmId})`,
       value: a.algorithmId,
     }));
+});
+
+// 当前生效的目标类别（供绘制区域时做明确指示）
+const activeTargetClasses = computed<string[]>(() => {
+  const val = paramsJson.value?.target_classes;
+  if (Array.isArray(val)) {
+    return val.map(String);
+  }
+  return [];
 });
 
 // 加载算法列表
@@ -139,6 +157,7 @@ watch(
   async (isOpen) => {
     if (!isOpen) return;
 
+    activeTab.value = 'params';
     await loadAlgorithms();
 
     if (props.instance) {
@@ -211,13 +230,15 @@ async function handleOk() {
   try {
     await schemaFormRef.value?.validate();
   } catch {
+    activeTab.value = 'params';
     message.error($t('resource.task.instance.paramsInvalid'));
     return;
   }
 
   // 2. 校验检测规则并复制为整份提交负载
-  const rulesValid = ruleEditorRef.value?.validate() ?? false;
+  const rulesValid = ruleEditorRef.value?.validate() ?? true;
   if (!rulesValid) {
+    activeTab.value = 'rules';
     message.error($t('resource.task.instance.rulesInvalid'));
     return;
   }
@@ -271,144 +292,273 @@ async function handleOk() {
     :title="title"
     :confirm-loading="submitting"
     destroy-on-close
-    width="920px"
+    width="1040px"
     @ok="handleOk"
   >
-    <Form layout="vertical" class="mt-4">
-      <!-- 选择算法 -->
-      <FormItem
-        :label="$t('resource.task.instance.algorithm')"
-        required
-        class="mb-3"
-      >
-        <Select
-          v-model:value="selectedAlgorithmId"
-          :options="algorithmOptions"
-          :disabled="isEdit"
-          :placeholder="$t('resource.task.instance.algorithmSelectPlaceholder')"
-          class="w-full"
-        />
-        <div
-          v-if="currentAlgorithm"
-          class="text-muted-foreground mt-1.5 flex items-center gap-2 text-xs"
-        >
-          <span>{{ $t('resource.task.instance.activeVersion') }}:</span>
-          <Tag v-if="currentAlgorithm.activeVersion" color="blue">
-            {{ currentAlgorithm.activeVersion }}
-          </Tag>
-          <Tag v-else color="red">
-            {{ $t('resource.task.instance.noActiveVersion') }}
-          </Tag>
-        </div>
-      </FormItem>
-
-      <!-- 采样帧率 (FPS) -->
-      <FormItem
-        :label="$t('resource.task.instance.analysisFps')"
-        required
-        class="mb-3"
-      >
-        <InputNumber
-          v-model:value="analysisFps"
-          :min="1"
-          :max="maxFps"
-          :precision="0"
-          class="w-full"
-          :placeholder="$t('resource.task.instance.analysisFpsRequired')"
-        />
-        <div class="text-muted-foreground mt-1 text-xs">
-          <span>{{
-            $t('resource.task.instance.fpsTiersHint', {
-              tiers: fpsTiersDisplay,
-            })
-          }}</span>
-          <span v-if="maxFps" class="ml-2">
-            ({{ $t('resource.task.instance.maxFpsHint', { max: maxFps }) }})
+    <Tabs v-model:active-key="activeTab" class="instance-form-tabs mt-1">
+      <!-- Tab 1: 算法与参数配置 -->
+      <TabPane key="params">
+        <template #tab>
+          <span class="flex items-center gap-1.5 px-1 font-medium">
+            <span>⚙️</span>
+            <span>{{ $t('resource.task.instance.tabParams') }}</span>
           </span>
-        </div>
-      </FormItem>
+        </template>
 
-      <!-- 运动检测门控 (Motion Gate) -->
-      <FormItem :label="$t('resource.task.instance.motionGate')" class="mb-3">
-        <div class="flex flex-col gap-2 rounded-md border p-3">
-          <div class="flex items-center justify-between">
-            <div class="flex flex-col">
-              <span class="text-xs font-medium text-foreground">
+        <Form layout="vertical" class="pt-2 max-h-[62vh] overflow-y-auto pr-1">
+          <!-- 选择算法 -->
+          <FormItem
+            :label="$t('resource.task.instance.algorithm')"
+            required
+            class="mb-3"
+          >
+            <Select
+              v-model:value="selectedAlgorithmId"
+              :options="algorithmOptions"
+              :disabled="isEdit"
+              :placeholder="
+                $t('resource.task.instance.algorithmSelectPlaceholder')
+              "
+              class="w-full"
+            />
+            <div
+              v-if="currentAlgorithm"
+              class="text-muted-foreground mt-1.5 flex flex-col gap-1 text-xs"
+            >
+              <div class="flex items-center gap-2">
+                <span>{{ $t('resource.task.instance.activeVersion') }}:</span>
+                <Tag v-if="currentAlgorithm.activeVersion" color="blue">
+                  {{ currentAlgorithm.activeVersion }}
+                </Tag>
+                <Tag v-else color="red">
+                  {{ $t('resource.task.instance.noActiveVersion') }}
+                </Tag>
+              </div>
+              <div
+                v-if="
+                  formatAlgorithmDesc(
+                    currentAlgorithm.algorithmId,
+                    currentAlgorithm.description,
+                  )
+                "
+                class="text-xs text-muted-foreground"
+              >
                 {{
-                  motionGateEnabled
-                    ? $t('system.common.enable')
-                    : $t('system.common.disable')
+                  formatAlgorithmDesc(
+                    currentAlgorithm.algorithmId,
+                    currentAlgorithm.description,
+                  )
+                }}
+              </div>
+            </div>
+          </FormItem>
+
+          <!-- 采样帧率 (FPS) -->
+          <FormItem
+            :label="$t('resource.task.instance.analysisFps')"
+            required
+            class="mb-3"
+          >
+            <InputNumber
+              v-model:value="analysisFps"
+              :min="1"
+              :max="maxFps"
+              :precision="0"
+              class="w-full"
+              :placeholder="$t('resource.task.instance.analysisFpsRequired')"
+            />
+            <div class="text-muted-foreground mt-1 text-xs">
+              <span>{{
+                $t('resource.task.instance.fpsTiersHint', {
+                  tiers: fpsTiersDisplay,
+                })
+              }}</span>
+              <span v-if="maxFps" class="ml-2">
+                ({{ $t('resource.task.instance.maxFpsHint', { max: maxFps }) }})
+              </span>
+            </div>
+          </FormItem>
+
+          <!-- 运动检测门控 (Motion Gate) -->
+          <FormItem
+            :label="$t('resource.task.instance.motionGate')"
+            class="mb-3"
+          >
+            <div
+              class="flex flex-col gap-2 rounded-xl border border-border/80 bg-muted/20 p-3"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex flex-col">
+                  <span class="text-xs font-medium text-foreground">
+                    {{
+                      motionGateEnabled
+                        ? $t('system.common.enable')
+                        : $t('system.common.disable')
+                    }}
+                  </span>
+                  <span class="text-xs text-muted-foreground">
+                    {{ $t('resource.task.instance.motionGateHint') }}
+                  </span>
+                </div>
+                <Switch v-model:checked="motionGateEnabled" />
+              </div>
+
+              <div
+                v-if="motionGateEnabled"
+                class="mt-2 flex items-center justify-between border-t border-border/60 pt-2"
+              >
+                <div class="flex flex-col">
+                  <span class="text-xs font-medium text-foreground">
+                    {{ $t('resource.task.instance.motionGateKeepalive') }}
+                  </span>
+                  <span class="text-xs text-muted-foreground">
+                    {{ $t('resource.task.instance.motionGateKeepaliveHint') }}
+                  </span>
+                </div>
+                <InputNumber
+                  v-model:value="motionGateKeepaliveMs"
+                  :min="500"
+                  :max="30000"
+                  :step="500"
+                  :precision="0"
+                  class="w-32"
+                />
+              </div>
+            </div>
+          </FormItem>
+
+          <!-- 算法参数配置 (SchemaForm 驱动) -->
+          <FormItem :label="$t('resource.task.instance.params')" class="mb-3">
+            <div
+              class="rounded-xl border border-border/80 bg-card p-3.5 shadow-2xs"
+            >
+              <SchemaForm
+                ref="schemaFormRef"
+                v-model:value="paramsJson"
+                :schema="currentConfigSchema"
+              />
+            </div>
+          </FormItem>
+
+          <!-- 新建时是否立即启用 -->
+          <FormItem
+            v-if="!isEdit"
+            :label="$t('resource.task.instance.autoEnable')"
+            class="mb-1"
+          >
+            <div class="flex items-center gap-2">
+              <Switch v-model:checked="autoEnable" />
+              <span class="text-xs text-muted-foreground">
+                {{
+                  autoEnable
+                    ? $t('resource.task.instance.autoEnableOn')
+                    : $t('resource.task.instance.autoEnableOff')
                 }}
               </span>
-              <span class="text-xs text-muted-foreground">
-                {{ $t('resource.task.instance.motionGateHint') }}
+            </div>
+          </FormItem>
+        </Form>
+      </TabPane>
+
+      <!-- Tab 2: 区域与警戒线绘制 -->
+      <TabPane key="rules">
+        <template #tab>
+          <span class="flex items-center gap-1.5 px-1 font-medium">
+            <span>📐</span>
+            <span>{{ $t('resource.task.instance.tabRules') }}</span>
+            <Tag
+              v-if="rules.length > 0"
+              color="blue"
+              class="m-0 text-[10px] px-1 py-0"
+            >
+              {{ rules.length }}
+            </Tag>
+          </span>
+        </template>
+
+        <div class="pt-2 space-y-2.5">
+          <!-- 生效目标提示栏 -->
+          <div
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/20 px-3 py-2 text-xs"
+          >
+            <div class="flex flex-wrap items-center gap-1.5 overflow-hidden">
+              <span class="text-muted-foreground font-medium shrink-0">
+                {{ $t('resource.task.instance.currentTargets') }}:
+              </span>
+              <div
+                v-if="activeTargetClasses.length > 0"
+                class="flex flex-wrap items-center gap-1"
+              >
+                <span
+                  v-for="cls in activeTargetClasses.slice(0, 8)"
+                  :key="cls"
+                  class="inline-flex items-center rounded-md bg-background px-2 py-0.5 text-[11px] font-medium text-foreground border border-border/80 shadow-2xs"
+                >
+                  {{ formatTargetClass(cls) }}
+                </span>
+                <span
+                  v-if="activeTargetClasses.length > 8"
+                  class="text-[11px] text-muted-foreground font-mono"
+                >
+                  +{{ activeTargetClasses.length - 8 }}...
+                </span>
+              </div>
+              <span v-else class="text-muted-foreground font-medium">
+                {{ $t('resource.task.instance.allTargetsActive') }}
               </span>
             </div>
-            <Switch v-model:checked="motionGateEnabled" />
+
+            <Button
+              size="small"
+              type="link"
+              class="text-xs p-0 h-auto"
+              @click="activeTab = 'params'"
+            >
+              {{ $t('resource.task.instance.adjustTargets') }} →
+            </Button>
           </div>
 
+          <!-- 检测规则绘制全景面板 -->
           <div
-            v-if="motionGateEnabled"
-            class="mt-2 flex items-center justify-between border-t pt-2"
+            class="rounded-xl border border-border/80 bg-card p-3 shadow-2xs"
           >
-            <div class="flex flex-col">
-              <span class="text-xs font-medium text-foreground">
-                {{ $t('resource.task.instance.motionGateKeepalive') }}
-              </span>
-              <span class="text-xs text-muted-foreground">
-                {{ $t('resource.task.instance.motionGateKeepaliveHint') }}
-              </span>
-            </div>
-            <InputNumber
-              v-model:value="motionGateKeepaliveMs"
-              :min="500"
-              :max="30000"
-              :step="500"
-              :precision="0"
-              class="w-32"
+            <DetectionRuleEditor
+              ref="ruleEditorRef"
+              v-model:value="rules"
+              :camera-id="props.cameraId"
+              :open="visible && activeTab === 'rules'"
             />
           </div>
         </div>
-      </FormItem>
+      </TabPane>
+    </Tabs>
 
-      <!-- 新建时是否立即启用 -->
-      <FormItem
-        v-if="!isEdit"
-        :label="$t('resource.task.instance.autoEnable')"
-        class="mb-3"
-      >
+    <!-- 底部导航与提交操作栏 -->
+    <template #footer>
+      <div class="flex items-center justify-between">
+        <div>
+          <Button v-if="activeTab === 'rules'" @click="activeTab = 'params'">
+            ← {{ $t('resource.task.instance.tabParams') }}
+          </Button>
+          <Button v-else type="dashed" @click="activeTab = 'rules'">
+            {{ $t('resource.task.instance.tabRules') }} →
+          </Button>
+        </div>
         <div class="flex items-center gap-2">
-          <Switch v-model:checked="autoEnable" />
-          <span class="text-xs text-muted-foreground">
-            {{
-              autoEnable
-                ? $t('resource.task.instance.autoEnableOn')
-                : $t('resource.task.instance.autoEnableOff')
-            }}
-          </span>
+          <Button @click="visible = false">
+            {{ $t('system.common.cancel') }}
+          </Button>
+          <Button type="primary" :loading="submitting" @click="handleOk">
+            {{ $t('system.common.confirm') }}
+          </Button>
         </div>
-      </FormItem>
-
-      <!-- 算法参数配置 (SchemaForm 驱动) -->
-      <FormItem :label="$t('resource.task.instance.params')" class="mb-3">
-        <div class="rounded-md border p-3">
-          <SchemaForm
-            ref="schemaFormRef"
-            v-model:value="paramsJson"
-            :schema="currentConfigSchema"
-          />
-        </div>
-      </FormItem>
-
-      <!-- 检测规则绘制 -->
-      <FormItem :label="$t('resource.task.instance.rules')" class="mb-2">
-        <DetectionRuleEditor
-          ref="ruleEditorRef"
-          v-model:value="rules"
-          :camera-id="props.cameraId"
-          :open="visible"
-        />
-      </FormItem>
-    </Form>
+      </div>
+    </template>
   </Modal>
 </template>
+
+<style scoped>
+:deep(.instance-form-tabs .ant-tabs-nav) {
+  margin-bottom: 8px;
+}
+</style>

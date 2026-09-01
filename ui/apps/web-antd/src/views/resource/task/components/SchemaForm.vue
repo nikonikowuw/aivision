@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { FormInstance } from 'ant-design-vue';
 import type { Rule } from 'ant-design-vue/es/form';
 
 import { computed, ref, watch } from 'vue';
@@ -8,7 +9,6 @@ import { $t } from '@vben/locales';
 import {
   Alert,
   Form,
-  type FormInstance,
   FormItem,
   Input,
   InputNumber,
@@ -16,6 +16,8 @@ import {
   Switch,
   Tooltip,
 } from 'ant-design-vue';
+
+import CategorizedClassSelector from './CategorizedClassSelector.vue';
 
 type PrimitiveValue = boolean | number | string;
 type SelectValue = number | string;
@@ -66,10 +68,12 @@ function toPropertyType(value: unknown): PropertyType {
     case 'array':
     case 'boolean':
     case 'integer':
-    case 'number':
+    case 'number': {
       return String(value).toLowerCase() as PropertyType;
-    default:
+    }
+    default: {
       return 'string';
+    }
   }
 }
 
@@ -79,7 +83,14 @@ function toPrimitiveOptions(value: unknown) {
     (item): item is SelectValue =>
       typeof item === 'number' || typeof item === 'string',
   );
-  return primitives.map((item) => ({ label: String(item), value: item }));
+  return primitives.map((item) => {
+    const str = String(item);
+    const i18nKey = `ai.classes.${str}`;
+    const translated = $t(i18nKey);
+    const label =
+      translated && translated !== i18nKey ? `${translated} (${str})` : str;
+    return { label, value: item };
+  });
 }
 
 const properties = computed<PropertyField[]>(() => {
@@ -158,7 +169,7 @@ const properties = computed<PropertyField[]>(() => {
 
 // 根据当前 schema 的 default 值，为缺失字段补齐默认值。
 function applyDefaults() {
-  const current = { ...(formData.value || {}) };
+  const current = { ...formData.value };
   let changed = false;
   for (const property of properties.value) {
     if (
@@ -303,6 +314,12 @@ function stringValue(key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function arrayStringValue(key: string): string[] {
+  const value = formData.value[key];
+  if (!Array.isArray(value)) return [];
+  return value.map(String);
+}
+
 function arraySelectValue(key: string): SelectValue[] {
   const value = formData.value[key];
   if (!Array.isArray(value)) return [];
@@ -418,6 +435,14 @@ defineExpose({ applyDefaults, validate, resetFields });
           class="w-full"
           :placeholder="property.description || property.title"
           @update:value="(value) => setValue(property.key, value)"
+        />
+
+        <CategorizedClassSelector
+          v-else-if="
+            property.type === 'array' && property.key === 'target_classes'
+          "
+          :value="arrayStringValue(property.key)"
+          @update:value="(values) => setValue(property.key, values)"
         />
 
         <Select

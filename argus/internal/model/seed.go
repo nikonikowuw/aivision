@@ -282,6 +282,39 @@ func seedAll(tx *gorm.DB) error {
 		return fmt.Errorf("seed desired_state_revision: %w", err)
 	}
 
+	// 内置算法: 通用目标检测 (general_detection)
+	builtinAlgo := Algorithm{
+		AlgorithmID:   "general_detection",
+		Name:          "通用目标检测",
+		AlgorithmType: "object_detection",
+		AlarmTypeID:   "object_detect",
+		ActiveVersion: "1.0.0",
+		Description:   "系统内置通用目标检测算法，支持人员、车辆、动物、随身物品等多类别自由过滤与自定义业务标签",
+	}
+	if err := tx.Where("algorithm_id = ?", builtinAlgo.AlgorithmID).FirstOrCreate(&builtinAlgo).Error; err != nil {
+		return fmt.Errorf("seed builtin algorithm (%s): %w", builtinAlgo.AlgorithmID, err)
+	}
+
+	fpsTiersRaw := []byte(`[{"fps":5,"units":60},{"fps":15,"units":150},{"fps":30,"units":300}]`)
+	configSchemaRaw := []byte(`{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","title":"通用目标检测配置","description":"系统内置通用目标检测算法配置，支持多目标类别选择与自定义业务标签","additionalProperties":false,"required":["confidence_threshold","iou_threshold","target_classes"],"properties":{"confidence_threshold":{"type":"number","title":"置信度阈值","description":"检测框置信度低于该值的检测结果将被过滤","minimum":0,"maximum":1,"default":0.45},"iou_threshold":{"type":"number","title":"IoU 阈值","description":"非极大值抑制使用的交并比阈值","minimum":0,"maximum":1,"default":0.45},"target_classes":{"type":"array","title":"检测目标类别","description":"选择需要检测和跟踪的目标类别（支持多选）","items":{"type":"string","enum":["person","bicycle","car","motorcycle","airplane","bus","train","truck","boat","traffic light","fire hydrant","stop sign","parking meter","bench","bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe","backpack","umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball","kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket","bottle","wine glass","cup","fork","knife","spoon","bowl","banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair","couch","potted plant","bed","dining table","toilet","tv","laptop","mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink","refrigerator","book","clock","vase","scissors","teddy bear","hair drier","toothbrush"]},"uniqueItems":true,"minItems":1,"default":["person","car","motorcycle","bicycle","bus","truck"]},"custom_alarm_label":{"type":"string","title":"自定义业务标签","description":"为该任务生成的告警附加自定义场景标识或业务备注（可选）","maxLength":64,"default":""}}}`)
+	manifestRaw := []byte(`{"manifest_version":1,"algorithm_id":"general_detection","version":"1.0.0","name":"General Object Detection","description":"Built-in general object detection model powered by CoreML on Apple Silicon with customizable target class filtering","algorithm_type":"object_detection","alarm_type_id":"object_detect","platform_id":"macos-arm64-coreml","min_adapter_version":"1.0.0","runtime_constraints":{"min_os_version":"14.0"},"resource_profile":{"min_free_memory_mb":256,"fps_tiers":[{"fps":5,"units":60},{"fps":15,"units":150},{"fps":30,"units":300}]},"self_test":{"timeout_ms":10000,"input_mode":"test_image"}}`)
+
+	builtinVersion := AlgorithmVersion{
+		AlgorithmID:       "general_detection",
+		Version:           "1.0.0",
+		PlatformID:        "macos-arm64-coreml",
+		MinAdapterVersion: "1.0.0",
+		PackageRoot:       "var/packages/general_detection/1.0.0",
+		FPSTiers:          fpsTiersRaw,
+		ConfigSchema:      configSchemaRaw,
+		ManifestRaw:       manifestRaw,
+		PackageSizeBytes:  0,
+		IsActive:          true,
+	}
+	if err := tx.Where("algorithm_id = ? AND version = ? AND platform_id = ?", builtinVersion.AlgorithmID, builtinVersion.Version, builtinVersion.PlatformID).FirstOrCreate(&builtinVersion).Error; err != nil {
+		return fmt.Errorf("seed builtin algorithm version (%s:%s): %w", builtinVersion.AlgorithmID, builtinVersion.Version, err)
+	}
+
 	return nil
 }
 

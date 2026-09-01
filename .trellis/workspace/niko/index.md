@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 29
-- **Last Active**: 2026-08-31
+- **Total Sessions**: 30
+- **Last Active**: 2026-09-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1128 | Active |
+| `journal-1.md` | ~1145 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -28,7 +28,8 @@
 
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
-| --- | ------ | ------- | --------- | -------- |
+|---|------|-------|---------|--------|
+| 30 | 2026-09-01 | Archive advanced network modes and LACP aggregation | - | `dev` |
 | 29 | 2026-08-31 | 完成 Frigate 风格运动检测推理门控归档 | `7359b6f`, `a657d68` | `dev` |
 | 28 | 2026-08-31 | 完成 Linux 平台层真实化 (rtnetlink/DHCP/Bond) 实施与归档 | `52e4c28`, `17d0415`, `8a4f43b` | `dev` |
 | 27 | 2026-08-30 | 告警记录模块端到端开发与质量验收归档 | `c757f60` | `dev` |

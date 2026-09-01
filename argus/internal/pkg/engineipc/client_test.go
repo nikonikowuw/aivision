@@ -17,6 +17,10 @@ import (
 
 // startFakeEngine 在真实临时 UDS 上启动 fake EngineService server，返回 socket 路径与 fake。
 func startFakeEngine(t *testing.T, fake *fakeEngineServiceServer) string {
+	return startFakeEngineWithPerson(t, fake, &fakePersonServiceServer{})
+}
+
+func startFakeEngineWithPerson(t *testing.T, fake *fakeEngineServiceServer, personFake *fakePersonServiceServer) string {
 	t.Helper()
 	path := testSocketPath(t, "engine.sock")
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
@@ -24,7 +28,12 @@ func startFakeEngine(t *testing.T, fake *fakeEngineServiceServer) string {
 		t.Fatalf("listen engine socket: %v", err)
 	}
 	srv := grpc.NewServer()
-	argusv1.RegisterEngineServiceServer(srv, fake)
+	if fake != nil {
+		argusv1.RegisterEngineServiceServer(srv, fake)
+	}
+	if personFake != nil {
+		argusv1.RegisterPersonServiceServer(srv, personFake)
+	}
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() {
 		srv.Stop()
@@ -417,5 +426,43 @@ func TestEngineClientClose(t *testing.T) {
 	defer cancel()
 	if _, err := client.QueryProfile(ctx, &argusv1.QueryProfileRequest{}); err == nil {
 		t.Fatal("call after Close should fail")
+	}
+}
+
+// TestEngineClientExtractFaceFeature 测试 ExtractFaceFeature 成功与错误码映射。
+func TestEngineClientExtractFaceFeature(t *testing.T) {
+	personFake := &fakePersonServiceServer{}
+	path := startFakeEngineWithPerson(t, &fakeEngineServiceServer{}, personFake)
+	client := newTestEngineClient(t, path)
+	ctx := clientCtx(t)
+
+	// 1. Success
+	resp, err := client.ExtractFaceFeature(ctx, &argusv1.ExtractFaceFeatureRequest{
+		ImageData: []byte("test-jpeg-data"),
+	})
+	if err != nil {
+		t.Fatalf("ExtractFaceFeature failed: %v", err)
+	}
+	if len(resp.GetEmbedding()) != 2048 {
+		t.Errorf("expected embedding len 2048, got %d", len(resp.GetEmbedding()))
+	}
+	if resp.GetAlgorithmId() != "face_recognition" {
+		t.Errorf("expected algo face_recognition, got %s", resp.GetAlgorithmId())
+	}
+
+	// 2. Error mapping to RemoteError
+	personFake.code = "NO_FACE_DETECTED"
+	_, err = client.ExtractFaceFeature(ctx, &argusv1.ExtractFaceFeatureRequest{
+		ImageData: []byte("no-face-data"),
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var remoteErr *RemoteError
+	if !errors.As(err, &remoteErr) {
+		t.Fatalf("expected RemoteError, got %T: %v", err, err)
+	}
+	if remoteErr.Code != "NO_FACE_DETECTED" {
+		t.Errorf("expected NO_FACE_DETECTED, got %s", remoteErr.Code)
 	}
 }

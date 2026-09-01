@@ -15,6 +15,8 @@ import (
 
 type minioClient interface {
 	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) (minio.UploadInfo, error)
+	GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (*minio.Object, error)
+	RemoveObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error
 }
 
 type minioStorage struct {
@@ -87,4 +89,36 @@ func (s *minioStorage) Put(ctx context.Context, input PutInput) (StoredObject, e
 		Size:        input.Size,
 		ContentType: input.ContentType,
 	}, nil
+}
+
+func (s *minioStorage) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, fmt.Errorf("minio storage context: %w", err)
+	}
+	if err := validateKey(key); err != nil {
+		return nil, 0, err
+	}
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("get minio object: %w", err)
+	}
+	info, err := obj.Stat()
+	if err != nil {
+		_ = obj.Close()
+		return nil, 0, fmt.Errorf("stat minio object: %w", err)
+	}
+	return obj, info.Size, nil
+}
+
+func (s *minioStorage) Delete(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("minio storage context: %w", err)
+	}
+	if err := validateKey(key); err != nil {
+		return err
+	}
+	if err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("remove minio object: %w", err)
+	}
+	return nil
 }

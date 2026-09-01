@@ -7,7 +7,7 @@ import { ref } from 'vue';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
-import { Button, message, Popconfirm } from 'ant-design-vue';
+import { Button, message, Popconfirm, Tag } from 'ant-design-vue';
 
 import { useVbenForm, z } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -19,6 +19,8 @@ import {
   updatePersonApi,
 } from '#/api';
 
+import PersonFaceDrawer from './components/PersonFaceDrawer.vue';
+
 type PersonFormValues = {
   name: string;
   personId?: string;
@@ -26,6 +28,17 @@ type PersonFormValues = {
 
 const currentEditPersonId = ref<null | string>(null);
 const selectedPersons = ref<PersonApi.PersonItem[]>([]);
+const faceDrawerOpen = ref<boolean>(false);
+const currentFacePerson = ref<null | PersonApi.PersonItem>(null);
+
+function openFaceDrawer(record: PersonApi.PersonItem) {
+  currentFacePerson.value = record;
+  faceDrawerOpen.value = true;
+}
+
+function handleFaceChange() {
+  gridApi.reload();
+}
 
 // 人员新增/编辑表单
 const [Form, formApi] = useVbenForm<PersonFormValues>({
@@ -176,6 +189,12 @@ const gridOptions: VxeTableGridOptions<PersonApi.PersonItem> = {
       minWidth: 150,
     },
     {
+      field: 'faceCount',
+      slots: { default: 'faceCount' },
+      title: $t('resource.person.faceCount'),
+      minWidth: 110,
+    },
+    {
       field: 'createdAt',
       formatter: 'formatDateTime',
       title: $t('resource.person.createdAt'),
@@ -193,7 +212,7 @@ const gridOptions: VxeTableGridOptions<PersonApi.PersonItem> = {
       showOverflow: false,
       slots: { default: 'actions' },
       title: $t('system.common.action'),
-      width: 150,
+      width: 220,
     },
   ],
   pagerConfig: {
@@ -297,7 +316,21 @@ const [Grid, gridApi] = useVbenVxeGrid({
         </Button>
       </template>
 
+      <template #faceCount="{ row }">
+        <Tag :color="(row.faceCount || 0) > 0 ? 'processing' : 'default'">
+          {{ row.faceCount || 0 }} / 10
+        </Tag>
+      </template>
+
       <template #actions="{ row }">
+        <Button
+          v-access:code="['resource:person:face:manage']"
+          size="small"
+          type="link"
+          @click="openFaceDrawer(row)"
+        >
+          {{ $t('resource.person.faceManage') }}
+        </Button>
         <Button
           v-access:code="['resource:person:edit']"
           size="small"
@@ -327,5 +360,11 @@ const [Grid, gridApi] = useVbenVxeGrid({
     <Modal>
       <Form />
     </Modal>
+
+    <PersonFaceDrawer
+      v-model:open="faceDrawerOpen"
+      :person="currentFacePerson"
+      @change="handleFaceChange"
+    />
   </Page>
 </template>

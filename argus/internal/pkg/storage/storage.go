@@ -18,6 +18,8 @@ var ErrSizeMismatch = errors.New("storage size mismatch")
 // FileStorage 保存一个已经完成业务校验的文件对象。
 type FileStorage interface {
 	Put(ctx context.Context, input PutInput) (StoredObject, error)
+	Get(ctx context.Context, key string) (io.ReadCloser, int64, error)
+	Delete(ctx context.Context, key string) error
 }
 
 // PutInput 是存储层写入文件所需的最小输入。

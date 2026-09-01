@@ -83,8 +83,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 60 {
-		t.Errorf("menu rows = %d, want 60", menuCount)
+	if menuCount != 61 {
+		t.Errorf("menu rows = %d, want 61", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -140,7 +140,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"ops:time", "ops:time:read", "ops:time:edit",
 		"ops:network", "ops:network:edit", "ops:network:confirm", "ops:network:cancel", "ops:network:reset", "ops:network:mode",
 		"resource:camera", "resource:camera:add", "resource:camera:edit", "resource:camera:delete", "resource:camera:probe",
-		"resource:person", "resource:person:add", "resource:person:edit", "resource:person:delete",
+		"resource:person", "resource:person:add", "resource:person:edit", "resource:person:delete", "resource:person:face:manage",
 		"resource:task", "resource:task:add", "resource:task:edit", "resource:task:delete",
 		"ai:algorithm", "ai:algorithm:upload", "ai:algorithm:activate", "ai:algorithm:uninstall",
 		"record:alarm", "record:alarm:query", "record:alarm:export",
@@ -159,11 +159,11 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		}
 	}
 
-	// super 角色绑定全部 60 条菜单
+	// super 角色绑定全部 61 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 60 {
-		t.Errorf("role_menus for super = %d, want 60", rmCount)
+	if rmCount != 61 {
+		t.Errorf("role_menus for super = %d, want 61", rmCount)
 	}
 
 	// 初始系统配置与 desired_state_revision

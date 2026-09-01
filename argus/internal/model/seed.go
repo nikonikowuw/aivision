@@ -76,6 +76,7 @@ var seedMenuTree = []seedMenuItem{
 					{Type: MenuTypeButton, Name: "resource.person.add", Permission: "resource:person:add"},
 					{Type: MenuTypeButton, Name: "resource.person.edit", Permission: "resource:person:edit"},
 					{Type: MenuTypeButton, Name: "resource.person.delete", Permission: "resource:person:delete"},
+					{Type: MenuTypeButton, Name: "resource.person.faceManage", Permission: "resource:person:face:manage"},
 				},
 			},
 			{

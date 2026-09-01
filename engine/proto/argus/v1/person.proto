@@ -11,6 +11,33 @@ option go_package = "argus/app/internal/proto/argus/v1;argusv1";
 //   安全校验由独立任务定义，本文件只预留名称，不写死字段。
 // - FeatureService（特征管理）为后续扩展预留，本任务不定义。
 
+// 归一化矩形框 [0.0, 1.0]
+message NormalizedRect {
+  float x = 1;
+  float y = 2;
+  float width = 3;
+  float height = 4;
+}
+
+// 人脸特征提取请求
+message ExtractFaceFeatureRequest {
+  bytes image_data = 1;        // 单张图片原始字节（最大 10MB）
+  string mime_type = 2;        // 提示 MIME 类型（如 image/jpeg, image/png, image/webp）
+}
+
+// 人脸特征提取响应
+message ExtractFaceFeatureResponse {
+  string code = 1;             // 稳定错误码，空串表示成功
+  string error_message = 2;    // 诊断日志（调用方不得解析其文本）
+  bytes embedding = 3;         // 512 维 L2 归一化 float32 小端字节流 (精确 2048 字节)
+  bytes aligned_face_image = 4;// 112x112 标准化人脸对齐 JPEG 图片字节流
+  NormalizedRect face_box = 5; // 原图中人脸归一化坐标
+  float quality_score = 6;     // 综合人脸质量得分 (0.0 ~ 100.0)
+  float detection_score = 7;   // 人脸检测置信度 (0.0 ~ 1.0)
+  string algorithm_id = 8;     // 算法包标识 (如 "face_recognition")
+  string algorithm_version = 9;// 算法包版本号 (如 "1.0.0")
+}
+
 // 人员档案（预留）
 message PersonRecord {
   string person_id = 1;
@@ -33,4 +60,7 @@ message SyncPersonsResponse {
 service PersonService {
   // 预留人脸库同步 RPC（当前返回 UNIMPLEMENTED）
   rpc SyncPersons(SyncPersonsRequest) returns (SyncPersonsResponse);
+
+  // 一次性静态图片单人脸特征提取与标准化切图
+  rpc ExtractFaceFeature(ExtractFaceFeatureRequest) returns (ExtractFaceFeatureResponse);
 }

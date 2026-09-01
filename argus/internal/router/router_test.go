@@ -174,7 +174,7 @@ func newRouterTestEngine(t *testing.T, panicOnTree bool) (*gin.Engine, *routerTe
 	deptRepo := repository.NewDepartmentRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	userSvc := service.NewUserService(userRepo, deptRepo, repository.NewRoleRepository(db))
-	personSvc := service.NewPersonService(repository.NewPersonRepository(db))
+	personSvc := service.NewPersonService(repository.NewPersonRepository(db), repository.NewPersonFaceRepository(db), storage.NopStorage(), nil)
 	authSvc := service.NewAuthService(repository.NewAuthRepository(db), userRepo, menuRepo, cfg)
 	engine := New(cfg, Deps{
 		ErrorHandler:           middleware.ErrorHandler(),

@@ -161,3 +161,14 @@ func (s *captureFileStorage) Put(_ context.Context, input storage.PutInput) (sto
 		ContentType: input.ContentType,
 	}, nil
 }
+
+func (s *captureFileStorage) Get(_ context.Context, _ string) (io.ReadCloser, int64, error) {
+	if s.err != nil {
+		return nil, 0, s.err
+	}
+	return io.NopCloser(bytes.NewReader(s.content)), int64(len(s.content)), nil
+}
+
+func (s *captureFileStorage) Delete(_ context.Context, _ string) error {
+	return s.err
+}

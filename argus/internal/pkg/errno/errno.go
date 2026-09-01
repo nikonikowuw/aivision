@@ -55,6 +55,16 @@ const (
 	CodeEngineUnavailable    = 1022 // 推理引擎服务不可用
 	CodeBuiltinAlgoProtected = 1023 // 系统内置算法受保护，禁止卸载
 
+	// 人脸注册与样本管理业务错误码 1030 ~ 1037
+	CodeFaceNoFaceDetected    = 1030 // 未检测到人脸
+	CodeFaceMultipleDetected  = 1031 // 检测到多张人脸，请上传单人图片
+	CodeFaceQualityTooLow     = 1032 // 人脸质量过低，请重新上传清晰人脸图片
+	CodeFaceTooSmall          = 1033 // 人脸尺寸过小
+	CodeFaceImageDecodeFailed = 1034 // 人脸图片解码失败
+	CodeFaceLimitExceeded     = 1035 // 人员人脸样本已达上限（最多 10 张）
+	CodeFaceDuplicateImage    = 1036 // 该人脸图片已注册，请勿重复上传
+	CodeFaceAlgoUnavailable   = 1037 // 人脸识别算法服务不可用
+
 	// 网络配置业务错误码 1100 ~ 1113
 	CodeNetworkInvalidConfig         = 1100 // IPv4/prefix/gateway/DNS/primary 组合非法
 	CodeNetworkTransactionPending    = 1101 // 已存在整机候选事务
@@ -131,6 +141,14 @@ var messages = map[string]map[int]string{
 		CodeAlgoInUse:                     "算法包正在被任务使用，禁止卸载",
 		CodeEngineUnavailable:             "推理引擎服务不可用",
 		CodeBuiltinAlgoProtected:          "系统内置算法受保护，禁止卸载",
+		CodeFaceNoFaceDetected:            "未检测到人脸，请上传包含清晰正脸的图片",
+		CodeFaceMultipleDetected:          "检测到多张人脸，请上传仅包含单人正脸的图片",
+		CodeFaceQualityTooLow:             "人脸质量过低，请重新上传清晰人脸图片",
+		CodeFaceTooSmall:                  "人脸区域尺寸过小，请上传更清晰的人脸图片",
+		CodeFaceImageDecodeFailed:         "人脸图片解码失败，请确认图片格式是否正确",
+		CodeFaceLimitExceeded:             "人员人脸样本数量已达上限（最多 10 张）",
+		CodeFaceDuplicateImage:            "该人脸图片已注册，请勿重复上传相同图片",
+		CodeFaceAlgoUnavailable:           "人脸识别算法服务不可用或未启用",
 		CodeNetworkInvalidConfig:          "网络配置参数非法或冲突",
 		CodeNetworkTransactionPending:     "已有待确认的网络配置事务，请先确认或取消",
 		CodeNetworkTransactionNotFound:    "网络事务不存在或已处理",
@@ -194,6 +212,14 @@ var messages = map[string]map[int]string{
 		CodeAlgoInUse:                     "Algorithm package is currently in use and cannot be uninstalled",
 		CodeEngineUnavailable:             "Inference engine service unavailable",
 		CodeBuiltinAlgoProtected:          "System built-in algorithm is protected and cannot be uninstalled",
+		CodeFaceNoFaceDetected:            "No face detected in the uploaded image",
+		CodeFaceMultipleDetected:          "Multiple faces detected, please upload an image with a single face",
+		CodeFaceQualityTooLow:             "Face quality is too low, please upload a clearer face image",
+		CodeFaceTooSmall:                  "Face area is too small, please upload a higher resolution face image",
+		CodeFaceImageDecodeFailed:         "Failed to decode face image, please check the file format",
+		CodeFaceLimitExceeded:             "Maximum number of face samples reached (up to 10 samples)",
+		CodeFaceDuplicateImage:            "This face image has already been registered",
+		CodeFaceAlgoUnavailable:           "Face recognition algorithm service is unavailable or not activated",
 		CodeNetworkInvalidConfig:          "Invalid or conflicting network configuration",
 		CodeNetworkTransactionPending:     "A network transaction is already pending confirmation",
 		CodeNetworkTransactionNotFound:    "Network transaction not found or already completed",
@@ -257,6 +283,14 @@ var messages = map[string]map[int]string{
 		CodeAlgoInUse:                     "演算法包正在被任務使用，禁止解除安裝",
 		CodeEngineUnavailable:             "推論引擎服務不可用",
 		CodeBuiltinAlgoProtected:          "系統內置演算法受保護，禁止解除安裝",
+		CodeFaceNoFaceDetected:            "未檢測到人臉，請上傳包含清晰正臉的圖片",
+		CodeFaceMultipleDetected:          "檢測到多張人臉，請上傳僅包含單人正臉的圖片",
+		CodeFaceQualityTooLow:             "人臉品質過低，請重新上傳清晰人臉圖片",
+		CodeFaceTooSmall:                  "人臉區域尺寸過小，請上傳更清晰的人臉圖片",
+		CodeFaceImageDecodeFailed:         "人臉圖片解碼失敗，請確認圖片格式是否正確",
+		CodeFaceLimitExceeded:             "人員人臉樣本數量已達上限（最多 10 張）",
+		CodeFaceDuplicateImage:            "該人臉圖片已註冊，請勿重複上傳相同圖片",
+		CodeFaceAlgoUnavailable:           "人臉識別演算法服務不可用或未啟用",
 		CodeNetworkInvalidConfig:          "網路設定參數非法或衝突",
 		CodeNetworkTransactionPending:     "已有待確認的網路設定事務，請先確認或取消",
 		CodeNetworkTransactionNotFound:    "網路事務不存在或已處理",

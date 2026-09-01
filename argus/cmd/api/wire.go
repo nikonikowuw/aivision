@@ -59,6 +59,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		service.NewCameraService,
 		api.NewCameraHandler,
 		repository.NewPersonRepository,
+		repository.NewPersonFaceRepository,
 		service.NewPersonService,
 		api.NewPersonHandler,
 		repository.NewAlgorithmRepository,

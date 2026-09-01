@@ -2,20 +2,41 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
 
 	"argus/app/internal/api"
 	"argus/app/internal/middleware"
 	"argus/app/internal/pkg/config"
 	"argus/app/internal/pkg/errno"
+	"argus/app/internal/pkg/storage"
+	argusv1 "argus/app/internal/proto/argus/v1"
 	"argus/app/internal/repository"
 	"argus/app/internal/service"
 )
+
+type apiMockFaceExtractor struct{}
+
+func (m *apiMockFaceExtractor) ExtractFaceFeature(_ context.Context, _ *argusv1.ExtractFaceFeatureRequest, _ ...grpc.CallOption) (*argusv1.ExtractFaceFeatureResponse, error) {
+	return &argusv1.ExtractFaceFeatureResponse{
+		Embedding:        make([]byte, 2048),
+		AlignedFaceImage: []byte("aligned-jpeg-bytes"),
+		FaceBox:          &argusv1.NormalizedRect{X: 0.1, Y: 0.1, Width: 0.5, Height: 0.5},
+		QualityScore:     92.0,
+		DetectionScore:   0.99,
+		AlgorithmId:      "face_recognition",
+		AlgorithmVersion: "1.0.0",
+	}, nil
+}
 
 func setupPersonAPIEngine(t *testing.T, allowedIPs []string) *gin.Engine {
 	t.Helper()
@@ -23,7 +44,9 @@ func setupPersonAPIEngine(t *testing.T, allowedIPs []string) *gin.Engine {
 
 	db := newTestAPIDB(t, "person")
 	repo := repository.NewPersonRepository(db)
-	svc := service.NewPersonService(repo)
+	faceRepo := repository.NewPersonFaceRepository(db)
+	store, _ := storage.NewLocalStorage(t.TempDir(), "/uploads")
+	svc := service.NewPersonServiceWithExtractor(repo, faceRepo, store, &apiMockFaceExtractor{})
 	handler := api.NewPersonHandler(svc)
 
 	cfg := &config.Config{
@@ -44,6 +67,11 @@ func setupPersonAPIEngine(t *testing.T, allowedIPs []string) *gin.Engine {
 		personGrp.DELETE("/batch", handler.BatchDeletePerson)
 		personGrp.PUT("/:personId", handler.UpdatePerson)
 		personGrp.DELETE("/:personId", handler.DeletePerson)
+		personGrp.POST("/:personId/faces", handler.RegisterFace)
+		personGrp.GET("/:personId/faces", handler.ListFaces)
+		personGrp.DELETE("/:personId/faces/:faceId", handler.DeleteFace)
+		personGrp.GET("/:personId/faces/:faceId/image", handler.GetRawImage)
+		personGrp.GET("/:personId/faces/:faceId/aligned-image", handler.GetAlignedImage)
 	}
 
 	// 开放同步路由组
@@ -191,5 +219,111 @@ func TestOpenPersonSyncAPIRoutes(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("repeat open delete got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPersonFaceManagementAPI(t *testing.T) {
+	r := setupPersonAPIEngine(t, nil)
+
+	// 1. Create Person
+	createBody, _ := json.Marshal(map[string]any{"personId": "PF001", "name": "Face User"})
+	req := httptest.NewRequest(http.MethodPost, "/api/person", bytes.NewReader(createBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create person: %d %s", w.Code, w.Body.String())
+	}
+
+	// 2. Upload face image (multipart/form-data)
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="file"; filename="face.jpg"`)
+	h.Set("Content-Type", "image/jpeg")
+	part, _ := writer.CreatePart(h)
+	_, _ = part.Write([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01})
+	_ = writer.Close()
+
+	req = httptest.NewRequest(http.MethodPost, "/api/person/PF001/faces", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload face got %d: %s", w.Code, w.Body.String())
+	}
+	var uploadResp struct {
+		Code int `json:"code"`
+		Data struct {
+			FaceID       string  `json:"faceId"`
+			QualityScore float32 `json:"qualityScore"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &uploadResp); err != nil {
+		t.Fatalf("unmarshal upload resp: %v", err)
+	}
+	if uploadResp.Code != 0 || uploadResp.Data.FaceID == "" {
+		t.Fatalf("unexpected upload resp: %+v", uploadResp)
+	}
+	faceID := uploadResp.Data.FaceID
+
+	// 3. List faces (GET /api/person/PF001/faces)
+	req = httptest.NewRequest(http.MethodGet, "/api/person/PF001/faces", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list faces got %d: %s", w.Code, w.Body.String())
+	}
+	var listResp struct {
+		Code int `json:"code"`
+		Data []struct {
+			FaceID string `json:"faceId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal list resp: %v", err)
+	}
+	if listResp.Code != 0 || len(listResp.Data) != 1 || listResp.Data[0].FaceID != faceID {
+		t.Fatalf("unexpected list resp: %+v", listResp)
+	}
+
+	// 4. Download raw image (GET /api/person/PF001/faces/:faceId/image)
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/person/PF001/faces/%s/image", faceID), nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get raw image got %d: %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Content-Type") != "image/jpeg" {
+		t.Errorf("raw image content type = %s, want image/jpeg", w.Header().Get("Content-Type"))
+	}
+
+	// 5. Download aligned image (GET /api/person/PF001/faces/:faceId/aligned-image)
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/person/PF001/faces/%s/aligned-image", faceID), nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get aligned image got %d: %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Content-Type") != "image/jpeg" {
+		t.Errorf("aligned image content type = %s, want image/jpeg", w.Header().Get("Content-Type"))
+	}
+
+	// 6. Delete Face (DELETE /api/person/PF001/faces/:faceId)
+	req = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/person/PF001/faces/%s", faceID), nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete face got %d: %s", w.Code, w.Body.String())
+	}
+
+	// 7. Verify List Faces is now empty
+	req = httptest.NewRequest(http.MethodGet, "/api/person/PF001/faces", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	_ = json.Unmarshal(w.Body.Bytes(), &listResp)
+	if len(listResp.Data) != 0 {
+		t.Fatalf("expected 0 faces, got %d", len(listResp.Data))
 	}
 }

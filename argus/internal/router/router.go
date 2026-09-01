@@ -302,12 +302,22 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			personGroup.DELETE(batchRoutePath, deps.PersonHandler.BatchDeletePerson)
 			personGroup.PUT(personIDRoutePath, deps.PersonHandler.UpdatePerson)
 			personGroup.DELETE(personIDRoutePath, deps.PersonHandler.DeletePerson)
+			personGroup.POST(personIDRoutePath+"/faces", deps.PersonHandler.RegisterFace)
+			personGroup.GET(personIDRoutePath+"/faces", deps.PersonHandler.ListFaces)
+			personGroup.DELETE(personIDRoutePath+"/faces/:faceId", deps.PersonHandler.DeleteFace)
+			personGroup.GET(personIDRoutePath+"/faces/:faceId/image", deps.PersonHandler.GetRawImage)
+			personGroup.GET(personIDRoutePath+"/faces/:faceId/aligned-image", deps.PersonHandler.GetAlignedImage)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+pageRoutePath, "resource:person")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+personRoutePath, "resource:person:add")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+batchRoutePath, "resource:person:delete")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+personRoutePath+personIDRoutePath, "resource:person:edit")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+personIDRoutePath, "resource:person:delete")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+personRoutePath+personIDRoutePath+"/faces", "resource:person:face:manage")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces", "resource:person:face:manage")
+		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId", "resource:person:face:manage")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/image", "resource:person:face:manage")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/aligned-image", "resource:person:face:manage")
 
 		algoGroup := apiGroup.Group(algorithmRoutePath)
 		{

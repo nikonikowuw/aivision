@@ -91,6 +91,40 @@ func (s *localStorage) Put(ctx context.Context, input PutInput) (StoredObject, e
 	}, nil
 }
 
+func (s *localStorage) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, fmt.Errorf("local storage context: %w", err)
+	}
+	target, err := s.targetPath(key)
+	if err != nil {
+		return nil, 0, err
+	}
+	f, err := os.Open(target)
+	if err != nil {
+		return nil, 0, err
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, 0, err
+	}
+	return f, stat.Size(), nil
+}
+
+func (s *localStorage) Delete(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("local storage context: %w", err)
+	}
+	target, err := s.targetPath(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("delete local storage file: %w", err)
+	}
+	return nil
+}
+
 func (s *localStorage) targetPath(key string) (string, error) {
 	if err := validateKey(key); err != nil {
 		return "", err

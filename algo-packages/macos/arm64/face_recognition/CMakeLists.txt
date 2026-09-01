@@ -50,6 +50,8 @@ argus_add_algo_package(face_recognition
         "-framework CoreVideo"
         "-framework CoreML"
         "-framework Accelerate"
+        "-framework ImageIO"
+        "-framework CoreGraphics"
 )
 target_compile_options(face_recognition PRIVATE ${ALGO_WARNING_FLAGS} -fobjc-arc)
 target_include_directories(face_recognition PRIVATE
@@ -59,7 +61,7 @@ target_include_directories(face_recognition PRIVATE
 )
 if(APPLE)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/face_recognition.exports"
-         CONTENT "_av_algo_get_abi\n")
+         CONTENT "_av_algo_get_abi\n_av_algo_extract_face\n")
     target_link_options(face_recognition PRIVATE
         "-Wl,-exported_symbols_list,${CMAKE_CURRENT_BINARY_DIR}/face_recognition.exports")
 endif()

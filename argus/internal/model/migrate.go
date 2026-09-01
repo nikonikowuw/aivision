@@ -2,7 +2,7 @@ package model
 
 import "gorm.io/gorm"
 
-// AutoMigrate 建/升级全部 18 张表；无 FK，纯逻辑关联。
+// AutoMigrate 建/升级全部 19 张表；无 FK，纯逻辑关联。
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
@@ -16,6 +16,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&SystemConfig{},
 		&Camera{},
 		&Person{},
+		&PersonFace{},
 		&Algorithm{},
 		&AlgorithmVersion{},
 		&AnalysisTask{},

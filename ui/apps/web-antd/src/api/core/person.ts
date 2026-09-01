@@ -5,8 +5,30 @@ export namespace PersonApi {
   export interface PersonItem {
     personId: string;
     name: string;
+    faceCount?: number;
     createdAt: string;
     updatedAt: string;
+  }
+
+  export interface FaceBoundingBox {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }
+
+  export interface PersonFaceItem {
+    faceId: string;
+    algorithmId: string;
+    algorithmVersion: string;
+    qualityScore: number;
+    detectionScore: number;
+    boundingBox?: FaceBoundingBox;
+    rawImageSize: number;
+    rawImageMime: string;
+    alignedFaceSize: number;
+    alignedFaceMime: string;
+    createdAt: string;
   }
 
   export interface PersonPageQuery {
@@ -75,4 +97,44 @@ export async function batchDeletePersonApi(
   data: PersonApi.BatchDeletePersonInput,
 ) {
   return requestClient.delete<null>('/person/batch', { data });
+}
+
+/**
+ * 查询人员的人脸样本列表
+ */
+export async function listPersonFacesApi(personId: string) {
+  return requestClient.get<PersonApi.PersonFaceItem[]>(
+    `/person/${personId}/faces`,
+  );
+}
+
+/**
+ * 上传并注册单张人脸样本
+ */
+export async function registerPersonFaceApi(personId: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return requestClient.post<PersonApi.PersonFaceItem>(
+    `/person/${personId}/faces`,
+    formData,
+  );
+}
+
+/**
+ * 删除单个人脸样本
+ */
+export async function deletePersonFaceApi(personId: string, faceId: string) {
+  return requestClient.delete<null>(`/person/${personId}/faces/${faceId}`);
+}
+
+/**
+ * 获取人脸样本图片 URL 路径
+ */
+export function getPersonFaceImageUrl(
+  personId: string,
+  faceId: string,
+  type: 'aligned' | 'raw' = 'aligned',
+): string {
+  const endpoint = type === 'raw' ? 'image' : 'aligned-image';
+  return `/api/person/${personId}/faces/${faceId}/${endpoint}`;
 }

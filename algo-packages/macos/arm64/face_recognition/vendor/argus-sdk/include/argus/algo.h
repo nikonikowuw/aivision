@@ -114,6 +114,41 @@ AV_STATIC_ASSERT(sizeof(av_algo_abi) == 96, "algo ABI table size");
 
 // Exported dynamic library symbol
 #define AV_ALGO_GET_ABI_SYMBOL "av_algo_get_abi"
+#define AV_ALGO_EXTRACT_FACE_SYMBOL "av_algo_extract_face"
+
+/* 一次性静态图片单人脸特征提取扩展定义 */
+typedef struct av_face_extract_input {
+    uint32_t size;
+    uint32_t api_version;
+    const uint8_t* image_bytes;
+    uint32_t image_bytes_len;
+    float min_detection_score;
+    float min_face_size;
+    float min_quality_score;
+    uint32_t reserved;
+} av_face_extract_input;
+
+AV_STATIC_ASSERT(sizeof(av_face_extract_input) == 40, "face extract input ABI size");
+
+typedef struct av_face_extract_output {
+    uint32_t size;
+    uint32_t api_version;
+    uint32_t status_code;        /* 0: OK, 1: NO_FACE, 2: MULTI_FACE, 3: QUALITY_LOW, 4: DECODE_ERR, 5: TOO_LARGE, 6: TOO_SMALL, 7: INTERNAL_ERR */
+    uint32_t reserved;
+    char error_message[256];
+    float embedding[512];
+    uint32_t embedding_dim;
+    float bbox[4];               /* x, y, w, h in [0, 1] */
+    float quality_score;
+    float detection_score;
+    uint8_t aligned_jpeg_data[65536]; /* 112x112 JPEG 字节流缓冲区 */
+    uint32_t aligned_jpeg_len;
+    uint32_t reserved1;
+} av_face_extract_output;
+
+AV_STATIC_ASSERT(sizeof(av_face_extract_output) == 67892, "face extract output ABI size");
+
+typedef int (*av_algo_extract_face_fn)(av_algo_library lib, const av_face_extract_input* in, av_face_extract_output* out);
 
 #if defined(_WIN32)
 #define AV_EXPORT __declspec(dllexport)

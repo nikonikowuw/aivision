@@ -187,3 +187,36 @@ func (f *fakeEngineServiceServer) ProbeCamera(_ context.Context, req *argusv1.Pr
 	}
 	return response, nil
 }
+
+type fakePersonServiceServer struct {
+	argusv1.UnimplementedPersonServiceServer
+
+	mu   sync.Mutex
+	code string
+
+	extractCalls []*argusv1.ExtractFaceFeatureRequest
+	extractResp  *argusv1.ExtractFaceFeatureResponse
+}
+
+func (f *fakePersonServiceServer) ExtractFaceFeature(_ context.Context, req *argusv1.ExtractFaceFeatureRequest) (*argusv1.ExtractFaceFeatureResponse, error) {
+	f.mu.Lock()
+	f.extractCalls = append(f.extractCalls, req)
+	code := f.code
+	resp := f.extractResp
+	f.mu.Unlock()
+	if code != "" {
+		return &argusv1.ExtractFaceFeatureResponse{Code: code, ErrorMessage: "injected: ExtractFaceFeature"}, nil
+	}
+	if resp != nil {
+		return resp, nil
+	}
+	return &argusv1.ExtractFaceFeatureResponse{
+		Embedding:        make([]byte, 2048),
+		AlignedFaceImage: []byte("jpeg-data"),
+		FaceBox:          &argusv1.NormalizedRect{X: 0.1, Y: 0.1, Width: 0.5, Height: 0.5},
+		QualityScore:     88.5,
+		DetectionScore:   0.95,
+		AlgorithmId:      "face_recognition",
+		AlgorithmVersion: "1.0.0",
+	}, nil
+}

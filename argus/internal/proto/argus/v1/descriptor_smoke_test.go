@@ -42,6 +42,7 @@ var expectedServices = map[string][]string{
 	},
 	"argus.v1.PersonService": {
 		"SyncPersons",
+		"ExtractFaceFeature",
 	},
 }
 

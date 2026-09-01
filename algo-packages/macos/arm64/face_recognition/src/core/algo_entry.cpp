@@ -13,6 +13,11 @@
 #include "../postprocess/postprocessor.hpp"
 #include "config.hpp"
 
+#import <CoreGraphics/CoreGraphics.h>
+#import <ImageIO/ImageIO.h>
+#import <Foundation/Foundation.h>
+#import <Accelerate/Accelerate.h>
+
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -779,4 +784,289 @@ static const av_algo_abi g_face_recognition_abi = {
 extern "C" AV_EXPORT const av_algo_abi* av_algo_get_abi(uint32_t requested_api_version) {
     if (requested_api_version != AV_ALGO_API_VERSION) return nullptr;
     return &g_face_recognition_abi;
+}
+
+extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
+                                             const av_face_extract_input* in,
+                                             av_face_extract_output* out) noexcept {
+    if (!lib_handle || !in || !out) return AV_ERR_INVALID_ARG;
+    if (in->size < sizeof(av_face_extract_input) || in->api_version != AV_ALGO_API_VERSION) {
+        return AV_ERR_INVALID_ARG;
+    }
+    if (out->size < sizeof(av_face_extract_output) || out->api_version != AV_ALGO_API_VERSION) {
+        return AV_ERR_INVALID_ARG;
+    }
+    if (!in->image_bytes || in->image_bytes_len == 0) {
+        out->status_code = 4; // decode err
+        copy_text(out->error_message, sizeof(out->error_message), "image data is empty");
+        return AV_OK;
+    }
+    if (in->image_bytes_len > 10 * 1024 * 1024) {
+        out->status_code = 5; // too large
+        copy_text(out->error_message, sizeof(out->error_message), "image size exceeds 10MB limit");
+        return AV_OK;
+    }
+
+    auto* lib = static_cast<LibraryContext*>(lib_handle);
+    if (!lib || !lib->model_manager) {
+        out->status_code = 7; // internal err
+        copy_text(out->error_message, sizeof(out->error_message), "library model manager is not initialized");
+        return AV_OK;
+    }
+
+    @autoreleasepool {
+        NSData* ns_data = [NSData dataWithBytesNoCopy:(void*)in->image_bytes length:in->image_bytes_len freeWhenDone:NO];
+        CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)ns_data, nullptr);
+        if (!source) {
+            out->status_code = 4;
+            copy_text(out->error_message, sizeof(out->error_message), "cannot create image source from bytes");
+            return AV_OK;
+        }
+        CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, nullptr);
+        CFRelease(source);
+        if (!image) {
+            out->status_code = 4;
+            copy_text(out->error_message, sizeof(out->error_message), "cannot decode image index 0");
+            return AV_OK;
+        }
+
+        size_t width = CGImageGetWidth(image);
+        size_t height = CGImageGetHeight(image);
+        if (width < kMinFrameWidth || height < kMinFrameHeight) {
+            CGImageRelease(image);
+            out->status_code = 4;
+            copy_text(out->error_message, sizeof(out->error_message), "image resolution is too small (<320x320)");
+            return AV_OK;
+        }
+        if (width > kMaxFrameWidth || height > kMaxFrameHeight || (width * height) > 8294400) {
+            CGImageRelease(image);
+            out->status_code = 5; // too large
+            copy_text(out->error_message, sizeof(out->error_message), "image resolution exceeds 3840x2160 or 8.29M pixels");
+            return AV_OK;
+        }
+
+        ImageBuffer orig_rgb;
+        orig_rgb.width = static_cast<uint32_t>(width);
+        orig_rgb.height = static_cast<uint32_t>(height);
+        orig_rgb.channels = 3;
+        orig_rgb.data.resize(width * height * 3);
+
+        std::vector<uint8_t> rgba(width * height * 4);
+        CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+        CGContextRef context = CGBitmapContextCreate(
+            rgba.data(), width, height, 8, width * 4, color_space,
+            static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big)
+        );
+        CGColorSpaceRelease(color_space);
+        if (!context) {
+            CGImageRelease(image);
+            out->status_code = 4;
+            copy_text(out->error_message, sizeof(out->error_message), "cannot create bitmap context");
+            return AV_OK;
+        }
+        CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+        CGContextRelease(context);
+        CGImageRelease(image);
+
+        for (size_t i = 0; i < width * height; ++i) {
+            orig_rgb.data[i * 3 + 0] = rgba[i * 4 + 0];
+            orig_rgb.data[i * 3 + 1] = rgba[i * 4 + 1];
+            orig_rgb.data[i * 3 + 2] = rgba[i * 4 + 2];
+        }
+
+        // Letterbox to 640x384 (16:9 optimized)
+        constexpr uint32_t kTargetWidth = 640;
+        constexpr uint32_t kTargetHeight = 384;
+        ImageBuffer letterbox_rgb;
+        letterbox_rgb.width = kTargetWidth;
+        letterbox_rgb.height = kTargetHeight;
+        letterbox_rgb.channels = 3;
+        letterbox_rgb.data.assign(kTargetWidth * kTargetHeight * 3, 114);
+
+        argus::cv::LetterboxInfo letterbox_info = argus::cv::compute_letterbox(
+            orig_rgb.width, orig_rgb.height, kTargetWidth, kTargetHeight
+        );
+
+        uint32_t nw = static_cast<uint32_t>(std::round(static_cast<float>(orig_rgb.width) * letterbox_info.scale));
+        uint32_t nh = static_cast<uint32_t>(std::round(static_cast<float>(orig_rgb.height) * letterbox_info.scale));
+        uint32_t pad_x = static_cast<uint32_t>(std::round(letterbox_info.pad_x));
+        uint32_t pad_y = static_cast<uint32_t>(std::round(letterbox_info.pad_y));
+
+        std::vector<uint8_t> scaled_argb(static_cast<size_t>(nw) * nh * 4);
+        vImage_Buffer src_argb_buf = {
+            .data = rgba.data(),
+            .height = static_cast<vImagePixelCount>(height),
+            .width = static_cast<vImagePixelCount>(width),
+            .rowBytes = width * 4
+        };
+        vImage_Buffer scaled_argb_buf = {
+            .data = scaled_argb.data(),
+            .height = static_cast<vImagePixelCount>(nh),
+            .width = static_cast<vImagePixelCount>(nw),
+            .rowBytes = static_cast<size_t>(nw * 4)
+        };
+        vImageScale_ARGB8888(&src_argb_buf, &scaled_argb_buf, nullptr, kvImageHighQualityResampling);
+
+        vImage_Buffer roi_rgb_buf = {
+            .data = letterbox_rgb.data.data() + (pad_y * kTargetWidth + pad_x) * 3,
+            .height = static_cast<vImagePixelCount>(nh),
+            .width = static_cast<vImagePixelCount>(nw),
+            .rowBytes = kTargetWidth * 3
+        };
+        vImageConvert_ARGB8888toRGB888(&scaled_argb_buf, &roi_rgb_buf, kvImageNoFlags);
+
+        ScrfdOutput scrfd_out;
+        std::string scrfd_err;
+        if (!lib->model_manager->run_scrfd(letterbox_rgb.data.data(), scrfd_out, scrfd_err)) {
+            out->status_code = 7;
+            copy_text(out->error_message, sizeof(out->error_message), ("SCRFD inference failed: " + scrfd_err).c_str());
+            return AV_OK;
+        }
+
+        float min_det_score = in->min_detection_score > 0.0f ? in->min_detection_score : 0.50f;
+        float min_face_sz = in->min_face_size > 0.0f ? in->min_face_size : 40.0f;
+        float min_quality = in->min_quality_score > 0.0f ? in->min_quality_score : 35.0f;
+
+        auto detected_faces = Postprocessor::decode_scrfd_faces(
+            scrfd_out, letterbox_info,
+            orig_rgb.width, orig_rgb.height,
+            min_det_score, 0.45f
+        );
+
+        if (detected_faces.empty()) {
+            out->status_code = 1; // NO_FACE
+            copy_text(out->error_message, sizeof(out->error_message), "no face detected");
+            return AV_OK;
+        }
+        if (detected_faces.size() > 1) {
+            out->status_code = 2; // MULTI_FACE
+            copy_text(out->error_message, sizeof(out->error_message), "multiple faces detected, single face photo required");
+            return AV_OK;
+        }
+
+        const auto& face = detected_faces[0];
+        float fw = face.x2 - face.x1;
+        float fh = face.y2 - face.y1;
+        float min_dim = std::min(fw, fh);
+        if (min_dim < min_face_sz) {
+            out->status_code = 6; // FACE_TOO_SMALL
+            copy_text(out->error_message, sizeof(out->error_message), "face bounding box is too small (<40px)");
+            return AV_OK;
+        }
+
+        float q_score = evaluate_face_quality(face, orig_rgb.width, orig_rgb.height);
+        if (q_score < min_quality) {
+            out->status_code = 3; // QUALITY_LOW
+            copy_text(out->error_message, sizeof(out->error_message), "face quality score is below threshold (35)");
+            return AV_OK;
+        }
+
+        ImageBuffer face_112;
+        std::string align_err;
+        if (!Preprocessor::align_face_112x112(orig_rgb, face.landmarks.data(), face_112, align_err)) {
+            out->status_code = 7;
+            copy_text(out->error_message, sizeof(out->error_message), ("face alignment failed: " + align_err).c_str());
+            return AV_OK;
+        }
+
+        GlintrOutput glintr_out;
+        std::string glintr_err;
+        if (!lib->model_manager->run_glintr(face_112.data.data(), glintr_out, glintr_err)) {
+            out->status_code = 7;
+            copy_text(out->error_message, sizeof(out->error_message), ("GLINTR inference failed: " + glintr_err).c_str());
+            return AV_OK;
+        }
+
+        if (glintr_out.embedding.size() != 512) {
+            out->status_code = 7;
+            copy_text(out->error_message, sizeof(out->error_message), "invalid embedding dimension");
+            return AV_OK;
+        }
+
+        float norm_sq = 0.0f;
+        for (float v : glintr_out.embedding) {
+            if (!std::isfinite(v)) {
+                out->status_code = 7;
+                copy_text(out->error_message, sizeof(out->error_message), "embedding contains non-finite values");
+                return AV_OK;
+            }
+            norm_sq += v * v;
+        }
+        float norm = std::sqrt(norm_sq);
+        if (norm < 1e-6f) {
+            out->status_code = 7;
+            copy_text(out->error_message, sizeof(out->error_message), "embedding norm is too small");
+            return AV_OK;
+        }
+
+        for (size_t i = 0; i < 512; ++i) {
+            out->embedding[i] = glintr_out.embedding[i] / norm;
+        }
+        out->embedding_dim = 512;
+
+        std::vector<uint8_t> face_rgba(112 * 112 * 4);
+        for (int i = 0; i < 112 * 112; ++i) {
+            face_rgba[i * 4 + 0] = face_112.data[i * 3 + 0];
+            face_rgba[i * 4 + 1] = face_112.data[i * 3 + 1];
+            face_rgba[i * 4 + 2] = face_112.data[i * 3 + 2];
+            face_rgba[i * 4 + 3] = 255;
+        }
+
+        CGColorSpaceRef rgb_cs = CGColorSpaceCreateDeviceRGB();
+        CGContextRef face_ctx = CGBitmapContextCreate(
+            face_rgba.data(), 112, 112, 8, 112 * 4, rgb_cs,
+            static_cast<CGBitmapInfo>(kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big)
+        );
+        CGColorSpaceRelease(rgb_cs);
+
+        CGImageRef face_img = face_ctx ? CGBitmapContextCreateImage(face_ctx) : nullptr;
+        if (face_ctx) CGContextRelease(face_ctx);
+
+        if (!face_img) {
+            out->status_code = 7;
+            copy_text(out->error_message, sizeof(out->error_message), "cannot create 112x112 image context");
+            return AV_OK;
+        }
+
+        CFMutableDataRef jpeg_dest_data = CFDataCreateMutable(kCFAllocatorDefault, 0);
+        CGImageDestinationRef dest = CGImageDestinationCreateWithData(jpeg_dest_data, CFSTR("public.jpeg"), 1, nullptr);
+        if (dest) {
+            float quality = 0.90f;
+            CFNumberRef qual_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberFloatType, &quality);
+            const void* keys[] = { kCGImageDestinationLossyCompressionQuality };
+            const void* values[] = { qual_num };
+            CFDictionaryRef opts = CFDictionaryCreate(kCFAllocatorDefault, keys, values, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+            CGImageDestinationAddImage(dest, face_img, opts);
+            CGImageDestinationFinalize(dest);
+            CFRelease(opts);
+            CFRelease(qual_num);
+            CFRelease(dest);
+        }
+        CGImageRelease(face_img);
+
+        CFIndex jpeg_len = CFDataGetLength(jpeg_dest_data);
+        bool encode_ok = (jpeg_len > 0 && jpeg_len <= static_cast<CFIndex>(sizeof(out->aligned_jpeg_data)));
+        if (encode_ok) {
+            CFDataGetBytes(jpeg_dest_data, CFRangeMake(0, jpeg_len), out->aligned_jpeg_data);
+            out->aligned_jpeg_len = static_cast<uint32_t>(jpeg_len);
+        }
+        CFRelease(jpeg_dest_data);
+
+        if (!encode_ok) {
+            out->status_code = 7;
+            copy_text(out->error_message, sizeof(out->error_message), "JPEG encoding failed or exceeded buffer");
+            return AV_OK;
+        }
+
+        out->bbox[0] = face.x1 / static_cast<float>(orig_rgb.width);
+        out->bbox[1] = face.y1 / static_cast<float>(orig_rgb.height);
+        out->bbox[2] = (face.x2 - face.x1) / static_cast<float>(orig_rgb.width);
+        out->bbox[3] = (face.y2 - face.y1) / static_cast<float>(orig_rgb.height);
+        out->quality_score = q_score;
+        out->detection_score = face.score;
+        out->status_code = 0; // OK
+        out->error_message[0] = '\0';
+
+        return AV_OK;
+    }
 }

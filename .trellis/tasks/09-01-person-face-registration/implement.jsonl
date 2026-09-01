@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "数据库迁移、GORM 毫秒软删除、复合唯一索引与并发事务约束规范"}
+{"file": ".trellis/spec/backend/file-storage-guidelines.md", "reason": "受保护私有文件存储、路径防穿越、原子写入与删除补偿规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "全项目唯一业务错误码 (errno)、错误映射与 HTTP 状态码转换规范"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Go 后端目录分层架构、Wire DI 依赖注入规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Go 单元测试、并发安全、错误断言与质量门禁规范"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "C ABI 稳定性与向后兼容扩展规范"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "UDS gRPC 有界传输、图像内存管理与静态图解码规范"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "Engine 稳定错误码与诊断日志规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 TypeScript 类型安全与 API 响应接口定义规范"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "三语 (zh-CN, en-US, zh-TW) 国际化词条同步规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Vue 3 组件结构、Ant Design Vue 与 Vben Admin 弹窗组件规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层 (Frontend -> Go -> C++ -> Model) 数据流与错误传播思考指南"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用既有图像处理器、SCRFD/GLINTR 模型管理器与五点对齐逻辑"}

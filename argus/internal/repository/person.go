@@ -82,21 +82,44 @@ func (r *personRepository) UpdateName(ctx context.Context, personID, name string
 	return &person, nil
 }
 
-// Delete 根据 person_id 软删除活动人员；不存在或已删除返回 (false, nil)。
+// Delete 根据 person_id 软删除活动人员及关联人脸样本；不存在或已删除返回 (false, nil)。
 func (r *personRepository) Delete(ctx context.Context, personID string) (bool, error) {
-	result := r.db.WithContext(ctx).Where("person_id = ?", personID).Delete(&model.Person{})
-	if result.Error != nil {
-		return false, result.Error
+	var affected bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("person_id = ?", personID).Delete(&model.Person{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+		affected = true
+		if err := tx.Where("person_id = ?", personID).Delete(&model.PersonFace{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return false, writeError(err)
 	}
-	return result.RowsAffected > 0, nil
+	return affected, nil
 }
 
-// BatchDelete 批量软删除活动人员；不存在或已删除项会被忽略。
+// BatchDelete 批量软删除活动人员及关联人脸样本；不存在或已删除项会被忽略。
 func (r *personRepository) BatchDelete(ctx context.Context, personIDs []string) error {
 	if len(personIDs) == 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).Where("person_id IN ?", personIDs).Delete(&model.Person{}).Error
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("person_id IN ?", personIDs).Delete(&model.Person{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("person_id IN ?", personIDs).Delete(&model.PersonFace{}).Error
+	})
+	if err != nil {
+		return writeError(err)
+	}
+	return nil
 }
 
 // GetByPersonID 查询活动状态人员。

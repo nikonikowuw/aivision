@@ -132,6 +132,22 @@ int main() {
     st = abi->instance_destroy(inst);
     assert(st == AV_OK);
 
+    // Test av_algo_extract_face
+    auto extract_fn = reinterpret_cast<av_algo_extract_face_fn>(dlsym(handle, AV_ALGO_EXTRACT_FACE_SYMBOL));
+    assert(extract_fn != nullptr);
+
+    // Empty input check
+    av_face_extract_input ext_in{};
+    ext_in.size = sizeof(ext_in);
+    ext_in.api_version = AV_ALGO_API_VERSION;
+    av_face_extract_output ext_out{};
+    ext_out.size = sizeof(ext_out);
+    ext_out.api_version = AV_ALGO_API_VERSION;
+
+    st = extract_fn(lib, &ext_in, &ext_out);
+    assert(st == AV_OK);
+    assert(ext_out.status_code == 4); // decode error / empty
+
     abi->library_close(lib);
     dlclose(handle);
 

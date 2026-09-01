@@ -235,3 +235,80 @@ func (f *fakeMinIOClient) PutObject(_ context.Context, bucketName, objectName st
 	}
 	return minio.UploadInfo{Key: objectName, Size: objectSize}, nil
 }
+
+func (f *fakeMinIOClient) GetObject(_ context.Context, bucketName, objectName string, _ minio.GetObjectOptions) (*minio.Object, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return nil, errors.New("fake get object not implemented")
+}
+
+func (f *fakeMinIOClient) RemoveObject(_ context.Context, bucketName, objectName string, _ minio.RemoveObjectOptions) error {
+	f.bucket = bucketName
+	f.key = objectName
+	return f.err
+}
+
+func TestLocalStorageGetAndDelete(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewLocalStorage(root, "/uploads")
+	if err != nil {
+		t.Fatalf("NewLocalStorage: %v", err)
+	}
+
+	content := []byte("face image data")
+	_, err = store.Put(context.Background(), PutInput{
+		Key:         "persons/1/faces/sample-1.jpg",
+		Reader:      bytes.NewReader(content),
+		Size:        int64(len(content)),
+		ContentType: "image/jpeg",
+	})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	// Test Get
+	rc, size, err := store.Get(context.Background(), "persons/1/faces/sample-1.jpg")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer rc.Close()
+	if size != int64(len(content)) {
+		t.Errorf("expected size %d, got %d", len(content), size)
+	}
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !bytes.Equal(data, content) {
+		t.Fatalf("got data %q, want %q", data, content)
+	}
+
+	// Test Delete
+	if err := store.Delete(context.Background(), "persons/1/faces/sample-1.jpg"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	// Delete again should be idempotent (no error)
+	if err := store.Delete(context.Background(), "persons/1/faces/sample-1.jpg"); err != nil {
+		t.Fatalf("Delete idempotent: %v", err)
+	}
+
+	// Get deleted should fail
+	_, _, err = store.Get(context.Background(), "persons/1/faces/sample-1.jpg")
+	if err == nil {
+		t.Fatal("Get deleted file should fail")
+	}
+}
+
+func TestMinIOStorageDelete(t *testing.T) {
+	client := &fakeMinIOClient{}
+	store := newMinIOStorage(client, "files", "https://cdn.example.com/files")
+
+	err := store.Delete(context.Background(), "persons/1/faces/sample-1.jpg")
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if client.bucket != "files" || client.key != "persons/1/faces/sample-1.jpg" {
+		t.Fatalf("unexpected delete args: %s %s", client.bucket, client.key)
+	}
+}

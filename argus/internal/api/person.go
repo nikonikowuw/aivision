@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"argus/app/internal/pkg/errno"
@@ -128,4 +130,92 @@ func (h *PersonHandler) SyncDeletePerson(c *gin.Context) {
 		return
 	}
 	response.Success(c, nil)
+}
+
+// RegisterFace 上传并注册单张人脸样本 (POST /api/person/:personId/faces)。
+func (h *PersonHandler) RegisterFace(c *gin.Context) {
+	personID := c.Param("personId")
+	if personID == "" {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	res, err := h.svc.RegisterFace(c.Request.Context(), personID, fileHeader)
+	if err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, res)
+}
+
+// ListFaces 查询人员人脸样本列表 (GET /api/person/:personId/faces)。
+func (h *PersonHandler) ListFaces(c *gin.Context) {
+	personID := c.Param("personId")
+	if personID == "" {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	res, err := h.svc.ListFaces(c.Request.Context(), personID)
+	if err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, res)
+}
+
+// DeleteFace 删除单个人脸样本 (DELETE /api/person/:personId/faces/:faceId)。
+func (h *PersonHandler) DeleteFace(c *gin.Context) {
+	personID := c.Param("personId")
+	faceID := c.Param("faceId")
+	if personID == "" || faceID == "" {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	if err := h.svc.DeleteFace(c.Request.Context(), personID, faceID); err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, nil)
+}
+
+// GetRawImage 获取人脸样本原始图片流 (GET /api/person/:personId/faces/:faceId/image)。
+func (h *PersonHandler) GetRawImage(c *gin.Context) {
+	personID := c.Param("personId")
+	faceID := c.Param("faceId")
+	if personID == "" || faceID == "" {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	rc, contentType, size, err := h.svc.GetRawImage(c.Request.Context(), personID, faceID)
+	if err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	defer rc.Close()
+	c.DataFromReader(http.StatusOK, size, contentType, rc, map[string]string{
+		"Content-Disposition": "inline",
+	})
+}
+
+// GetAlignedImage 获取人脸样本标准化图片流 (GET /api/person/:personId/faces/:faceId/aligned-image)。
+func (h *PersonHandler) GetAlignedImage(c *gin.Context) {
+	personID := c.Param("personId")
+	faceID := c.Param("faceId")
+	if personID == "" || faceID == "" {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	rc, contentType, size, err := h.svc.GetAlignedImage(c.Request.Context(), personID, faceID)
+	if err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	defer rc.Close()
+	c.DataFromReader(http.StatusOK, size, contentType, rc, map[string]string{
+		"Content-Disposition": "inline",
+	})
 }

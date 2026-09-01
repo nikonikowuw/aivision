@@ -53,8 +53,9 @@ func call[Req any, R codedResponse](
 // 提供 12 个与 generated client 同签名的包装方法。transport error 原样返回；
 // 非空响应 code 转成可 errors.As 判断的 *RemoteError，同时保留响应供诊断。
 type EngineClient struct {
-	raw  argusv1.EngineServiceClient
-	conn *grpc.ClientConn
+	raw       argusv1.EngineServiceClient
+	personRaw argusv1.PersonServiceClient
+	conn      *grpc.ClientConn
 }
 
 // NewEngineClient 构造 EngineClient。使用 unix://<absolute-path> + insecure 凭据，
@@ -71,7 +72,11 @@ func NewEngineClient(cfg *config.Config) (*EngineClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create engine grpc client for %s: %w", socketPath, err)
 	}
-	return &EngineClient{raw: argusv1.NewEngineServiceClient(conn), conn: conn}, nil
+	return &EngineClient{
+		raw:       argusv1.NewEngineServiceClient(conn),
+		personRaw: argusv1.NewPersonServiceClient(conn),
+		conn:      conn,
+	}, nil
 }
 
 // Close 关闭底层连接。
@@ -157,4 +162,9 @@ func (c *EngineClient) StartCameraPreview(ctx context.Context, req *argusv1.Star
 // StopCameraPreview 停止摄像头预览拉流。
 func (c *EngineClient) StopCameraPreview(ctx context.Context, req *argusv1.StopCameraPreviewRequest, opts ...grpc.CallOption) (*argusv1.StopCameraPreviewResponse, error) {
 	return call(c.raw.StopCameraPreview, ctx, req, opts...)
+}
+
+// ExtractFaceFeature 提取人脸特征与对齐标准化人脸图。
+func (c *EngineClient) ExtractFaceFeature(ctx context.Context, req *argusv1.ExtractFaceFeatureRequest, opts ...grpc.CallOption) (*argusv1.ExtractFaceFeatureResponse, error) {
+	return call(c.personRaw.ExtractFaceFeature, ctx, req, opts...)
 }

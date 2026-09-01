@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "验证 Migration 脚本与 AutoMigrate 模型一致性、软删除唯一索引正确性"}
+{"file": ".trellis/spec/backend/file-storage-guidelines.md", "reason": "验证受保护私有存储读写、无公开 URL 泄露、成对清理与补偿删除"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "验证业务错误码无重叠、三语翻译完备、HTTP 状态码映射正确"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "验证 Repository/Service/API 单元测试覆盖与 vet 检查通过"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "验证 C ABI 符号纯洁性与 ABI v1 向后兼容性"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "验证 10MB 请求体与 3840x2160 解码分辨率边界防护"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "验证 Engine 稳定错误码枚举与诊断日志格式"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "验证前端 TS 类型与后端 DTO 完全对齐、不含敏感 embedding 字段"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "验证 zh-CN, en-US, zh-TW 三种语言资源文件键值完全对应"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "验证前端 pnpm check、lint、typecheck 全绿"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "验证端到端错误传递、鉴权保护与级联删除无回退"}

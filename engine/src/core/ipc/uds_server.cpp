@@ -293,8 +293,11 @@ bool prepare_socket_path(const std::string& path) {
     return ::unlink(path.c_str()) == 0 || errno == ENOENT;
 }
 
+class PersonServiceImpl;
+
 class EngineServiceImpl final : public argus::v1::EngineService::Service {
 public:
+    friend class PersonServiceImpl;
     EngineServiceImpl(std::shared_ptr<platform::IPlatformAdapter> platform_adapter,
                       std::shared_ptr<media::IMediaBackend> media_backend,
                       const std::string& app_socket_path)
@@ -2388,11 +2391,102 @@ private:
 
 class PersonServiceImpl final : public argus::v1::PersonService::Service {
 public:
+    explicit PersonServiceImpl(EngineServiceImpl* engine_service)
+        : engine_service_(engine_service) {}
+
     grpc::Status SyncPersons(grpc::ServerContext*, const argus::v1::SyncPersonsRequest*,
                              argus::v1::SyncPersonsResponse*) override {
         return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
                             "Person synchronization is not implemented in this phase");
     }
+
+    grpc::Status ExtractFaceFeature(grpc::ServerContext*,
+                                   const argus::v1::ExtractFaceFeatureRequest* request,
+                                   argus::v1::ExtractFaceFeatureResponse* response) override {
+        if (!response) return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "null response");
+        if (!request || request->image_data().empty()) {
+            response->set_code("INVALID_ARGUMENT");
+            response->set_error_message("image_data is empty");
+            return grpc::Status::OK;
+        }
+        if (request->image_data().size() > 10 * 1024 * 1024) {
+            response->set_code("IMAGE_TOO_LARGE");
+            response->set_error_message("image_data exceeds 10MB limit");
+            return grpc::Status::OK;
+        }
+
+        std::string active_version;
+        bool present = false;
+        std::string version_err;
+        if (!read_active_version("face_recognition", active_version, present, version_err) || !present || active_version.empty()) {
+            response->set_code("ALGORITHM_NOT_AVAILABLE");
+            response->set_error_message("face_recognition algorithm is not active or installed");
+            return grpc::Status::OK;
+        }
+
+        std::string load_err;
+        auto package = engine_service_ ? engine_service_->load_package("face_recognition", active_version, load_err) : nullptr;
+        if (!package || !package->dynamic_library) {
+            response->set_code("ALGORITHM_NOT_AVAILABLE");
+            response->set_error_message("failed to load face_recognition package: " + load_err);
+            return grpc::Status::OK;
+        }
+
+        auto extract_fn = reinterpret_cast<av_algo_extract_face_fn>(
+            ::dlsym(package->dynamic_library, AV_ALGO_EXTRACT_FACE_SYMBOL));
+        if (!extract_fn) {
+            response->set_code("ALGORITHM_NOT_AVAILABLE");
+            response->set_error_message("face_recognition does not export av_algo_extract_face");
+            return grpc::Status::OK;
+        }
+
+        av_face_extract_input in{};
+        in.size = sizeof(in);
+        in.api_version = AV_ALGO_API_VERSION;
+        in.image_bytes = reinterpret_cast<const uint8_t*>(request->image_data().data());
+        in.image_bytes_len = static_cast<uint32_t>(request->image_data().size());
+        in.min_detection_score = 0.50f;
+        in.min_face_size = 40.0f;
+        in.min_quality_score = 35.0f;
+
+        av_face_extract_output out{};
+        out.size = sizeof(out);
+        out.api_version = AV_ALGO_API_VERSION;
+
+        int status = extract_fn(package->library, &in, &out);
+        if (status != 0 || out.status_code != 0) {
+            std::string code = "INTERNAL_ERROR";
+            switch (out.status_code) {
+                case 1: code = "NO_FACE_DETECTED"; break;
+                case 2: code = "MULTIPLE_FACES_DETECTED"; break;
+                case 3: code = "FACE_QUALITY_TOO_LOW"; break;
+                case 4: code = "IMAGE_DECODE_FAILED"; break;
+                case 5: code = "IMAGE_TOO_LARGE"; break;
+                case 6: code = "FACE_TOO_SMALL"; break;
+                default: code = "INTERNAL_ERROR"; break;
+            }
+            response->set_code(code);
+            response->set_error_message(out.error_message[0] ? out.error_message : "face extraction failed");
+            return grpc::Status::OK;
+        }
+
+        response->set_code("");
+        response->set_embedding(reinterpret_cast<const char*>(out.embedding), sizeof(out.embedding));
+        response->set_aligned_face_image(reinterpret_cast<const char*>(out.aligned_jpeg_data), out.aligned_jpeg_len);
+        response->mutable_face_box()->set_x(out.bbox[0]);
+        response->mutable_face_box()->set_y(out.bbox[1]);
+        response->mutable_face_box()->set_width(out.bbox[2]);
+        response->mutable_face_box()->set_height(out.bbox[3]);
+        response->set_quality_score(out.quality_score);
+        response->set_detection_score(out.detection_score);
+        response->set_algorithm_id("face_recognition");
+        response->set_algorithm_version(active_version);
+
+        return grpc::Status::OK;
+    }
+
+private:
+    EngineServiceImpl* engine_service_ = nullptr;
 };
 
 } // namespace
@@ -2425,7 +2519,7 @@ bool UdsServer::start() {
     grpc::ServerBuilder builder;
     builder.AddListeningPort("unix://" + sock_path_, grpc::InsecureServerCredentials());
     engine_service_ = std::make_unique<EngineServiceImpl>(platform_adapter_, media_backend_, app_sock_path_);
-    person_service_ = std::make_unique<PersonServiceImpl>();
+    person_service_ = std::make_unique<PersonServiceImpl>(dynamic_cast<EngineServiceImpl*>(engine_service_.get()));
     builder.RegisterService(engine_service_.get());
     builder.RegisterService(person_service_.get());
     server_ = builder.BuildAndStart();

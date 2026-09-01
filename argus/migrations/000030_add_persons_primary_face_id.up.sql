@@ -8,7 +8,7 @@ UPDATE persons
 SET primary_face_id = (
     SELECT face_id FROM person_faces
     WHERE person_faces.person_id = persons.person_id AND person_faces.deleted_at = 0
-    ORDER BY person_faces.id DESC
+    ORDER BY person_faces.id ASC
     LIMIT 1
 )
 WHERE persons.deleted_at = 0 AND persons.primary_face_id = '' AND EXISTS (

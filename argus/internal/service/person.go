@@ -182,11 +182,6 @@ func (s *personService) GetPage(ctx context.Context, query *PersonPageQuery) (*P
 		if c, ok := counts[items[i].PersonID]; ok {
 			dto.FaceCount = c
 		}
-		if dto.PrimaryFaceID == "" && dto.FaceCount > 0 {
-			if faces, err := s.faceRepo.ListByPersonID(ctx, items[i].PersonID); err == nil && len(faces) > 0 {
-				dto.PrimaryFaceID = faces[0].FaceID
-			}
-		}
 		dtos = append(dtos, dto)
 	}
 	return &PersonPageResult{Items: dtos, Total: total}, nil

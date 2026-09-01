@@ -15,10 +15,12 @@ import {
   batchDeletePersonApi,
   createPersonApi,
   deletePersonApi,
+  getPersonFaceImageUrl,
   getPersonPageApi,
   updatePersonApi,
 } from '#/api';
 
+import FaceThumbnail from './components/FaceThumbnail.vue';
 import PersonFaceDrawer from './components/PersonFaceDrawer.vue';
 
 type PersonFormValues = {
@@ -179,9 +181,22 @@ const gridOptions: VxeTableGridOptions<PersonApi.PersonItem> = {
   columns: [
     { type: 'checkbox', width: 50, align: 'center' },
     {
+      type: 'seq',
+      title: $t('system.common.index'),
+      width: 60,
+      align: 'center',
+    },
+    {
       field: 'personId',
       title: $t('resource.person.personId'),
-      minWidth: 200,
+      minWidth: 180,
+    },
+    {
+      field: 'avatar',
+      title: $t('resource.person.avatar'),
+      width: 90,
+      align: 'center',
+      slots: { default: 'avatar' },
     },
     {
       field: 'name',
@@ -212,7 +227,7 @@ const gridOptions: VxeTableGridOptions<PersonApi.PersonItem> = {
       showOverflow: false,
       slots: { default: 'actions' },
       title: $t('system.common.action'),
-      width: 220,
+      width: 280,
     },
   ],
   pagerConfig: {
@@ -314,6 +329,27 @@ const [Grid, gridApi] = useVbenVxeGrid({
         >
           {{ $t('resource.person.add') }}
         </Button>
+      </template>
+
+      <template #avatar="{ row }">
+        <div
+          class="inline-flex cursor-pointer transition-transform hover:scale-105"
+          :title="$t('resource.person.faceManage')"
+          @click="openFaceDrawer(row)"
+        >
+          <FaceThumbnail
+            :url="
+              row.primaryFaceId
+                ? getPersonFaceImageUrl(
+                    row.personId,
+                    row.primaryFaceId,
+                    'aligned',
+                  )
+                : ''
+            "
+            :size="40"
+          />
+        </div>
       </template>
 
       <template #faceCount="{ row }">

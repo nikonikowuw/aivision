@@ -5,6 +5,7 @@ export namespace PersonApi {
   export interface PersonItem {
     personId: string;
     name: string;
+    primaryFaceId?: string;
     faceCount?: number;
     createdAt: string;
     updatedAt: string;
@@ -28,6 +29,7 @@ export namespace PersonApi {
     rawImageMime: string;
     alignedFaceSize: number;
     alignedFaceMime: string;
+    isPrimary?: boolean;
     createdAt: string;
   }
 
@@ -112,11 +114,9 @@ export async function listPersonFacesApi(personId: string) {
  * 上传并注册单张人脸样本
  */
 export async function registerPersonFaceApi(personId: string, file: File) {
-  const formData = new FormData();
-  formData.append('file', file);
-  return requestClient.post<PersonApi.PersonFaceItem>(
+  return requestClient.upload<PersonApi.PersonFaceItem>(
     `/person/${personId}/faces`,
-    formData,
+    { file },
   );
 }
 
@@ -125,6 +125,15 @@ export async function registerPersonFaceApi(personId: string, file: File) {
  */
 export async function deletePersonFaceApi(personId: string, faceId: string) {
   return requestClient.delete<null>(`/person/${personId}/faces/${faceId}`);
+}
+
+/**
+ * 设置人员主图样本
+ */
+export async function setPrimaryFaceApi(personId: string, faceId: string) {
+  return requestClient.put<null>(`/person/${personId}/primary-face`, {
+    faceId,
+  });
 }
 
 /**

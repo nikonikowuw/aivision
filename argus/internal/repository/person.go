@@ -28,6 +28,7 @@ type PersonRepository interface {
 	GetByPersonIDWithDeleted(ctx context.Context, personID string) (*model.Person, error)
 	ListPage(ctx context.Context, filter *PersonFilter) ([]model.Person, int64, error)
 	RestoreAndUpdate(ctx context.Context, id uint64, name string) (*model.Person, error)
+	UpdatePrimaryFaceID(ctx context.Context, personID, faceID string) (*model.Person, error)
 }
 
 type personRepository struct {
@@ -196,3 +197,41 @@ func (r *personRepository) RestoreAndUpdate(ctx context.Context, id uint64, name
 	}
 	return &person, nil
 }
+
+// UpdatePrimaryFaceID 根据对外唯一 person_id 更新主图 face_id，未找到返回 ErrNotFound。
+func (r *personRepository) UpdatePrimaryFaceID(ctx context.Context, personID, faceID string) (*model.Person, error) {
+	var person model.Person
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("person_id = ?", personID).First(&person).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		result := tx.Model(&model.Person{}).
+			Where("id = ?", person.ID).
+			Updates(map[string]any{
+				"primary_face_id": faceID,
+				"updated_at":      time.Now(),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		if err := tx.Where("id = ?", person.ID).First(&person).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, writeError(err)
+	}
+	return &person, nil
+}
+

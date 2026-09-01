@@ -70,6 +70,7 @@ func setupPersonAPIEngine(t *testing.T, allowedIPs []string) *gin.Engine {
 		personGrp.POST("/:personId/faces", handler.RegisterFace)
 		personGrp.GET("/:personId/faces", handler.ListFaces)
 		personGrp.DELETE("/:personId/faces/:faceId", handler.DeleteFace)
+		personGrp.PUT("/:personId/primary-face", handler.SetPrimaryFace)
 		personGrp.GET("/:personId/faces/:faceId/image", handler.GetRawImage)
 		personGrp.GET("/:personId/faces/:faceId/aligned-image", handler.GetAlignedImage)
 	}
@@ -278,14 +279,25 @@ func TestPersonFaceManagementAPI(t *testing.T) {
 	var listResp struct {
 		Code int `json:"code"`
 		Data []struct {
-			FaceID string `json:"faceId"`
+			FaceID    string `json:"faceId"`
+			IsPrimary bool   `json:"isPrimary"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &listResp); err != nil {
 		t.Fatalf("unmarshal list resp: %v", err)
 	}
-	if listResp.Code != 0 || len(listResp.Data) != 1 || listResp.Data[0].FaceID != faceID {
+	if listResp.Code != 0 || len(listResp.Data) != 1 || listResp.Data[0].FaceID != faceID || !listResp.Data[0].IsPrimary {
 		t.Fatalf("unexpected list resp: %+v", listResp)
+	}
+
+	// 3.1 Test SetPrimaryFace API
+	setPrimaryJSON, _ := json.Marshal(map[string]string{"faceId": faceID})
+	req = httptest.NewRequest(http.MethodPut, "/api/person/PF001/primary-face", bytes.NewReader(setPrimaryJSON))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("set primary face got %d: %s", w.Code, w.Body.String())
 	}
 
 	// 4. Download raw image (GET /api/person/PF001/faces/:faceId/image)

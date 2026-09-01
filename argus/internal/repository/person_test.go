@@ -160,3 +160,31 @@ func TestPersonRepositoryBatchDelete(t *testing.T) {
 		t.Fatalf("p3 should still exist")
 	}
 }
+
+func TestPersonRepositoryUpdatePrimaryFaceID(t *testing.T) {
+	db := newPersonTestDB(t)
+	repo := repository.NewPersonRepository(db)
+	ctx := context.Background()
+
+	_ = repo.Create(ctx, &model.Person{PersonID: "p1", Name: "User 1"})
+
+	updated, err := repo.UpdatePrimaryFaceID(ctx, "p1", "face_123")
+	if err != nil {
+		t.Fatalf("update primary face failed: %v", err)
+	}
+	if updated.PrimaryFaceID != "face_123" {
+		t.Fatalf("expected primary_face_id to be face_123, got %s", updated.PrimaryFaceID)
+	}
+
+	// Update to empty
+	updated, err = repo.UpdatePrimaryFaceID(ctx, "p1", "")
+	if err != nil || updated.PrimaryFaceID != "" {
+		t.Fatalf("update primary face to empty failed: %v", err)
+	}
+
+	// Update non-existing
+	_, err = repo.UpdatePrimaryFaceID(ctx, "non_existing", "face_123")
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for non-existing person, got %v", err)
+	}
+}

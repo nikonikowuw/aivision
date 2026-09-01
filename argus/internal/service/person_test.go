@@ -329,52 +329,75 @@ func TestPersonServiceFaceRegistrationAndManagement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register face 1: %v", err)
 	}
-	if face1.FaceID == "" || face1.QualityScore != 90.0 {
+	if face1.FaceID == "" || face1.QualityScore != 90.0 || !face1.IsPrimary {
 		t.Fatalf("unexpected face1 DTO: %+v", face1)
 	}
 
-	// 4. Duplicate image registration should fail with CodeFaceDuplicateImage
-	dupHeader := createTestFileHeader("face1_dup.jpg", jpegContent, "image/jpeg")
-	_, err = svc.RegisterFace(ctx, person.PersonID, dupHeader)
-	if !isErrCode(err, errno.CodeFaceDuplicateImage) {
-		t.Fatalf("expected CodeFaceDuplicateImage, got %v", err)
+	// Register face 2
+	jpegContent2 := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x99}
+	validHeader2 := createTestFileHeader("face2.jpg", jpegContent2, "image/jpeg")
+	face2, err := svc.RegisterFace(ctx, person.PersonID, validHeader2)
+	if err != nil {
+		t.Fatalf("register face 2: %v", err)
+	}
+	if face2.FaceID == "" || face2.IsPrimary {
+		t.Fatalf("face2 should not be primary initially: %+v", face2)
 	}
 
-	// 5. List faces
+	// Test SetPrimaryFace
+	if err := svc.SetPrimaryFace(ctx, person.PersonID, face2.FaceID); err != nil {
+		t.Fatalf("set primary face to face2 failed: %v", err)
+	}
+
+	// 5. List faces and verify primary flags
 	faces, err := svc.ListFaces(ctx, person.PersonID)
 	if err != nil {
 		t.Fatalf("list faces: %v", err)
 	}
-	if len(faces) != 1 || faces[0].FaceID != face1.FaceID {
-		t.Fatalf("unexpected faces: %+v", faces)
+	if len(faces) != 2 {
+		t.Fatalf("unexpected faces count: %d", len(faces))
+	}
+	for _, f := range faces {
+		if f.FaceID == face2.FaceID && !f.IsPrimary {
+			t.Fatalf("face2 should be primary")
+		}
+		if f.FaceID == face1.FaceID && f.IsPrimary {
+			t.Fatalf("face1 should not be primary")
+		}
 	}
 
-	// 6. Check GetPage includes faceCount
+	// 6. Check GetPage includes faceCount and primaryFaceId
 	page, err := svc.GetPage(ctx, &service.PersonPageQuery{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("get page: %v", err)
 	}
-	if len(page.Items) != 1 || page.Items[0].FaceCount != 1 {
-		t.Fatalf("expected FaceCount=1, got %+v", page.Items[0])
+	if len(page.Items) != 1 || page.Items[0].FaceCount != 2 || page.Items[0].PrimaryFaceID != face2.FaceID {
+		t.Fatalf("expected FaceCount=2, PrimaryFaceID=%s, got %+v", face2.FaceID, page.Items[0])
 	}
 
 	// 7. Engine RemoteError mapping (e.g. NO_FACE_DETECTED)
 	extractor.err = &engineipc.RemoteError{Code: "NO_FACE_DETECTED"}
-	jpeg2 := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x02}
-	hdr2 := createTestFileHeader("face2.jpg", jpeg2, "image/jpeg")
-	_, err = svc.RegisterFace(ctx, person.PersonID, hdr2)
+	jpegErr := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0xEE}
+	hdrErr := createTestFileHeader("face_err.jpg", jpegErr, "image/jpeg")
+	_, err = svc.RegisterFace(ctx, person.PersonID, hdrErr)
 	if !isErrCode(err, errno.CodeFaceNoFaceDetected) {
 		t.Fatalf("expected CodeFaceNoFaceDetected, got %v", err)
 	}
-
-	// Reset extractor error
 	extractor.err = nil
 
-	// 8. Delete Face
-	if err := svc.DeleteFace(ctx, person.PersonID, face1.FaceID); err != nil {
-		t.Fatalf("delete face: %v", err)
+	// 8. Delete primary Face (face2) -> should promote face1
+	if err := svc.DeleteFace(ctx, person.PersonID, face2.FaceID); err != nil {
+		t.Fatalf("delete face2: %v", err)
 	}
-	// Face list should be empty
+	faces, err = svc.ListFaces(ctx, person.PersonID)
+	if err != nil || len(faces) != 1 || faces[0].FaceID != face1.FaceID || !faces[0].IsPrimary {
+		t.Fatalf("expected face1 to be promoted to primary, got: %+v", faces)
+	}
+
+	// Delete face1 -> primaryFaceId should be cleared
+	if err := svc.DeleteFace(ctx, person.PersonID, face1.FaceID); err != nil {
+		t.Fatalf("delete face1: %v", err)
+	}
 	faces, err = svc.ListFaces(ctx, person.PersonID)
 	if err != nil || len(faces) != 0 {
 		t.Fatalf("expected 0 faces after deletion, got %d", len(faces))

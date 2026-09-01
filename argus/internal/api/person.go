@@ -182,6 +182,30 @@ func (h *PersonHandler) DeleteFace(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// SetPrimaryFaceRequest 设置主图入参。
+type SetPrimaryFaceRequest struct {
+	FaceID string `json:"faceId" binding:"required"`
+}
+
+// SetPrimaryFace 设置人员主图样本 (PUT /api/person/:personId/primary-face)。
+func (h *PersonHandler) SetPrimaryFace(c *gin.Context) {
+	personID := c.Param("personId")
+	if personID == "" {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	var req SetPrimaryFaceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
+		return
+	}
+	if err := h.svc.SetPrimaryFace(c.Request.Context(), personID, req.FaceID); err != nil {
+		c.Error(err) //nolint:errcheck
+		return
+	}
+	response.Success(c, nil)
+}
+
 // GetRawImage 获取人脸样本原始图片流 (GET /api/person/:personId/faces/:faceId/image)。
 func (h *PersonHandler) GetRawImage(c *gin.Context) {
 	personID := c.Param("personId")

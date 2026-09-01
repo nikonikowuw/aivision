@@ -30,6 +30,7 @@ import {
   getPersonFaceImageUrl,
   listPersonFacesApi,
   registerPersonFaceApi,
+  setPrimaryFaceApi,
 } from '#/api';
 
 import FaceThumbnail from './FaceThumbnail.vue';
@@ -143,6 +144,18 @@ async function handleDeleteFace(face: PersonApi.PersonFaceItem) {
   }
 }
 
+async function handleSetPrimary(face: PersonApi.PersonFaceItem) {
+  if (!props.person) return;
+  try {
+    await setPrimaryFaceApi(props.person.personId, face.faceId);
+    message.success($t('resource.person.setPrimarySuccess'));
+    await fetchFaces();
+    emit('change');
+  } catch {
+    // 错误由拦截器统一提示
+  }
+}
+
 async function loadAuthImageBlob(url: string): Promise<string> {
   const resp = await fetch(url, {
     headers: {
@@ -215,7 +228,7 @@ function formatBytes(bytes: number): string {
         personId: person?.personId || '',
       })
     "
-    width="680"
+    width="780"
     destroy-on-close
   >
     <div class="flex flex-col gap-4">
@@ -282,11 +295,11 @@ function formatBytes(bytes: number): string {
               size="small"
               class="border-neutral-200 shadow-sm dark:border-neutral-800"
             >
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex min-w-0 items-center gap-3">
                   <!-- 缩略图预览按钮 -->
                   <div
-                    class="group relative cursor-pointer"
+                    class="group relative shrink-0 cursor-pointer"
                     @click="openPreview(face, 'aligned')"
                   >
                     <FaceThumbnail
@@ -297,7 +310,7 @@ function formatBytes(bytes: number): string {
                           'aligned',
                         )
                       "
-                      :size="72"
+                      :size="68"
                     />
                     <div
                       class="absolute inset-0 flex items-center justify-center rounded-md bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
@@ -311,7 +324,10 @@ function formatBytes(bytes: number): string {
 
                   <!-- 样本元信息 -->
                   <div class="flex flex-col gap-1 text-xs">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <Tag v-if="face.isPrimary" color="blue">
+                        {{ $t('resource.person.primaryFace') }}
+                      </Tag>
                       <span
                         class="font-medium text-neutral-700 dark:text-neutral-300"
                       >
@@ -348,10 +364,20 @@ function formatBytes(bytes: number): string {
                 </div>
 
                 <!-- 操作按钮 -->
-                <Space>
+                <Space :size="4" wrap class="shrink-0 justify-end">
+                  <Button
+                    v-if="!face.isPrimary"
+                    size="small"
+                    type="link"
+                    class="px-1.5"
+                    @click="handleSetPrimary(face)"
+                  >
+                    {{ $t('resource.person.setAsPrimary') }}
+                  </Button>
                   <Button
                     size="small"
                     type="link"
+                    class="px-1.5"
                     @click="openPreview(face, 'aligned')"
                   >
                     {{ $t('resource.person.previewAligned') }}
@@ -359,6 +385,7 @@ function formatBytes(bytes: number): string {
                   <Button
                     size="small"
                     type="link"
+                    class="px-1.5"
                     @click="openPreview(face, 'raw')"
                   >
                     {{ $t('resource.person.previewRaw') }}
@@ -369,7 +396,7 @@ function formatBytes(bytes: number): string {
                     :cancel-text="$t('system.common.cancel')"
                     @confirm="handleDeleteFace(face)"
                   >
-                    <Button size="small" danger type="link">
+                    <Button size="small" danger type="link" class="px-1.5">
                       <template #icon>
                         <IconifyIcon icon="lucide:trash-2" class="size-4" />
                       </template>

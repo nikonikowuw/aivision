@@ -472,6 +472,15 @@ func TestOplogActionInference(t *testing.T) {
 	engine.DELETE("/api/person/:personId", func(c *gin.Context) {
 		response.Success(c, "person deleted")
 	})
+	engine.POST("/api/person/:personId/faces", func(c *gin.Context) {
+		response.Success(c, "face registered")
+	})
+	engine.DELETE("/api/person/:personId/faces/:faceId", func(c *gin.Context) {
+		response.Success(c, "face deleted")
+	})
+	engine.PUT("/api/person/:personId/primary-face", func(c *gin.Context) {
+		response.Success(c, "primary face set")
+	})
 	engine.PUT("/api/v1/open/person/:personId", func(c *gin.Context) {
 		response.Success(c, "person sync upserted")
 	})
@@ -590,6 +599,9 @@ func TestOplogActionInference(t *testing.T) {
 		{http.MethodPut, "/api/person/EMP001", "resource.person.edit"},
 		{http.MethodDelete, "/api/person/EMP001", "resource.person.delete"},
 		{http.MethodDelete, "/api/person/batch", "system.common.batchDelete"},
+		{http.MethodPost, "/api/person/EMP001/faces", "resource.person.registerFace"},
+		{http.MethodDelete, "/api/person/EMP001/faces/f1", "resource.person.deleteFace"},
+		{http.MethodPut, "/api/person/EMP001/primary-face", "resource.person.setPrimaryFace"},
 		{http.MethodPut, "/api/v1/open/person/EMP001", "resource.person.syncUpsert"},
 		{http.MethodDelete, "/api/v1/open/person/EMP001", "resource.person.syncDelete"},
 	}
@@ -605,7 +617,7 @@ func TestOplogActionInference(t *testing.T) {
 		}
 	}
 
-	page = waitForPage(t, oplogSrv, &service.LogPageQuery{PageSize: 100}, 16)
+	page = waitForPage(t, oplogSrv, &service.LogPageQuery{PageSize: 100}, 19)
 	for _, tc := range personCases {
 		found := false
 		for _, item := range page.Items {
@@ -647,7 +659,7 @@ func TestOplogActionInference(t *testing.T) {
 			t.Fatalf("%s %s status = %d, want 200", tc.method, tc.path, rec.Code)
 		}
 	}
-	page = waitForPage(t, oplogSrv, &service.LogPageQuery{PageSize: 100}, int64(16+len(taskCases)))
+	page = waitForPage(t, oplogSrv, &service.LogPageQuery{PageSize: 100}, int64(19+len(taskCases)))
 	for _, tc := range taskCases {
 		found := false
 		for _, item := range page.Items {

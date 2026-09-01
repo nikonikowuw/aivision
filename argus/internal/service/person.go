@@ -33,11 +33,12 @@ const (
 
 // PersonDTO 对外公开人员传输对象，严禁包含内部数据库 id。
 type PersonDTO struct {
-	PersonID  string `json:"personId"`
-	Name      string `json:"name"`
-	FaceCount int64  `json:"faceCount"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	PersonID      string `json:"personId"`
+	Name          string `json:"name"`
+	PrimaryFaceID string `json:"primaryFaceId"`
+	FaceCount     int64  `json:"faceCount"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 // FaceBoundingBoxDTO 归一化人脸框 DTO。
@@ -60,6 +61,7 @@ type PersonFaceDTO struct {
 	RawImageMime     string              `json:"rawImageMime"`
 	AlignedFaceSize  int64               `json:"alignedFaceSize"`
 	AlignedFaceMime  string              `json:"alignedFaceMime"`
+	IsPrimary        bool                `json:"isPrimary"`
 	CreatedAt        string              `json:"createdAt"`
 }
 
@@ -111,6 +113,7 @@ type PersonService interface {
 	RegisterFace(ctx context.Context, personID string, fileHeader *multipart.FileHeader) (*PersonFaceDTO, error)
 	ListFaces(ctx context.Context, personID string) ([]*PersonFaceDTO, error)
 	DeleteFace(ctx context.Context, personID, faceID string) error
+	SetPrimaryFace(ctx context.Context, personID, faceID string) error
 	GetRawImage(ctx context.Context, personID, faceID string) (io.ReadCloser, string, int64, error)
 	GetAlignedImage(ctx context.Context, personID, faceID string) (io.ReadCloser, string, int64, error)
 }
@@ -178,6 +181,11 @@ func (s *personService) GetPage(ctx context.Context, query *PersonPageQuery) (*P
 		dto := toPersonDTO(&items[i])
 		if c, ok := counts[items[i].PersonID]; ok {
 			dto.FaceCount = c
+		}
+		if dto.PrimaryFaceID == "" && dto.FaceCount > 0 {
+			if faces, err := s.faceRepo.ListByPersonID(ctx, items[i].PersonID); err == nil && len(faces) > 0 {
+				dto.PrimaryFaceID = faces[0].FaceID
+			}
 		}
 		dtos = append(dtos, dto)
 	}
@@ -528,7 +536,16 @@ func (s *personService) RegisterFace(ctx context.Context, personID string, fileH
 		return nil, err
 	}
 
-	return toPersonFaceDTO(faceModel), nil
+	isPrimary := false
+	if person, err := s.repo.GetByPersonID(ctx, personID); err == nil && person != nil {
+		if person.PrimaryFaceID == "" {
+			if _, updateErr := s.repo.UpdatePrimaryFaceID(ctx, personID, faceID); updateErr == nil {
+				isPrimary = true
+			}
+		}
+	}
+
+	return toPersonFaceDTO(faceModel, isPrimary), nil
 }
 
 // ListFaces 查询人员的所有有效人脸样本列表。
@@ -537,7 +554,8 @@ func (s *personService) ListFaces(ctx context.Context, personID string) ([]*Pers
 	if err := validatePersonIDFormat(personID); err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.GetByPersonID(ctx, personID); err != nil {
+	person, err := s.repo.GetByPersonID(ctx, personID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, errno.NewError(errno.CodeNotFound)
 		}
@@ -549,7 +567,8 @@ func (s *personService) ListFaces(ctx context.Context, personID string) ([]*Pers
 	}
 	dtos := make([]*PersonFaceDTO, 0, len(faces))
 	for i := range faces {
-		dtos = append(dtos, toPersonFaceDTO(&faces[i]))
+		isPrimary := (person.PrimaryFaceID != "" && faces[i].FaceID == person.PrimaryFaceID)
+		dtos = append(dtos, toPersonFaceDTO(&faces[i], isPrimary))
 	}
 	return dtos, nil
 }
@@ -571,6 +590,44 @@ func (s *personService) DeleteFace(ctx context.Context, personID, faceID string)
 	if deletedFace != nil {
 		_ = s.storage.Delete(ctx, deletedFace.RawImageKey)
 		_ = s.storage.Delete(ctx, deletedFace.AlignedFaceKey)
+	}
+
+	// 若删除的是主图，自动将剩余样本中最合适的一张设为主图，若无剩余则置空
+	if person, err := s.repo.GetByPersonID(ctx, personID); err == nil && person != nil && person.PrimaryFaceID == faceID {
+		remainingFaces, listErr := s.faceRepo.ListByPersonID(ctx, personID)
+		newPrimaryID := ""
+		if listErr == nil && len(remainingFaces) > 0 {
+			newPrimaryID = remainingFaces[0].FaceID
+		}
+		_, _ = s.repo.UpdatePrimaryFaceID(ctx, personID, newPrimaryID)
+	}
+
+	return nil
+}
+
+// SetPrimaryFace 设置人员的主图/封面图样本。
+func (s *personService) SetPrimaryFace(ctx context.Context, personID, faceID string) error {
+	personID = strings.TrimSpace(personID)
+	faceID = strings.TrimSpace(faceID)
+	if err := validatePersonIDFormat(personID); err != nil || faceID == "" {
+		return errno.NewError(errno.CodeInvalidParam)
+	}
+	// 确认人员存在
+	if _, err := s.repo.GetByPersonID(ctx, personID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return errno.NewError(errno.CodeNotFound)
+		}
+		return err
+	}
+	// 确认该 faceId 存在且属于该人员
+	if _, err := s.faceRepo.GetByFaceID(ctx, personID, faceID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return errno.NewError(errno.CodeNotFound)
+		}
+		return err
+	}
+	if _, err := s.repo.UpdatePrimaryFaceID(ctx, personID, faceID); err != nil {
+		return err
 	}
 	return nil
 }
@@ -679,15 +736,16 @@ func toPersonDTO(p *model.Person) *PersonDTO {
 		return nil
 	}
 	return &PersonDTO{
-		PersonID:  p.PersonID,
-		Name:      p.Name,
-		CreatedAt: p.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt: p.UpdatedAt.Format("2006-01-02 15:04:05"),
+		PersonID:      p.PersonID,
+		Name:          p.Name,
+		PrimaryFaceID: p.PrimaryFaceID,
+		CreatedAt:     p.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:     p.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }
 
 // toPersonFaceDTO 将人脸样本模型映射为公开 DTO。
-func toPersonFaceDTO(f *model.PersonFace) *PersonFaceDTO {
+func toPersonFaceDTO(f *model.PersonFace, isPrimary bool) *PersonFaceDTO {
 	if f == nil {
 		return nil
 	}
@@ -709,6 +767,7 @@ func toPersonFaceDTO(f *model.PersonFace) *PersonFaceDTO {
 		RawImageMime:     f.RawImageMime,
 		AlignedFaceSize:  f.AlignedFaceSize,
 		AlignedFaceMime:  f.AlignedFaceMime,
+		IsPrimary:        isPrimary,
 		CreatedAt:        f.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

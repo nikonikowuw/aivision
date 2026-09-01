@@ -223,12 +223,15 @@ var actionI18nMap = map[string]string{
 	"POST /api/camera/:id/preview/stop":  "live.preview.stop",
 
 	// Person
-	"POST /api/person":                     "resource.person.add",
-	"PUT /api/person/:personId":            "resource.person.edit",
-	"DELETE /api/person/:personId":         "resource.person.delete",
-	"DELETE /api/person/batch":             "system.common.batchDelete",
-	"PUT /api/v1/open/person/:personId":    "resource.person.syncUpsert",
-	"DELETE /api/v1/open/person/:personId": "resource.person.syncDelete",
+	"POST /api/person":                           "resource.person.add",
+	"PUT /api/person/:personId":                  "resource.person.edit",
+	"DELETE /api/person/:personId":               "resource.person.delete",
+	"DELETE /api/person/batch":                   "system.common.batchDelete",
+	"POST /api/person/:personId/faces":           "resource.person.registerFace",
+	"DELETE /api/person/:personId/faces/:faceId": "resource.person.deleteFace",
+	"PUT /api/person/:personId/primary-face":     "resource.person.setPrimaryFace",
+	"PUT /api/v1/open/person/:personId":          "resource.person.syncUpsert",
+	"DELETE /api/v1/open/person/:personId":       "resource.person.syncDelete",
 
 	// Network
 	"PUT /api/network/interfaces/:interfaceId":                "system.log.actionNetworkApply",

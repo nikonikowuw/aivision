@@ -305,6 +305,7 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			personGroup.POST(personIDRoutePath+"/faces", deps.PersonHandler.RegisterFace)
 			personGroup.GET(personIDRoutePath+"/faces", deps.PersonHandler.ListFaces)
 			personGroup.DELETE(personIDRoutePath+"/faces/:faceId", deps.PersonHandler.DeleteFace)
+			personGroup.PUT(personIDRoutePath+"/primary-face", deps.PersonHandler.SetPrimaryFace)
 			personGroup.GET(personIDRoutePath+"/faces/:faceId/image", deps.PersonHandler.GetRawImage)
 			personGroup.GET(personIDRoutePath+"/faces/:faceId/aligned-image", deps.PersonHandler.GetAlignedImage)
 		}
@@ -316,6 +317,7 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+personRoutePath+personIDRoutePath+"/faces", "resource:person:face:manage")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces", "resource:person:face:manage")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId", "resource:person:face:manage")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+personRoutePath+personIDRoutePath+"/primary-face", "resource:person:face:manage")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/image", "resource:person:face:manage")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/aligned-image", "resource:person:face:manage")
 

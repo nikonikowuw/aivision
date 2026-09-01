@@ -237,30 +237,30 @@ type AvailableCameraItem struct {
 
 // InstanceItem 实例列表项（状态合并同 TaskItem）。
 type InstanceItem struct {
-	InstanceID    string                `json:"instanceId"`
-	CameraID      string                `json:"cameraId"`
-	AlgorithmID   string                `json:"algorithmId"`
-	AnalysisFPS   int32                 `json:"analysisFps"`
-	ParamsJSON    json.RawMessage       `json:"paramsJson"`
-	Rules         []model.DetectionRule `json:"rules"`
+	InstanceID    string                  `json:"instanceId"`
+	CameraID      string                  `json:"cameraId"`
+	AlgorithmID   string                  `json:"algorithmId"`
+	AnalysisFPS   int32                   `json:"analysisFps"`
+	ParamsJSON    json.RawMessage         `json:"paramsJson"`
+	Rules         []model.DetectionRule   `json:"rules"`
 	MotionGate    *model.MotionGateConfig `json:"motionGate,omitempty"`
-	Enabled       bool                  `json:"enabled"`
-	ActualStatus  int8                  `json:"actualStatus"`
-	StatusMessage string                `json:"statusMessage"`
-	CurrentFps    *float32              `json:"currentFps"` // 实时字段：无上报时为 null
-	ReportedAt    *time.Time            `json:"reportedAt"` // 实时字段：无上报时为 null
+	Enabled       bool                    `json:"enabled"`
+	ActualStatus  int8                    `json:"actualStatus"`
+	StatusMessage string                  `json:"statusMessage"`
+	CurrentFps    *float32                `json:"currentFps"` // 实时字段：无上报时为 null
+	ReportedAt    *time.Time              `json:"reportedAt"` // 实时字段：无上报时为 null
 }
 
 // CreateInstanceInput 创建实例入参。AnalysisFPS<=0 按默认 25 处理（D12）；
 // ParamsJSON 缺省为 {}；Rules 缺省为空；Enabled=true 时创建即启用。
 type CreateInstanceInput struct {
-	CameraID    string                `json:"cameraId" binding:"required"`
-	AlgorithmID string                `json:"algorithmId" binding:"required"`
-	AnalysisFPS int32                 `json:"analysisFps"`
-	ParamsJSON  json.RawMessage       `json:"paramsJson"`
-	Rules       []model.DetectionRule `json:"rules"`
+	CameraID    string                  `json:"cameraId" binding:"required"`
+	AlgorithmID string                  `json:"algorithmId" binding:"required"`
+	AnalysisFPS int32                   `json:"analysisFps"`
+	ParamsJSON  json.RawMessage         `json:"paramsJson"`
+	Rules       []model.DetectionRule   `json:"rules"`
 	MotionGate  *model.MotionGateConfig `json:"motionGate"`
-	Enabled     bool                  `json:"enabled"`
+	Enabled     bool                    `json:"enabled"`
 }
 
 // UpdateInstanceInput 整份提交实例配置（analysisFps + paramsJson + rules，design §4.2）。
@@ -268,9 +268,9 @@ type CreateInstanceInput struct {
 // 注意 required 对切片只要求非 nil：rules 必须显式传（可为空数组 []），
 // 省略该字段会被视为缺失而 400。
 type UpdateInstanceInput struct {
-	AnalysisFPS *int32                `json:"analysisFps" binding:"required"`
-	ParamsJSON  json.RawMessage       `json:"paramsJson" binding:"required"`
-	Rules       []model.DetectionRule `json:"rules" binding:"required"`
+	AnalysisFPS *int32                  `json:"analysisFps" binding:"required"`
+	ParamsJSON  json.RawMessage         `json:"paramsJson" binding:"required"`
+	Rules       []model.DetectionRule   `json:"rules" binding:"required"`
 	MotionGate  *model.MotionGateConfig `json:"motionGate"`
 }
 
@@ -364,11 +364,16 @@ func (s *taskService) ListTasks(ctx context.Context, query *TaskListQuery) (*Tas
 		}
 	}
 
+	taskEnabledMap := make(map[string]bool, len(items))
+	for i := range items {
+		taskEnabledMap[items[i].CameraID] = items[i].DesiredEnabled
+	}
+
 	// 按 camera_id 分组
 	instMap := make(map[string][]*TaskInstanceBrief)
 	for i := range allInstances {
 		inst := &allInstances[i]
-		brief := s.mergeInstanceBrief(inst)
+		brief := s.mergeInstanceBrief(inst, taskEnabledMap[inst.CameraID])
 		instMap[inst.CameraID] = append(instMap[inst.CameraID], brief)
 	}
 
@@ -387,7 +392,7 @@ func (s *taskService) ListTasks(ctx context.Context, query *TaskListQuery) (*Tas
 	return &TaskPageResult{Items: out, Total: total}, nil
 }
 
-func (s *taskService) mergeInstanceBrief(inst *model.AlgorithmInstance) *TaskInstanceBrief {
+func (s *taskService) mergeInstanceBrief(inst *model.AlgorithmInstance, taskDesiredEnabled bool) *TaskInstanceBrief {
 	rules := s.parseStoredRules(inst)
 	brief := &TaskInstanceBrief{
 		InstanceID:    inst.InstanceID,
@@ -406,6 +411,13 @@ func (s *taskService) mergeInstanceBrief(inst *model.AlgorithmInstance) *TaskIns
 			brief.StatusMessage = rt.Message
 		}
 	}
+	if !taskDesiredEnabled {
+		if brief.ActualStatus == model.InstanceStatusUnspecified ||
+			brief.ActualStatus == model.InstanceStatusRunning ||
+			brief.ActualStatus == model.InstanceStatusStarting {
+			brief.ActualStatus = model.InstanceStatusStopped
+		}
+	}
 	return brief
 }
 
@@ -417,6 +429,14 @@ func (s *taskService) mergeTask(task *model.AnalysisTask) *TaskItem {
 		DesiredEnabled: task.DesiredEnabled,
 		ActualStatus:   task.ActualStatus,
 		StatusMessage:  task.StatusMessage,
+	}
+	if !task.DesiredEnabled {
+		if item.ActualStatus == model.TaskStatusUnspecified ||
+			item.ActualStatus == model.TaskStatusRunning ||
+			item.ActualStatus == model.TaskStatusStarting {
+			item.ActualStatus = model.TaskStatusStopped
+		}
+		return item
 	}
 	if rt, ok := s.report.TaskRuntime(task.CameraID); ok {
 		// 有效内存上报是最新运行态；DB 仅保留服务重启后的最后已知状态。
@@ -521,13 +541,27 @@ func (s *taskService) SetTaskEnabled(ctx context.Context, cameraID string, enabl
 	} else {
 		task.ActualStatus = model.TaskStatusStopped
 	}
-	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+	if err := s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
 		if err := r.UpdateTask(ctx, task); err != nil {
 			return err
 		}
 		_, err := r.BumpRevision(ctx)
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+
+	if enabled {
+		s.report.SetTaskRuntimeStatus(cameraID, model.TaskStatusStarting, "")
+	} else {
+		s.report.SetTaskRuntimeStatus(cameraID, model.TaskStatusStopped, "")
+		if insts, err := s.repo.ListInstancesByCameraID(ctx, cameraID); err == nil {
+			for _, inst := range insts {
+				s.report.SetInstanceRuntimeStatus(inst.InstanceID, model.InstanceStatusStopped, "")
+			}
+		}
+	}
+	return nil
 }
 
 func (s *taskService) DeleteTask(ctx context.Context, cameraID string) error {
@@ -535,8 +569,9 @@ func (s *taskService) DeleteTask(ctx context.Context, cameraID string) error {
 	if cameraID == "" {
 		return errno.New(errno.CodeInvalidParam)
 	}
+	insts, _ := s.repo.ListInstancesByCameraID(ctx, cameraID)
 	// 任务软删 + 实例级联软删 + revision bump 必须同事务（D9）。
-	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+	if err := s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
 		deleted, err := r.DeleteTaskCascade(ctx, cameraID)
 		if err != nil {
 			return err
@@ -546,7 +581,15 @@ func (s *taskService) DeleteTask(ctx context.Context, cameraID string) error {
 		}
 		_, err = r.BumpRevision(ctx)
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+
+	s.report.RemoveTaskRuntime(cameraID)
+	for _, inst := range insts {
+		s.report.RemoveInstanceRuntime(inst.InstanceID)
+	}
+	return nil
 }
 
 func (s *taskService) BatchDeleteTasks(ctx context.Context, input *BatchDeleteTaskInput) error {
@@ -569,7 +612,9 @@ func (s *taskService) BatchDeleteTasks(ctx context.Context, input *BatchDeleteTa
 		return errno.New(errno.CodeInvalidParam)
 	}
 
-	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+	insts, _ := s.repo.ListInstancesByCameraIDs(ctx, uniqueIDs)
+
+	if err := s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
 		affected, err := r.DeleteTasksCascade(ctx, uniqueIDs)
 		if err != nil {
 			return err
@@ -579,7 +624,17 @@ func (s *taskService) BatchDeleteTasks(ctx context.Context, input *BatchDeleteTa
 			return err
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	for _, camID := range uniqueIDs {
+		s.report.RemoveTaskRuntime(camID)
+	}
+	for _, inst := range insts {
+		s.report.RemoveInstanceRuntime(inst.InstanceID)
+	}
+	return nil
 }
 
 func (s *taskService) ListAvailableCameras(ctx context.Context) ([]AvailableCameraItem, error) {
@@ -616,7 +671,8 @@ func (s *taskService) ListInstances(ctx context.Context, cameraID string) ([]*In
 	if cameraID == "" {
 		return nil, errno.New(errno.CodeInvalidParam)
 	}
-	if _, err := s.repo.GetTaskByCameraID(ctx, cameraID); err != nil {
+	task, err := s.repo.GetTaskByCameraID(ctx, cameraID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, errno.New(errno.CodeTaskNotFound)
 		}
@@ -628,13 +684,13 @@ func (s *taskService) ListInstances(ctx context.Context, cameraID string) ([]*In
 	}
 	out := make([]*InstanceItem, 0, len(items))
 	for i := range items {
-		out = append(out, s.mergeInstance(&items[i]))
+		out = append(out, s.mergeInstance(&items[i], task.DesiredEnabled))
 	}
 	return out, nil
 }
 
 // mergeInstance 库中配置/状态码为底，合并内存实时字段（D6）。
-func (s *taskService) mergeInstance(inst *model.AlgorithmInstance) *InstanceItem {
+func (s *taskService) mergeInstance(inst *model.AlgorithmInstance, taskDesiredEnabled bool) *InstanceItem {
 	item := &InstanceItem{
 		InstanceID:    inst.InstanceID,
 		CameraID:      inst.CameraID,
@@ -654,6 +710,13 @@ func (s *taskService) mergeInstance(inst *model.AlgorithmInstance) *InstanceItem
 		if rt.Status != 0 {
 			item.ActualStatus = rt.Status
 			item.StatusMessage = rt.Message
+		}
+	}
+	if !taskDesiredEnabled {
+		if item.ActualStatus == model.InstanceStatusUnspecified ||
+			item.ActualStatus == model.InstanceStatusRunning ||
+			item.ActualStatus == model.InstanceStatusStarting {
+			item.ActualStatus = model.InstanceStatusStopped
 		}
 	}
 	return item
@@ -709,7 +772,8 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 		return nil, errno.New(errno.CodeInvalidParam)
 	}
 	// 1. camera_id 对应任务必须存在。
-	if _, err := s.repo.GetTaskByCameraID(ctx, cameraID); err != nil {
+	task, err := s.repo.GetTaskByCameraID(ctx, cameraID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, errno.New(errno.CodeTaskNotFound)
 		}
@@ -791,7 +855,7 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 		zap.String("algorithm_id", algorithmID),
 		zap.Int32("analysis_fps", inst.AnalysisFPS),
 		zap.Bool("enabled", inst.Enabled))
-	return s.mergeInstance(inst), nil
+	return s.mergeInstance(inst, task.DesiredEnabled), nil
 }
 
 func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, input *UpdateInstanceInput) error {
@@ -918,7 +982,7 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 		inst.ActualStatus = model.InstanceStatusStopped
 		inst.StatusMessage = ""
 	}
-	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+	if err := s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
 		if enabled {
 			// 启用前事务内加排他锁校验配额
 			if err := r.LockRevision(ctx); err != nil {
@@ -933,7 +997,16 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 		}
 		_, err := r.BumpRevision(ctx)
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+
+	if enabled {
+		s.report.SetInstanceRuntimeStatus(instanceID, model.InstanceStatusStarting, "")
+	} else {
+		s.report.SetInstanceRuntimeStatus(instanceID, model.InstanceStatusStopped, "")
+	}
+	return nil
 }
 
 func (s *taskService) DeleteInstance(ctx context.Context, instanceID string) error {
@@ -941,7 +1014,7 @@ func (s *taskService) DeleteInstance(ctx context.Context, instanceID string) err
 	if instanceID == "" {
 		return errno.New(errno.CodeInvalidParam)
 	}
-	return s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
+	if err := s.repo.InTx(ctx, func(ctx context.Context, r repository.TaskRepository) error {
 		deleted, err := r.DeleteInstance(ctx, instanceID)
 		if err != nil {
 			return err
@@ -951,7 +1024,12 @@ func (s *taskService) DeleteInstance(ctx context.Context, instanceID string) err
 		}
 		_, err = r.BumpRevision(ctx)
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+
+	s.report.RemoveInstanceRuntime(instanceID)
+	return nil
 }
 
 // ── 校验与配额 ──────────────────────────────────────────────────────────

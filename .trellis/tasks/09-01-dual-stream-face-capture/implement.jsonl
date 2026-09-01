@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "双流媒体边界、回调线程、停止顺序、解码与图像原语契约"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "av_frame_desc、frame_token 和 av_rect 生命周期与布局约束"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "C++ 注释、Mock/fake clock、sanitizer 与测试门禁"}

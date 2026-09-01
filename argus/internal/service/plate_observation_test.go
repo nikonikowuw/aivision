@@ -44,25 +44,30 @@ func TestReportAdapter_AcceptPlateObservationAndIdempotency(t *testing.T) {
 	ctx := context.Background()
 
 	obs := &argusv1.PlateObservation{
-		EventId:        "inst-1-run-1/obs-1",
-		InstanceId:     "inst-1",
-		CameraId:       "cam-1",
-		PlateText:      "粤B99999",
-		NormalizedText: "粤B99999",
-		PlateColor:     "blue",
-		PlateType:      "standard",
-		Confidence:     0.95,
-		OcrConfidence:  0.92,
-		TrackId:        77,
+		EventId:          "inst-1-run-1/obs-1",
+		InstanceId:       "inst-1",
+		CameraId:         "cam-1",
+		AlgorithmId:      "license_plate_recognition",
+		AlgorithmVersion: "1.2.3",
+		PlateText:        "粤B99999",
+		NormalizedText:   "粤B99999",
+		PlateColor:       "blue",
+		PlateType:        "standard",
+		Confidence:       0.95,
+		OcrConfidence:    0.92,
+		TrackId:          77,
 		PlateBbox: &argusv1.BoundingBox{
 			XMin: 0.2, YMin: 0.3, XMax: 0.4, YMax: 0.5,
 		},
 		VehicleBbox: &argusv1.BoundingBox{
 			XMin: 0.1, YMin: 0.1, XMax: 0.8, YMax: 0.9,
 		},
+		ImageId:           "img-pano-1",
 		ImageRelPath:      "2026/08/31/pano-1.jpg",
+		PlateImageId:      "img-plate-1",
 		PlateImageRelPath: "2026/08/31/plate-1.jpg",
 		WallTimeNs:        time.Now().UnixNano(),
+		TimeSynced:        true,
 	}
 
 	// 1. AcceptPlateObservation
@@ -75,13 +80,57 @@ func TestReportAdapter_AcceptPlateObservationAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get by event id: %v", err)
 	}
-	if record.PlateText != "粤B99999" || record.Confidence != 0.95 {
+	if record.PlateText != "粤B99999" || record.Confidence != 0.95 ||
+		record.AlgorithmID != "license_plate_recognition" || record.AlgorithmVersion != "1.2.3" ||
+		!record.TimeSynced || record.ImageID != "img-pano-1" ||
+		record.ImageRelPath != "2026/08/31/pano-1.jpg" || record.PlateImageID != "img-plate-1" ||
+		record.PlateImageRelPath != "2026/08/31/plate-1.jpg" {
 		t.Errorf("unexpected record data: %+v", record)
 	}
 
 	// 2. Idempotency on second delivery with same event_id
 	if err := adapter.AcceptPlateObservation(ctx, obs); err != nil {
 		t.Fatalf("second accept should succeed idempotently: %v", err)
+	}
+}
+
+func TestReportAdapter_ReconcileOrphanImagesIncludesPlateReferences(t *testing.T) {
+	db := newTestPlateDB(t)
+	taskRepo := repository.NewTaskRepository(db)
+	plateRepo := repository.NewPlateObservationRepository(db)
+	adapter := service.NewReportAdapterWithAlarm(taskRepo, nil, plateRepo, zap.NewNop())
+	ctx := context.Background()
+
+	if err := plateRepo.Create(ctx, &model.PlateObservation{
+		EventID:        "plate-event-1",
+		ImageID:        "img-plate-pano",
+		PlateImageID:   "img-plate-crop",
+		PlateText:      "粤B99999",
+		NormalizedText: "粤B99999",
+		ObservedAt:     time.Now(),
+	}); err != nil {
+		t.Fatalf("create plate observation: %v", err)
+	}
+
+	now := time.Now()
+	disposition, err := adapter.ReconcileOrphanImages(ctx, []*argusv1.OrphanImageEntry{
+		{ImageId: "img-plate-pano", CreatedAtNs: now.Add(-10 * time.Minute).UnixNano()},
+		{ImageId: "img-plate-crop", CreatedAtNs: now.Add(-10 * time.Minute).UnixNano()},
+		{ImageId: "img-unreferenced", CreatedAtNs: now.Add(-10 * time.Minute).UnixNano()},
+	})
+	if err != nil {
+		t.Fatalf("reconcile plate orphan images: %v", err)
+	}
+
+	retained := map[string]bool{}
+	for _, id := range disposition.RetainImageIDs {
+		retained[id] = true
+	}
+	if !retained["img-plate-pano"] || !retained["img-plate-crop"] || len(retained) != 2 {
+		t.Errorf("retained plate image IDs = %v", disposition.RetainImageIDs)
+	}
+	if len(disposition.DeleteImageIDs) != 1 || disposition.DeleteImageIDs[0] != "img-unreferenced" {
+		t.Errorf("deleted plate image IDs = %v", disposition.DeleteImageIDs)
 	}
 }
 
@@ -101,17 +150,24 @@ func TestPlateObservationService_ListPageAndDetail(t *testing.T) {
 
 	// Seed Observation
 	_ = plateRepo.Create(ctx, &model.PlateObservation{
-		EventID:        "evt-100",
-		CameraID:       "cam-1",
-		PlateText:      "京A88888",
-		NormalizedText: "京A88888",
-		PlateColor:     "yellow",
-		PlateType:      "double_yellow",
-		Confidence:     0.98,
-		OcrConfidence:  0.95,
-		PanoramaImage:  "2026/08/31/pano.jpg",
-		PlateImage:     "2026/08/31/plate.jpg",
-		ObservedAt:     time.Now(),
+		EventID:           "evt-100",
+		CameraID:          "cam-1",
+		AlgorithmID:       "license_plate_recognition",
+		AlgorithmVersion:  "1.0.0",
+		TimeSynced:        true,
+		PlateText:         "京A88888",
+		NormalizedText:    "京A88888",
+		PlateColor:        "yellow",
+		PlateType:         "double_yellow",
+		Confidence:        0.98,
+		OcrConfidence:     0.95,
+		PanoramaImage:     "2026/08/31/pano.jpg",
+		PlateImage:        "2026/08/31/plate.jpg",
+		ImageID:           "img-pano-100",
+		ImageRelPath:      "2026/08/31/pano.jpg",
+		PlateImageID:      "img-plate-100",
+		PlateImageRelPath: "2026/08/31/plate.jpg",
+		ObservedAt:        time.Now(),
 	})
 
 	// List
@@ -127,6 +183,11 @@ func TestPlateObservationService_ListPageAndDetail(t *testing.T) {
 	if res.Items[0].CameraName != "West Gate HD" {
 		t.Errorf("expected CameraName 'West Gate HD', got %s", res.Items[0].CameraName)
 	}
+	if res.Items[0].AlgorithmID != "license_plate_recognition" ||
+		res.Items[0].AlgorithmVersion != "1.0.0" || !res.Items[0].TimeSynced ||
+		res.Items[0].ImageID != "img-pano-100" || res.Items[0].PlateImageID != "img-plate-100" {
+		t.Errorf("unexpected provenance/image fields: %+v", res.Items[0])
+	}
 	if res.Items[0].PanoramaImageURL != fmt.Sprintf("/api/v1/plate-observations/%d/panorama", res.Items[0].ID) {
 		t.Errorf("unexpected panorama URL: %s", res.Items[0].PanoramaImageURL)
 	}
@@ -136,7 +197,8 @@ func TestPlateObservationService_ListPageAndDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get detail: %v", err)
 	}
-	if detail.PlateText != "京A88888" || detail.PlateColor != "yellow" {
+	if detail.PlateText != "京A88888" || detail.PlateColor != "yellow" ||
+		detail.AlgorithmVersion != "1.0.0" || !detail.TimeSynced {
 		t.Errorf("unexpected detail: %+v", detail)
 	}
 }

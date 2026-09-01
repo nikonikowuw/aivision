@@ -69,6 +69,7 @@ Postprocessor::Postprocessor(const Config& cfg)
 void Postprocessor::update_config(const Config& cfg) {
     config_ = cfg;
     tracker_ = argus::cv::SimpleTracker(1.0f - cfg.iou_threshold, 30);
+    track_states_.clear();
 }
 
 std::vector<PlateObject> Postprocessor::filter_and_nms(
@@ -263,29 +264,62 @@ std::vector<PlateObject> Postprocessor::track_and_vote(
     std::vector<argus::cv::DetectionBox> det_boxes;
     det_boxes.reserve(plates.size());
 
-    for (size_t i = 0; i < plates.size(); ++i) {
-        argus::cv::DetectionBox b{};
-        b.x = plates[i].x_min;
-        b.y = plates[i].y_min;
-        b.w = plates[i].x_max - plates[i].x_min;
-        b.h = plates[i].y_max - plates[i].y_min;
-        b.confidence = plates[i].confidence;
-        b.class_id = 0;
-        det_boxes.push_back(b);
+    for (const auto& plate : plates) {
+        argus::cv::DetectionBox box{};
+        box.x = plate.x_min;
+        box.y = plate.y_min;
+        box.w = plate.x_max - plate.x_min;
+        box.h = plate.y_max - plate.y_min;
+        box.confidence = plate.confidence;
+        box.class_id = 0;
+        det_boxes.push_back(box);
     }
 
-    auto tracked = tracker_.update(det_boxes);
+    const auto tracked = tracker_.update(det_boxes);
     std::vector<PlateObject> result_plates;
     result_plates.reserve(tracked.size());
 
     const int64_t cooldown_ns = static_cast<int64_t>(config_.observation_cooldown_seconds) * 1'000'000'000LL;
+    const int64_t state_retention_ns = std::max<int64_t>(cooldown_ns, 30'000'000'000LL);
+    if (wall_time_ns > 0) {
+        for (auto it = track_states_.begin(); it != track_states_.end();) {
+            if (it->second.last_seen_wall_time_ns > 0 &&
+                wall_time_ns > it->second.last_seen_wall_time_ns &&
+                wall_time_ns - it->second.last_seen_wall_time_ns > state_retention_ns) {
+                it = track_states_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
 
-    for (size_t i = 0; i < tracked.size() && i < plates.size(); ++i) {
-        PlateObject obj = plates[i];
-        obj.track_id = tracked[i].track_id;
+    // SimpleTracker may return detections in tracker order. Re-associate by geometry so
+    // OCR text and color stay attached to the same target when input order changes.
+    std::vector<bool> used(plates.size(), false);
+    for (const auto& tracked_box : tracked) {
+        size_t source_index = plates.size();
+        float best_iou = -1.0f;
+        for (size_t candidate_index = 0; candidate_index < plates.size(); ++candidate_index) {
+            if (used[candidate_index]) continue;
+            const auto& candidate = plates[candidate_index];
+            const float iou = compute_iou_xywh_raw(
+                tracked_box.x, tracked_box.y, tracked_box.w, tracked_box.h,
+                candidate.x_min, candidate.y_min,
+                candidate.x_max - candidate.x_min, candidate.y_max - candidate.y_min);
+            if (iou > best_iou) {
+                best_iou = iou;
+                source_index = candidate_index;
+            }
+        }
+        if (source_index == plates.size() || best_iou < 0.0f) continue;
+        used[source_index] = true;
+
+        PlateObject obj = plates[source_index];
+        obj.track_id = tracked_box.track_id;
 
         auto& state = track_states_[obj.track_id];
         state.track_id = obj.track_id;
+        state.last_seen_wall_time_ns = wall_time_ns;
         state.observed_count++;
         state.highest_score = std::max(state.highest_score, obj.confidence);
         state.highest_ocr_conf = std::max(state.highest_ocr_conf, obj.ocr_confidence);
@@ -296,31 +330,30 @@ std::vector<PlateObject> Postprocessor::track_and_vote(
             state.type_votes[obj.plate_type]++;
         }
 
-        // Majority voting
         std::string best_text = obj.plate_text;
         int max_text_votes = 0;
-        for (const auto& [txt, votes] : state.text_votes) {
+        for (const auto& [text, votes] : state.text_votes) {
             if (votes > max_text_votes) {
                 max_text_votes = votes;
-                best_text = txt;
+                best_text = text;
             }
         }
 
         std::string best_color = obj.plate_color;
         int max_color_votes = 0;
-        for (const auto& [col, votes] : state.color_votes) {
+        for (const auto& [color, votes] : state.color_votes) {
             if (votes > max_color_votes) {
                 max_color_votes = votes;
-                best_color = col;
+                best_color = color;
             }
         }
 
         std::string best_type = obj.plate_type;
         int max_type_votes = 0;
-        for (const auto& [typ, votes] : state.type_votes) {
+        for (const auto& [type, votes] : state.type_votes) {
             if (votes > max_type_votes) {
                 max_type_votes = votes;
-                best_type = typ;
+                best_type = type;
             }
         }
 
@@ -328,11 +361,13 @@ std::vector<PlateObject> Postprocessor::track_and_vote(
         obj.normalized_text = best_text;
         obj.plate_color = best_color;
         obj.plate_type = best_type;
+        obj.ocr_confidence = std::max(obj.ocr_confidence, state.highest_ocr_conf);
 
-        // 判断是否触发上报
-        bool mature = state.observed_count >= config_.voting_window_frames;
-        bool cooldown_expired = (wall_time_ns - state.last_reported_wall_time_ns) >= cooldown_ns;
-        bool ocr_valid = (state.highest_ocr_conf >= config_.ocr_confidence_threshold) && (best_text.size() >= 5);
+        const bool mature = state.observed_count >= config_.voting_window_frames;
+        const bool cooldown_expired =
+            (wall_time_ns - state.last_reported_wall_time_ns) >= cooldown_ns;
+        const bool ocr_valid = (state.highest_ocr_conf >= config_.ocr_confidence_threshold) &&
+                               (best_text.size() >= 5);
 
         if (ocr_valid && (!state.has_reported ? mature : cooldown_expired)) {
             obj.should_report = true;
@@ -340,7 +375,7 @@ std::vector<PlateObject> Postprocessor::track_and_vote(
             state.last_reported_wall_time_ns = wall_time_ns;
         }
 
-        result_plates.push_back(obj);
+        result_plates.push_back(std::move(obj));
     }
 
     return result_plates;
@@ -351,6 +386,7 @@ std::string Postprocessor::build_result_json(uint64_t frame_id, const std::vecto
     ss << std::fixed << std::setprecision(4);
 
     ss << "{\n";
+    ss << "  \"schema_version\": 1,\n";
     ss << "  \"frame_id\": " << frame_id << ",\n";
     ss << "  \"algorithm_type\": \"license_plate_recognition\",\n";
     ss << "  \"plates\": [";
@@ -376,18 +412,10 @@ std::string Postprocessor::build_result_json(uint64_t frame_id, const std::vecto
         ss << "      \"confidence\": " << p.confidence << ",\n";
         ss << "      \"ocr_confidence\": " << p.ocr_confidence << ",\n";
         ss << "      \"track_id\": " << p.track_id << ",\n";
-        ss << "      \"bbox\": {\n";
-        ss << "        \"x_min\": " << p.x_min << ",\n";
-        ss << "        \"y_min\": " << p.y_min << ",\n";
-        ss << "        \"x_max\": " << p.x_max << ",\n";
-        ss << "        \"y_max\": " << p.y_max << "\n";
-        ss << "      },\n";
-        ss << "      \"vehicle_bbox\": {\n";
-        ss << "        \"x_min\": " << vx_min << ",\n";
-        ss << "        \"y_min\": " << vy_min << ",\n";
-        ss << "        \"x_max\": " << vx_max << ",\n";
-        ss << "        \"y_max\": " << vy_max << "\n";
-        ss << "      }\n";
+        ss << "      \"bbox\": [" << p.x_min << ", " << p.y_min << ", "
+           << bw << ", " << bh << "],\n";
+        ss << "      \"vehicle_bbox\": [" << vx_min << ", " << vy_min << ", "
+           << (vx_max - vx_min) << ", " << (vy_max - vy_min) << "]\n";
         ss << "    }";
     }
 

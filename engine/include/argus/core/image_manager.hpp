@@ -14,6 +14,7 @@
 #include <vector>
 #include <mutex>
 #include <filesystem>
+#include <functional>
 #include <cstdint>
 #include <unordered_map>
 #include "argus/types.h"
@@ -48,7 +49,7 @@ class ImageManager {
 public:
     static ImageManager& instance();
 
-    ImageManager();
+    explicit ImageManager(std::function<int64_t()> now_provider = {});
     ~ImageManager();
 
     /**
@@ -98,6 +99,11 @@ public:
     std::vector<std::pair<std::string, ImageDeleteStatus>> reconcile_images(const std::vector<std::string>& retain_image_ids);
 
     /**
+     * @brief 返回需要继续向控制面对账的未上报 Catalog 记录
+     */
+    std::vector<ImageRecord> list_unreported_images();
+
+    /**
      * @brief 扫描并获取未在数据库中登记的孤儿图片列表
      */
     std::vector<std::string> scan_orphan_images(const std::vector<std::string>& active_db_image_ids);
@@ -112,6 +118,7 @@ private:
 
     std::string base_dir_ = "var/images";
     std::shared_ptr<platform::IImageProcessor> processor_;
+    std::function<int64_t()> now_provider_;
     std::unordered_map<std::string, ImageRecord> catalog_;
     std::mutex mutex_;
 };

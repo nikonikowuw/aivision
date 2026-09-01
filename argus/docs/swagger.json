@@ -1463,6 +1463,293 @@
                 }
             }
         },
+        "/api/record/plates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "支持按时间区间、摄像头、车牌文本、颜色、类型和置信度组合分页查询",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "车牌记录"
+                ],
+                "summary": "分页查询车牌过车记录",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "开始时间",
+                        "name": "startTime",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束时间",
+                        "name": "endTime",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "摄像头ID",
+                        "name": "cameraId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "车牌文本",
+                        "name": "plateText",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "车牌颜色",
+                        "name": "plateColor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "车牌类型",
+                        "name": "plateType",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "最低检测置信度",
+                        "name": "minConfidence",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "最高检测置信度",
+                        "name": "maxConfidence",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "最低 OCR 置信度",
+                        "name": "minOcrConfidence",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "车牌记录分页数据",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/argus_app_internal_service.PlateObservationPageResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/plates/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取单条车牌过车记录，包含算法来源、同步状态及全景/特写图片信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "车牌记录"
+                ],
+                "summary": "查询车牌过车详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "车牌记录ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "车牌详情数据",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/argus_app_internal_service.PlateObservationItem"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "记录不存在",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/plates/{id}/panorama": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "读取指定车牌过车记录关联的全景 JPEG 图片",
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "车牌记录"
+                ],
+                "summary": "读取车牌过车全景图",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "车牌记录ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "全景图片文件流",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "图片不存在",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/plates/{id}/plate": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "读取指定车牌过车记录关联的车牌特写 JPEG 图片",
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "车牌记录"
+                ],
+                "summary": "读取车牌特写图",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "车牌记录ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "车牌特写图片文件流",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "图片不存在",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/role": {
             "post": {
                 "security": [
@@ -3368,6 +3655,109 @@
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.PlateObservationItem": {
+            "type": "object",
+            "properties": {
+                "algorithmId": {
+                    "type": "string"
+                },
+                "algorithmVersion": {
+                    "type": "string"
+                },
+                "bbox": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "cameraId": {
+                    "type": "string"
+                },
+                "cameraName": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "eventId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "imageId": {
+                    "type": "string"
+                },
+                "imageRelPath": {
+                    "type": "string"
+                },
+                "instanceId": {
+                    "type": "string"
+                },
+                "normalizedText": {
+                    "type": "string"
+                },
+                "observedAt": {
+                    "type": "string"
+                },
+                "ocrConfidence": {
+                    "type": "number"
+                },
+                "panoramaImageUrl": {
+                    "type": "string"
+                },
+                "plateColor": {
+                    "type": "string"
+                },
+                "plateImageId": {
+                    "type": "string"
+                },
+                "plateImageRelPath": {
+                    "type": "string"
+                },
+                "plateImageUrl": {
+                    "type": "string"
+                },
+                "plateText": {
+                    "type": "string"
+                },
+                "plateType": {
+                    "type": "string"
+                },
+                "taskId": {
+                    "type": "string"
+                },
+                "timeSynced": {
+                    "type": "boolean"
+                },
+                "trackId": {
+                    "type": "integer"
+                },
+                "vehicleBBox": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                }
+            }
+        },
+        "argus_app_internal_service.PlateObservationPageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_service.PlateObservationItem"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

@@ -41,6 +41,7 @@ struct TrackObservationState {
     float highest_ocr_conf = 0.0f;
     int observed_count = 0;
     int64_t last_reported_wall_time_ns = 0;
+    int64_t last_seen_wall_time_ns = 0;
     bool has_reported = false;
 };
 

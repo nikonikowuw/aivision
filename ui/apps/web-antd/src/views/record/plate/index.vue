@@ -356,6 +356,15 @@ function getPlateColorLabel(color?: string): string {
               :type="currentDetail.plateType"
             />
           </DescriptionsItem>
+          <DescriptionsItem :label="$t('record.plate.detail.normalizedText')">
+            {{ currentDetail.normalizedText || '-' }}
+          </DescriptionsItem>
+          <DescriptionsItem :label="$t('record.plate.detail.algorithm')">
+            {{ currentDetail.algorithmId || '-' }}
+          </DescriptionsItem>
+          <DescriptionsItem :label="$t('record.plate.detail.algorithmVersion')">
+            {{ currentDetail.algorithmVersion || '-' }}
+          </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.plateColor')">
             {{ getPlateColorLabel(currentDetail.plateColor) }}
           </DescriptionsItem>
@@ -374,6 +383,15 @@ function getPlateColorLabel(color?: string): string {
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.trackId')">
             {{ currentDetail.trackId ? `#${currentDetail.trackId}` : '-' }}
+          </DescriptionsItem>
+          <DescriptionsItem :label="$t('record.plate.detail.timeSynced')">
+            <Tag :color="currentDetail.timeSynced ? 'green' : 'orange'">
+              {{
+                currentDetail.timeSynced
+                  ? $t('record.plate.detail.synced')
+                  : $t('record.plate.detail.notSynced')
+              }}
+            </Tag>
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.camera')">
             {{ currentDetail.cameraName || currentDetail.cameraId }}

@@ -33,25 +33,32 @@ type PlateObservationQuery struct {
 
 // PlateObservationItem 车牌抓拍过车记录前端返回视图。
 type PlateObservationItem struct {
-	ID               uint64    `json:"id"`
-	EventID          string    `json:"eventId"`
-	TaskID           string    `json:"taskId"`
-	InstanceID       string    `json:"instanceId"`
-	CameraID         string    `json:"cameraId"`
-	CameraName       string    `json:"cameraName"`
-	PlateText        string    `json:"plateText"`
-	NormalizedText   string    `json:"normalizedText"`
-	PlateColor       string    `json:"plateColor"`
-	PlateType        string    `json:"plateType"`
-	Confidence       float32   `json:"confidence"`
-	OcrConfidence    float32   `json:"ocrConfidence"`
-	TrackID          int64     `json:"trackId"`
-	BBox             []float32 `json:"bbox"`
-	VehicleBBox      []float32 `json:"vehicleBBox"`
-	PanoramaImageURL string    `json:"panoramaImageUrl"`
-	PlateImageURL    string    `json:"plateImageUrl"`
-	ObservedAt       time.Time `json:"observedAt"`
-	CreatedAt        time.Time `json:"createdAt"`
+	ID                uint64    `json:"id"`
+	EventID           string    `json:"eventId"`
+	TaskID            string    `json:"taskId"`
+	InstanceID        string    `json:"instanceId"`
+	CameraID          string    `json:"cameraId"`
+	CameraName        string    `json:"cameraName"`
+	AlgorithmID       string    `json:"algorithmId"`
+	AlgorithmVersion  string    `json:"algorithmVersion"`
+	TimeSynced        bool      `json:"timeSynced"`
+	PlateText         string    `json:"plateText"`
+	NormalizedText    string    `json:"normalizedText"`
+	PlateColor        string    `json:"plateColor"`
+	PlateType         string    `json:"plateType"`
+	Confidence        float32   `json:"confidence"`
+	OcrConfidence     float32   `json:"ocrConfidence"`
+	TrackID           int64     `json:"trackId"`
+	BBox              []float32 `json:"bbox"`
+	VehicleBBox       []float32 `json:"vehicleBBox"`
+	PanoramaImageURL  string    `json:"panoramaImageUrl"`
+	PlateImageURL     string    `json:"plateImageUrl"`
+	ImageID           string    `json:"imageId"`
+	ImageRelPath      string    `json:"imageRelPath"`
+	PlateImageID      string    `json:"plateImageId"`
+	PlateImageRelPath string    `json:"plateImageRelPath"`
+	ObservedAt        time.Time `json:"observedAt"`
+	CreatedAt         time.Time `json:"createdAt"`
 }
 
 // PlateObservationPageResult 分页查询结果。
@@ -160,25 +167,32 @@ func (s *plateObservationService) ListPage(ctx context.Context, q *PlateObservat
 		}
 
 		items = append(items, PlateObservationItem{
-			ID:               r.ID,
-			EventID:          r.EventID,
-			TaskID:           r.TaskID,
-			InstanceID:       r.InstanceID,
-			CameraID:         r.CameraID,
-			CameraName:       camName,
-			PlateText:        r.PlateText,
-			NormalizedText:   r.NormalizedText,
-			PlateColor:       r.PlateColor,
-			PlateType:        r.PlateType,
-			Confidence:       r.Confidence,
-			OcrConfidence:    r.OcrConfidence,
-			TrackID:          r.TrackID,
-			BBox:             bbox,
-			VehicleBBox:      vehicleBBox,
-			PanoramaImageURL: panoURL,
-			PlateImageURL:    plateURL,
-			ObservedAt:       r.ObservedAt,
-			CreatedAt:        r.CreatedAt,
+			ID:                r.ID,
+			EventID:           r.EventID,
+			TaskID:            r.TaskID,
+			InstanceID:        r.InstanceID,
+			CameraID:          r.CameraID,
+			CameraName:        camName,
+			AlgorithmID:       r.AlgorithmID,
+			AlgorithmVersion:  r.AlgorithmVersion,
+			TimeSynced:        r.TimeSynced,
+			PlateText:         r.PlateText,
+			NormalizedText:    r.NormalizedText,
+			PlateColor:        r.PlateColor,
+			PlateType:         r.PlateType,
+			Confidence:        r.Confidence,
+			OcrConfidence:     r.OcrConfidence,
+			TrackID:           r.TrackID,
+			BBox:              bbox,
+			VehicleBBox:       vehicleBBox,
+			PanoramaImageURL:  panoURL,
+			PlateImageURL:     plateURL,
+			ImageID:           r.ImageID,
+			ImageRelPath:      r.ImageRelPath,
+			PlateImageID:      r.PlateImageID,
+			PlateImageRelPath: r.PlateImageRelPath,
+			ObservedAt:        r.ObservedAt,
+			CreatedAt:         r.CreatedAt,
 		})
 	}
 
@@ -223,25 +237,32 @@ func (s *plateObservationService) GetDetail(ctx context.Context, id uint64) (*Pl
 	}
 
 	return &PlateObservationItem{
-		ID:               record.ID,
-		EventID:          record.EventID,
-		TaskID:           record.TaskID,
-		InstanceID:       record.InstanceID,
-		CameraID:         record.CameraID,
-		CameraName:       camName,
-		PlateText:        record.PlateText,
-		NormalizedText:   record.NormalizedText,
-		PlateColor:       record.PlateColor,
-		PlateType:        record.PlateType,
-		Confidence:       record.Confidence,
-		OcrConfidence:    record.OcrConfidence,
-		TrackID:          record.TrackID,
-		BBox:             bbox,
-		VehicleBBox:      vehicleBBox,
-		PanoramaImageURL: panoURL,
-		PlateImageURL:    plateURL,
-		ObservedAt:       record.ObservedAt,
-		CreatedAt:        record.CreatedAt,
+		ID:                record.ID,
+		EventID:           record.EventID,
+		TaskID:            record.TaskID,
+		InstanceID:        record.InstanceID,
+		CameraID:          record.CameraID,
+		CameraName:        camName,
+		AlgorithmID:       record.AlgorithmID,
+		AlgorithmVersion:  record.AlgorithmVersion,
+		TimeSynced:        record.TimeSynced,
+		PlateText:         record.PlateText,
+		NormalizedText:    record.NormalizedText,
+		PlateColor:        record.PlateColor,
+		PlateType:         record.PlateType,
+		Confidence:        record.Confidence,
+		OcrConfidence:     record.OcrConfidence,
+		TrackID:           record.TrackID,
+		BBox:              bbox,
+		VehicleBBox:       vehicleBBox,
+		PanoramaImageURL:  panoURL,
+		PlateImageURL:     plateURL,
+		ImageID:           record.ImageID,
+		ImageRelPath:      record.ImageRelPath,
+		PlateImageID:      record.PlateImageID,
+		PlateImageRelPath: record.PlateImageRelPath,
+		ObservedAt:        record.ObservedAt,
+		CreatedAt:         record.CreatedAt,
 	}, nil
 }
 

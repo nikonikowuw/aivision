@@ -6,8 +6,11 @@
 #include <sstream>
 #include <chrono>
 #include <cmath>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <array>
 #include <dlfcn.h>
 #import <CoreVideo/CoreVideo.h>
 #import <Accelerate/Accelerate.h>
@@ -72,65 +75,63 @@ void draw_rect(uint8_t* img, int w, int h, int x, int y, int bw, int bh, uint8_t
     draw_line(img, w, h, x1, y2, x1, y1, r, g, b, thickness);
 }
 
+bool parse_bbox(const std::string& json, size_t search_from, const char* field,
+                std::array<float, 4>& box, size_t& next_position) {
+    const std::string key = "\"" + std::string(field) + "\"";
+    const size_t key_position = json.find(key, search_from);
+    if (key_position == std::string::npos) return false;
+    const size_t colon = json.find(':', key_position + key.size());
+    const size_t array_start = colon == std::string::npos ? std::string::npos : json.find('[', colon + 1);
+    if (array_start == std::string::npos) return false;
+
+    size_t cursor = array_start + 1;
+    for (size_t index = 0; index < box.size(); ++index) {
+        while (cursor < json.size() &&
+               (std::isspace(static_cast<unsigned char>(json[cursor])) || json[cursor] == ',')) {
+            ++cursor;
+        }
+        if (cursor >= json.size()) return false;
+        char* number_end = nullptr;
+        const float value = std::strtof(json.c_str() + cursor, &number_end);
+        if (number_end == json.c_str() + cursor || !std::isfinite(value) || value < 0.0f || value > 1.0f) {
+            return false;
+        }
+        box[index] = value;
+        cursor = static_cast<size_t>(number_end - json.c_str());
+    }
+    while (cursor < json.size() && std::isspace(static_cast<unsigned char>(json[cursor]))) ++cursor;
+    if (cursor >= json.size() || json[cursor] != ']') return false;
+    next_position = cursor + 1;
+    return box[2] > 0.0f && box[3] > 0.0f && box[0] + box[2] <= 1.0f && box[1] + box[3] <= 1.0f;
+}
+
 bool render_results_to_image(const std::string& input_path, const std::string& output_path, const std::string& json_str) {
     int w = 0, h = 0, ch = 0;
     uint8_t* img = stbi_load(input_path.c_str(), &w, &h, &ch, 3);
     if (!img) return false;
 
-    // Parse plate boxes from json
-    size_t pos = 0;
-    while ((pos = json_str.find("\"bbox\": {", pos)) != std::string::npos || (pos = json_str.find("\"bbox\":{", pos)) != std::string::npos) {
-        float x_min = 0, y_min = 0, x_max = 0, y_max = 0;
-        auto get_f = [&](std::string_view key, float& out_val) {
-            size_t k = json_str.find(key, pos);
-            if (k != std::string::npos && k < json_str.find('}', pos)) {
-                size_t c = json_str.find(':', k);
-                if (c != std::string::npos) {
-                    out_val = std::stof(json_str.substr(c + 1));
-                }
-            }
-        };
-        get_f("\"x_min\":", x_min);
-        get_f("\"y_min\":", y_min);
-        get_f("\"x_max\":", x_max);
-        get_f("\"y_max\":", y_max);
+    size_t search_from = 0;
+    while (search_from < json_str.size()) {
+        std::array<float, 4> plate_box{};
+        size_t bbox_end = 0;
+        if (!parse_bbox(json_str, search_from, "bbox", plate_box, bbox_end)) break;
+        draw_rect(img, w, h,
+                  static_cast<int>(plate_box[0] * w), static_cast<int>(plate_box[1] * h),
+                  static_cast<int>(plate_box[2] * w), static_cast<int>(plate_box[3] * h),
+                  0, 255, 0, 3);
 
-        int bx = static_cast<int>(x_min * w);
-        int by = static_cast<int>(y_min * h);
-        int bw = static_cast<int>((x_max - x_min) * w);
-        int bh = static_cast<int>((y_max - y_min) * h);
-        draw_rect(img, w, h, bx, by, bw, bh, 0, 255, 0, 3); // Green plate box
-
-        // Check vehicle box
-        size_t vpos = json_str.find("\"vehicle_bbox\": {", pos);
-        if (vpos == std::string::npos) vpos = json_str.find("\"vehicle_bbox\":{", pos);
-        if (vpos != std::string::npos && vpos < pos + 400) {
-            float vx_min = 0, vy_min = 0, vx_max = 0, vy_max = 0;
-            auto get_vf = [&](std::string_view key, float& out_val) {
-                size_t k = json_str.find(key, vpos);
-                if (k != std::string::npos && k < json_str.find('}', vpos)) {
-                    size_t c = json_str.find(':', k);
-                    if (c != std::string::npos) {
-                        out_val = std::stof(json_str.substr(c + 1));
-                    }
-                }
-            };
-            get_vf("\"x_min\":", vx_min);
-            get_vf("\"y_min\":", vy_min);
-            get_vf("\"x_max\":", vx_max);
-            get_vf("\"y_max\":", vy_max);
-
-            int vbx = static_cast<int>(vx_min * w);
-            int vby = static_cast<int>(vy_min * h);
-            int vbw = static_cast<int>((vx_max - vx_min) * w);
-            int vbh = static_cast<int>((vy_max - vy_min) * h);
-            draw_rect(img, w, h, vbx, vby, vbw, vbh, 0, 160, 255, 2); // Blue vehicle box
+        std::array<float, 4> vehicle_box{};
+        size_t vehicle_end = 0;
+        if (parse_bbox(json_str, bbox_end, "vehicle_bbox", vehicle_box, vehicle_end)) {
+            draw_rect(img, w, h,
+                      static_cast<int>(vehicle_box[0] * w), static_cast<int>(vehicle_box[1] * h),
+                      static_cast<int>(vehicle_box[2] * w), static_cast<int>(vehicle_box[3] * h),
+                      0, 160, 255, 2);
         }
-
-        pos += 8;
+        search_from = bbox_end;
     }
 
-    int ret = stbi_write_jpg(output_path.c_str(), w, h, 3, img, 92);
+    const int ret = stbi_write_jpg(output_path.c_str(), w, h, 3, img, 92);
     stbi_image_free(img);
     return ret != 0;
 }
@@ -344,6 +345,7 @@ int main(int argc, char** argv) {
     frame.size = sizeof(av_frame_desc);
     frame.api_version = AV_ALGO_API_VERSION;
     frame.memory_type = AV_MEM_HOST;
+    frame.frame_token = pixel_buffer;
     frame.opaque_kind = AV_OPAQUE_CVPIXELBUFFER;
     frame.opaque = pixel_buffer;
     frame.pixel_format = AV_PIX_NV12;

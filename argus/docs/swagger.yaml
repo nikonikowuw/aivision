@@ -511,6 +511,74 @@ definitions:
       username:
         type: string
     type: object
+  argus_app_internal_service.PlateObservationItem:
+    properties:
+      algorithmId:
+        type: string
+      algorithmVersion:
+        type: string
+      bbox:
+        items:
+          type: number
+        type: array
+      cameraId:
+        type: string
+      cameraName:
+        type: string
+      confidence:
+        type: number
+      createdAt:
+        type: string
+      eventId:
+        type: string
+      id:
+        type: integer
+      imageId:
+        type: string
+      imageRelPath:
+        type: string
+      instanceId:
+        type: string
+      normalizedText:
+        type: string
+      observedAt:
+        type: string
+      ocrConfidence:
+        type: number
+      panoramaImageUrl:
+        type: string
+      plateColor:
+        type: string
+      plateImageId:
+        type: string
+      plateImageRelPath:
+        type: string
+      plateImageUrl:
+        type: string
+      plateText:
+        type: string
+      plateType:
+        type: string
+      taskId:
+        type: string
+      timeSynced:
+        type: boolean
+      trackId:
+        type: integer
+      vehicleBBox:
+        items:
+          type: number
+        type: array
+    type: object
+  argus_app_internal_service.PlateObservationPageResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/argus_app_internal_service.PlateObservationItem'
+        type: array
+      total:
+        type: integer
+    type: object
   argus_app_internal_service.ProbeAttempt:
     properties:
       elapsedMs:
@@ -2039,6 +2107,185 @@ paths:
       summary: 受控读取告警图片
       tags:
       - 告警记录
+  /api/record/plates:
+    get:
+      description: 支持按时间区间、摄像头、车牌文本、颜色、类型和置信度组合分页查询
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数
+        in: query
+        name: pageSize
+        type: integer
+      - description: 开始时间
+        in: query
+        name: startTime
+        type: string
+      - description: 结束时间
+        in: query
+        name: endTime
+        type: string
+      - description: 摄像头ID
+        in: query
+        name: cameraId
+        type: string
+      - description: 车牌文本
+        in: query
+        name: plateText
+        type: string
+      - description: 车牌颜色
+        in: query
+        name: plateColor
+        type: string
+      - description: 车牌类型
+        in: query
+        name: plateType
+        type: string
+      - description: 最低检测置信度
+        in: query
+        name: minConfidence
+        type: number
+      - description: 最高检测置信度
+        in: query
+        name: maxConfidence
+        type: number
+      - description: 最低 OCR 置信度
+        in: query
+        name: minOcrConfidence
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 车牌记录分页数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/argus_app_internal_service.PlateObservationPageResult'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 分页查询车牌过车记录
+      tags:
+      - 车牌记录
+  /api/record/plates/{id}:
+    get:
+      description: 获取单条车牌过车记录，包含算法来源、同步状态及全景/特写图片信息
+      parameters:
+      - description: 车牌记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 车牌详情数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/argus_app_internal_service.PlateObservationItem'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: 记录不存在
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 查询车牌过车详情
+      tags:
+      - 车牌记录
+  /api/record/plates/{id}/panorama:
+    get:
+      description: 读取指定车牌过车记录关联的全景 JPEG 图片
+      parameters:
+      - description: 车牌记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: 全景图片文件流
+          schema:
+            type: file
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: 图片不存在
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 读取车牌过车全景图
+      tags:
+      - 车牌记录
+  /api/record/plates/{id}/plate:
+    get:
+      description: 读取指定车牌过车记录关联的车牌特写 JPEG 图片
+      parameters:
+      - description: 车牌记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: 车牌特写图片文件流
+          schema:
+            type: file
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: 图片不存在
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 读取车牌特写图
+      tags:
+      - 车牌记录
   /api/role:
     post:
       consumes:

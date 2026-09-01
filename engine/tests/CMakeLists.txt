@@ -42,6 +42,31 @@ target_include_directories(mock_algo_fixture PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../sdk/include>
 )
 
+set(MOCK_LPR_FIXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures/packages/mock_lpr_pkg")
+set(MOCK_LPR_FIXTURE_LIB_DIR "${MOCK_LPR_FIXTURE_DIR}/lib")
+add_library(mock_lpr_algo_fixture SHARED
+    fixtures/packages/mock_lpr_pkg/mock_lpr_algo.c
+)
+set_target_properties(mock_lpr_algo_fixture PROPERTIES
+    PREFIX "lib"
+    OUTPUT_NAME "mock-lpr"
+    SUFFIX ".dylib"
+    LIBRARY_OUTPUT_DIRECTORY "${MOCK_LPR_FIXTURE_LIB_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${MOCK_LPR_FIXTURE_LIB_DIR}"
+    ARCHIVE_OUTPUT_DIRECTORY "${MOCK_LPR_FIXTURE_LIB_DIR}"
+    C_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+)
+add_custom_command(TARGET mock_lpr_algo_fixture POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${MOCK_LPR_FIXTURE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/packages/mock_lpr_pkg/manifest.json" "${MOCK_LPR_FIXTURE_DIR}/manifest.json"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/packages/mock_lpr_pkg/config.schema.json" "${MOCK_LPR_FIXTURE_DIR}/config.schema.json"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/packages/mock_pkg/testimage.jpg" "${MOCK_LPR_FIXTURE_DIR}/testimage.jpg"
+)
+target_include_directories(mock_lpr_algo_fixture PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../sdk/include>
+)
+
 # Unit tests
 add_executable(unit_tests
     unit/test_main.cpp
@@ -68,6 +93,7 @@ target_include_directories(unit_tests PRIVATE
 )
 target_compile_definitions(unit_tests PRIVATE
     ARGUS_FIXTURE_PACKAGE_DIR="${MOCK_FIXTURE_DIR}"
+    ARGUS_LPR_FIXTURE_PACKAGE_DIR="${MOCK_LPR_FIXTURE_DIR}"
     ARGUS_PACKAGE_VALIDATOR_PATH="${CMAKE_BINARY_DIR}/package_validator"
     ARGUS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
     ARGUS_BINARY_DIR="${CMAKE_BINARY_DIR}"
@@ -99,7 +125,7 @@ elseif(PLATFORM_TARGET STREQUAL "mock")
         ARGUS_RUN_PACKAGE_RPC_TEST=1
     )
 endif()
-add_dependencies(unit_tests mock_algo_fixture)
+add_dependencies(unit_tests mock_algo_fixture mock_lpr_algo_fixture)
 add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 if(ENGINE_ENABLE_TSAN)
     # Keep real-media coverage; suppress only known ZLToolKit initialization races.

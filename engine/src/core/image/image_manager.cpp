@@ -92,7 +92,15 @@ ImageManager& ImageManager::instance() {
     return inst;
 }
 
-ImageManager::ImageManager() = default;
+ImageManager::ImageManager(std::function<int64_t()> now_provider)
+    : now_provider_(std::move(now_provider)) {
+    if (!now_provider_) {
+        now_provider_ = [] {
+            return std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        };
+    }
+}
 ImageManager::~ImageManager() = default;
 
 void ImageManager::init(const std::string& base_dir, std::shared_ptr<platform::IImageProcessor> processor) {
@@ -226,15 +234,31 @@ av_status ImageManager::save_detection_image(
     processor_->encode_thumbnail_jpeg(frame, 360, 70, thumb_jpeg_data);
 
     // 2. 生成安全 image_id 并按 UTC 日期构建存储子目录（如 2025-05-18/img-xxx.jpg）
-    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    const std::string image_id = make_image_id(capture_id, now_ns);
-    const std::string relative_path = date_directory(now_ns) + "/" + image_id + ".jpg";
-    const std::string thumb_rel_path = date_directory(now_ns) + "/" + image_id + "_thumb.jpg";
-    const fs::path final_path = fs::path(base_dir_) / relative_path;
-    const fs::path thumb_final_path = fs::path(base_dir_) / thumb_rel_path;
-    const fs::path temporary = fs::path(base_dir_) / ".tmp" / (image_id + ".jpg.part");
-    const fs::path thumb_temporary = fs::path(base_dir_) / ".tmp" / (image_id + "_thumb.jpg.part");
+    const int64_t now_ns = now_provider_();
+    const std::string date = date_directory(now_ns);
+    const std::string image_id_base = make_image_id(capture_id, now_ns);
+    std::string image_id = image_id_base;
+    fs::path final_path;
+    fs::path thumb_final_path;
+    fs::path temporary;
+    fs::path thumb_temporary;
+    for (uint64_t collision_index = 0;; ++collision_index) {
+        final_path = fs::path(base_dir_) / date / (image_id + ".jpg");
+        thumb_final_path = fs::path(base_dir_) / date / (image_id + "_thumb.jpg");
+        temporary = fs::path(base_dir_) / ".tmp" / (image_id + ".jpg.part");
+        thumb_temporary = fs::path(base_dir_) / ".tmp" / (image_id + "_thumb.jpg.part");
+
+        std::error_code collision_error;
+        const bool occupied = catalog_.find(image_id) != catalog_.end() ||
+                              fs::exists(final_path, collision_error) ||
+                              fs::exists(thumb_final_path, collision_error) ||
+                              fs::exists(temporary, collision_error) ||
+                              fs::exists(thumb_temporary, collision_error);
+        if (collision_error) return AV_ERR_INTERNAL;
+        if (!occupied) break;
+        image_id = image_id_base + "-" + std::to_string(collision_index + 1);
+    }
+    const std::string relative_path = date + "/" + image_id + ".jpg";
 
     // 3. 校验路径安全性，防止目录穿越
     std::error_code ec;
@@ -354,6 +378,17 @@ std::vector<std::pair<std::string, ImageDeleteStatus>> ImageManager::reconcile_i
         results.emplace_back(image_id, delete_image_with_status(image_id));
     }
     return results;
+}
+
+std::vector<ImageRecord> ImageManager::list_unreported_images() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<ImageRecord> records;
+    records.reserve(catalog_.size());
+    for (const auto& [image_id, record] : catalog_) {
+        (void)image_id;
+        if (record.report_status == "unreported") records.push_back(record);
+    }
+    return records;
 }
 
 std::vector<std::string> ImageManager::scan_orphan_images(const std::vector<std::string>& active_db_image_ids) {

@@ -138,6 +138,7 @@ extern "C" bool argus_validator_create_test_frame(const char* package_root,
         std::chrono::system_clock::now().time_since_epoch()).count();
     out_frame->pts_ns = out_frame->wall_time_ns;
     out_frame->opaque = nv12;
+    out_frame->frame_token = nv12;
     out_frame->opaque_kind = AV_OPAQUE_CVPIXELBUFFER;
     out_frame->memory_type = AV_MEM_PLATFORM_SURFACE;
     out_frame->pixel_format = AV_PIX_NV12;

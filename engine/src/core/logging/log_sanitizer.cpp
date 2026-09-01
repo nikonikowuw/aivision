@@ -34,7 +34,7 @@ const std::unordered_set<std::string_view> ALLOWED_FIELDS = {
     "keyframe_ready", "decoder_waiting_for_output", "instance_count", "total_decoded_frames",
     "capture_queued_fps", "capture_processed_fps", "capture_queue_depth", "capture_queue_drops",
     "capture_retain_failures", "capture_image_failures", "capture_report_failures", "capture_mark_failures",
-    "capture_processing_failures"
+    "capture_processing_failures", "invalid_result_count", "result_kind", "result_image_count", "reason"
 };
 
 constexpr std::array<std::string_view, 6> SENSITIVE_PATTERNS = {

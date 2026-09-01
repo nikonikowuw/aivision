@@ -5,9 +5,74 @@
 
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include "argus/core/image_manager.hpp"
 #include "argus/platform/mock_platform.hpp"
 
+
+TEST(ImageManagerTest, AppendsSuffixWhenImageArtifactsAreOccupied) {
+    namespace fs = std::filesystem;
+    const fs::path root = "build/test_images_collision";
+    fs::remove_all(root);
+
+    constexpr int64_t fixed_now_ns = 1788185888000000000LL;
+    const std::string date = "2026-08-31";
+    std::ostringstream id_stream;
+    id_stream << "img-collision_event-" << std::hex << static_cast<uint64_t>(fixed_now_ns);
+    const std::string base_id = id_stream.str();
+
+    fs::create_directories(root / "catalog");
+    {
+        std::ofstream catalog(root / "catalog" / "catalog.json");
+        ASSERT_TRUE(catalog.is_open());
+        catalog << "{\"" << base_id
+                << "\":{\"event_id\":\"seed\",\"relative_path\":\""
+                << date << "/" << base_id
+                << ".jpg\",\"created_at_ns\":" << fixed_now_ns
+                << ",\"report_status\":\"reported\"}}";
+    }
+
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    argus::core::ImageManager mgr([] { return fixed_now_ns; });
+    mgr.init(root.string(), std::shared_ptr<argus::platform::IImageProcessor>(
+        adapter, adapter->get_image_processor()));
+
+    fs::create_directories(root / date);
+    std::ofstream(root / date / (base_id + "-1.jpg")) << "occupied-final";
+    std::ofstream(root / date / (base_id + "-2_thumb.jpg")) << "occupied-thumb";
+    std::ofstream(root / ".tmp" / (base_id + "-3.jpg.part")) << "occupied-temp";
+    std::ofstream(root / ".tmp" / (base_id + "-4_thumb.jpg.part")) << "occupied-thumb-temp";
+
+    av_frame_desc frame{};
+    frame.size = sizeof(av_frame_desc);
+    frame.api_version = AV_ALGO_API_VERSION;
+    frame.width = 1920;
+    frame.height = 1080;
+    frame.pixel_format = AV_PIX_NV12;
+
+    argus::core::ImageRecord record;
+    ASSERT_EQ(mgr.save_detection_image(&frame, nullptr, "collision/event", &record), AV_OK);
+    EXPECT_EQ(record.image_id, base_id + "-5");
+    EXPECT_EQ(record.event_id, "collision/event");
+    EXPECT_TRUE(fs::exists(root / record.rel_path));
+
+    const auto dot_pos = record.rel_path.rfind('.');
+    ASSERT_NE(dot_pos, std::string::npos);
+    const std::string thumb_rel = record.rel_path.substr(0, dot_pos) + "_thumb" + record.rel_path.substr(dot_pos);
+    EXPECT_TRUE(fs::exists(root / thumb_rel));
+    EXPECT_TRUE(fs::exists(root / "catalog" / "catalog.json"));
+    EXPECT_TRUE(fs::exists(root / date / (base_id + "-1.jpg")));
+    EXPECT_TRUE(fs::exists(root / date / (base_id + "-2_thumb.jpg")));
+    EXPECT_TRUE(fs::exists(root / ".tmp" / (base_id + "-3.jpg.part")));
+    EXPECT_TRUE(fs::exists(root / ".tmp" / (base_id + "-4_thumb.jpg.part")));
+
+    const auto unreported = mgr.list_unreported_images();
+    ASSERT_EQ(unreported.size(), 1U);
+    EXPECT_EQ(unreported[0].image_id, record.image_id);
+
+    fs::remove_all(root);
+}
 
 TEST(ImageManagerTest, AtomicSaveCatalogAndBatchDelete) {
     auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();

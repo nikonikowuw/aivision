@@ -33,11 +33,20 @@ func TestAutoMigrateCreatesAllTables(t *testing.T) {
 		"users", "roles", "menus", "departments", "user_roles", "role_menus",
 		"refresh_tokens", "operation_logs", "system_configs", "cameras", "persons",
 		"algorithms", "algorithm_versions", "analysis_tasks", "algorithm_instances",
-		"desired_state_revision", "alarm_records",
+		"desired_state_revision", "alarm_records", "plate_observations",
 	}
 	for _, name := range want {
 		if !gdb.Migrator().HasTable(name) {
 			t.Errorf("table %s missing", name)
+		}
+	}
+
+	for _, column := range []string{
+		"algorithm_id", "algorithm_version", "time_synced", "image_id", "image_rel_path",
+		"plate_image_id", "plate_image_rel_path",
+	} {
+		if !gdb.Migrator().HasColumn(&PlateObservation{}, column) {
+			t.Errorf("plate_observations column %s missing", column)
 		}
 	}
 }

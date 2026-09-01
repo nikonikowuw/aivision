@@ -29,6 +29,10 @@
 #define ARGUS_FIXTURE_PACKAGE_DIR "tests/fixtures/packages/mock_pkg"
 #endif
 
+#ifndef ARGUS_LPR_FIXTURE_PACKAGE_DIR
+#define ARGUS_LPR_FIXTURE_PACKAGE_DIR "tests/fixtures/packages/mock_lpr_pkg"
+#endif
+
 namespace {
 
 class NoopSource final : public argus::media::IMediaSource {
@@ -90,6 +94,12 @@ public:
             return grpc::Status::OK;
         }
         std::unique_lock<std::mutex> lock(mutex_);
+        ++plate_report_count_;
+        if (fail_next_plate_) {
+            fail_next_plate_ = false;
+            response->set_code("TEMPORARY_FAILURE");
+            return grpc::Status::OK;
+        }
         observations_.push_back(request->observation());
         plate_cv_.notify_all();
         return grpc::Status::OK; // code 留空 = 接受
@@ -136,6 +146,16 @@ public:
         return observations_;
     }
 
+    void fail_next_plate_observation() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        fail_next_plate_ = true;
+    }
+
+    size_t plate_report_count() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return plate_report_count_;
+    }
+
     bool wait_for_observation(std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(mutex_);
         return plate_cv_.wait_for(lock, timeout, [this] { return !observations_.empty(); });
@@ -153,6 +173,8 @@ private:
     std::vector<argus::v1::InstanceState> states_;
     std::vector<argus::v1::AlarmEvent> alarms_;
     std::vector<argus::v1::PlateObservation> observations_;
+    size_t plate_report_count_ = 0;
+    bool fail_next_plate_ = false;
     bool block_alarm_ = false;
     bool release_alarm_ = false;
     bool alarm_started_ = false;
@@ -913,6 +935,124 @@ TEST(UdsReconcileTest, ReconcilesExactDetectionRuleFromUI) {
     server.stop();
     argus::core::ResourceLedger::instance().clear();
     std::filesystem::remove_all(pkg_dir);
+}
+
+TEST(UdsReconcileTest, LicensePlateObservationCaptureValidationAndRetry) {
+    const std::string package_dir = "var/lpr-observation-packages";
+    const std::string image_dir = "build/lpr-observation-images";
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+    std::filesystem::create_directories(package_dir + "/mock-lpr");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        ARGUS_LPR_FIXTURE_PACKAGE_DIR,
+        package_dir + "/mock-lpr/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    argus::core::ResourceLedger::instance().clear();
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
+        return uint64_t{2} * 1024 * 1024 * 1024;
+    });
+    argus::core::ImageManager::instance().init(
+        image_dir, std::shared_ptr<argus::platform::IImageProcessor>(adapter, adapter->get_image_processor()));
+
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start("/tmp/argus-test-app-lpr.sock"));
+    argus::core::UdsServer server("/tmp/argus-test-lpr.sock", adapter, backend,
+                                  "/tmp/argus-test-app-lpr.sock");
+    ASSERT_TRUE(server.start());
+
+    argus::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* task = desired.add_tasks();
+    task->set_camera_id("lpr-camera");
+    task->set_rtsp_url("rtsp://unused");
+    task->set_enabled(true);
+    add_instance(&desired, "lpr-instance", "lpr-camera", "mock-lpr", "1.0.0", 1);
+
+    argus::v1::ApplyDesiredStateResponse response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &response));
+    ASSERT_TRUE(response.code().empty()) << response.error_message();
+    const auto instance = argus::core::AlgoManager::instance().get("lpr-instance");
+    ASSERT_NE(instance, nullptr);
+
+    app_server.service().fail_next_plate_observation();
+    auto& pool = argus::core::FramePool::instance();
+    auto push_frame = [&](uint64_t frame_id) {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->frame_id = frame_id;
+        frame->opaque = reinterpret_cast<void*>(0x1);
+        frame->wall_time_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->pts_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->memory_type = AV_MEM_HOST;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->width = 1920;
+        frame->height = 1080;
+        instance->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+    };
+
+    // 首次上报失败后，worker 应复用已落盘的图片引用完成一次重试。
+    push_frame(1);
+    ASSERT_TRUE(app_server.service().wait_for_observation(std::chrono::seconds(3)));
+    const auto observations = app_server.service().observations();
+    ASSERT_EQ(observations.size(), 1U);
+    ASSERT_EQ(app_server.service().plate_report_count(), 2U);
+    EXPECT_EQ(observations[0].plate_text(), "A12345");
+    EXPECT_EQ(observations[0].algorithm_id(), "mock-lpr");
+    EXPECT_FALSE(observations[0].image_id().empty());
+    EXPECT_FALSE(observations[0].plate_image_id().empty());
+    EXPECT_TRUE(std::filesystem::exists(image_dir + "/" + observations[0].image_rel_path()));
+    EXPECT_TRUE(std::filesystem::exists(image_dir + "/" + observations[0].plate_image_rel_path()));
+
+    // 同一 event_id 再次回调时只允许第一次进入上报队列。
+    push_frame(2);
+    for (int attempt = 0; attempt < 400 && instance->get_processed_frames() < 2; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(app_server.service().observations().size(), 1U);
+    EXPECT_EQ(app_server.service().plate_report_count(), 2U);
+
+    const auto unreported_before_invalid = argus::core::ImageManager::instance().list_unreported_images();
+    EXPECT_TRUE(unreported_before_invalid.empty());
+
+    // 算法提交缺失 images 的识别结果时，Engine 必须在抓拍和 IPC 之前拒绝。
+    push_frame(99);
+    for (int attempt = 0; attempt < 400 && instance->get_processed_frames() < 3; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(app_server.service().observations().size(), 1U);
+    EXPECT_EQ(app_server.service().plate_report_count(), 2U);
+    EXPECT_TRUE(argus::core::ImageManager::instance().list_unreported_images().empty());
+
+    // 超过 Go plate_observations VARCHAR(32) 约束的文本也必须在副作用前拒绝。
+    push_frame(100);
+    for (int attempt = 0; attempt < 400 && instance->get_processed_frames() < 4; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(app_server.service().observations().size(), 1U);
+    EXPECT_EQ(app_server.service().plate_report_count(), 2U);
+    EXPECT_TRUE(argus::core::ImageManager::instance().list_unreported_images().empty());
+
+    server.stop();
+    app_server.stop();
+    argus::core::ResourceLedger::instance().clear();
+    ::unsetenv("ARGUS_PACKAGE_DIR");
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
 }
 
 TEST(UdsReconcileTest, PlateObservationReportAndClient) {

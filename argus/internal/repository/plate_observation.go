@@ -35,8 +35,9 @@ type PlateObservationRepository interface {
 	GetByEventID(ctx context.Context, eventID string) (*model.PlateObservation, error)
 	// ListPage 分页组合查询过车记录。
 	ListPage(ctx context.Context, filter *PlateObservationFilter) ([]model.PlateObservation, int64, error)
+	// FindExistingImageIDs 批量查询已落库的全景图和车牌特写 image_id 集合（供孤儿图片对账）。
+	FindExistingImageIDs(ctx context.Context, imageIDs []string) ([]string, error)
 }
-
 type plateObservationRepository struct {
 	db *gorm.DB
 }
@@ -133,4 +134,38 @@ func (r *plateObservationRepository) ListPage(ctx context.Context, filter *Plate
 	}
 
 	return records, total, nil
+}
+
+func (r *plateObservationRepository) FindExistingImageIDs(ctx context.Context, imageIDs []string) ([]string, error) {
+	if len(imageIDs) == 0 {
+		return []string{}, nil
+	}
+
+	type imageReference struct {
+		ImageID      string
+		PlateImageID string
+	}
+	var references []imageReference
+	if err := r.db.WithContext(ctx).
+		Model(&model.PlateObservation{}).
+		Where("image_id IN ? OR plate_image_id IN ?", imageIDs, imageIDs).
+		Select("image_id, plate_image_id").
+		Find(&references).Error; err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{}, len(references)*2)
+	for _, reference := range references {
+		if reference.ImageID != "" {
+			seen[reference.ImageID] = struct{}{}
+		}
+		if reference.PlateImageID != "" {
+			seen[reference.PlateImageID] = struct{}{}
+		}
+	}
+	foundIDs := make([]string, 0, len(seen))
+	for imageID := range seen {
+		foundIDs = append(foundIDs, imageID)
+	}
+	return foundIDs, nil
 }

@@ -317,21 +317,28 @@ func (a *ReportAdapter) AcceptPlateObservation(ctx context.Context, obs *argusv1
 	}
 
 	record := &model.PlateObservation{
-		EventID:         eventID,
-		InstanceID:      obs.GetInstanceId(),
-		CameraID:        obs.GetCameraId(),
-		PlateText:       obs.GetPlateText(),
-		NormalizedText:  obs.GetNormalizedText(),
-		PlateColor:      obs.GetPlateColor(),
-		PlateType:       obs.GetPlateType(),
-		Confidence:      obs.GetConfidence(),
-		OcrConfidence:   obs.GetOcrConfidence(),
-		TrackID:         obs.GetTrackId(),
-		BBoxJSON:        bboxJSON,
-		VehicleBBoxJSON: vehicleBBoxJSON,
-		PanoramaImage:   obs.GetImageRelPath(),
-		PlateImage:      obs.GetPlateImageRelPath(),
-		ObservedAt:      observedAt,
+		EventID:           eventID,
+		InstanceID:        obs.GetInstanceId(),
+		AlgorithmID:       obs.GetAlgorithmId(),
+		AlgorithmVersion:  obs.GetAlgorithmVersion(),
+		CameraID:          obs.GetCameraId(),
+		TimeSynced:        obs.GetTimeSynced(),
+		PlateText:         obs.GetPlateText(),
+		NormalizedText:    obs.GetNormalizedText(),
+		PlateColor:        obs.GetPlateColor(),
+		PlateType:         obs.GetPlateType(),
+		Confidence:        obs.GetConfidence(),
+		OcrConfidence:     obs.GetOcrConfidence(),
+		TrackID:           obs.GetTrackId(),
+		BBoxJSON:          bboxJSON,
+		VehicleBBoxJSON:   vehicleBBoxJSON,
+		PanoramaImage:     obs.GetImageRelPath(),
+		PlateImage:        obs.GetPlateImageRelPath(),
+		ImageID:           obs.GetImageId(),
+		ImageRelPath:      obs.GetImageRelPath(),
+		PlateImageID:      obs.GetPlateImageId(),
+		PlateImageRelPath: obs.GetPlateImageRelPath(),
+		ObservedAt:        observedAt,
 	}
 
 	if err := a.plateRepo.Create(ctx, record); err != nil {
@@ -357,8 +364,8 @@ func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry)
 // 3. 未命中且生成时间超过保护期（5分钟）放入 DeleteImageIDs；
 // 4. 未命中但在保护期内的图片不做处理（等待下轮对账或落库）。
 func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*argusv1.OrphanImageEntry) (engineipc.OrphanDisposition, error) {
-	if a.alarmRepo == nil {
-		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "alarm repository unavailable")
+	if a.alarmRepo == nil && a.plateRepo == nil {
+		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "image reference repositories unavailable")
 	}
 
 	if len(entries) == 0 {
@@ -366,39 +373,65 @@ func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*ar
 	}
 
 	allImageIDs := make([]string, 0, len(entries))
+	seenImageIDs := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
-		if entry != nil && entry.GetImageId() != "" {
-			allImageIDs = append(allImageIDs, entry.GetImageId())
+		if entry == nil || entry.GetImageId() == "" {
+			continue
+		}
+		if _, ok := seenImageIDs[entry.GetImageId()]; ok {
+			continue
+		}
+		seenImageIDs[entry.GetImageId()] = struct{}{}
+		allImageIDs = append(allImageIDs, entry.GetImageId())
+	}
+
+	existingMap := make(map[string]struct{}, len(allImageIDs))
+	if a.alarmRepo != nil {
+		existingIDs, err := a.alarmRepo.FindExistingImageIDs(ctx, allImageIDs)
+		if err != nil {
+			a.log.Error("find alarm image ids failed during orphan reconciliation", zap.Error(err))
+			return engineipc.OrphanDisposition{}, err
+		}
+		for _, id := range existingIDs {
+			existingMap[id] = struct{}{}
 		}
 	}
-
-	existingIDs, err := a.alarmRepo.FindExistingImageIDs(ctx, allImageIDs)
-	if err != nil {
-		a.log.Error("find existing image ids failed during orphan reconciliation", zap.Error(err))
-		return engineipc.OrphanDisposition{}, err
-	}
-
-	existingMap := make(map[string]struct{}, len(existingIDs))
-	for _, id := range existingIDs {
-		existingMap[id] = struct{}{}
+	if a.plateRepo != nil {
+		existingIDs, err := a.plateRepo.FindExistingImageIDs(ctx, allImageIDs)
+		if err != nil {
+			a.log.Error("find plate image ids failed during orphan reconciliation", zap.Error(err))
+			return engineipc.OrphanDisposition{}, err
+		}
+		for _, id := range existingIDs {
+			existingMap[id] = struct{}{}
+		}
 	}
 
 	now := time.Now()
 	var retainIDs []string
 	var deleteIDs []string
+	seenRetainIDs := make(map[string]struct{}, len(entries))
+	seenDeleteIDs := make(map[string]struct{}, len(entries))
 
 	for _, entry := range entries {
 		if entry == nil || entry.GetImageId() == "" {
 			continue
 		}
-		imgID := entry.GetImageId()
-		if _, ok := existingMap[imgID]; ok {
-			retainIDs = append(retainIDs, imgID)
-		} else {
-			// 未落库：检查是否超过保护期
-			createdAt := time.Unix(0, entry.GetCreatedAtNs())
-			if entry.GetCreatedAtNs() > 0 && now.Sub(createdAt) > orphanRetentionGracePeriod {
-				deleteIDs = append(deleteIDs, imgID)
+		imageID := entry.GetImageId()
+		if _, ok := existingMap[imageID]; ok {
+			if _, seen := seenRetainIDs[imageID]; !seen {
+				seenRetainIDs[imageID] = struct{}{}
+				retainIDs = append(retainIDs, imageID)
+			}
+			continue
+		}
+
+		// 未落库：检查是否超过保护期。
+		createdAt := time.Unix(0, entry.GetCreatedAtNs())
+		if entry.GetCreatedAtNs() > 0 && now.Sub(createdAt) > orphanRetentionGracePeriod {
+			if _, seen := seenDeleteIDs[imageID]; !seen {
+				seenDeleteIDs[imageID] = struct{}{}
+				deleteIDs = append(deleteIDs, imageID)
 			}
 		}
 	}

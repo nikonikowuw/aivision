@@ -90,6 +90,43 @@ func TestPlateObservationRepository_CreateAndGet(t *testing.T) {
 	}
 }
 
+func TestPlateObservationRepository_FindExistingImageIDsIncludesPanoramaAndCrop(t *testing.T) {
+	db := newPlateObservationTestDB(t)
+	repo := repository.NewPlateObservationRepository(db)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, &model.PlateObservation{
+		EventID:        "event-image-refs",
+		ImageID:        "img-panorama",
+		PlateImageID:   "img-plate-crop",
+		PlateText:      "粤B12345",
+		NormalizedText: "粤B12345",
+		ObservedAt:     time.Now(),
+	}); err != nil {
+		t.Fatalf("create image reference observation: %v", err)
+	}
+
+	ids, err := repo.FindExistingImageIDs(ctx, []string{
+		"img-panorama", "img-plate-crop", "img-missing",
+	})
+	if err != nil {
+		t.Fatalf("find existing image IDs: %v", err)
+	}
+	found := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		found[id] = struct{}{}
+	}
+	if len(found) != 2 {
+		t.Fatalf("found image IDs = %v, want two references", ids)
+	}
+	if _, ok := found["img-panorama"]; !ok {
+		t.Errorf("panorama image ID missing from %v", ids)
+	}
+	if _, ok := found["img-plate-crop"]; !ok {
+		t.Errorf("plate image ID missing from %v", ids)
+	}
+}
+
 func TestPlateObservationRepository_ListPage(t *testing.T) {
 	db := newPlateObservationTestDB(t)
 	repo := repository.NewPlateObservationRepository(db)

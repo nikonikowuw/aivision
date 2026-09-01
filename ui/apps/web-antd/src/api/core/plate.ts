@@ -8,6 +8,9 @@ export namespace PlateObservationApi {
     instanceId: string;
     cameraId: string;
     cameraName: string;
+    algorithmId: string;
+    algorithmVersion: string;
+    timeSynced: boolean;
     plateText: string;
     normalizedText: string;
     plateColor: string;
@@ -19,6 +22,10 @@ export namespace PlateObservationApi {
     vehicleBbox: [number, number, number, number]; // [x_min, y_min, x_max, y_max]
     panoramaImageUrl: string;
     plateImageUrl: string;
+    imageId: string;
+    imageRelPath: string;
+    plateImageId: string;
+    plateImageRelPath: string;
     observedAt: string;
     createdAt: string;
   }

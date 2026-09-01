@@ -144,6 +144,53 @@ TEST(SandboxValidatorTest, ValidMockPackage) {
     EXPECT_TRUE(std::filesystem::exists("var/packages/mock-detector/1.0.0/manifest.json"));
 }
 
+namespace {
+// 组装一份仅替换动态库的 mock 包副本，用于符号审计用例
+std::filesystem::path stage_symbol_audit_package(const std::string& package_name,
+                                                 const std::string& fixture_library) {
+    const std::filesystem::path package_dir = std::filesystem::path("var") / package_name;
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::create_directories(package_dir / "lib");
+    for (const char* asset : {"manifest.json", "config.schema.json", "testimage.jpg"}) {
+        std::filesystem::copy_file(std::filesystem::path(ARGUS_FIXTURE_PACKAGE_DIR) / asset,
+                                   package_dir / asset);
+    }
+    std::filesystem::copy_file(std::filesystem::path(ARGUS_SYMBOL_FIXTURE_LIB_DIR) / fixture_library,
+                               package_dir / "lib/libmock-detector.dylib");
+    return package_dir;
+}
+}  // namespace
+
+TEST(SandboxValidatorTest, RejectsLibraryExportingSymbolOutsideWhitelist) {
+    const auto package_dir = stage_symbol_audit_package("test_extra_symbol_package",
+                                                        "libmock-extra_symbol.dylib");
+    const std::string install_base = "var/packages_extra_symbol";
+    std::filesystem::remove_all(install_base);
+
+    auto res = argus::core::PackageValidator::validate_and_extract(package_dir.string(), install_base);
+    EXPECT_FALSE(res.success);
+    EXPECT_EQ(res.error_stage, "symbol_audit");
+    EXPECT_NE(res.error_message.find("mock_extra_exported_symbol"), std::string::npos)
+        << "actual message: " << res.error_message;
+
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(install_base);
+}
+
+TEST(SandboxValidatorTest, AcceptsLibraryExportingOptionalFaceExtractSymbol) {
+    const auto package_dir = stage_symbol_audit_package("test_face_extract_symbol_package",
+                                                        "libmock-face_extract_symbol.dylib");
+    const std::string install_base = "var/packages_face_extract_symbol";
+    std::filesystem::remove_all(install_base);
+
+    auto res = argus::core::PackageValidator::validate_and_extract(package_dir.string(), install_base);
+    EXPECT_TRUE(res.success) << "Failed with error: " << res.error_message << " at stage: " << res.error_stage;
+    EXPECT_EQ(res.manifest.algorithm_id, "mock-detector");
+
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(install_base);
+}
+
 TEST(SandboxValidatorTest, FaceRecognitionManifestWithoutAlarmTypeIdValidates) {
     const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "test_fr_manifest";
     std::filesystem::remove_all(temp_dir);

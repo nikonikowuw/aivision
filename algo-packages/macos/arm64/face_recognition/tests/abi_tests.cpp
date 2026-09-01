@@ -195,6 +195,17 @@ int main() {
         return 1;
     }
 
+    // 校验 Embedding L2 模长
+    float norm_sq = 0.0f;
+    for (uint32_t i = 0; i < real_out.embedding_dim; ++i) {
+        norm_sq += real_out.embedding[i] * real_out.embedding[i];
+    }
+    float norm = std::sqrt(norm_sq);
+    if (std::abs(norm - 1.0f) > 0.01f) {
+        std::cerr << "embedding L2 norm is not 1.0: " << norm << std::endl;
+        return 1;
+    }
+
     abi->library_close(lib);
     dlclose(handle);
 

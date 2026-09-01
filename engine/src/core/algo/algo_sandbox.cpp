@@ -252,7 +252,7 @@ bool capture_command(const std::vector<std::string>& args, std::string& output,
     return valid && WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0;
 }
 
-// 符号审计：通过 nm 检查动态库是否严格且仅导出了 av_algo_get_abi 单一 C ABI 符号（防止全局符号污染与隐式依赖）
+// 符号审计：通过 nm 检查动态库导出符号是否全部落在 C ABI 白名单内（防止全局符号污染与隐式依赖）
 bool validate_exported_symbols(const fs::path& library_path, std::string& error) {
     std::string output;
 #if defined(__APPLE__)
@@ -264,9 +264,11 @@ bool validate_exported_symbols(const fs::path& library_path, std::string& error)
         error = "cannot inspect dynamic library exports";
         return false;
     }
+    // av_algo_get_abi 为必须项；av_algo_extract_face 为静态图人脸特征提取扩展的可选项
+    static const std::set<std::string> allowed_symbols{AV_ALGO_GET_ABI_SYMBOL, AV_ALGO_EXTRACT_FACE_SYMBOL};
     std::istringstream lines(output);
     std::string line;
-    size_t symbol_count = 0;
+    bool exports_get_abi = false;
     while (std::getline(lines, line)) {
         std::istringstream fields(line);
         std::string address;
@@ -274,14 +276,14 @@ bool validate_exported_symbols(const fs::path& library_path, std::string& error)
         std::string symbol;
         if (!(fields >> address >> type >> symbol)) continue;
         if (!symbol.empty() && symbol.front() == '_') symbol.erase(symbol.begin());
-        if (symbol != AV_ALGO_GET_ABI_SYMBOL) {
+        if (allowed_symbols.count(symbol) == 0) {
             error = "dynamic library exports an unexpected symbol: " + symbol;
             return false;
         }
-        ++symbol_count;
+        if (symbol == AV_ALGO_GET_ABI_SYMBOL) exports_get_abi = true;
     }
-    if (symbol_count != 1) {
-        error = "dynamic library must export exactly av_algo_get_abi";
+    if (!exports_get_abi) {
+        error = "dynamic library must export av_algo_get_abi";
         return false;
     }
     return true;

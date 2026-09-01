@@ -10,7 +10,12 @@ test: build
 	ctest --test-dir build --output-on-failure
 
 run: build
-	./build/src/runner/face_recognition_runner run
+	./build/src/runner/face_recognition_runner run $(IMAGE)
+
+extract: build
+	./build/src/runner/face_recognition_runner extract $(IMAGE)
+
+register: extract
 
 selftest: build
 	./build/src/runner/face_recognition_runner selftest
@@ -28,6 +33,6 @@ package: build
 	cmake --build build --target package_face_recognition
 
 clean:
-	rm -rf build build_asan lib result.jpg package.zip package.zip.sha256 *.zip *.zip.sha256
+	rm -rf build build_asan lib result.jpg aligned_face*.jpg package.zip package.zip.sha256 *.zip *.zip.sha256
 
-.PHONY: all configure build test run selftest benchmark asan package clean
+.PHONY: all configure build test run extract register selftest benchmark asan package clean

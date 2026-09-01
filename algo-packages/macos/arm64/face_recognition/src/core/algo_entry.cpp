@@ -47,6 +47,7 @@ struct LibraryContext {
     std::string platform_id;
     std::string yolo_path = "model/yolov8n.mlpackage";
     std::string scrfd_path = "model/scrfd_10g_bnkps.mlpackage";
+    std::string scrfd_reg_path = "model/scrfd_10g_640x640.mlpackage";
     std::string glintr_path = "model/glintr100.mlpackage";
     InstanceConfig default_config;
 
@@ -352,6 +353,7 @@ static int library_open(const av_algo_library_args* args, av_algo_library* out) 
 
         if (env_vars.contains("YOLO_MODEL_PATH")) lib->yolo_path = env_vars["YOLO_MODEL_PATH"];
         if (env_vars.contains("SCRFD_MODEL_PATH")) lib->scrfd_path = env_vars["SCRFD_MODEL_PATH"];
+        if (env_vars.contains("SCRFD_REG_MODEL_PATH")) lib->scrfd_reg_path = env_vars["SCRFD_REG_MODEL_PATH"];
         if (env_vars.contains("GLINTR_MODEL_PATH")) lib->glintr_path = env_vars["GLINTR_MODEL_PATH"];
 
         if (env_vars.contains("ENABLE_PERSON_DETECTION")) {
@@ -381,7 +383,7 @@ static int library_open(const av_algo_library_args* args, av_algo_library* out) 
 
         lib->model_manager = std::make_shared<ModelInferenceManager>();
         std::string model_err;
-        if (!lib->model_manager->load_models(lib->package_root, lib->yolo_path, lib->scrfd_path, lib->glintr_path, model_err)) {
+        if (!lib->model_manager->load_models(lib->package_root, lib->yolo_path, lib->scrfd_path, lib->scrfd_reg_path, lib->glintr_path, model_err)) {
             return fail(lib.get(), AV_ERR_MODEL_LOAD_FAILED, ("failed to load models: " + model_err).c_str());
         }
 
@@ -832,10 +834,10 @@ extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
 
         size_t width = CGImageGetWidth(image);
         size_t height = CGImageGetHeight(image);
-        if (width < kMinFrameWidth || height < kMinFrameHeight) {
+        if (width < 48 || height < 48) {
             CGImageRelease(image);
             out->status_code = 4;
-            copy_text(out->error_message, sizeof(out->error_message), "image resolution is too small (<320x320)");
+            copy_text(out->error_message, sizeof(out->error_message), "image resolution is too small (<48x48)");
             return AV_OK;
         }
         if (width > kMaxFrameWidth || height > kMaxFrameHeight || (width * height) > 8294400) {
@@ -855,7 +857,7 @@ extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
         CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
         CGContextRef context = CGBitmapContextCreate(
             rgba.data(), width, height, 8, width * 4, color_space,
-            static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big)
+            static_cast<CGBitmapInfo>(static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big))
         );
         CGColorSpaceRelease(color_space);
         if (!context) {
@@ -874,9 +876,9 @@ extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
             orig_rgb.data[i * 3 + 2] = rgba[i * 4 + 2];
         }
 
-        // Letterbox to 640x384 (16:9 optimized)
+        // Letterbox to 640x640 (1:1 square ratio for static registration photos: IDs, selfies, passports)
         constexpr uint32_t kTargetWidth = 640;
-        constexpr uint32_t kTargetHeight = 384;
+        constexpr uint32_t kTargetHeight = 640;
         ImageBuffer letterbox_rgb;
         letterbox_rgb.width = kTargetWidth;
         letterbox_rgb.height = kTargetHeight;
@@ -919,7 +921,7 @@ extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
 
         ScrfdOutput scrfd_out;
         std::string scrfd_err;
-        if (!lib->model_manager->run_scrfd(letterbox_rgb.data.data(), scrfd_out, scrfd_err)) {
+        if (!lib->model_manager->run_scrfd_reg(letterbox_rgb.data.data(), scrfd_out, scrfd_err)) {
             out->status_code = 7;
             copy_text(out->error_message, sizeof(out->error_message), ("SCRFD inference failed: " + scrfd_err).c_str());
             return AV_OK;
@@ -1017,7 +1019,7 @@ extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
         CGColorSpaceRef rgb_cs = CGColorSpaceCreateDeviceRGB();
         CGContextRef face_ctx = CGBitmapContextCreate(
             face_rgba.data(), 112, 112, 8, 112 * 4, rgb_cs,
-            static_cast<CGBitmapInfo>(kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big)
+            static_cast<CGBitmapInfo>(static_cast<uint32_t>(kCGImageAlphaNoneSkipLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big))
         );
         CGColorSpaceRelease(rgb_cs);
 

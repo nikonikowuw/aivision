@@ -10,7 +10,7 @@
 
 ## 2. 导出与虚表签名
 
-动态库必须只导出一个 C 符号，其余符号隐藏：
+动态库导出符号受白名单约束，白名单外的符号必须隐藏。`av_algo_get_abi` 是唯一必须导出的 C 符号：
 
 ```c
 #define AV_ALGO_API_VERSION 1u
@@ -18,7 +18,16 @@
 const av_algo_abi* av_algo_get_abi(uint32_t requested_api_version);
 ```
 
+`av_algo_extract_face` 是白名单内唯一的可选扩展符号，供人脸包提供静态图片单人脸特征提取（入参出参见 `algo.h` 的 `av_face_extract_input` / `av_face_extract_output`）；不提供该能力的包不导出即可：
+
+```c
+int av_algo_extract_face(av_algo_library lib, const av_face_extract_input* in,
+                         av_face_extract_output* out);
+```
+
 宿主使用 `dlopen(path, RTLD_NOW | RTLD_LOCAL)`。返回的虚表具有静态存储期；不支持请求版本时返回 `NULL`。
+
+白名单的唯一真相源是 `sdk/include/argus/algo.h` 中的 `AV_ALGO_*_SYMBOL` 宏。安装期审计（`algo_sandbox.cpp` 的 `validate_exported_symbols`）与打包期 lint（`engine/scripts/check-boundary.sh`）都必须从该宏集合取值，新增扩展符号时先改 SDK 头再改消费方，避免两侧白名单漂移。
 
 ```c
 typedef struct av_algo_abi {
@@ -269,7 +278,7 @@ typedef enum av_algo_status {
 
 | 条件 | 结果 |
 | --- | --- |
-| 唯一导出符号缺失或有额外导出 | 拒绝安装 |
+| `av_algo_get_abi` 缺失或导出白名单外符号 | 拒绝安装 |
 | ABI 版本/尺寸/函数指针不完整 | `AV_ERR_UNSUPPORTED_API`，拒绝安装 |
 | Library 信息与 manifest 不一致 | 拒绝安装，结构化 `PACKAGE_METADATA_MISMATCH` |
 | 能力无交集 | `AV_ERR_INCOMPATIBLE_FRAME` |
@@ -288,7 +297,7 @@ typedef enum av_algo_status {
 
 ## 9. Tests Required
 
-- 单导出符号、`RTLD_LOCAL`、缺函数指针、旧 size 和版本拒绝测试。
+- 导出符号白名单（必须项存在、可选项放行、白名单外拒绝）、`RTLD_LOCAL`、缺函数指针、旧 size 和版本拒绝测试。
 - Library/Instance 创建销毁顺序及失败中途清理测试。
 - 同实例无重入、不同实例并发、update_config/set_rules/process 互斥和 flush/join 测试。
 - 规则过滤：ROI/Mask/分界线组合、空规则全通过、锚点判定、几何非法拒绝和热更新测试；分界线跨帧方向判定测试。

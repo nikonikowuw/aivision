@@ -125,7 +125,7 @@ algo-packages/
 
 - CMake graph 测试：读取 File API/构建产物依赖，断言 target 依赖矩阵。
 - 头文件测试：C11、AppleClang C++20、aarch64 GCC 分别编译三个 ABI 头。
-- 符号测试：`nm`/`otool -L` 断言核心层无平台私有符号，算法包只导出 `av_algo_get_abi`。
+- 符号测试：`nm`/`otool -L` 断言核心层无平台私有符号，算法包导出符号落在 `av_algo_get_abi`（必须）与 `av_algo_extract_face`（可选）白名单内。
 - 可搬运性测试：把单个算法包复制到仓库外目录后执行 `make build package`。
 - SDK 一致性测试：比较 vendored SDK 与上游 SDK 的规范化 SHA-256。
 

@@ -67,6 +67,28 @@ target_include_directories(mock_lpr_algo_fixture PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../sdk/include>
 )
 
+# 符号审计 fixture：与 mock_pkg 同一份 ABI 实现，仅导出符号集不同
+set(MOCK_SYMBOL_FIXTURE_LIB_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures/packages/mock_symbol_pkg/lib")
+foreach(symbol_fixture IN ITEMS extra_symbol face_extract_symbol)
+    add_library(mock_${symbol_fixture}_fixture SHARED
+        fixtures/packages/mock_pkg/mock_algo.c
+        fixtures/packages/mock_symbol_pkg/${symbol_fixture}.c
+    )
+    set_target_properties(mock_${symbol_fixture}_fixture PROPERTIES
+        PREFIX "lib"
+        OUTPUT_NAME "mock-${symbol_fixture}"
+        SUFFIX ".dylib"
+        LIBRARY_OUTPUT_DIRECTORY "${MOCK_SYMBOL_FIXTURE_LIB_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY "${MOCK_SYMBOL_FIXTURE_LIB_DIR}"
+        ARCHIVE_OUTPUT_DIRECTORY "${MOCK_SYMBOL_FIXTURE_LIB_DIR}"
+        C_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+    )
+    target_include_directories(mock_${symbol_fixture}_fixture PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../sdk/include>
+    )
+endforeach()
+
 # Unit tests
 add_executable(unit_tests
     unit/test_main.cpp
@@ -94,6 +116,7 @@ target_include_directories(unit_tests PRIVATE
 target_compile_definitions(unit_tests PRIVATE
     ARGUS_FIXTURE_PACKAGE_DIR="${MOCK_FIXTURE_DIR}"
     ARGUS_LPR_FIXTURE_PACKAGE_DIR="${MOCK_LPR_FIXTURE_DIR}"
+    ARGUS_SYMBOL_FIXTURE_LIB_DIR="${MOCK_SYMBOL_FIXTURE_LIB_DIR}"
     ARGUS_PACKAGE_VALIDATOR_PATH="${CMAKE_BINARY_DIR}/package_validator"
     ARGUS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
     ARGUS_BINARY_DIR="${CMAKE_BINARY_DIR}"
@@ -125,7 +148,8 @@ elseif(PLATFORM_TARGET STREQUAL "mock")
         ARGUS_RUN_PACKAGE_RPC_TEST=1
     )
 endif()
-add_dependencies(unit_tests mock_algo_fixture mock_lpr_algo_fixture)
+add_dependencies(unit_tests mock_algo_fixture mock_lpr_algo_fixture
+                 mock_extra_symbol_fixture mock_face_extract_symbol_fixture)
 add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 if(ENGINE_ENABLE_TSAN)
     # Keep real-media coverage; suppress only known ZLToolKit initialization races.

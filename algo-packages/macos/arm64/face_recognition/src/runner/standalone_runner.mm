@@ -1,5 +1,6 @@
 #include "argus/algo.h"
 #include "argus/utils/profiler.hpp"
+#include "../preprocess/preprocessor.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -162,12 +163,73 @@ void draw_circle(uint8_t* img, int w, int h, int cx, int cy, int radius, uint8_t
     }
 }
 
+std::vector<uint8_t> load_image_rgb(const std::string& path, int& out_w, int& out_h) {
+    int channels = 0;
+    uint8_t* stbi_data = stbi_load(path.c_str(), &out_w, &out_h, &channels, 3);
+    if (stbi_data) {
+        std::vector<uint8_t> rgb(stbi_data, stbi_data + (out_w * out_h * 3));
+        stbi_image_free(stbi_data);
+        return rgb;
+    }
+
+    // 若 stbi 不支持格式（如 WebP, HEIC, TIFF 等），使用 macOS CGImageSource 原生解码
+    @autoreleasepool {
+        NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
+        NSData* data = [NSData dataWithContentsOfFile:ns_path];
+        if (!data) return {};
+
+        CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, nullptr);
+        if (!source) return {};
+
+        CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, nullptr);
+        CFRelease(source);
+        if (!image) return {};
+
+        size_t width = CGImageGetWidth(image);
+        size_t height = CGImageGetHeight(image);
+        out_w = static_cast<int>(width);
+        out_h = static_cast<int>(height);
+
+        std::vector<uint8_t> rgba(width * height * 4);
+        CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+        CGContextRef context = CGBitmapContextCreate(
+            rgba.data(), width, height, 8, width * 4, color_space,
+            static_cast<CGBitmapInfo>(static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big))
+        );
+        CGColorSpaceRelease(color_space);
+        if (!context) {
+            CGImageRelease(image);
+            return {};
+        }
+
+        CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+        CGContextRelease(context);
+        CGImageRelease(image);
+
+        std::vector<uint8_t> rgb(width * height * 3);
+        for (size_t i = 0; i < width * height; ++i) {
+            rgb[i * 3 + 0] = rgba[i * 4 + 0];
+            rgb[i * 3 + 1] = rgba[i * 4 + 1];
+            rgb[i * 3 + 2] = rgba[i * 4 + 2];
+        }
+        return rgb;
+    }
+}
+
 bool render_results_to_image(const std::string& input_path, const std::string& output_path, const std::string& json_str) {
-    int w = 0, h = 0, c = 0;
-    uint8_t* img = stbi_load(input_path.c_str(), &w, &h, &c, 3);
-    if (!img) return false;
+    int w = 0, h = 0;
+    std::vector<uint8_t> rgb = load_image_rgb(input_path, w, h);
+    if (rgb.empty()) return false;
+    uint8_t* img = rgb.data();
+
+    face_recognition::ImageBuffer orig_rgb;
+    orig_rgb.width = static_cast<uint32_t>(w);
+    orig_rgb.height = static_cast<uint32_t>(h);
+    orig_rgb.channels = 3;
+    orig_rgb.data = rgb;
 
     auto persons = parse_recognition_persons(json_str);
+    int face_idx = 0;
     for (const auto& p : persons) {
         if (p.has_face) {
             int fx = static_cast<int>(p.face_bbox[0] * w);
@@ -184,16 +246,35 @@ bool render_results_to_image(const std::string& input_path, const std::string& o
                 {255, 0, 255},   // 3: 左嘴角 (品红)
                 {0, 255, 255}    // 4: 右嘴角 (青)
             };
+            float lm10[10] = {0};
             for (size_t i = 0; i < p.landmarks.size() && i < 5; ++i) {
-                int lx = static_cast<int>(p.landmarks[i].first * w);
-                int ly = static_cast<int>(p.landmarks[i].second * h);
+                float lx_f = p.landmarks[i].first * w;
+                float ly_f = p.landmarks[i].second * h;
+                lm10[i * 2 + 0] = lx_f;
+                lm10[i * 2 + 1] = ly_f;
+                int lx = static_cast<int>(lx_f);
+                int ly = static_cast<int>(ly_f);
                 draw_circle(img, w, h, lx, ly, 4, colors[i][0], colors[i][1], colors[i][2]);
             }
+
+            // 对齐裁切并保存 112x112 人脸图供对比调试
+            if (p.landmarks.size() == 5) {
+                face_recognition::ImageBuffer face_112;
+                std::string align_err;
+                if (face_recognition::Preprocessor::align_face_112x112(orig_rgb, lm10, face_112, align_err)) {
+                    std::string face_crop_name = (persons.size() == 1) ? "aligned_face_stream.jpg" : ("aligned_face_stream_track_" + std::to_string(p.track_id) + ".jpg");
+                    stbi_write_jpg(face_crop_name.c_str(), 112, 112, 3, face_112.data.data(), 95);
+                    std::cout << "[Visual] Saved 112x112 stream aligned face crop for track " << p.track_id << " to " << face_crop_name << std::endl;
+                    if (persons.size() > 1 && face_idx == 0) {
+                        stbi_write_jpg("aligned_face_stream.jpg", 112, 112, 3, face_112.data.data(), 95);
+                    }
+                }
+            }
+            face_idx++;
         }
     }
 
     int ret = stbi_write_jpg(output_path.c_str(), w, h, 3, img, 92);
-    stbi_image_free(img);
     return ret != 0;
 }
 
@@ -323,20 +404,126 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::string test_img_path = package_root + "/testimage.jpg";
-    int width = 0, height = 0, channels = 0;
-    uint8_t* img_data = stbi_load(test_img_path.c_str(), &width, &height, &channels, 3);
-    if (!img_data) {
-        test_img_path = "testimage.jpg";
-        img_data = stbi_load(test_img_path.c_str(), &width, &height, &channels, 3);
+    if (mode == "extract" || mode == "register") {
+        auto extract_fn = reinterpret_cast<av_algo_extract_face_fn>(dlsym(handle, AV_ALGO_EXTRACT_FACE_SYMBOL));
+        if (!extract_fn) {
+            std::cerr << "Failed to find symbol av_algo_extract_face in dylib" << std::endl;
+            abi->library_close(lib);
+            dlclose(handle);
+            return 1;
+        }
+
+        std::string target_img = (argc > 2 && argv[2] && argv[2][0] != '\0') ? argv[2] : (package_root + "/testimage.jpg");
+        std::ifstream file(target_img, std::ios::binary);
+        if (!file) {
+            target_img = package_root + "/testimage.jpg";
+            file.open(target_img, std::ios::binary);
+        }
+        if (!file) {
+            target_img = "testimage.jpg";
+            file.open(target_img, std::ios::binary);
+        }
+        if (!file) {
+            std::cerr << "Cannot open image file for face registration: " << target_img << std::endl;
+            abi->library_close(lib);
+            dlclose(handle);
+            return 1;
+        }
+
+        std::vector<uint8_t> image_bytes((std::istreambuf_iterator<char>(file)),
+                                         std::istreambuf_iterator<char>());
+        file.close();
+
+        av_face_extract_input in{};
+        in.size = sizeof(in);
+        in.api_version = AV_ALGO_API_VERSION;
+        in.image_bytes = image_bytes.data();
+        in.image_bytes_len = static_cast<uint32_t>(image_bytes.size());
+        in.min_detection_score = 0.50f;
+        in.min_face_size = 40.0f;
+        in.min_quality_score = 35.0f;
+
+        av_face_extract_output out{};
+        out.size = sizeof(out);
+        out.api_version = AV_ALGO_API_VERSION;
+
+        auto t0 = std::chrono::high_resolution_clock::now();
+        int extract_st = extract_fn(lib, &in, &out);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double cost_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+        if (extract_st != AV_OK) {
+            std::cerr << "av_algo_extract_face returned error code: " << extract_st << std::endl;
+            abi->library_close(lib);
+            dlclose(handle);
+            return 1;
+        }
+
+        std::cout << "\n=== Face Registration / Extraction (640x640 Pipeline) ===\n"
+                  << "Input Image:    " << target_img << " (" << image_bytes.size() << " bytes)\n"
+                  << "Execution Time: " << cost_ms << " ms\n"
+                  << "Status Code:    " << out.status_code << " ("
+                  << (out.status_code == 0 ? "SUCCESS" :
+                      out.status_code == 1 ? "NO_FACE" :
+                      out.status_code == 2 ? "MULTI_FACE" :
+                      out.status_code == 3 ? "QUALITY_LOW" :
+                      out.status_code == 4 ? "DECODE_ERROR" :
+                      out.status_code == 5 ? "IMAGE_TOO_LARGE" :
+                      out.status_code == 6 ? "FACE_TOO_SMALL" : "INTERNAL_ERROR")
+                  << ")\n"
+                  << "Error Message:  " << (out.error_message[0] ? out.error_message : "none") << "\n";
+
+        if (out.status_code == 0) {
+            float l2_norm_sq = 0.0f;
+            for (uint32_t i = 0; i < out.embedding_dim; ++i) {
+                l2_norm_sq += out.embedding[i] * out.embedding[i];
+            }
+            float l2_norm = std::sqrt(l2_norm_sq);
+
+            std::cout << "Detection Score:" << out.detection_score << "\n"
+                      << "Quality Score:  " << out.quality_score << " / 100\n"
+                      << "Face BBox (norm): [" << out.bbox[0] << ", " << out.bbox[1] << ", " << out.bbox[2] << ", " << out.bbox[3] << "]\n"
+                      << "Embedding Dim:  " << out.embedding_dim << "\n"
+                      << "Embedding L2:   " << l2_norm << "\n"
+                      << "Sample Floats:  ["
+                      << out.embedding[0] << ", " << out.embedding[1] << ", "
+                      << out.embedding[2] << ", ..., " << out.embedding[511] << "]\n"
+                      << "Aligned JPEG:   " << out.aligned_jpeg_len << " bytes\n";
+
+            if (out.aligned_jpeg_len > 0) {
+                std::string out_face = "aligned_face_register.jpg";
+                std::ofstream ofs(out_face, std::ios::binary);
+                if (ofs.write(reinterpret_cast<const char*>(out.aligned_jpeg_data), out.aligned_jpeg_len)) {
+                    std::cout << "[Visual] Saved 112x112 registration aligned face crop to " << out_face << "\n";
+                }
+            }
+        }
+        std::cout << "==========================================================\n" << std::endl;
+
+        abi->library_close(lib);
+        dlclose(handle);
+        return (out.status_code == 0) ? 0 : 1;
     }
-    if (!img_data) {
-        std::cerr << "Failed to load testimage.jpg from " << test_img_path << std::endl;
+
+    std::string test_img_path = (argc > 2 && argv[2] && argv[2][0] != '\0') ? argv[2] : (package_root + "/testimage.jpg");
+    int width = 0, height = 0;
+    std::vector<uint8_t> img_rgb = load_image_rgb(test_img_path, width, height);
+    if (img_rgb.empty()) {
+        test_img_path = package_root + "/testimage.jpg";
+        img_rgb = load_image_rgb(test_img_path, width, height);
+    }
+    if (img_rgb.empty()) {
+        test_img_path = "testimage.jpg";
+        img_rgb = load_image_rgb(test_img_path, width, height);
+    }
+    if (img_rgb.empty()) {
+        std::cerr << "Failed to load test image from " << test_img_path << std::endl;
+        abi->library_close(lib);
+        dlclose(handle);
         return 1;
     }
 
-    CVPixelBufferRef pixel_buffer = create_nv12_pixel_buffer(img_data, width, height);
-    stbi_image_free(img_data);
+    CVPixelBufferRef pixel_buffer = create_nv12_pixel_buffer(img_rgb.data(), width, height);
     if (!pixel_buffer) {
         std::cerr << "Failed to create CVPixelBuffer" << std::endl;
         return 1;

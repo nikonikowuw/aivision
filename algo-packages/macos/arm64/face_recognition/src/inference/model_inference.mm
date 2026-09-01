@@ -13,25 +13,66 @@
 
 namespace face_recognition {
 
+struct ScrfdHeadNames {
+    NSString* input_name = nil;
+    NSString* score_8_name = nil;
+    NSString* score_16_name = nil;
+    NSString* score_32_name = nil;
+    NSString* bbox_8_name = nil;
+    NSString* bbox_16_name = nil;
+    NSString* bbox_32_name = nil;
+    NSString* kps_8_name = nil;
+    NSString* kps_16_name = nil;
+    NSString* kps_32_name = nil;
+
+    bool map_heads(MLModel* model, std::string& error) {
+        if (!model) {
+            error = "SCRFD model is nil";
+            return false;
+        }
+        MLModelDescription* desc = model.modelDescription;
+        input_name = desc.inputDescriptionsByName.allKeys.firstObject;
+
+        for (NSString* out_name in desc.outputDescriptionsByName.allKeys) {
+            MLFeatureDescription* fd = desc.outputDescriptionsByName[out_name];
+            NSArray<NSNumber*>* shape = fd.multiArrayConstraint.shape;
+            if (shape.count >= 2) {
+                NSInteger dim0 = shape[shape.count - 2].integerValue;
+                NSInteger dim1 = shape[shape.count - 1].integerValue;
+                if ((dim0 == 7680 || dim0 == 12800) && dim1 == 1) score_8_name = out_name;
+                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 1) score_16_name = out_name;
+                else if ((dim0 == 480 || dim0 == 800) && dim1 == 1) score_32_name = out_name;
+                else if ((dim0 == 7680 || dim0 == 12800) && dim1 == 4) bbox_8_name = out_name;
+                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 4) bbox_16_name = out_name;
+                else if ((dim0 == 480 || dim0 == 800) && dim1 == 4) bbox_32_name = out_name;
+                else if ((dim0 == 7680 || dim0 == 12800) && dim1 == 10) kps_8_name = out_name;
+                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 10) kps_16_name = out_name;
+                else if ((dim0 == 480 || dim0 == 800) && dim1 == 10) kps_32_name = out_name;
+            }
+        }
+
+        if (!score_8_name || !score_16_name || !score_32_name ||
+            !bbox_8_name || !bbox_16_name || !bbox_32_name ||
+            !kps_8_name || !kps_16_name || !kps_32_name) {
+            error = "failed to map all 9 output heads for SCRFD model";
+            return false;
+        }
+        return true;
+    }
+};
+
 class CoreMLRunnerImpl {
 public:
     MLModel* yolo_model = nil;
     MLModel* scrfd_model = nil;
+    MLModel* scrfd_reg_model = nil;
     MLModel* glintr_model = nil;
 
     NSString* yolo_input_name = nil;
     NSString* yolo_output_name = nil;
 
-    NSString* scrfd_input_name = nil;
-    NSString* scrfd_score_8_name = nil;
-    NSString* scrfd_score_16_name = nil;
-    NSString* scrfd_score_32_name = nil;
-    NSString* scrfd_bbox_8_name = nil;
-    NSString* scrfd_bbox_16_name = nil;
-    NSString* scrfd_bbox_32_name = nil;
-    NSString* scrfd_kps_8_name = nil;
-    NSString* scrfd_kps_16_name = nil;
-    NSString* scrfd_kps_32_name = nil;
+    ScrfdHeadNames scrfd_heads;
+    ScrfdHeadNames scrfd_reg_heads;
 
     NSString* glintr_input_name = nil;
     NSString* glintr_output_name = nil;
@@ -39,6 +80,7 @@ public:
     ~CoreMLRunnerImpl() {
         yolo_model = nil;
         scrfd_model = nil;
+        scrfd_reg_model = nil;
         glintr_model = nil;
     }
 };
@@ -118,11 +160,116 @@ bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& targ
     return true;
 }
 
+bool run_scrfd_internal(MLModel* model,
+                         const ScrfdHeadNames& heads,
+                         const uint8_t* rgb,
+                         int net_w,
+                         int net_h,
+                         ScrfdOutput& out,
+                         std::string& error) {
+    @autoreleasepool {
+        if (!model) {
+            error = "SCRFD model not loaded";
+            return false;
+        }
+
+        const int pixels = net_w * net_h;
+        MLFeatureDescription* input_desc = model.modelDescription.inputDescriptionsByName[heads.input_name];
+        MLFeatureValue* input_val = nil;
+        NSError* ns_error = nil;
+
+        if (input_desc.type == MLFeatureTypeImage) {
+            NSDictionary* options = @{
+                (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
+                (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
+            };
+            CVPixelBufferRef pb = nullptr;
+            CVReturn status = CVPixelBufferCreate(
+                kCFAllocatorDefault, net_w, net_h, kCVPixelFormatType_32BGRA,
+                (__bridge CFDictionaryRef)options, &pb);
+            if (status != kCVReturnSuccess || !pb) {
+                error = "failed to create pixel buffer for SCRFD input";
+                return false;
+            }
+
+            CVPixelBufferLockBaseAddress(pb, 0);
+            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
+            size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
+            for (int y = 0; y < net_h; ++y) {
+                uint8_t* row = dst + y * bytes_per_row;
+                for (int x = 0; x < net_w; ++x) {
+                    const uint8_t* src_px = rgb + (y * net_w + x) * 3;
+                    row[x * 4 + 0] = src_px[2]; // B
+                    row[x * 4 + 1] = src_px[1]; // G
+                    row[x * 4 + 2] = src_px[0]; // R
+                    row[x * 4 + 3] = 255;       // A
+                }
+            }
+            CVPixelBufferUnlockBaseAddress(pb, 0);
+            input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
+            CVPixelBufferRelease(pb);
+        } else {
+            // SCRFD 归一化: (img - 127.5) / 128.0
+            NSArray<NSNumber*>* shape = @[@1, @3, @(net_h), @(net_w)];
+            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
+            if (!input_array || ns_error) {
+                error = "failed to allocate SCRFD input multiarray";
+                return false;
+            }
+
+            float* dst = static_cast<float*>(input_array.dataPointer);
+            for (int c = 0; c < 3; ++c) {
+                float* channel_ptr = dst + c * pixels;
+                for (int i = 0; i < pixels; ++i) {
+                    channel_ptr[i] = (static_cast<float>(rgb[i * 3 + c]) - 127.5f) / 128.0f;
+                }
+            }
+            input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
+        }
+
+        NSDictionary* input_dict = @{heads.input_name: input_val};
+        id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
+        if (!input_provider || ns_error) {
+            error = "failed to create SCRFD feature provider";
+            return false;
+        }
+
+        id<MLFeatureProvider> output_provider = [model predictionFromFeatures:input_provider error:&ns_error];
+        if (!output_provider || ns_error) {
+            error = "failed to run SCRFD prediction: " +
+                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
+            return false;
+        }
+
+        auto copy_head = [&](NSString* name, std::vector<float>& dst_vec, size_t dim1) -> bool {
+            MLFeatureValue* fv = [output_provider featureValueForName:name];
+            if (!fv || fv.type != MLFeatureTypeMultiArray) return false;
+            return copy_multiarray_to_float_vector(fv.multiArrayValue, dst_vec, dim1);
+        };
+
+        if (!copy_head(heads.score_8_name, out.score_8, 1) ||
+            !copy_head(heads.score_16_name, out.score_16, 1) ||
+            !copy_head(heads.score_32_name, out.score_32, 1) ||
+            !copy_head(heads.bbox_8_name, out.bbox_8, 4) ||
+            !copy_head(heads.bbox_16_name, out.bbox_16, 4) ||
+            !copy_head(heads.bbox_32_name, out.bbox_32, 4) ||
+            !copy_head(heads.kps_8_name, out.kps_8, 10) ||
+            !copy_head(heads.kps_16_name, out.kps_16, 10) ||
+            !copy_head(heads.kps_32_name, out.kps_32, 10)) {
+            error = "failed to copy one or more SCRFD output arrays";
+            return false;
+        }
+
+        return true;
+    }
+}
+
 } // namespace
 
 bool ModelInferenceManager::load_models(const std::string& package_root,
                                         const std::string& yolo_rel_path,
                                         const std::string& scrfd_rel_path,
+                                        const std::string& scrfd_reg_rel_path,
                                         const std::string& glintr_rel_path,
                                         std::string& error) {
     @autoreleasepool {
@@ -141,36 +288,23 @@ bool ModelInferenceManager::load_models(const std::string& package_root,
             }
         }
 
-        // 2. Load SCRFD (必选人脸检测模型)
+        // 2. Load SCRFD Stream Model (必选流媒体人脸检测模型，384x640)
         impl_->scrfd_model = compile_and_load_model(root / scrfd_rel_path, error);
         if (!impl_->scrfd_model) return false;
 
-        MLModelDescription* scrfd_desc = impl_->scrfd_model.modelDescription;
-        impl_->scrfd_input_name = scrfd_desc.inputDescriptionsByName.allKeys.firstObject;
-
-        for (NSString* out_name in scrfd_desc.outputDescriptionsByName.allKeys) {
-            MLFeatureDescription* fd = scrfd_desc.outputDescriptionsByName[out_name];
-            NSArray<NSNumber*>* shape = fd.multiArrayConstraint.shape;
-            if (shape.count >= 2) {
-                NSInteger dim0 = shape[shape.count - 2].integerValue;
-                NSInteger dim1 = shape[shape.count - 1].integerValue;
-                if ((dim0 == 7680 || dim0 == 12800) && dim1 == 1) impl_->scrfd_score_8_name = out_name;
-                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 1) impl_->scrfd_score_16_name = out_name;
-                else if ((dim0 == 480 || dim0 == 800) && dim1 == 1) impl_->scrfd_score_32_name = out_name;
-                else if ((dim0 == 7680 || dim0 == 12800) && dim1 == 4) impl_->scrfd_bbox_8_name = out_name;
-                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 4) impl_->scrfd_bbox_16_name = out_name;
-                else if ((dim0 == 480 || dim0 == 800) && dim1 == 4) impl_->scrfd_bbox_32_name = out_name;
-                else if ((dim0 == 7680 || dim0 == 12800) && dim1 == 10) impl_->scrfd_kps_8_name = out_name;
-                else if ((dim0 == 1920 || dim0 == 3200) && dim1 == 10) impl_->scrfd_kps_16_name = out_name;
-                else if ((dim0 == 480 || dim0 == 800) && dim1 == 10) impl_->scrfd_kps_32_name = out_name;
-            }
+        if (!impl_->scrfd_heads.map_heads(impl_->scrfd_model, error)) {
+            return false;
         }
 
-        if (!impl_->scrfd_score_8_name || !impl_->scrfd_score_16_name || !impl_->scrfd_score_32_name ||
-            !impl_->scrfd_bbox_8_name || !impl_->scrfd_bbox_16_name || !impl_->scrfd_bbox_32_name ||
-            !impl_->scrfd_kps_8_name || !impl_->scrfd_kps_16_name || !impl_->scrfd_kps_32_name) {
-            error = "failed to map all 9 output heads for SCRFD model";
-            return false;
+        // 2.1 Load SCRFD Registration Model (可选/推荐 640x640 静态注册人脸检测模型)
+        if (!scrfd_reg_rel_path.empty() && std::filesystem::exists(root / scrfd_reg_rel_path)) {
+            std::string reg_err;
+            impl_->scrfd_reg_model = compile_and_load_model(root / scrfd_reg_rel_path, reg_err);
+            if (impl_->scrfd_reg_model) {
+                if (!impl_->scrfd_reg_heads.map_heads(impl_->scrfd_reg_model, reg_err)) {
+                    impl_->scrfd_reg_model = nil;
+                }
+            }
         }
 
         // 3. Load GLINTR100 (必选人脸特征提取模型)
@@ -278,104 +412,15 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out
 }
 
 bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& out, std::string& error) {
-    @autoreleasepool {
-        if (!impl_->scrfd_model) {
-            error = "SCRFD model not loaded";
-            return false;
-        }
+    return run_scrfd_internal(impl_->scrfd_model, impl_->scrfd_heads, rgb_640x384, 640, 384, out, error);
+}
 
-        constexpr int kNetW = 640;
-        constexpr int kNetH = 384;
-        constexpr int kPixels = kNetW * kNetH;
-
-        MLFeatureDescription* input_desc = impl_->scrfd_model.modelDescription.inputDescriptionsByName[impl_->scrfd_input_name];
-        MLFeatureValue* input_val = nil;
-        NSError* ns_error = nil;
-
-        if (input_desc.type == MLFeatureTypeImage) {
-            NSDictionary* options = @{
-                (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
-                (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
-            };
-            CVPixelBufferRef pb = nullptr;
-            CVReturn status = CVPixelBufferCreate(
-                kCFAllocatorDefault, kNetW, kNetH, kCVPixelFormatType_32BGRA,
-                (__bridge CFDictionaryRef)options, &pb);
-            if (status != kCVReturnSuccess || !pb) {
-                error = "failed to create pixel buffer for SCRFD input";
-                return false;
-            }
-
-            CVPixelBufferLockBaseAddress(pb, 0);
-            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
-            size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
-            for (int y = 0; y < kNetH; ++y) {
-                uint8_t* row = dst + y * bytes_per_row;
-                for (int x = 0; x < kNetW; ++x) {
-                    const uint8_t* src_px = rgb_640x384 + (y * kNetW + x) * 3;
-                    row[x * 4 + 0] = src_px[2]; // B
-                    row[x * 4 + 1] = src_px[1]; // G
-                    row[x * 4 + 2] = src_px[0]; // R
-                    row[x * 4 + 3] = 255;       // A
-                }
-            }
-            CVPixelBufferUnlockBaseAddress(pb, 0);
-            input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
-            CVPixelBufferRelease(pb);
-        } else {
-            // SCRFD 归一化: (img - 127.5) / 128.0
-            NSArray<NSNumber*>* shape = @[@1, @3, @(kNetH), @(kNetW)];
-            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
-            if (!input_array || ns_error) {
-                error = "failed to allocate SCRFD input multiarray";
-                return false;
-            }
-
-            float* dst = static_cast<float*>(input_array.dataPointer);
-            for (int c = 0; c < 3; ++c) {
-                float* channel_ptr = dst + c * kPixels;
-                for (int i = 0; i < kPixels; ++i) {
-                    channel_ptr[i] = (static_cast<float>(rgb_640x384[i * 3 + c]) - 127.5f) / 128.0f;
-                }
-            }
-            input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
-        }
-
-        NSDictionary* input_dict = @{impl_->scrfd_input_name: input_val};
-        id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
-        if (!input_provider || ns_error) {
-            error = "failed to create SCRFD feature provider";
-            return false;
-        }
-
-        id<MLFeatureProvider> output_provider = [impl_->scrfd_model predictionFromFeatures:input_provider error:&ns_error];
-        if (!output_provider || ns_error) {
-            error = "failed to run SCRFD prediction: " +
-                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
-            return false;
-        }
-
-        auto copy_head = [&](NSString* name, std::vector<float>& dst_vec, size_t dim1) -> bool {
-            MLFeatureValue* fv = [output_provider featureValueForName:name];
-            if (!fv || fv.type != MLFeatureTypeMultiArray) return false;
-            return copy_multiarray_to_float_vector(fv.multiArrayValue, dst_vec, dim1);
-        };
-
-        if (!copy_head(impl_->scrfd_score_8_name, out.score_8, 1) ||
-            !copy_head(impl_->scrfd_score_16_name, out.score_16, 1) ||
-            !copy_head(impl_->scrfd_score_32_name, out.score_32, 1) ||
-            !copy_head(impl_->scrfd_bbox_8_name, out.bbox_8, 4) ||
-            !copy_head(impl_->scrfd_bbox_16_name, out.bbox_16, 4) ||
-            !copy_head(impl_->scrfd_bbox_32_name, out.bbox_32, 4) ||
-            !copy_head(impl_->scrfd_kps_8_name, out.kps_8, 10) ||
-            !copy_head(impl_->scrfd_kps_16_name, out.kps_16, 10) ||
-            !copy_head(impl_->scrfd_kps_32_name, out.kps_32, 10)) {
-            error = "failed to copy one or more SCRFD output arrays";
-            return false;
-        }
-
-        return true;
+bool ModelInferenceManager::run_scrfd_reg(const uint8_t* rgb_640x640, ScrfdOutput& out, std::string& error) {
+    if (!impl_->scrfd_reg_model) {
+        error = "SCRFD 640x640 registration model not loaded";
+        return false;
     }
+    return run_scrfd_internal(impl_->scrfd_reg_model, impl_->scrfd_reg_heads, rgb_640x640, 640, 640, out, error);
 }
 
 bool ModelInferenceManager::run_glintr(const uint8_t* rgb_112x112, GlintrOutput& out, std::string& error) {

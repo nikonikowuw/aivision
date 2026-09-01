@@ -129,7 +129,7 @@ macOS `fork` child 在 exec 前只能执行 async-signal-safe 操作。Linux 也
 | 格式/clang-tidy/依赖图不通过 | `lint` 失败 |
 | ASan/UBSan/TSan 报告 | 对应质量门禁失败 |
 | 算法包在仓库外不能构建 | 可搬运性失败 |
-| 动态库有额外导出符号 | 拒绝打包/安装 |
+| 动态库导出白名单外符号 | 拒绝打包/安装 |
 | zip 路径或类型不安全 | validator 拒绝，未 dlopen |
 | 入口文件缺失或 SHA-256 不匹配 | validator 拒绝 |
 | self-test 零检测但 self-test JSON 合法 | 成功 |

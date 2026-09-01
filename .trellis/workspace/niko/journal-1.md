@@ -1164,3 +1164,26 @@ Completed and archived 08-23-lacp-aggregation and parent task 08-23-advanced-net
 ### Status
 
 [OK] **Completed**
+
+
+## Session 32: 人员人脸注册与多脸管理及首选人脸优化
+
+**Date**: 2026-09-02
+**Task**: 人员人脸注册与多脸管理及首选人脸优化
+**Branch**: `dev`
+
+### Summary
+
+完成人员人脸注册与多脸管理全链路能力（09-01-person-face-registration）。新增 ExtractFaceFeature proto 契约并在 C++ Engine 实现受约束的 512 维特征提取与五点几何对齐；Go 后端扩展受保护私有文件存储、数据库迁移与 10 张样本上限生命周期管理；前端实现人员多脸管理抽屉及首选人脸交互；修复静态图 RGBA 通道对齐问题。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dc25073` | (see git log) |
+| `8e521ee` | (see git log) |
+| `9582ddb` | (see git log) |
+
+### Status
+
+[OK] **Completed**

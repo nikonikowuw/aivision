@@ -1,0 +1,15 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "版本化 migration、毫秒软删除、复合唯一索引与事务内 revision 递增约束"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "新增 CodeFaceGalleryFull 业务错误码、三语文案与 HTTP 状态码映射规范"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "model/repository/service/api 分层与 Wire DI 装配规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "单调 upsert 并发正确性与乱序上报场景的单元测试要求"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "embedding 属于敏感生物特征，日志与错误响应脱敏要求"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "UDS gRPC 有界传输、消息���小上限、图像内存与 frame 生命周期规范"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "Engine 稳定错误码、fail-static 降级与诊断日志规范"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "§4.3 人脸识别结果 JSON schema（persons/track_id/face.embedding）的解析契约"}
+{"file": ".trellis/spec/engine/directory-structure.md", "reason": "新增 core/algo/face_gallery 模块的落点与 CMake 装配规范"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "Engine 单测、ASan 与线程安全（shared_mutex 原子换库）质量门禁"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "新增 face-observation API 的 TypeScript 响应类型定义规范"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "zh-CN / en-US / zh-TW 三语词条同步规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "记录列表页与实例配置表单的 Vue3 + Ant Design Vue 组件规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "相似度归一化口径、event_id 幂等语义在 Engine -> Go -> 前端的一致传播"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 plate_observations 的记录模块、capture_id 抓拍与孤儿图片对账链路"}

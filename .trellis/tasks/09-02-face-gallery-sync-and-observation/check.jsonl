@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对 migration 完整性、down 脚本、索引设计与事务内 revision 递增"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对单调 upsert 乱序场景、底库上限拒绝与级联删除的测试覆盖"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对错误码取值不冲突、三语文案齐全与 HTTP 映射正确"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对日志与错误响应未泄露 embedding 原始数据"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "核对 Engine 单测、ASan 与 lint 门禁全部通过"}
+{"file": ".trellis/spec/engine/runtime-guidelines.md", "reason": "核对 gRPC 消息上限、fail-static 降级与 frame/图像生命周期无泄漏"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "核对底库拉取失败、embedding 校验失败的错误码与日志规范"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "核对人脸识别结果 JSON 解析严格遵循 §4.3 契约"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核对 pnpm check（typecheck / oxlint / cspell）通过"}
+{"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "核对三语词条无遗漏、无硬编码中文"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对相似度全链路只传归一化值，无任何位置出现原始 cosine"}

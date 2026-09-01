@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 31
-- **Last Active**: 2026-09-01
+- **Total Sessions**: 32
+- **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1166 | Active |
+| `journal-1.md` | ~1189 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 32 | 2026-09-02 | 人员人脸注册与多脸管理及首选人脸优化 | `dc25073`, `8e521ee`, `9582ddb` | `dev` |
 | 31 | 2026-09-01 | CameraTask 按需降频解码与边缘算力优化 | `c2d7377` | `dev` |
 | 30 | 2026-09-01 | Archive advanced network modes and LACP aggregation | - | `dev` |
 | 29 | 2026-08-31 | 完成 Frigate 风格运动检测推理门控归档 | `7359b6f`, `a657d68` | `dev` |

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 30
+- **Total Sessions**: 31
 - **Last Active**: 2026-09-01
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1145 | Active |
+| `journal-1.md` | ~1166 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 31 | 2026-09-01 | CameraTask 按需降频解码与边缘算力优化 | `c2d7377` | `dev` |
 | 30 | 2026-09-01 | Archive advanced network modes and LACP aggregation | - | `dev` |
 | 29 | 2026-08-31 | 完成 Frigate 风格运动检测推理门控归档 | `7359b6f`, `a657d68` | `dev` |
 | 28 | 2026-08-31 | 完成 Linux 平台层真实化 (rtnetlink/DHCP/Bond) 实施与归档 | `52e4c28`, `17d0415`, `8a4f43b` | `dev` |

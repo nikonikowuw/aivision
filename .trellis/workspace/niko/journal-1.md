@@ -1143,3 +1143,24 @@ Completed and archived 08-23-lacp-aggregation and parent task 08-23-advanced-net
 ### Status
 
 [OK] **Completed**
+
+
+## Session 31: CameraTask 按需降频解码与边缘算力优化
+
+**Date**: 2026-09-01
+**Task**: CameraTask 按需降频解码与边缘算力优化
+**Branch**: `dev`
+
+### Summary
+
+实现 0 消费者场景下的 1 FPS 低频探测保活与平滑恢复机制，支持实时预览租约与 IDR 关键帧重同步，大幅降低边缘空转算力开销。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c2d7377` | (see git log) |
+
+### Status
+
+[OK] **Completed**

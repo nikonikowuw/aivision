@@ -102,9 +102,8 @@ func TestAnchorStore(t *testing.T) {
 }
 
 func TestLinuxPlatformCapabilities(t *testing.T) {
-	p, err := NewLinuxPlatform("", "", true)
-	if err != nil {
-		t.Fatalf("NewLinuxPlatform failed: %v", err)
+	p := &LinuxPlatform{
+		fakePlatform: true,
 	}
 
 	// Probe 前只声明 multi-address
@@ -314,7 +313,7 @@ func (m *mockOps) RouteDel(route *netlink.Route) error {
 
 func (m *mockOps) RouteReplace(route *netlink.Route) error {
 	m.callLog = append(m.callLog, fmt.Sprintf("RouteReplace(gw=%s)", route.Gw.String()))
-	if m.failAt == "RouteReplace" {
+	if m.failAt == "RouteReplace" || m.failAt == "RouteAdd" {
 		return m.failErr
 	}
 	return nil

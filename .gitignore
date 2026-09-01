@@ -51,6 +51,9 @@ argus/bin/
 argus/tmp/
 argus/uploads/
 argus/data/
+argus/internal/web/dist/*
+!argus/internal/web/dist/index.html
+/bin/
 coverage.out
 *.test
 *.exe

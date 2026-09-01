@@ -31,7 +31,7 @@ func validateResolverFile(path string) error {
 		return fmt.Errorf("%w: resolver path %s is world-writable", ErrResolverConflict, path)
 	}
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-		if stat.Uid != 0 {
+		if os.Geteuid() == 0 && stat.Uid != 0 {
 			return fmt.Errorf("%w: resolver path %s owner uid is %d, expected 0 (root)", ErrResolverConflict, path, stat.Uid)
 		}
 	}

@@ -524,3 +524,91 @@ func TestSwaggerEndpointAccessible(t *testing.T) {
 		t.Fatalf("GET /swagger/doc.json body does not contain 'argus API'")
 	}
 }
+
+func TestSPARoutingAnd404Isolation(t *testing.T) {
+	engine, _, _, _, _ := newRouterTestEngine(t, false)
+
+	// 1. 根路径 GET / 返回 index.html (200)
+	{
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET / status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if !strings.Contains(rec.Body.String(), "<html") {
+			t.Fatalf("GET / body does not contain html")
+		}
+		if rec.Header().Get("Cache-Control") != "no-cache, no-store, must-revalidate" {
+			t.Fatalf("GET / cache-control = %s, want no-cache, no-store, must-revalidate", rec.Header().Get("Cache-Control"))
+		}
+	}
+
+	// 2. 前端 SPA 页面路径 GET /system/user 返回 index.html (200)
+	{
+		req := httptest.NewRequest(http.MethodGet, "/system/user", nil)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /system/user status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if !strings.Contains(rec.Body.String(), "<html") {
+			t.Fatalf("GET /system/user body does not contain html")
+		}
+	}
+
+	// 3. 未定义的 API GET /api/nonexistent 严格返回 JSON 404 (不是 html)
+	{
+		req := httptest.NewRequest(http.MethodGet, "/api/nonexistent", nil)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("GET /api/nonexistent status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+		if code := readCode(t, rec); code != errno.CodeNotFound {
+			t.Fatalf("GET /api/nonexistent code = %d, want %d", code, errno.CodeNotFound)
+		}
+	}
+
+	// 4. 未定义的 API POST /api/nonexistent 严格返回 JSON 404
+	{
+		req := httptest.NewRequest(http.MethodPost, "/api/nonexistent", nil)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("POST /api/nonexistent status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+		if code := readCode(t, rec); code != errno.CodeNotFound {
+			t.Fatalf("POST /api/nonexistent code = %d, want %d", code, errno.CodeNotFound)
+		}
+	}
+
+	// 5. 非 GET/HEAD 的未定义路由 POST /nonexistent 返回 JSON 404
+	{
+		req := httptest.NewRequest(http.MethodPost, "/nonexistent", nil)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("POST /nonexistent status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+		if code := readCode(t, rec); code != errno.CodeNotFound {
+			t.Fatalf("POST /nonexistent code = %d, want %d", code, errno.CodeNotFound)
+		}
+	}
+
+	// 6. 不存在的上传文件 GET /uploads/nonexistent.jpg 返回 JSON 404
+	{
+		req := httptest.NewRequest(http.MethodGet, "/uploads/nonexistent.jpg", nil)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("GET /uploads/nonexistent.jpg status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	}
+}

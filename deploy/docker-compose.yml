@@ -1,10 +1,10 @@
 services:
-  # Backend Go API Service (Embedded SQLite with WAL mode)
+  # Argus Web Control Plane (Single binary with embedded Vue UI + API + SQLite)
   server:
     build:
-      context: ../argus
+      context: ..
       dockerfile: Dockerfile
-    container_name: argus-backend
+    container_name: argus-server
     restart: unless-stopped
     environment:
       APP_SERVER_PORT: 8000
@@ -17,19 +17,6 @@ services:
     volumes:
       - argus_data:/app/data
       - uploads_data:/app/uploads
-
-  # Frontend Web & Nginx Proxy
-  web:
-    image: nginx:alpine
-    container_name: argus-web
-    restart: unless-stopped
-    depends_on:
-      - server
-    ports:
-      - "80:80"
-    volumes:
-      - ../ui/apps/web-antd/dist:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
 
 volumes:
   argus_data:

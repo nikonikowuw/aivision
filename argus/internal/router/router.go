@@ -15,6 +15,7 @@ import (
 	"argus/app/internal/pkg/config"
 	"argus/app/internal/pkg/errno"
 	"argus/app/internal/pkg/response"
+	"argus/app/internal/web"
 )
 
 const (
@@ -69,25 +70,25 @@ const (
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
 // （wire.Struct 按字段自动装配，见 cmd/api/wire.go）。
 type Deps struct {
-	ErrorHandler           gin.HandlerFunc
-	AuthMiddleware         *middleware.AuthMiddleware
-	PermMiddleware         *middleware.PermMiddleware
-	OplogMiddleware        *middleware.OplogMiddleware
-	OpenPersonIPMiddleware *middleware.OpenPersonIPWhitelistMiddleware
-	MenuHandler            *api.MenuHandler
-	RoleHandler            *api.RoleHandler
-	DepartmentHandler      *api.DepartmentHandler
-	OperationLogHandler    *api.OperationLogHandler
-	UserHandler            *api.UserHandler
-	AuthHandler            *api.AuthHandler
-	FileHandler            *api.FileHandler
-	NTPHandler             *api.NTPHandler
-	NetworkHandler         *api.NetworkHandler
-	CameraHandler          *api.CameraHandler
-	PersonHandler          *api.PersonHandler
-	AlgorithmHandler       *api.AlgorithmHandler
-	TaskHandler            *api.TaskHandler
-	AlarmRecordHandler     *api.AlarmRecordHandler
+	ErrorHandler            gin.HandlerFunc
+	AuthMiddleware          *middleware.AuthMiddleware
+	PermMiddleware          *middleware.PermMiddleware
+	OplogMiddleware         *middleware.OplogMiddleware
+	OpenPersonIPMiddleware  *middleware.OpenPersonIPWhitelistMiddleware
+	MenuHandler             *api.MenuHandler
+	RoleHandler             *api.RoleHandler
+	DepartmentHandler       *api.DepartmentHandler
+	OperationLogHandler     *api.OperationLogHandler
+	UserHandler             *api.UserHandler
+	AuthHandler             *api.AuthHandler
+	FileHandler             *api.FileHandler
+	NTPHandler              *api.NTPHandler
+	NetworkHandler          *api.NetworkHandler
+	CameraHandler           *api.CameraHandler
+	PersonHandler           *api.PersonHandler
+	AlgorithmHandler        *api.AlgorithmHandler
+	TaskHandler             *api.TaskHandler
+	AlarmRecordHandler      *api.AlarmRecordHandler
 	PlateObservationHandler *api.PlateObservationHandler
 }
 
@@ -112,8 +113,28 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 	// 不信任任何代理：ClientIP 直接用 RemoteAddr，避免伪造 X-Forwarded-For。
 	// 生产若置于反向代理后，需在此显式配置代理网段。
 	_ = engine.SetTrustedProxies(nil)
-	// NoRoute / NoMethod 输出统一 404 / 405 响应。
+	// NoRoute / NoMethod 输出统一 404 / 405 响应，或对前端 SPA 路由进行回退。
 	engine.NoRoute(func(c *gin.Context) {
+		reqPath := c.Request.URL.Path
+
+		// 如果是 API 请求、Swagger 或本地文件上传路径，严格输出 404 JSON，不回退前端页面
+		if reqPath == apiRoutePath ||
+			strings.HasPrefix(reqPath, apiRoutePath+"/") ||
+			reqPath == "/swagger" ||
+			strings.HasPrefix(reqPath, "/swagger/") ||
+			(cfg.Storage.Driver == config.StorageDriverLocal &&
+				cfg.Storage.Local.URLPrefix != "" &&
+				(reqPath == cfg.Storage.Local.URLPrefix || strings.HasPrefix(reqPath, cfg.Storage.Local.URLPrefix+"/"))) {
+			response.WriteFail(c, http.StatusNotFound, errno.CodeNotFound)
+			return
+		}
+
+		// 仅对 GET / HEAD 方法进行前端页面与静态资源分发
+		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
+			web.Handler()(c)
+			return
+		}
+
 		response.WriteFail(c, http.StatusNotFound, errno.CodeNotFound)
 	})
 	engine.NoMethod(func(c *gin.Context) {

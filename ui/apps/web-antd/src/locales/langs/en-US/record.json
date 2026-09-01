@@ -1,6 +1,8 @@
 {
   "alarm": {
     "title": "Alarm Records",
+    "query": "Query Alarms",
+    "export": "Export Alarms",
     "filter": {
       "camera": "Camera",
       "cameraPlaceholder": "Select camera",
@@ -59,6 +61,8 @@
   },
   "plate": {
     "title": "License Plate Records",
+    "query": "Query Plates",
+    "export": "Export Plates",
     "filter": {
       "camera": "Camera",
       "cameraPlaceholder": "Select camera",

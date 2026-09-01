@@ -1,6 +1,8 @@
 {
   "alarm": {
     "title": "告警记录",
+    "query": "查询告警",
+    "export": "导出告警",
     "filter": {
       "camera": "摄像头",
       "cameraPlaceholder": "请选择摄像头",
@@ -59,6 +61,8 @@
   },
   "plate": {
     "title": "车牌记录",
+    "query": "查询车牌",
+    "export": "导出车牌",
     "filter": {
       "camera": "摄像头",
       "cameraPlaceholder": "请选择摄像头",

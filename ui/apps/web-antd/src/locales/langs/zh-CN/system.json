@@ -98,7 +98,8 @@
     "menuDetail": "菜单详情",
     "confirmDelete": "确认删除该菜单/权限项？",
     "titleRequired": "请输入菜单标题",
-    "nameRequired": "请输入路由标识符"
+    "nameRequired": "请输入路由标识符",
+    "buttonName": "按钮标识/名称"
   },
   "dept": {
     "title": "部门管理",

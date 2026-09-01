@@ -98,7 +98,8 @@
     "menuDetail": "選單詳情",
     "confirmDelete": "確定要刪除此選單／權限項目嗎？",
     "titleRequired": "請輸入選單標題",
-    "nameRequired": "請輸入路由識別名稱"
+    "nameRequired": "請輸入路由識別名稱",
+    "buttonName": "按鈕標識/名稱"
   },
   "dept": {
     "title": "部門管理",

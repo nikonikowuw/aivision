@@ -22,6 +22,7 @@
   "preview": {
     "start": "Start Preview",
     "stop": "Stop Preview",
-    "failed": "Failed to start live preview"
+    "failed": "Failed to start live preview",
+    "stream": "Live Stream"
   }
 }

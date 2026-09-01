@@ -1,6 +1,8 @@
 {
   "alarm": {
     "title": "告警記錄",
+    "query": "查詢告警",
+    "export": "匯出告警",
     "filter": {
       "camera": "攝影機",
       "cameraPlaceholder": "請選擇攝影機",
@@ -59,6 +61,8 @@
   },
   "plate": {
     "title": "車牌記錄",
+    "query": "查詢車牌",
+    "export": "匯出車牌",
     "filter": {
       "camera": "攝影機",
       "cameraPlaceholder": "請選擇攝影機",

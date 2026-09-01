@@ -9,6 +9,7 @@
 #import <Foundation/Foundation.h>
 #include <filesystem>
 #include <cmath>
+#include <iostream>
 
 namespace face_recognition {
 
@@ -18,15 +19,10 @@ public:
     MLModel* scrfd_model = nil;
     MLModel* glintr_model = nil;
 
-    MLFeatureDescription* yolo_input_desc = nil;
-    MLFeatureDescription* scrfd_input_desc = nil;
-    MLFeatureDescription* glintr_input_desc = nil;
-
     NSString* yolo_input_name = nil;
     NSString* yolo_output_name = nil;
 
     NSString* scrfd_input_name = nil;
-    // Map of output names for SCRFD
     NSString* scrfd_score_8_name = nil;
     NSString* scrfd_score_16_name = nil;
     NSString* scrfd_score_32_name = nil;
@@ -86,6 +82,42 @@ MLModel* compile_and_load_model(const std::filesystem::path& model_path, std::st
     }
 }
 
+bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& target, size_t dim1) {
+    if (!arr) return false;
+    size_t total_elements = arr.count;
+    if (dim1 == 0) dim1 = 1;
+    size_t dim0 = total_elements / dim1;
+
+    NSInteger row_stride = dim1;
+    if (arr.strides.count >= 2) {
+        row_stride = arr.strides[arr.strides.count - 2].integerValue;
+    } else if (arr.strides.count == 1) {
+        row_stride = arr.strides[0].integerValue;
+    }
+
+    target.resize(total_elements);
+    if (arr.dataType == MLMultiArrayDataTypeFloat16) {
+        const _Float16* src16 = static_cast<const _Float16*>(arr.dataPointer);
+        for (size_t r = 0; r < dim0; ++r) {
+            const _Float16* row_src = src16 + r * row_stride;
+            float* row_dst = target.data() + r * dim1;
+            for (size_t c = 0; c < dim1; ++c) {
+                row_dst[c] = static_cast<float>(row_src[c]);
+            }
+        }
+    } else {
+        const float* src = static_cast<const float*>(arr.dataPointer);
+        if (static_cast<size_t>(row_stride) == dim1) {
+            std::memcpy(target.data(), src, total_elements * sizeof(float));
+        } else {
+            for (size_t r = 0; r < dim0; ++r) {
+                std::memcpy(target.data() + r * dim1, src + r * row_stride, dim1 * sizeof(float));
+            }
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 bool ModelInferenceManager::load_models(const std::string& package_root,
@@ -96,19 +128,20 @@ bool ModelInferenceManager::load_models(const std::string& package_root,
     @autoreleasepool {
         std::filesystem::path root(package_root);
 
-        // 1. Load YOLOv8n
-        impl_->yolo_model = compile_and_load_model(root / yolo_rel_path, error);
-        if (!impl_->yolo_model) return false;
-
-        MLModelDescription* yolo_desc = impl_->yolo_model.modelDescription;
-        if (yolo_desc.inputDescriptionsByName.count == 0 || yolo_desc.outputDescriptionsByName.count == 0) {
-            error = "yolov8n model has missing inputs or outputs";
-            return false;
+        // 1. Load YOLOv8n (可选能力)
+        if (!yolo_rel_path.empty() && std::filesystem::exists(root / yolo_rel_path)) {
+            std::string yolo_err;
+            impl_->yolo_model = compile_and_load_model(root / yolo_rel_path, yolo_err);
+            if (impl_->yolo_model) {
+                MLModelDescription* yolo_desc = impl_->yolo_model.modelDescription;
+                if (yolo_desc.inputDescriptionsByName.count > 0 && yolo_desc.outputDescriptionsByName.count > 0) {
+                    impl_->yolo_input_name = yolo_desc.inputDescriptionsByName.allKeys.firstObject;
+                    impl_->yolo_output_name = yolo_desc.outputDescriptionsByName.allKeys.firstObject;
+                }
+            }
         }
-        impl_->yolo_input_name = yolo_desc.inputDescriptionsByName.allKeys.firstObject;
-        impl_->yolo_output_name = yolo_desc.outputDescriptionsByName.allKeys.firstObject;
 
-        // 2. Load SCRFD
+        // 2. Load SCRFD (必选人脸检测模型)
         impl_->scrfd_model = compile_and_load_model(root / scrfd_rel_path, error);
         if (!impl_->scrfd_model) return false;
 
@@ -140,7 +173,7 @@ bool ModelInferenceManager::load_models(const std::string& package_root,
             return false;
         }
 
-        // 3. Load GLINTR100
+        // 3. Load GLINTR100 (必选人脸特征提取模型)
         impl_->glintr_model = compile_and_load_model(root / glintr_rel_path, error);
         if (!impl_->glintr_model) return false;
 
@@ -163,13 +196,11 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out
         constexpr int kNetH = 384;
         constexpr int kPixels = kNetW * kNetH;
 
-        // Check if YOLO expects Image or MultiArray
         MLFeatureDescription* input_desc = impl_->yolo_model.modelDescription.inputDescriptionsByName[impl_->yolo_input_name];
         MLFeatureValue* input_val = nil;
         NSError* ns_error = nil;
 
         if (input_desc.type == MLFeatureTypeImage) {
-            // Create 640x384 32BGRA CVPixelBuffer
             NSDictionary* options = @{
                 (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
                 (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
@@ -217,25 +248,30 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out
             input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
         }
 
-        MLDictionaryFeatureProvider* input_features =
-            [[MLDictionaryFeatureProvider alloc] initWithDictionary:@{impl_->yolo_input_name: input_val} error:&ns_error];
-
-        id<MLFeatureProvider> prediction = [impl_->yolo_model predictionFromFeatures:input_features error:&ns_error];
-        if (!prediction || ns_error) {
-            error = "YOLO inference failed: " + std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown");
+        NSDictionary* input_dict = @{impl_->yolo_input_name: input_val};
+        id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
+        if (!input_provider || ns_error) {
+            error = "failed to create YOLO feature provider";
             return false;
         }
 
-        MLFeatureValue* output_value = [prediction featureValueForName:impl_->yolo_output_name];
-        MLMultiArray* output_array = output_value.multiArrayValue;
-        if (!output_array) {
-            error = "YOLO output feature is missing";
+        id<MLFeatureProvider> output_provider = [impl_->yolo_model predictionFromFeatures:input_provider error:&ns_error];
+        if (!output_provider || ns_error) {
+            error = "failed to run YOLO prediction: " +
+                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
             return false;
         }
 
-        out.data.resize(output_array.count);
-        float* src = static_cast<float*>(output_array.dataPointer);
-        std::memcpy(out.data.data(), src, output_array.count * sizeof(float));
+        MLFeatureValue* out_val = [output_provider featureValueForName:impl_->yolo_output_name];
+        if (!out_val || out_val.type != MLFeatureTypeMultiArray) {
+            error = "invalid YOLO output multiarray";
+            return false;
+        }
+
+        if (!copy_multiarray_to_float_vector(out_val.multiArrayValue, out.data, 84)) {
+            error = "failed to copy YOLO output";
+            return false;
+        }
 
         return true;
     }
@@ -244,7 +280,7 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out
 bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& out, std::string& error) {
     @autoreleasepool {
         if (!impl_->scrfd_model) {
-            error = "scrfd model not loaded";
+            error = "SCRFD model not loaded";
             return false;
         }
 
@@ -252,68 +288,77 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& o
         constexpr int kNetH = 384;
         constexpr int kPixels = kNetW * kNetH;
 
+        MLFeatureDescription* input_desc = impl_->scrfd_model.modelDescription.inputDescriptionsByName[impl_->scrfd_input_name];
+        MLFeatureValue* input_val = nil;
         NSError* ns_error = nil;
-        NSArray<NSNumber*>* shape = @[@1, @3, @(kNetH), @(kNetW)];
-        MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
-        if (!input_array || ns_error) {
-            error = "failed to allocate SCRFD input multiarray";
+
+        if (input_desc.type == MLFeatureTypeImage) {
+            NSDictionary* options = @{
+                (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
+                (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
+            };
+            CVPixelBufferRef pb = nullptr;
+            CVReturn status = CVPixelBufferCreate(
+                kCFAllocatorDefault, kNetW, kNetH, kCVPixelFormatType_32BGRA,
+                (__bridge CFDictionaryRef)options, &pb);
+            if (status != kCVReturnSuccess || !pb) {
+                error = "failed to create pixel buffer for SCRFD input";
+                return false;
+            }
+
+            CVPixelBufferLockBaseAddress(pb, 0);
+            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
+            size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
+            for (int y = 0; y < kNetH; ++y) {
+                uint8_t* row = dst + y * bytes_per_row;
+                for (int x = 0; x < kNetW; ++x) {
+                    const uint8_t* src_px = rgb_640x384 + (y * kNetW + x) * 3;
+                    row[x * 4 + 0] = src_px[2]; // B
+                    row[x * 4 + 1] = src_px[1]; // G
+                    row[x * 4 + 2] = src_px[0]; // R
+                    row[x * 4 + 3] = 255;       // A
+                }
+            }
+            CVPixelBufferUnlockBaseAddress(pb, 0);
+            input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
+            CVPixelBufferRelease(pb);
+        } else {
+            // SCRFD 归一化: (img - 127.5) / 128.0
+            NSArray<NSNumber*>* shape = @[@1, @3, @(kNetH), @(kNetW)];
+            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
+            if (!input_array || ns_error) {
+                error = "failed to allocate SCRFD input multiarray";
+                return false;
+            }
+
+            float* dst = static_cast<float*>(input_array.dataPointer);
+            for (int c = 0; c < 3; ++c) {
+                float* channel_ptr = dst + c * kPixels;
+                for (int i = 0; i < kPixels; ++i) {
+                    channel_ptr[i] = (static_cast<float>(rgb_640x384[i * 3 + c]) - 127.5f) / 128.0f;
+                }
+            }
+            input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
+        }
+
+        NSDictionary* input_dict = @{impl_->scrfd_input_name: input_val};
+        id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
+        if (!input_provider || ns_error) {
+            error = "failed to create SCRFD feature provider";
             return false;
         }
 
-        float* dst = static_cast<float*>(input_array.dataPointer);
-        // Normalize SCRFD: (x - 127.5f) / 128.0f, RGB planar
-        for (int c = 0; c < 3; ++c) {
-            float* channel_ptr = dst + c * kPixels;
-            for (int i = 0; i < kPixels; ++i) {
-                channel_ptr[i] = (static_cast<float>(rgb_640x384[i * 3 + c]) - 127.5f) / 128.0f;
-            }
-        }
-
-        MLDictionaryFeatureProvider* input_features =
-            [[MLDictionaryFeatureProvider alloc] initWithDictionary:@{impl_->scrfd_input_name: input_array} error:&ns_error];
-
-        id<MLFeatureProvider> prediction = [impl_->scrfd_model predictionFromFeatures:input_features error:&ns_error];
-        if (!prediction || ns_error) {
-            error = "SCRFD inference failed: " + std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown");
+        id<MLFeatureProvider> output_provider = [impl_->scrfd_model predictionFromFeatures:input_provider error:&ns_error];
+        if (!output_provider || ns_error) {
+            error = "failed to run SCRFD prediction: " +
+                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
             return false;
         }
 
-        const auto copy_head = [&](NSString* name, std::vector<float>& target, size_t dim1) -> bool {
-            MLFeatureValue* fv = [prediction featureValueForName:name];
-            MLMultiArray* arr = fv.multiArrayValue;
-            if (!arr) return false;
-            
-            size_t total_elements = arr.count;
-            size_t dim0 = total_elements / dim1;
-
-            NSInteger row_stride = dim1;
-            if (arr.strides.count >= 2) {
-                row_stride = arr.strides[arr.strides.count - 2].integerValue;
-            } else if (arr.strides.count == 1) {
-                row_stride = arr.strides[0].integerValue;
-            }
-
-            target.resize(total_elements);
-            if (arr.dataType == MLMultiArrayDataTypeFloat16) {
-                const _Float16* src16 = static_cast<const _Float16*>(arr.dataPointer);
-                for (size_t r = 0; r < dim0; ++r) {
-                    const _Float16* row_src = src16 + r * row_stride;
-                    float* row_dst = target.data() + r * dim1;
-                    for (size_t c = 0; c < dim1; ++c) {
-                        row_dst[c] = static_cast<float>(row_src[c]);
-                    }
-                }
-            } else {
-                const float* src = static_cast<const float*>(arr.dataPointer);
-                if (static_cast<size_t>(row_stride) == dim1) {
-                    std::memcpy(target.data(), src, total_elements * sizeof(float));
-                } else {
-                    for (size_t r = 0; r < dim0; ++r) {
-                        std::memcpy(target.data() + r * dim1, src + r * row_stride, dim1 * sizeof(float));
-                    }
-                }
-            }
-            return true;
+        auto copy_head = [&](NSString* name, std::vector<float>& dst_vec, size_t dim1) -> bool {
+            MLFeatureValue* fv = [output_provider featureValueForName:name];
+            if (!fv || fv.type != MLFeatureTypeMultiArray) return false;
+            return copy_multiarray_to_float_vector(fv.multiArrayValue, dst_vec, dim1);
         };
 
         if (!copy_head(impl_->scrfd_score_8_name, out.score_8, 1) ||
@@ -325,7 +370,7 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& o
             !copy_head(impl_->scrfd_kps_8_name, out.kps_8, 10) ||
             !copy_head(impl_->scrfd_kps_16_name, out.kps_16, 10) ||
             !copy_head(impl_->scrfd_kps_32_name, out.kps_32, 10)) {
-            error = "failed to copy SCRFD output head tensors";
+            error = "failed to copy one or more SCRFD output arrays";
             return false;
         }
 
@@ -336,52 +381,94 @@ bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& o
 bool ModelInferenceManager::run_glintr(const uint8_t* rgb_112x112, GlintrOutput& out, std::string& error) {
     @autoreleasepool {
         if (!impl_->glintr_model) {
-            error = "glintr model not loaded";
+            error = "GLINTR model not loaded";
             return false;
         }
 
+        constexpr int kNetDim = 112;
+        constexpr int kPixels = kNetDim * kNetDim;
+
+        MLFeatureDescription* input_desc = impl_->glintr_model.modelDescription.inputDescriptionsByName[impl_->glintr_input_name];
+        MLFeatureValue* input_val = nil;
         NSError* ns_error = nil;
-        NSArray<NSNumber*>* shape = @[@1, @3, @112, @112];
-        MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
-        if (!input_array || ns_error) {
-            error = "failed to allocate GLINTR input multiarray";
-            return false;
-        }
 
-        float* dst = static_cast<float*>(input_array.dataPointer);
-        // Normalize GLINTR: (x - 127.5f) / 127.5f, RGB planar
-        for (int c = 0; c < 3; ++c) {
-            float* channel_ptr = dst + c * (112 * 112);
-            for (int i = 0; i < 112 * 112; ++i) {
-                channel_ptr[i] = (static_cast<float>(rgb_112x112[i * 3 + c]) - 127.5f) / 127.5f;
+        if (input_desc.type == MLFeatureTypeImage) {
+            NSDictionary* options = @{
+                (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
+                (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
+            };
+            CVPixelBufferRef pb = nullptr;
+            CVReturn status = CVPixelBufferCreate(
+                kCFAllocatorDefault, kNetDim, kNetDim, kCVPixelFormatType_32BGRA,
+                (__bridge CFDictionaryRef)options, &pb);
+            if (status != kCVReturnSuccess || !pb) {
+                error = "failed to create pixel buffer for GLINTR input";
+                return false;
             }
-        }
 
-        MLDictionaryFeatureProvider* input_features =
-            [[MLDictionaryFeatureProvider alloc] initWithDictionary:@{impl_->glintr_input_name: input_array} error:&ns_error];
-
-        id<MLFeatureProvider> prediction = [impl_->glintr_model predictionFromFeatures:input_features error:&ns_error];
-        if (!prediction || ns_error) {
-            error = "GLINTR inference failed: " + std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown");
-            return false;
-        }
-
-        MLFeatureValue* output_value = [prediction featureValueForName:impl_->glintr_output_name];
-        MLMultiArray* output_array = output_value.multiArrayValue;
-        if (!output_array || output_array.count != 512) {
-            error = "GLINTR output must have exactly 512 dimensions";
-            return false;
-        }
-
-        out.embedding.resize(512);
-        if (output_array.dataType == MLMultiArrayDataTypeFloat16) {
-            const _Float16* src16 = static_cast<const _Float16*>(output_array.dataPointer);
-            for (size_t i = 0; i < 512; ++i) {
-                out.embedding[i] = static_cast<float>(src16[i]);
+            CVPixelBufferLockBaseAddress(pb, 0);
+            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
+            size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
+            for (int y = 0; y < kNetDim; ++y) {
+                uint8_t* row = dst + y * bytes_per_row;
+                for (int x = 0; x < kNetDim; ++x) {
+                    const uint8_t* src_px = rgb_112x112 + (y * kNetDim + x) * 3;
+                    row[x * 4 + 0] = src_px[2]; // B
+                    row[x * 4 + 1] = src_px[1]; // G
+                    row[x * 4 + 2] = src_px[0]; // R
+                    row[x * 4 + 3] = 255;       // A
+                }
             }
+            CVPixelBufferUnlockBaseAddress(pb, 0);
+            input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
+            CVPixelBufferRelease(pb);
         } else {
-            const float* src = static_cast<const float*>(output_array.dataPointer);
-            std::memcpy(out.embedding.data(), src, 512 * sizeof(float));
+            // GLINTR 归一化: (img - 127.5) / 127.5
+            NSArray<NSNumber*>* shape = @[@1, @3, @(kNetDim), @(kNetDim)];
+            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
+            if (!input_array || ns_error) {
+                error = "failed to allocate GLINTR input multiarray";
+                return false;
+            }
+
+            float* dst = static_cast<float*>(input_array.dataPointer);
+            for (int c = 0; c < 3; ++c) {
+                float* channel_ptr = dst + c * kPixels;
+                for (int i = 0; i < kPixels; ++i) {
+                    channel_ptr[i] = (static_cast<float>(rgb_112x112[i * 3 + c]) - 127.5f) / 127.5f;
+                }
+            }
+            input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
+        }
+
+        NSDictionary* input_dict = @{impl_->glintr_input_name: input_val};
+        id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
+        if (!input_provider || ns_error) {
+            error = "failed to create GLINTR feature provider";
+            return false;
+        }
+
+        id<MLFeatureProvider> output_provider = [impl_->glintr_model predictionFromFeatures:input_provider error:&ns_error];
+        if (!output_provider || ns_error) {
+            error = "failed to run GLINTR prediction: " +
+                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
+            return false;
+        }
+
+        MLFeatureValue* out_val = [output_provider featureValueForName:impl_->glintr_output_name];
+        if (!out_val || out_val.type != MLFeatureTypeMultiArray) {
+            error = "invalid GLINTR output multiarray";
+            return false;
+        }
+
+        if (!copy_multiarray_to_float_vector(out_val.multiArrayValue, out.embedding, 512)) {
+            error = "failed to copy GLINTR output";
+            return false;
+        }
+
+        if (out.embedding.size() != 512) {
+            error = "unexpected GLINTR embedding dimension (expected 512, got " + std::to_string(out.embedding.size()) + ")";
+            return false;
         }
 
         return true;

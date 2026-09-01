@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "检查主流管道、硬件边界、并发和资源释放"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "检查同帧引用、stride、ROI 和 ABI 契约"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "检查单测、sanitizer、lint 和板端验证"}
+{"file": ".trellis/spec/engine/algo-package-spec.md", "reason": "检查算法包 C ABI、帧生命周期和结果契约"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "检查 manifest、配置 schema、资源档位和自测"}

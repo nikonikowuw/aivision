@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "主流媒体、MPP/RGA边界、队列、资源与停止顺序"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "同帧 av_frame_desc、frame_token、av_rect 生命周期"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "C++ 测试、注释、sanitizer 与质量门禁"}
+{"file": ".trellis/spec/engine/algo-package-spec.md", "reason": "macOS 算法包 C ABI、模型所有权、结果回调和线程生命周期"}
+{"file": ".trellis/spec/engine/manifest-schema.md", "reason": "算法包 manifest、配置 schema、FPS 资源档位和自测契约"}

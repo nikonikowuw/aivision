@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <filesystem>
 #include <dlfcn.h>
 #import <CoreVideo/CoreVideo.h>
 #import <Accelerate/Accelerate.h>
@@ -32,7 +33,6 @@ struct DetectedPersonInfo {
 
 std::vector<DetectedPersonInfo> parse_recognition_persons(const std::string& json_str) {
     std::vector<DetectedPersonInfo> list;
-    size_t pos = 0;
 
     auto extract_float_after = [&](size_t search_pos, std::string_view key, float& out_val) -> size_t {
         size_t kp = json_str.find(key, search_pos);
@@ -40,7 +40,7 @@ std::vector<DetectedPersonInfo> parse_recognition_persons(const std::string& jso
         size_t colon = json_str.find(':', kp);
         if (colon == std::string::npos) return std::string::npos;
         size_t start = colon + 1;
-        while (start < json_str.size() && (json_str[start] == ' ' || json_str[start] == '\t' || json_str[start] == '\n')) start++;
+        while (start < json_str.size() && (json_str[start] == ' ' || json_str[start] == '\t' || json_str[start] == '\n' || json_str[start] == '\r')) start++;
         size_t end = start;
         while (end < json_str.size() && ((json_str[end] >= '0' && json_str[end] <= '9') || json_str[end] == '.' || json_str[end] == '-')) end++;
         if (end > start) {
@@ -72,6 +72,7 @@ std::vector<DetectedPersonInfo> parse_recognition_persons(const std::string& jso
         return close_bracket;
     };
 
+    size_t pos = 0;
     size_t person_start = json_str.find("\"track_id\"", pos);
     while (person_start != std::string::npos) {
         DetectedPersonInfo p{};
@@ -81,27 +82,21 @@ std::vector<DetectedPersonInfo> parse_recognition_persons(const std::string& jso
 
         extract_array_4(person_start, "\"bbox\"", p.person_bbox);
 
-        // Check if there is "face": { ... } before next track_id
         size_t next_track = json_str.find("\"track_id\"", person_start + 10);
         size_t face_pos = json_str.find("\"face\":", person_start);
 
         if (face_pos != std::string::npos && (next_track == std::string::npos || face_pos < next_track)) {
-            // Check if face is not null
             size_t open_brace = json_str.find('{', face_pos);
             size_t null_pos = json_str.find("null", face_pos);
             if (open_brace != std::string::npos && (null_pos == std::string::npos || open_brace < null_pos) && (next_track == std::string::npos || open_brace < next_track)) {
                 p.has_face = true;
                 extract_array_4(open_brace, "\"bbox\"", p.face_bbox);
 
-                // landmarks
                 size_t lm_pos = json_str.find("\"landmarks\":", open_brace);
                 if (lm_pos != std::string::npos && (next_track == std::string::npos || lm_pos < next_track)) {
                     size_t lm_start = json_str.find('[', lm_pos);
-                    size_t lm_end = json_str.find("],", lm_start);
-                    if (lm_end == std::string::npos) lm_end = json_str.find("]\n", lm_start);
-                    // find pairs [[x, y], [x, y], ...]
                     size_t pair_start = json_str.find('[', lm_start + 1);
-                    while (pair_start != std::string::npos && pair_start < next_track && p.landmarks.size() < 5) {
+                    while (pair_start != std::string::npos && (next_track == std::string::npos || pair_start < next_track) && p.landmarks.size() < 5) {
                         size_t pair_end = json_str.find(']', pair_start);
                         if (pair_end == std::string::npos) break;
                         std::string sub = json_str.substr(pair_start + 1, pair_end - pair_start - 1);
@@ -121,110 +116,74 @@ std::vector<DetectedPersonInfo> parse_recognition_persons(const std::string& jso
         }
 
         list.push_back(p);
-        person_start = next_track;
+        pos = (next_track != std::string::npos) ? next_track : json_str.size();
+        person_start = json_str.find("\"track_id\"", pos);
     }
-
     return list;
 }
 
-void draw_line(uint8_t* img, int w, int h, int x1, int y1, int x2, int y2, uint8_t r, uint8_t g, uint8_t b, int thickness) {
-    int dx = std::abs(x2 - x1);
-    int dy = std::abs(y2 - y1);
-    int sx = (x1 < x2) ? 1 : -1;
-    int sy = (y1 < y2) ? 1 : -1;
-    int err = dx - dy;
+void draw_rect(uint8_t* img, int w, int h, int rx, int ry, int rw, int rh, uint8_t r, uint8_t g, uint8_t b, int thickness = 2) {
+    for (int t = 0; t < thickness; ++t) {
+        int x0 = std::clamp(rx - t, 0, w - 1);
+        int x1 = std::clamp(rx + rw + t, 0, w - 1);
+        int y0 = std::clamp(ry - t, 0, h - 1);
+        int y1 = std::clamp(ry + rh + t, 0, h - 1);
 
-    while (true) {
-        for (int ty = -thickness / 2; ty <= thickness / 2; ++ty) {
-            for (int tx = -thickness / 2; tx <= thickness / 2; ++tx) {
-                int px = x1 + tx;
-                int py = y1 + ty;
-                if (px >= 0 && px < w && py >= 0 && py < h) {
-                    size_t idx = (py * w + px) * 3;
-                    img[idx + 0] = r;
-                    img[idx + 1] = g;
-                    img[idx + 2] = b;
-                }
-            }
+        for (int x = x0; x <= x1; ++x) {
+            img[(y0 * w + x) * 3 + 0] = r;
+            img[(y0 * w + x) * 3 + 1] = g;
+            img[(y0 * w + x) * 3 + 2] = b;
+            img[(y1 * w + x) * 3 + 0] = r;
+            img[(y1 * w + x) * 3 + 1] = g;
+            img[(y1 * w + x) * 3 + 2] = b;
         }
-        if (x1 == x2 && y1 == y2) break;
-        int e2 = 2 * err;
-        if (e2 > -dy) {
-            err -= dy;
-            x1 += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
-            y1 += sy;
+        for (int y = y0; y <= y1; ++y) {
+            img[(y * w + x0) * 3 + 0] = r;
+            img[(y * w + x0) * 3 + 1] = g;
+            img[(y * w + x0) * 3 + 2] = b;
+            img[(y * w + x1) * 3 + 0] = r;
+            img[(y * w + x1) * 3 + 1] = g;
+            img[(y * w + x1) * 3 + 2] = b;
         }
     }
-}
-
-void draw_rect(uint8_t* img, int w, int h, int x, int y, int bw, int bh, uint8_t r, uint8_t g, uint8_t b, int thickness) {
-    int x2 = std::min(w - 1, x + bw);
-    int y2 = std::min(h - 1, y + bh);
-    int x1 = std::max(0, x);
-    int y1 = std::max(0, y);
-
-    draw_line(img, w, h, x1, y1, x2, y1, r, g, b, thickness);
-    draw_line(img, w, h, x2, y1, x2, y2, r, g, b, thickness);
-    draw_line(img, w, h, x2, y2, x1, y2, r, g, b, thickness);
-    draw_line(img, w, h, x1, y2, x1, y1, r, g, b, thickness);
 }
 
 void draw_circle(uint8_t* img, int w, int h, int cx, int cy, int radius, uint8_t r, uint8_t g, uint8_t b) {
-    for (int y = -radius; y <= radius; ++y) {
-        for (int x = -radius; x <= radius; ++x) {
-            if (x * x + y * y <= radius * radius) {
-                int px = cx + x;
-                int py = cy + y;
-                if (px >= 0 && px < w && py >= 0 && py < h) {
-                    size_t idx = (py * w + px) * 3;
-                    img[idx + 0] = r;
-                    img[idx + 1] = g;
-                    img[idx + 2] = b;
-                }
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            if (dx * dx + dy * dy <= radius * radius) {
+                int px = std::clamp(cx + dx, 0, w - 1);
+                int py = std::clamp(cy + dy, 0, h - 1);
+                img[(py * w + px) * 3 + 0] = r;
+                img[(py * w + px) * 3 + 1] = g;
+                img[(py * w + px) * 3 + 2] = b;
             }
         }
     }
 }
 
-bool render_results_to_image(const std::string& input_path, const std::string& output_path, const std::string& result_json) {
+bool render_results_to_image(const std::string& input_path, const std::string& output_path, const std::string& json_str) {
     int w = 0, h = 0, c = 0;
     uint8_t* img = stbi_load(input_path.c_str(), &w, &h, &c, 3);
-    if (!img) {
-        std::cerr << "Failed to load " << input_path << " for rendering" << std::endl;
-        return false;
-    }
+    if (!img) return false;
 
-    auto persons = parse_recognition_persons(result_json);
-
+    auto persons = parse_recognition_persons(json_str);
     for (const auto& p : persons) {
-        // 1. Draw Person Bounding Box in Green [0, 255, 0]
-        int px = static_cast<int>(p.person_bbox[0] * w);
-        int py = static_cast<int>(p.person_bbox[1] * h);
-        int pw = static_cast<int>(p.person_bbox[2] * w);
-        int ph = static_cast<int>(p.person_bbox[3] * h);
-        draw_rect(img, w, h, px, py, pw, ph, 0, 255, 0, 3);
-
-        // 2. Draw Face Bounding Box in Blue [0, 160, 255] if present
         if (p.has_face) {
             int fx = static_cast<int>(p.face_bbox[0] * w);
             int fy = static_cast<int>(p.face_bbox[1] * h);
             int fw = static_cast<int>(p.face_bbox[2] * w);
             int fh = static_cast<int>(p.face_bbox[3] * h);
-            draw_rect(img, w, h, fx, fy, fw, fh, 0, 160, 255, 2);
+            draw_rect(img, w, h, fx, fy, fw, fh, 0, 255, 0, 2); // 绿色框表示人脸
 
-            // 3. Draw 5 Facial Landmarks (Keypoints) in Red / Yellow / Cyan / Magenta / White
-            // 0: left eye (red), 1: right eye (red), 2: nose (yellow), 3: left mouth (magenta), 4: right mouth (cyan)
+            // 绘制 5 点关键点
             const uint8_t colors[5][3] = {
-                {255, 0, 0},     // Left eye
-                {255, 0, 0},     // Right eye
-                {255, 255, 0},   // Nose
-                {255, 0, 255},   // Left mouth corner
-                {0, 255, 255}    // Right mouth corner
+                {255, 0, 0},     // 0: 左眼 (红)
+                {0, 0, 255},     // 1: 右眼 (蓝)
+                {255, 255, 0},   // 2: 鼻尖 (黄)
+                {255, 0, 255},   // 3: 左嘴角 (品红)
+                {0, 255, 255}    // 4: 右嘴角 (青)
             };
-
             for (size_t i = 0; i < p.landmarks.size() && i < 5; ++i) {
                 int lx = static_cast<int>(p.landmarks[i].first * w);
                 int ly = static_cast<int>(p.landmarks[i].second * h);
@@ -310,14 +269,30 @@ int main(int argc, char** argv) {
     std::string mode = "run";
     if (argc > 1) mode = argv[1];
 
-    std::string dylib_path = "build/libface_recognition.dylib";
-    void* handle = dlopen(dylib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if (!handle) {
-        dylib_path = "lib/libface_recognition.dylib";
+    std::string package_root = ".";
+    const char* env_root = std::getenv("FACE_RECOGNITION_PACKAGE_ROOT");
+    if (env_root) package_root = env_root;
+
+    const char* env_dylib = std::getenv("FACE_RECOGNITION_DYLIB");
+    std::string dylib_path = env_dylib ? env_dylib : "";
+    void* handle = nullptr;
+    if (!dylib_path.empty()) {
         handle = dlopen(dylib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     }
     if (!handle) {
-        std::cerr << "Failed to dlopen: " << dlerror() << std::endl;
+        dylib_path = package_root + "/lib/libface_recognition.dylib";
+        handle = dlopen(dylib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    }
+    if (!handle) {
+        dylib_path = package_root + "/build/libface_recognition.dylib";
+        handle = dlopen(dylib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    }
+    if (!handle) {
+        dylib_path = package_root + "/build_asan/libface_recognition.dylib";
+        handle = dlopen(dylib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    }
+    if (!handle) {
+        std::cerr << "Failed to dlopen libface_recognition.dylib: " << dlerror() << std::endl;
         return 1;
     }
 
@@ -336,7 +311,7 @@ int main(int argc, char** argv) {
     av_algo_library_args lib_args{};
     lib_args.size = sizeof(lib_args);
     lib_args.api_version = AV_ALGO_API_VERSION;
-    lib_args.package_root = ".";
+    lib_args.package_root = package_root.c_str();
     lib_args.platform_id = "macos-arm64-coreml";
 
     av_algo_library lib = nullptr;
@@ -348,10 +323,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    std::string test_img_path = package_root + "/testimage.jpg";
     int width = 0, height = 0, channels = 0;
-    uint8_t* img_data = stbi_load("testimage.jpg", &width, &height, &channels, 3);
+    uint8_t* img_data = stbi_load(test_img_path.c_str(), &width, &height, &channels, 3);
     if (!img_data) {
-        std::cerr << "Failed to load testimage.jpg" << std::endl;
+        test_img_path = "testimage.jpg";
+        img_data = stbi_load(test_img_path.c_str(), &width, &height, &channels, 3);
+    }
+    if (!img_data) {
+        std::cerr << "Failed to load testimage.jpg from " << test_img_path << std::endl;
         return 1;
     }
 
@@ -396,17 +376,22 @@ int main(int argc, char** argv) {
     frame.size = sizeof(frame);
     frame.api_version = AV_ALGO_API_VERSION;
     frame.frame_id = 1;
+    frame.pts_ns = 1000000000;
     frame.width = width;
     frame.height = height;
     frame.pixel_format = AV_PIX_NV12;
+    frame.memory_type = AV_MEM_PLATFORM_SURFACE;
+    frame.opaque_kind = AV_OPAQUE_CVPIXELBUFFER;
     frame.opaque = pixel_buffer;
 
     if (mode == "run" || mode == "selftest") {
         // 对于正常运行模式，送两帧以测试轨迹确认 (track_confirm_frames) 与首优抓拍
         frame.frame_id = 1;
+        frame.pts_ns = 1000000000;
         st = abi->instance_process(inst, &frame);
         if (st == AV_OK && mode == "run") {
             frame.frame_id = 2;
+            frame.pts_ns = 1040000000;
             st = abi->instance_process(inst, &frame);
         }
 
@@ -416,7 +401,7 @@ int main(int argc, char** argv) {
             std::cerr << "Process failed: " << err << std::endl;
         } else if (mode == "run" && !captured_result_json.empty()) {
             std::string out_img = "result.jpg";
-            if (render_results_to_image("testimage.jpg", out_img, captured_result_json)) {
+            if (render_results_to_image(test_img_path, out_img, captured_result_json)) {
                 std::cout << "[Visual] Successfully saved detection boxes and landmarks to " << out_img << std::endl;
             } else {
                 std::cerr << "[Visual] Failed to save " << out_img << std::endl;
@@ -426,12 +411,14 @@ int main(int argc, char** argv) {
         std::cout << "Starting benchmark (10 warmup, 50 measured iterations)..." << std::endl;
         for (int i = 0; i < 10; ++i) {
             frame.frame_id = i + 1;
+            frame.pts_ns = 1000000000 + i * 40000000;
             abi->instance_process(inst, &frame);
         }
 
         std::vector<double> samples;
         for (int i = 0; i < 50; ++i) {
             frame.frame_id = i + 20;
+            frame.pts_ns = 1000000000 + (i + 20) * 40000000;
             auto start = std::chrono::high_resolution_clock::now();
             abi->instance_process(inst, &frame);
             auto end = std::chrono::high_resolution_clock::now();

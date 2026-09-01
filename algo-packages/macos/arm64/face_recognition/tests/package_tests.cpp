@@ -1,4 +1,5 @@
 #include "postprocess/postprocessor.hpp"
+#include "core/config.hpp"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -22,6 +23,10 @@ void test_embedding_normalization_and_encoding() {
     // Test with all zeros
     std::vector<float> zeros(512, 0.0f);
     assert(!Postprocessor::process_and_encode_embedding(zeros, b64, err));
+
+    // Test with invalid size
+    std::vector<float> short_vec(256, 1.0f);
+    assert(!Postprocessor::process_and_encode_embedding(short_vec, b64, err));
 
     std::cout << "[PASS] test_embedding_normalization_and_encoding" << std::endl;
 }
@@ -48,8 +53,11 @@ void test_json_serialization() {
     persons.push_back(p1);
     persons.push_back(p2);
 
-    std::string json = Postprocessor::serialize_recognition_json(persons);
+    std::string json = Postprocessor::serialize_recognition_json(persons, 42, 1700000000);
     assert(json.find("\"schema_version\": 1") != std::string::npos);
+    assert(json.find("\"frame_id\": 42") != std::string::npos);
+    assert(json.find("\"pts_ns\": 1700000000") != std::string::npos);
+    assert(json.find("\"algorithm_type\": \"face_recognition\"") != std::string::npos);
     assert(json.find("\"track_id\": 1") != std::string::npos);
     assert(json.find("\"model\": \"glintr100\"") != std::string::npos);
     assert(json.find("\"face\": null") != std::string::npos);
@@ -57,9 +65,33 @@ void test_json_serialization() {
     std::cout << "[PASS] test_json_serialization" << std::endl;
 }
 
+void test_config_parsing() {
+    InstanceConfig base;
+    assert(!base.enable_person_detection);
+    assert(base.max_recognitions_per_track == 3);
+
+    std::string json = R"({
+        "enable_person_detection": true,
+        "face_detection_threshold": 0.65,
+        "max_recognitions_per_track": 5,
+        "feature_mode": "all",
+        "track_confirm_frames": 3
+    })";
+
+    InstanceConfig parsed = InstanceConfig::parse_from_json(json, base);
+    assert(parsed.enable_person_detection == true);
+    assert(std::abs(parsed.face_detection_threshold - 0.65f) < 1e-4f);
+    assert(parsed.max_recognitions_per_track == 5);
+    assert(parsed.feature_mode == "all");
+    assert(parsed.track_confirm_frames == 3);
+
+    std::cout << "[PASS] test_config_parsing" << std::endl;
+}
+
 int main() {
     test_embedding_normalization_and_encoding();
     test_json_serialization();
+    test_config_parsing();
     std::cout << "All postprocess tests passed!" << std::endl;
     return 0;
 }

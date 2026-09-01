@@ -20,7 +20,7 @@ struct FaceDetection {
 };
 
 /**
- * @brief 识别流水线中的单个人体与关联人脸
+ * @brief 识别流水线中的单个目标（人体或人脸）与关联人脸信息
  */
 struct RecognizedPerson {
     int64_t track_id = 0;
@@ -69,7 +69,9 @@ public:
      * @brief 序列化 AV_RESULT_RECOGNITION JSON 协议
      */
     static std::string serialize_recognition_json(
-        const std::vector<RecognizedPerson>& persons);
+        const std::vector<RecognizedPerson>& persons,
+        uint64_t frame_id = 0,
+        uint64_t pts_ns = 0);
 };
 
 } // namespace face_recognition

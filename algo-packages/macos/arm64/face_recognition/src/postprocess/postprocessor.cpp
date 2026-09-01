@@ -168,7 +168,7 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
             face.x1 = std::clamp((x1_lb - pad_x) / scale, 0.0f, static_cast<float>(orig_w));
             face.y1 = std::clamp((y1_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_h));
             face.x2 = std::clamp((x2_lb - pad_x) / scale, 0.0f, static_cast<float>(orig_w));
-            face.y2 = std::clamp((y2_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_h));
+            face.y2 = std::clamp((y2_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_w));
 
             for (int k = 0; k < 5; ++k) {
                 float kx_lb = anchor_x + kps_ptr[a_idx * 10 + k * 2 + 0] * stride;
@@ -262,12 +262,17 @@ bool Postprocessor::process_and_encode_embedding(
 }
 
 std::string Postprocessor::serialize_recognition_json(
-    const std::vector<RecognizedPerson>& persons) {
+    const std::vector<RecognizedPerson>& persons,
+    uint64_t frame_id,
+    uint64_t pts_ns) {
 
     std::ostringstream ss;
     ss << std::fixed << std::setprecision(4);
     ss << "{\n";
     ss << "  \"schema_version\": 1,\n";
+    ss << "  \"frame_id\": " << frame_id << ",\n";
+    ss << "  \"pts_ns\": " << pts_ns << ",\n";
+    ss << "  \"algorithm_type\": \"face_recognition\",\n";
     ss << "  \"persons\": [\n";
 
     for (size_t i = 0; i < persons.size(); ++i) {

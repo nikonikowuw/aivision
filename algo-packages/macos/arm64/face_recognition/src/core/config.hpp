@@ -11,6 +11,7 @@ namespace face_recognition {
  * @brief 算法实例私有配置
  */
 struct InstanceConfig {
+    bool enable_person_detection = false; // 默认关闭 YOLO 人体检测，采用 SCRFD 5点纯人脸主路径
     float person_detection_threshold = 0.35f;
     float face_detection_threshold = 0.50f;
     float face_nms_threshold = 0.40f;
@@ -23,19 +24,37 @@ struct InstanceConfig {
     float quality_threshold = 35.0f;
     float quality_update_margin = 10.0f;
     uint32_t reextract_interval_frames = 45;
+    uint32_t max_recognitions_per_track = 3; // 单条轨迹最大提取特征次数
 
     static InstanceConfig parse_from_json(std::string_view json, const InstanceConfig& base) {
         InstanceConfig cfg = base;
         if (json.empty()) return cfg;
 
-        // Simple helper to extract numbers from json string
+        const auto extract_bool = [&](std::string_view key, bool& out_val) -> bool {
+            size_t pos = json.find(key);
+            if (pos == std::string_view::npos) return false;
+            size_t colon = json.find(':', pos);
+            if (colon == std::string_view::npos) return false;
+            size_t start = colon + 1;
+            while (start < json.size() && (json[start] == ' ' || json[start] == '\t' || json[start] == '\n' || json[start] == '\r')) start++;
+            if (json.substr(start, 4) == "true") {
+                out_val = true;
+                return true;
+            }
+            if (json.substr(start, 5) == "false") {
+                out_val = false;
+                return true;
+            }
+            return false;
+        };
+
         const auto extract_number = [&](std::string_view key, double& out_val) -> bool {
             size_t pos = json.find(key);
             if (pos == std::string_view::npos) return false;
             size_t colon = json.find(':', pos);
             if (colon == std::string_view::npos) return false;
             size_t start = colon + 1;
-            while (start < json.size() && (json[start] == ' ' || json[start] == '\t')) start++;
+            while (start < json.size() && (json[start] == ' ' || json[start] == '\t' || json[start] == '\n' || json[start] == '\r')) start++;
             size_t end = start;
             while (end < json.size() && ((json[end] >= '0' && json[end] <= '9') || json[end] == '.' || json[end] == '-')) end++;
             if (end > start) {
@@ -48,6 +67,11 @@ struct InstanceConfig {
             }
             return false;
         };
+
+        bool b_val = false;
+        if (extract_bool("\"enable_person_detection\"", b_val)) {
+            cfg.enable_person_detection = b_val;
+        }
 
         double v = 0.0;
         if (extract_number("\"person_detection_threshold\"", v) && v >= 0.0 && v <= 1.0) {
@@ -89,6 +113,9 @@ struct InstanceConfig {
         }
         if (extract_number("\"reextract_interval_frames\"", v) && v >= 0.0 && v <= 300.0) {
             cfg.reextract_interval_frames = static_cast<uint32_t>(v);
+        }
+        if (extract_number("\"max_recognitions_per_track\"", v) && v >= 1.0 && v <= 20.0) {
+            cfg.max_recognitions_per_track = static_cast<uint32_t>(v);
         }
 
         return cfg;

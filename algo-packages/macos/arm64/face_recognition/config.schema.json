@@ -2,6 +2,12 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "enable_person_detection": {
+      "type": "boolean",
+      "title": "启用人体检测",
+      "description": "是否启用 YOLO 人体检测辅助模型（默认关闭，采用纯 SCRFD 5点人脸识别主路径以节省边缘算力）",
+      "default": false
+    },
     "person_detection_threshold": {
       "type": "number",
       "title": "人体检测阈值",
@@ -28,8 +34,8 @@
     },
     "max_person_count": {
       "type": "integer",
-      "title": "最大人体数",
-      "description": "单帧输出的最大人体跟踪数量",
+      "title": "最大目标数",
+      "description": "单帧输出的最大目标跟踪数量",
       "minimum": 1,
       "maximum": 64,
       "default": 16
@@ -92,10 +98,18 @@
     "reextract_interval_frames": {
       "type": "integer",
       "title": "重提取帧间隔",
-      "description": "同一人体轨迹周期性重新抓拍的最小间隔帧数 (0为单轨迹仅提取一次)",
+      "description": "同一目标轨迹周期性重新抓拍的最小间隔帧数 (0为单轨迹仅提取一次)",
       "minimum": 0,
       "maximum": 300,
       "default": 45
+    },
+    "max_recognitions_per_track": {
+      "type": "integer",
+      "title": "单轨迹最大抓拍次数",
+      "description": "同一轨迹允许提取特征向量并上报的最大抓拍次数",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 3
     }
   }
 }

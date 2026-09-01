@@ -52,6 +52,7 @@ struct LibraryContext {
 
 struct TrackQualityState {
     uint32_t hit_count = 0;
+    uint32_t recognition_count = 0;
     uint64_t last_extracted_frame = 0;
     float highest_quality = 0.0f;
     std::string cached_embedding;
@@ -247,6 +248,84 @@ float evaluate_face_quality(const FaceDetection& face, uint32_t orig_w, uint32_t
     return size_score + conf_score + pose_score + margin_score;
 }
 
+constexpr uint32_t kImagePurposeFaceCrop = 0; // 高清人脸特写裁剪 ROI 图像用途
+
+// 评估抓拍优选与提取人脸特征向量并更新轨迹状态
+void process_face_feature_and_track_state(
+    InstanceContext* inst,
+    const av_frame_desc* frame,
+    const PreprocessResult& prep_res,
+    const FaceDetection* best_face,
+    RecognizedPerson& rp,
+    TrackQualityState& track_state) {
+
+    if (!best_face) return;
+
+    const uint32_t orig_w = prep_res.original_rgb.width;
+    const uint32_t orig_h = prep_res.original_rgb.height;
+
+    rp.has_face = true;
+    rp.face_bbox[0] = best_face->x1 / static_cast<float>(orig_w);
+    rp.face_bbox[1] = best_face->y1 / static_cast<float>(orig_h);
+    rp.face_bbox[2] = (best_face->x2 - best_face->x1) / static_cast<float>(orig_w);
+    rp.face_bbox[3] = (best_face->y2 - best_face->y1) / static_cast<float>(orig_w);
+    rp.face_confidence = best_face->score;
+    for (int k = 0; k < 5; ++k) {
+        rp.face_landmarks[k * 2 + 0] = best_face->landmarks[k * 2 + 0] / static_cast<float>(orig_w);
+        rp.face_landmarks[k * 2 + 1] = best_face->landmarks[k * 2 + 1] / static_cast<float>(orig_h);
+    }
+
+    float face_w_px = best_face->x2 - best_face->x1;
+    float face_h_px = best_face->y2 - best_face->y1;
+    float min_dim = std::min(face_w_px, face_h_px);
+    float q_score = evaluate_face_quality(*best_face, orig_w, orig_h);
+
+    bool need_extract = true;
+    if (inst->mode != AV_INSTANCE_INSTALL_SELF_TEST && inst->config.feature_mode == "best_shot") {
+        // 1. 防抖与虚警过滤：轨迹存活帧数需达到 track_confirm_frames
+        if (track_state.hit_count < inst->config.track_confirm_frames) {
+            need_extract = false;
+        } else if (min_dim < static_cast<float>(inst->config.min_face_size) || q_score < inst->config.quality_threshold) {
+            // 2. 人脸最低像素尺寸与质量及格线
+            need_extract = false;
+        } else if (track_state.recognition_count >= inst->config.max_recognitions_per_track) {
+            // 3. 单轨迹最大抓拍提取特征次数限制
+            need_extract = false;
+        } else if (track_state.last_extracted_frame > 0) {
+            // 4. 已有特征提取记录：检查是否显著提升或达到重采样间隔
+            bool interval_reached = (inst->config.reextract_interval_frames > 0 &&
+                (frame->frame_id - track_state.last_extracted_frame >= inst->config.reextract_interval_frames));
+            bool significantly_better = (q_score >= track_state.highest_quality + inst->config.quality_update_margin);
+
+            if (!interval_reached && !significantly_better) {
+                need_extract = false;
+            }
+        }
+    }
+
+    if (need_extract) {
+        // 从原图直接做五点相似变换对齐截脸 -> 112x112
+        ImageBuffer face_112;
+        std::string align_err;
+        if (Preprocessor::align_face_112x112(prep_res.original_rgb, best_face->landmarks.data(), face_112, align_err)) {
+            // 运行 GLINTR100 提取特征
+            GlintrOutput glintr_out;
+            std::string glintr_err;
+            if (inst->lib->model_manager->run_glintr(face_112.data.data(), glintr_out, glintr_err)) {
+                std::string emb_b64;
+                std::string emb_err;
+                if (Postprocessor::process_and_encode_embedding(glintr_out.embedding, emb_b64, emb_err)) {
+                    rp.embedding_base64 = emb_b64;
+                    track_state.recognition_count++;
+                    track_state.last_extracted_frame = frame->frame_id;
+                    if (q_score > track_state.highest_quality) track_state.highest_quality = q_score;
+                    track_state.cached_embedding = std::move(emb_b64);
+                }
+            }
+        }
+    }
+}
+
 } // namespace
 
 static int library_open(const av_algo_library_args* args, av_algo_library* out) noexcept {
@@ -270,6 +349,9 @@ static int library_open(const av_algo_library_args* args, av_algo_library* out) 
         if (env_vars.contains("SCRFD_MODEL_PATH")) lib->scrfd_path = env_vars["SCRFD_MODEL_PATH"];
         if (env_vars.contains("GLINTR_MODEL_PATH")) lib->glintr_path = env_vars["GLINTR_MODEL_PATH"];
 
+        if (env_vars.contains("ENABLE_PERSON_DETECTION")) {
+            lib->default_config.enable_person_detection = (env_vars["ENABLE_PERSON_DETECTION"] == "true" || env_vars["ENABLE_PERSON_DETECTION"] == "1");
+        }
         if (env_vars.contains("PERSON_DETECTION_THRESHOLD")) {
             lib->default_config.person_detection_threshold = std::stof(env_vars["PERSON_DETECTION_THRESHOLD"]);
         }
@@ -287,6 +369,9 @@ static int library_open(const av_algo_library_args* args, av_algo_library* out) 
         }
         if (env_vars.contains("TRACK_MATCH_THRESHOLD")) {
             lib->default_config.track_match_threshold = std::stof(env_vars["TRACK_MATCH_THRESHOLD"]);
+        }
+        if (env_vars.contains("MAX_RECOGNITIONS_PER_TRACK")) {
+            lib->default_config.max_recognitions_per_track = static_cast<uint32_t>(std::stoul(env_vars["MAX_RECOGNITIONS_PER_TRACK"]));
         }
 
         lib->model_manager = std::make_shared<ModelInferenceManager>();
@@ -419,165 +504,168 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             return fail(inst, AV_ERR_INVALID_ARG, "self-test instance already emitted a result");
         }
 
-        auto t0 = std::chrono::high_resolution_clock::now();
-        // 1. 预处理
+        // 1. 预处理：生成同帧原图 RGB 与 640x384 Letterbox 图
         PreprocessResult prep_res;
         std::string prep_err;
         if (!Preprocessor::process_frame(frame, prep_res, prep_err)) {
             return fail(inst, AV_ERR_INFERENCE_FAILED, ("preprocess failed: " + prep_err).c_str());
         }
 
-        // 2 & 3. 并发执行 YOLOv8n (人体检测) 与 SCRFD (人脸检测)
-        YoloOutput yolo_out;
-        std::string yolo_err;
+        const uint32_t orig_w = prep_res.original_rgb.width;
+        const uint32_t orig_h = prep_res.original_rgb.height;
+
+        // 2. SCRFD 10G 人脸检测（主路径必须模型）
         ScrfdOutput scrfd_out;
         std::string scrfd_err;
-
-        auto scrfd_future = std::async(std::launch::async, [&]() {
-            return inst->lib->model_manager->run_scrfd(prep_res.letterbox_rgb.data.data(), scrfd_out, scrfd_err);
-        });
-
-        bool yolo_ok = inst->lib->model_manager->run_yolo(prep_res.letterbox_rgb.data.data(), yolo_out, yolo_err);
-        bool scrfd_ok = scrfd_future.get();
-
-        if (!yolo_ok) {
-            return fail(inst, AV_ERR_INTERNAL, ("YOLO inference failed: " + yolo_err).c_str());
-        }
-        if (!scrfd_ok) {
+        if (!inst->lib->model_manager->run_scrfd(prep_res.letterbox_rgb.data.data(), scrfd_out, scrfd_err)) {
             return fail(inst, AV_ERR_INTERNAL, ("SCRFD inference failed: " + scrfd_err).c_str());
-        }
-
-        auto person_dets = Postprocessor::decode_yolo_persons(
-            yolo_out, prep_res.letterbox_info,
-            prep_res.original_rgb.width, prep_res.original_rgb.height,
-            inst->config.person_detection_threshold, 0.45f
-        );
-
-        auto tracked_persons = inst->tracker.update(person_dets);
-        if (tracked_persons.size() > inst->config.max_person_count) {
-            tracked_persons.resize(inst->config.max_person_count);
         }
 
         auto detected_faces = Postprocessor::decode_scrfd_faces(
             scrfd_out, prep_res.letterbox_info,
-            prep_res.original_rgb.width, prep_res.original_rgb.height,
+            orig_w, orig_h,
             inst->config.face_detection_threshold, inst->config.face_nms_threshold
         );
 
-        // 5. 人体与人脸关联 (center-in-person + IoU)
-        // 每个人体最多一张脸；未关联人脸丢弃
         std::vector<RecognizedPerson> result_persons;
-        result_persons.reserve(tracked_persons.size());
-        for (const auto& person : tracked_persons) {
-            RecognizedPerson rp{};
-            rp.track_id = person.track_id;
-            rp.person_bbox[0] = person.x;
-            rp.person_bbox[1] = person.y;
-            rp.person_bbox[2] = person.w;
-            rp.person_bbox[3] = person.h;
-            rp.person_confidence = person.confidence;
 
-            // 轨迹命中帧数计数自增
-            auto& track_state = inst->track_quality_map[person.track_id];
-            track_state.hit_count++;
-
-            const FaceDetection* best_face = nullptr;
-            float best_face_score = -1.0f;
-
+        // 3. 分支：默认纯人脸主路径 (enable_person_detection == false) vs 人体/人脸联合路径
+        if (!inst->config.enable_person_detection) {
+            // 将 detected_faces 转换为 DetectionBox 驱动 tracker
+            std::vector<argus::cv::DetectionBox> face_dets;
+            face_dets.reserve(detected_faces.size());
             for (const auto& face : detected_faces) {
-                if (face_center_in_person(face, person, prep_res.original_rgb.width, prep_res.original_rgb.height)) {
-                    float iou = compute_face_person_iou(face, person, prep_res.original_rgb.width, prep_res.original_rgb.height);
-                    float score = face.score + 0.1f * iou;
-                    if (score > best_face_score) {
-                        best_face_score = score;
+                argus::cv::DetectionBox box{};
+                box.class_id = 0;
+                box.label = "face";
+                box.confidence = face.score;
+                box.x = face.x1 / static_cast<float>(orig_w);
+                box.y = face.y1 / static_cast<float>(orig_h);
+                box.w = (face.x2 - face.x1) / static_cast<float>(orig_w);
+                box.h = (face.y2 - face.y1) / static_cast<float>(orig_h);
+                face_dets.push_back(box);
+            }
+
+            auto tracked_faces = inst->tracker.update(face_dets);
+            if (tracked_faces.size() > inst->config.max_person_count) {
+                tracked_faces.resize(inst->config.max_person_count);
+            }
+
+            result_persons.reserve(tracked_faces.size());
+            for (const auto& tracked_face : tracked_faces) {
+                RecognizedPerson rp{};
+                rp.track_id = tracked_face.track_id;
+                rp.person_bbox[0] = tracked_face.x;
+                rp.person_bbox[1] = tracked_face.y;
+                rp.person_bbox[2] = tracked_face.w;
+                rp.person_bbox[3] = tracked_face.h;
+                rp.person_confidence = tracked_face.confidence;
+
+                auto& track_state = inst->track_quality_map[tracked_face.track_id];
+                track_state.hit_count++;
+
+                // 寻找最匹配的 FaceDetection (IoU 最大；若无重叠则匹配中心点最近)
+                const FaceDetection* best_face = nullptr;
+                float best_face_iou = 0.0f;
+                float min_center_dist_sq = 1e9f;
+
+                float t_cx = tracked_face.x + tracked_face.w * 0.5f;
+                float t_cy = tracked_face.y + tracked_face.h * 0.5f;
+
+                for (const auto& face : detected_faces) {
+                    float fx = face.x1 / static_cast<float>(orig_w);
+                    float fy = face.y1 / static_cast<float>(orig_h);
+                    float fw = (face.x2 - face.x1) / static_cast<float>(orig_w);
+                    float fh = (face.y2 - face.y1) / static_cast<float>(orig_h);
+
+                    float f_cx = fx + fw * 0.5f;
+                    float f_cy = fy + fh * 0.5f;
+                    float dist_sq = (t_cx - f_cx) * (t_cx - f_cx) + (t_cy - f_cy) * (t_cy - f_cy);
+
+                    float xx1 = std::max(tracked_face.x, fx);
+                    float yy1 = std::max(tracked_face.y, fy);
+                    float xx2 = std::min(tracked_face.x + tracked_face.w, fx + fw);
+                    float yy2 = std::min(tracked_face.y + tracked_face.h, fy + fh);
+                    float inter_w = std::max(0.0f, xx2 - xx1);
+                    float inter_h = std::max(0.0f, yy2 - yy1);
+                    float inter_area = inter_w * inter_h;
+                    float union_area = tracked_face.w * tracked_face.h + fw * fh - inter_area;
+                    float iou = (union_area > 0.0f) ? (inter_area / union_area) : 0.0f;
+
+                    if (iou > best_face_iou) {
+                        best_face_iou = iou;
+                        best_face = &face;
+                    } else if (best_face_iou <= 0.0f && dist_sq < min_center_dist_sq) {
+                        min_center_dist_sq = dist_sq;
                         best_face = &face;
                     }
                 }
+
+                process_face_feature_and_track_state(inst, frame, prep_res, best_face, rp, track_state);
+                result_persons.push_back(std::move(rp));
+            }
+        } else {
+            // 可选人体检测 + 人脸联合路径 (YOLOv8n + SCRFD)
+            YoloOutput yolo_out;
+            std::string yolo_err;
+            if (!inst->lib->model_manager->run_yolo(prep_res.letterbox_rgb.data.data(), yolo_out, yolo_err)) {
+                return fail(inst, AV_ERR_INTERNAL, ("YOLO inference failed: " + yolo_err).c_str());
             }
 
-            if (best_face) {
-                // 评估抓拍优选条件
-                bool need_extract = true;
-                float face_w_px = best_face->x2 - best_face->x1;
-                float face_h_px = best_face->y2 - best_face->y1;
-                float min_dim = std::min(face_w_px, face_h_px);
+            auto person_dets = Postprocessor::decode_yolo_persons(
+                yolo_out, prep_res.letterbox_info,
+                orig_w, orig_h,
+                inst->config.person_detection_threshold, 0.45f
+            );
 
-                float q_score = evaluate_face_quality(*best_face, prep_res.original_rgb.width, prep_res.original_rgb.height);
+            auto tracked_persons = inst->tracker.update(person_dets);
+            if (tracked_persons.size() > inst->config.max_person_count) {
+                tracked_persons.resize(inst->config.max_person_count);
+            }
 
-                if (inst->mode != AV_INSTANCE_INSTALL_SELF_TEST && inst->config.feature_mode == "best_shot") {
-                    // 1. 防抖与虚警过滤：轨迹存活帧数需达到 track_confirm_frames
-                    if (track_state.hit_count < inst->config.track_confirm_frames) {
-                        need_extract = false;
-                    } else if (min_dim < static_cast<float>(inst->config.min_face_size) || q_score < inst->config.quality_threshold) {
-                        // 2. 人脸最低像素尺寸与质量及格线
-                        need_extract = false;
-                    } else {
-                        // 3. 已有特征提取记录：检查是否显著提升或达到重采样间隔
-                        if (track_state.last_extracted_frame > 0) {
-                            bool interval_reached = (inst->config.reextract_interval_frames > 0 &&
-                                (frame->frame_id - track_state.last_extracted_frame >= inst->config.reextract_interval_frames));
-                            bool significantly_better = (q_score >= track_state.highest_quality + inst->config.quality_update_margin);
+            result_persons.reserve(tracked_persons.size());
+            for (const auto& person : tracked_persons) {
+                RecognizedPerson rp{};
+                rp.track_id = person.track_id;
+                rp.person_bbox[0] = person.x;
+                rp.person_bbox[1] = person.y;
+                rp.person_bbox[2] = person.w;
+                rp.person_bbox[3] = person.h;
+                rp.person_confidence = person.confidence;
 
-                            if (!interval_reached && !significantly_better) {
-                                need_extract = false;
-                            }
+                auto& track_state = inst->track_quality_map[person.track_id];
+                track_state.hit_count++;
+
+                const FaceDetection* best_face = nullptr;
+                float best_face_score = -1.0f;
+
+                for (const auto& face : detected_faces) {
+                    if (face_center_in_person(face, person, orig_w, orig_h)) {
+                        float iou = compute_face_person_iou(face, person, orig_w, orig_h);
+                        float score = face.score + 0.1f * iou;
+                        if (score > best_face_score) {
+                            best_face_score = score;
+                            best_face = &face;
                         }
                     }
                 }
 
-                // 如果本帧不提取特征，但存在人脸框，仍然输出 face 几何信息（embedding 为空）
-                // 这样前端可视化与目标框能连续追踪显示，同时极大降低模型算力
-                if (best_face) {
-                    rp.has_face = true;
-                    rp.face_bbox[0] = best_face->x1 / static_cast<float>(prep_res.original_rgb.width);
-                    rp.face_bbox[1] = best_face->y1 / static_cast<float>(prep_res.original_rgb.height);
-                    rp.face_bbox[2] = (best_face->x2 - best_face->x1) / static_cast<float>(prep_res.original_rgb.width);
-                    rp.face_bbox[3] = (best_face->y2 - best_face->y1) / static_cast<float>(prep_res.original_rgb.height);
-                    rp.face_confidence = best_face->score;
-                    for (int k = 0; k < 5; ++k) {
-                        rp.face_landmarks[k * 2 + 0] = best_face->landmarks[k * 2 + 0] / static_cast<float>(prep_res.original_rgb.width);
-                        rp.face_landmarks[k * 2 + 1] = best_face->landmarks[k * 2 + 1] / static_cast<float>(prep_res.original_rgb.height);
-                    }
-                }
-
-                if (need_extract) {
-                    // 6. 从原图直接做五点相似变换对齐截脸 -> 112x112
-                    ImageBuffer face_112;
-                    std::string align_err;
-                    if (Preprocessor::align_face_112x112(prep_res.original_rgb, best_face->landmarks.data(), face_112, align_err)) {
-                        // 7. 运行 GLINTR100 提取特征
-                        GlintrOutput glintr_out;
-                        std::string glintr_err;
-                        if (inst->lib->model_manager->run_glintr(face_112.data.data(), glintr_out, glintr_err)) {
-                            std::string emb_b64;
-                            std::string emb_err;
-                            if (Postprocessor::process_and_encode_embedding(glintr_out.embedding, emb_b64, emb_err)) {
-                                rp.embedding_base64 = emb_b64;
-
-                                // 更新轨迹优选状态
-                                track_state.last_extracted_frame = frame->frame_id;
-                                if (q_score > track_state.highest_quality) track_state.highest_quality = q_score;
-                                track_state.cached_embedding = std::move(emb_b64);
-                            }
-                        }
-                    }
-                }
+                process_face_feature_and_track_state(inst, frame, prep_res, best_face, rp, track_state);
+                result_persons.push_back(std::move(rp));
             }
-
-            result_persons.push_back(std::move(rp));
         }
 
-        // 8. 排序 (按 track_id 升序)
+        // 4. 排序 (按 track_id 升序)
         std::sort(result_persons.begin(), result_persons.end(), [](const RecognizedPerson& a, const RecognizedPerson& b) {
             return a.track_id < b.track_id;
         });
 
-        // 9. 自测结果或正常识别结果回调
+        // 5. 自测结果或正常识别结果回调
         if (inst->mode == AV_INSTANCE_INSTALL_SELF_TEST) {
             std::string self_test_json =
                 "{\n"
                 "  \"status\": \"ok\",\n"
-                "  \"stages\": [\"preprocess\", \"yolo_inference\", \"scrfd_inference\", \"glintr_inference\", \"serialize\"],\n"
+                "  \"stages\": [\"preprocess\", \"scrfd_inference\", \"glintr_inference\", \"serialize\"],\n"
                 "  \"object_count\": " + std::to_string(result_persons.size()) + "\n"
                 "}";
 
@@ -596,17 +684,31 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             return static_cast<int>(AV_OK);
         }
 
-        // 正常识别模式：只有当至少检测到一个有效人脸且生成了 embedding 时才回调
+        // 正常识别模式：只有当至少检测到一个有效人脸时才回调
         bool has_any_face = false;
+        std::vector<av_algo_image_req> img_reqs;
+
         for (const auto& p : result_persons) {
             if (p.has_face) {
                 has_any_face = true;
-                break;
+                if (!p.embedding_base64.empty()) {
+                    // 若有特征提取，构造高清人脸裁剪请求 ROI
+                    av_algo_image_req req{};
+                    req.size = sizeof(req);
+                    req.api_version = AV_ALGO_API_VERSION;
+                    req.x = p.face_bbox[0];
+                    req.y = p.face_bbox[1];
+                    req.w = p.face_bbox[2];
+                    req.h = p.face_bbox[3];
+                    req.purpose = kImagePurposeFaceCrop;
+                    img_reqs.push_back(req);
+                }
             }
         }
 
         if (has_any_face && inst->on_result) {
-            std::string result_json = Postprocessor::serialize_recognition_json(result_persons);
+            std::string result_json = Postprocessor::serialize_recognition_json(
+                result_persons, frame->frame_id, frame->pts_ns);
 
             av_algo_result res{};
             res.size = sizeof(res);
@@ -615,6 +717,11 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             res.frame_id = frame->frame_id;
             res.json = result_json.c_str();
             res.json_len = static_cast<uint32_t>(result_json.size());
+
+            if (!img_reqs.empty()) {
+                res.image_count = static_cast<uint32_t>(img_reqs.size());
+                res.images = img_reqs.data();
+            }
 
             inst->on_result(&res, inst->result_user);
         }
@@ -627,6 +734,7 @@ static int instance_flush(av_algo_instance inst_handle) noexcept {
     if (!inst_handle) return AV_ERR_INVALID_ARG;
     auto* inst = static_cast<InstanceContext*>(inst_handle);
     inst->tracker.reset();
+    inst->track_quality_map.clear();
     inst->has_received_frame = false;
     inst->last_frame_id = 0;
     return AV_OK;

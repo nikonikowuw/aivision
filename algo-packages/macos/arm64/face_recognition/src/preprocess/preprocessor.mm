@@ -1,6 +1,6 @@
 /**
  * @file preprocessor.mm
- * @brief NV12/CVPixelBuffer -> 原图 RGB -> 640x640 Letterbox 及五点相似变换对齐实现
+ * @brief NV12/CVPixelBuffer -> 原图 RGB -> 640x384 Letterbox 及五点相似变换对齐实现
  */
 
 #include "preprocessor.hpp"
@@ -160,17 +160,23 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
 
     const uint8_t* y_plane = nullptr;
     const uint8_t* uv_plane = nullptr;
-    int32_t y_stride = frame->stride[0];
-    int32_t uv_stride = frame->stride[1];
+    int32_t y_stride = frame->stride[0] > 0 ? frame->stride[0] : static_cast<int32_t>(width);
+    int32_t uv_stride = frame->stride[1] > 0 ? frame->stride[1] : static_cast<int32_t>(width);
 
     CVPixelBufferRef pixel_buffer = nullptr;
     if (frame->opaque != nullptr) {
-        pixel_buffer = static_cast<CVPixelBufferRef>(frame->opaque);
-        CVPixelBufferLockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
-        y_plane = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 0));
-        uv_plane = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 1));
-        y_stride = static_cast<int32_t>(CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 0));
-        uv_stride = static_cast<int32_t>(CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 1));
+        if (frame->opaque_kind == AV_OPAQUE_CVPIXELBUFFER || frame->memory_type == AV_MEM_PLATFORM_SURFACE) {
+            pixel_buffer = static_cast<CVPixelBufferRef>(frame->opaque);
+            CVPixelBufferLockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
+            y_plane = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 0));
+            uv_plane = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 1));
+            y_stride = static_cast<int32_t>(CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 0));
+            uv_stride = static_cast<int32_t>(CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 1));
+        } else {
+            // Host memory contiguous buffer
+            y_plane = static_cast<const uint8_t*>(frame->opaque);
+            uv_plane = y_plane + static_cast<size_t>(y_stride) * height;
+        }
     }
 
     if (!y_plane || !uv_plane) {

@@ -45,6 +45,14 @@ var seedMenuTree = []seedMenuItem{
 					{Type: MenuTypeButton, Name: "record.alarm.export", Permission: "record:alarm:export"},
 				},
 			},
+			{
+				Type: MenuTypeMenu, Name: "RecordPlate", Title: "routes.record.plate", Path: "/record/plate", Component: "/record/plate/index",
+				Icon: "ant-design:car-outlined", Permission: "record:plate", KeepAlive: true,
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "record.plate.query", Permission: "record:plate:query"},
+					{Type: MenuTypeButton, Name: "record.plate.export", Permission: "record:plate:export"},
+				},
+			},
 		},
 	},
 	{
@@ -192,6 +200,13 @@ func Seed(db *gorm.DB) (bool, error) {
 		return false, fmt.Errorf("check admin exists: %w", err)
 	}
 	if count > 0 {
+		// 增量同步菜单树给超级管理员（幂等补充新增的系统菜单）
+		var superRole Role
+		if err := db.Where("code = ?", RoleSuperCode).First(&superRole).Error; err == nil {
+			_ = db.Transaction(func(tx *gorm.DB) error {
+				return seedMenuBranch(tx, superRole.ID, 0, seedMenuTree)
+			})
+		}
 		return false, nil
 	}
 

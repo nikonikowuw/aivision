@@ -76,8 +76,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 57 {
-		t.Errorf("menu rows = %d, want 57", menuCount)
+	if menuCount != 60 {
+		t.Errorf("menu rows = %d, want 60", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -137,6 +137,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"resource:task", "resource:task:add", "resource:task:edit", "resource:task:delete",
 		"ai:algorithm", "ai:algorithm:upload", "ai:algorithm:activate", "ai:algorithm:uninstall",
 		"record:alarm", "record:alarm:query", "record:alarm:export",
+		"record:plate", "record:plate:query", "record:plate:export",
 		"live:preview", "live:preview:stream",
 	}
 	sort.Strings(got)
@@ -151,11 +152,11 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		}
 	}
 
-	// super 角色绑定全部 57 条菜单
+	// super 角色绑定全部 60 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 57 {
-		t.Errorf("role_menus for super = %d, want 57", rmCount)
+	if rmCount != 60 {
+		t.Errorf("role_menus for super = %d, want 60", rmCount)
 	}
 
 	// 初始系统配置与 desired_state_revision

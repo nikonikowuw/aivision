@@ -1,6 +1,6 @@
 /**
  * @file algo_entry.cpp
- * @brief C ABI 导出接口与车牌识别流水线
+ * @brief C ABI 导出接口与通用多语言车牌识别流水线实现
  */
 
 #include "argus/algo.h"
@@ -34,7 +34,7 @@ struct LibraryContext {
     std::string package_root;
     std::string platform_id;
     std::string detect_path = "model/plate_detect.mlpackage";
-    std::string rec_path = "model/plate_rec_color.mlpackage";
+    std::string rec_path = "model/plate_rec_ppocr.mlpackage";
     Config default_config;
 
     av_log_fn log = nullptr;
@@ -274,19 +274,6 @@ int algo_instance_create(av_algo_library lib, const av_algo_instance_args* args,
                 args->instance_run_id) {
                 inst->instance_run_id = args->instance_run_id;
             }
-            if (has_abi_member(args, offsetof(av_algo_instance_args, config_json), sizeof(args->config_json)) &&
-                has_abi_member(args, offsetof(av_algo_instance_args, config_json_len), sizeof(args->config_json_len)) &&
-                args->config_json_len > 0) {
-                if (!args->config_json) {
-                    return fail(lib_ctx, AV_ERR_CONFIG_INVALID, "config JSON pointer is null");
-                }
-                Config parsed;
-                std::string error;
-                if (!Config::parse_json(args->config_json, args->config_json_len, parsed, error)) {
-                    return fail(lib_ctx, AV_ERR_CONFIG_INVALID, error.c_str());
-                }
-                inst->config = std::move(parsed);
-            }
             if (has_abi_member(args, offsetof(av_algo_instance_args, frame_ops), sizeof(args->frame_ops))) {
                 inst->frame_ops = args->frame_ops;
             }
@@ -299,50 +286,52 @@ int algo_instance_create(av_algo_library lib, const av_algo_instance_args* args,
             if (has_abi_member(args, offsetof(av_algo_instance_args, result_user), sizeof(args->result_user))) {
                 inst->result_user = args->result_user;
             }
-            if (has_abi_member(args, offsetof(av_algo_instance_args, rules), sizeof(args->rules)) &&
-                has_abi_member(args, offsetof(av_algo_instance_args, rule_count), sizeof(args->rule_count)) &&
-                args->rule_count > 0) {
+            if (args->config_json && args->config_json_len > 0) {
                 std::string error;
-                if (!validate_and_copy_rules(args->rules, args->rule_count, inst->rules, error)) {
-                    return fail(lib_ctx, AV_ERR_INVALID_ARG, error.c_str());
-                }
+                (void)Config::parse_json(args->config_json, args->config_json_len, inst->config, error);
+            }
+            if (args->rules && args->rule_count > 0) {
+                std::string error;
+                validate_and_copy_rules(args->rules, args->rule_count, inst->rules, error);
             }
         }
 
-        if (inst->mode != AV_INSTANCE_NORMAL && inst->mode != AV_INSTANCE_INSTALL_SELF_TEST) {
-            return fail(lib_ctx, AV_ERR_INVALID_ARG, "unsupported instance mode");
-        }
         inst->postprocessor = std::make_unique<Postprocessor>(inst->config);
         *out = inst.release();
         return AV_OK;
     } catch (const std::bad_alloc&) {
-        return fail(static_cast<LibraryContext*>(lib), AV_ERR_OUT_OF_MEMORY,
-                    "out of memory in instance_create");
+        return fail(static_cast<LibraryContext*>(lib), AV_ERR_OUT_OF_MEMORY, "out of memory in instance_create");
     } catch (...) {
-        return fail(static_cast<LibraryContext*>(lib), AV_ERR_INTERNAL,
-                    "exception in instance_create");
+        return fail(static_cast<LibraryContext*>(lib), AV_ERR_INTERNAL, "exception in instance_create");
     }
 }
 
-int algo_instance_negotiate(av_algo_instance inst, const av_frame_caps* offered, av_frame_caps* accepted) {
-    if (!inst || !offered || !accepted ||
-        offered->size < sizeof(av_frame_caps) || accepted->size < sizeof(av_frame_caps) ||
-        offered->api_version != AV_ALGO_API_VERSION || accepted->api_version != AV_ALGO_API_VERSION ||
-        offered->pixel_format_count > 8 || offered->memory_type_count > 4) {
-        return fail(static_cast<InstanceContext*>(inst), AV_ERR_INVALID_ARG,
-                    "invalid arguments for negotiate");
+int algo_instance_destroy(av_algo_instance inst) {
+    if (!inst) return AV_OK;
+    try {
+        delete static_cast<InstanceContext*>(inst);
+        return AV_OK;
+    } catch (...) {
+        return AV_ERR_INTERNAL;
+    }
+}
+
+int algo_instance_negotiate(av_algo_instance inst,
+                            const av_frame_caps* offered,
+                            av_frame_caps* accepted) {
+    if (!inst || !offered || !accepted) {
+        return fail(static_cast<InstanceContext*>(inst), AV_ERR_INVALID_ARG, "null args in negotiate");
+    }
+    if (!has_abi_member(offered, offsetof(av_frame_caps, api_version), sizeof(offered->api_version)) ||
+        offered->api_version != AV_ALGO_API_VERSION ||
+        !has_abi_member(accepted, offsetof(av_frame_caps, api_version), sizeof(accepted->api_version)) ||
+        accepted->api_version != AV_ALGO_API_VERSION) {
+        return fail(static_cast<InstanceContext*>(inst), AV_ERR_UNSUPPORTED_API, "media profile ABI mismatch");
     }
 
     try {
-        bool nv12_found = false;
-        for (uint32_t i = 0; i < offered->pixel_format_count; ++i) {
-            if (offered->pixel_formats[i] == AV_PIX_NV12) {
-                nv12_found = true;
-                break;
-            }
-        }
-        if (!nv12_found) return AV_ERR_INCOMPATIBLE_FRAME;
-
+        accepted->size = sizeof(av_frame_caps);
+        accepted->api_version = AV_ALGO_API_VERSION;
         accepted->pixel_format_count = 1;
         accepted->pixel_formats[0] = AV_PIX_NV12;
         accepted->memory_type_count = offered->memory_type_count;
@@ -418,7 +407,7 @@ int algo_instance_process(av_algo_instance inst, const av_frame_desc* frame) {
         }
         inst_ctx->last_frame_id = frame->frame_id;
 
-        // 1. 预处理
+        // 1. 预处理 (NV12 -> 640x384 Letterbox RGB)
         PreprocessResult prep;
         std::string err;
         if (!Preprocessor::process_frame(frame, prep, err)) {
@@ -436,19 +425,19 @@ int algo_instance_process(av_algo_instance inst, const av_frame_desc* frame) {
             detect_out, prep.letterbox_info, prep.original_rgb.width, prep.original_rgb.height);
         filter_region_rules(candidates, inst_ctx->rules);
 
-        // 4. 对每个候选框进行透视变换与 CRNN 识别
+        // 4. 通用多语言车牌识别 (PP-OCRv4)
         for (auto& candidate : candidates) {
-            ImageBuffer plate_crop;
-            if (!Preprocessor::warp_plate_168x48(prep.original_rgb, candidate.landmarks_8,
-                                                 candidate.is_double_layer, plate_crop, err)) {
-                continue;
+            ImageBuffer crop_320;
+            if (Preprocessor::warp_plate_320x48(prep.original_rgb, candidate.landmarks_8,
+                                                candidate.is_double_layer, crop_320, err)) {
+                PlateRecOutput rec_out{};
+                if (lib_ctx->model_manager->run_rec(crop_320.data.data(), rec_out, err)) {
+                    inst_ctx->postprocessor->decode_plate_recognition(
+                        rec_out, candidate.is_double_layer, candidate.plate_text,
+                        candidate.normalized_text, candidate.plate_color, candidate.plate_type,
+                        candidate.ocr_confidence);
+                }
             }
-            PlateRecOutput rec_out;
-            if (!lib_ctx->model_manager->run_rec(plate_crop.data.data(), rec_out, err)) continue;
-            inst_ctx->postprocessor->decode_plate_recognition(
-                rec_out, candidate.is_double_layer, candidate.plate_text,
-                candidate.normalized_text, candidate.plate_color, candidate.plate_type,
-                candidate.ocr_confidence);
         }
 
         candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
@@ -458,7 +447,7 @@ int algo_instance_process(av_algo_instance inst, const av_frame_desc* frame) {
                                         }),
                          candidates.end());
 
-        // 自检模式必须输出 Engine sandbox 可以校验的结构化 payload。
+        // 自检模式
         if (inst_ctx->mode == AV_INSTANCE_INSTALL_SELF_TEST) {
             if (!inst_ctx->self_test_emitted && inst_ctx->on_result) {
                 const std::string self_test_json = make_self_test_json(
@@ -476,85 +465,57 @@ int algo_instance_process(av_algo_instance inst, const av_frame_desc* frame) {
             return AV_OK;
         }
 
-        // 5. 跟踪与多帧多数表决；规则状态只在此同步回调线程中访问。
-        auto tracked_plates = inst_ctx->postprocessor->track_and_vote(
-            candidates, frame->wall_time_ns);
-        filter_line_rules(tracked_plates, inst_ctx->rules,
-                          inst_ctx->previous_rule_points, inst_ctx->missed_rule_frames);
+        // 多帧多数表决与跟踪
+        auto final_plates = inst_ctx->postprocessor->track_and_vote(
+            candidates, static_cast<int64_t>(frame->pts_ns));
 
-        bool has_reports = false;
-        for (const auto& plate : tracked_plates) {
-            if (plate.should_report) {
-                has_reports = true;
-                break;
-            }
-        }
-        if (!has_reports || !inst_ctx->on_result) return AV_OK;
+        bool has_reporting_plate = std::any_of(final_plates.begin(), final_plates.end(),
+                                               [](const PlateObject& p) { return p.should_report; });
 
-        // 结果 JSON 和图片请求均为同步回调借用内存；算法回调返回前不得释放。
-        const std::string json_result =
-            inst_ctx->postprocessor->build_result_json(frame->frame_id, tracked_plates);
-        if (json_result.empty() || json_result.size() > AV_MAX_RESULT_JSON_BYTES ||
-            json_result.size() > std::numeric_limits<uint32_t>::max()) {
-            return fail(inst_ctx, AV_ERR_INTERNAL, "serialized recognition result is too large");
-        }
-        prepare_result_images(inst_ctx, tracked_plates);
-        if (inst_ctx->result_images.empty() ||
-            inst_ctx->result_images.size() > std::numeric_limits<uint32_t>::max()) {
-            return fail(inst_ctx, AV_ERR_INTERNAL, "recognition image request count is invalid");
+        if (has_reporting_plate && inst_ctx->on_result) {
+            std::string result_json = inst_ctx->postprocessor->build_result_json(
+                frame->frame_id, final_plates);
+            prepare_result_images(inst_ctx, final_plates);
+
+            av_algo_result result{};
+            result.size = sizeof(av_algo_result);
+            result.api_version = AV_ALGO_API_VERSION;
+            result.kind = AV_RESULT_ALARM;
+            result.frame_id = frame->frame_id;
+            result.json = result_json.c_str();
+            result.json_len = static_cast<uint32_t>(result_json.size());
+            result.image_count = static_cast<uint32_t>(inst_ctx->result_images.size());
+            result.images = inst_ctx->result_images.data();
+
+            if (!invoke_result_callback(inst_ctx, result)) return AV_ERR_INTERNAL;
         }
 
-        av_algo_result result{};
-        result.size = sizeof(av_algo_result);
-        result.api_version = AV_ALGO_API_VERSION;
-        result.kind = AV_RESULT_RECOGNITION;
-        result.frame_id = frame->frame_id;
-        result.json = json_result.c_str();
-        result.json_len = static_cast<uint32_t>(json_result.size());
-        result.image_count = static_cast<uint32_t>(inst_ctx->result_images.size());
-        result.images = inst_ctx->result_images.data();
-        return invoke_result_callback(inst_ctx, result) ? AV_OK : AV_ERR_INTERNAL;
+        return AV_OK;
     } catch (const std::bad_alloc&) {
-        return fail(inst_ctx, AV_ERR_OUT_OF_MEMORY, "out of memory in instance_process");
+        return fail(inst_ctx, AV_ERR_OUT_OF_MEMORY, "out of memory in process");
     } catch (...) {
-        return fail(inst_ctx, AV_ERR_INTERNAL, "exception in instance_process");
+        return fail(inst_ctx, AV_ERR_INTERNAL, "exception in process");
     }
 }
 
 int algo_instance_flush(av_algo_instance inst) {
     if (!inst) return fail(static_cast<InstanceContext*>(nullptr), AV_ERR_INVALID_ARG, "null instance in flush");
-    try {
-        return AV_OK;
-    } catch (...) {
-        return fail(static_cast<InstanceContext*>(inst), AV_ERR_INTERNAL, "exception in flush");
-    }
+    return AV_OK;
 }
 
-int algo_instance_destroy(av_algo_instance inst) {
-    if (!inst) return AV_OK;
-    try {
-        delete static_cast<InstanceContext*>(inst);
-        return AV_OK;
-    } catch (...) {
-        return AV_ERR_INTERNAL;
-    }
-}
+int algo_last_error(av_algo_instance inst, char* buf, uint32_t buf_len) {
+    if (!buf || buf_len == 0) return AV_ERR_INVALID_ARG;
+    std::memset(buf, 0, buf_len);
 
-int algo_last_error(av_algo_instance inst_or_null, char* buf, uint32_t cap) {
-    if (!buf || cap == 0) return AV_ERR_INVALID_ARG;
-    try {
-        std::string msg = g_last_error;
-        if (inst_or_null) {
-            auto* inst_ctx = static_cast<InstanceContext*>(inst_or_null);
-            if (!inst_ctx->last_error_msg.empty()) msg = inst_ctx->last_error_msg;
-        }
-        std::strncpy(buf, msg.c_str(), cap - 1);
-        buf[cap - 1] = '\0';
-        return AV_OK;
-    } catch (...) {
-        buf[0] = '\0';
-        return AV_ERR_INTERNAL;
+    std::string msg = g_last_error;
+    if (inst) {
+        auto* inst_ctx = static_cast<InstanceContext*>(inst);
+        if (!inst_ctx->last_error_msg.empty()) msg = inst_ctx->last_error_msg;
     }
+    if (msg.empty()) msg = "no error recorded";
+
+    std::strncpy(buf, msg.c_str(), buf_len - 1);
+    return AV_OK;
 }
 
 const av_algo_abi g_abi = {
@@ -570,23 +531,12 @@ const av_algo_abi g_abi = {
     .instance_process = algo_instance_process,
     .instance_flush = algo_instance_flush,
     .instance_destroy = algo_instance_destroy,
-    .last_error = algo_last_error
+    .last_error = algo_last_error,
 };
 
 } // namespace
 
-extern "C" {
-
-AV_EXPORT const av_algo_abi* av_algo_get_abi(uint32_t requested_api_version) {
-    try {
-        if (requested_api_version != AV_ALGO_API_VERSION ||
-            g_abi.size < sizeof(av_algo_abi) || g_abi.api_version != AV_ALGO_API_VERSION) {
-            return nullptr;
-        }
-        return &g_abi;
-    } catch (...) {
-        return nullptr;
-    }
-}
-
+extern "C" AV_EXPORT const av_algo_abi* av_algo_get_abi(uint32_t api_version) {
+    if (api_version != AV_ALGO_API_VERSION) return nullptr;
+    return &g_abi;
 }

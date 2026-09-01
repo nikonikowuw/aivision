@@ -417,7 +417,7 @@ int main(int argc, char** argv) {
                   << "========================================\n" << std::endl;
     } else {
         // Send multiple frames to satisfy tracking & majority voting window
-        const int num_frames = (mode == "selftest") ? 1 : 5;
+        const int num_frames = (mode == "selftest") ? 1 : 10;
         for (int iter = 1; iter <= num_frames; ++iter) {
             frame.frame_id = iter;
             frame.pts_ns = iter * 40'000'000LL; // 25 FPS

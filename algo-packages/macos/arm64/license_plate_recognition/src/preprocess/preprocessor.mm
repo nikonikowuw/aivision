@@ -1,6 +1,6 @@
 /**
  * @file preprocessor.mm
- * @brief NV12/CVPixelBuffer -> RGB 640x640 Letterbox 及 4 点透视变换矫正实现
+ * @brief NV12/CVPixelBuffer -> RGB 640x384 Letterbox 及 4 点透视变换矫正实现
  */
 
 #include "preprocessor.hpp"
@@ -60,17 +60,14 @@ bool solve_linear_system_8x8(std::array<std::array<float, 8>, 8>& A,
 }
 
 // 计算从目标矩形 [0, dst_w) x [0, dst_h) 到原图 4 顶点的单应性变换矩阵 H (3x3)
-// 即 (u, v) in dst -> (x, y) in src:
-// x = (h0*u + h1*v + h2) / (h6*u + h7*v + 1)
-// y = (h3*u + h4*v + h5) / (h6*u + h7*v + 1)
 bool compute_homography_dst_to_src(float dst_w, float dst_h,
                                    const float src_pts[4][2],
                                    std::array<float, 9>& H) {
     float dst_pts[4][2] = {
         {0.0f, 0.0f},
-        {dst_w - 1.0f, 0.0f},
-        {dst_w - 1.0f, dst_h - 1.0f},
-        {0.0f, dst_h - 1.0f}
+        {dst_w, 0.0f},
+        {dst_w, dst_h},
+        {0.0f, dst_h}
     };
 
     std::array<std::array<float, 8>, 8> A{};
@@ -114,10 +111,11 @@ bool compute_homography_dst_to_src(float dst_w, float dst_h,
     return true;
 }
 
-// 目标图像双线性插值采样
+// 目标图像双线性插值采样 (支持 BGR 翻转)
 void warp_perspective_bilinear(const ImageBuffer& src,
                                const std::array<float, 9>& H,
-                               ImageBuffer& dst) {
+                               ImageBuffer& dst,
+                               bool swap_rb = false) {
     const uint8_t* s_data = src.data.data();
     uint32_t sw = src.width;
     uint32_t sh = src.height;
@@ -158,17 +156,18 @@ void warp_perspective_bilinear(const ImageBuffer& src,
 
             size_t out_idx = (static_cast<size_t>(v) * dw + u) * 3;
             for (int c = 0; c < 3; ++c) {
-                float val = w00 * s_data[idx00 + c] +
-                            w01 * s_data[idx01 + c] +
-                            w10 * s_data[idx10 + c] +
-                            w11 * s_data[idx11 + c];
+                int src_c = swap_rb ? (2 - c) : c;
+                float val = w00 * s_data[idx00 + src_c] +
+                            w01 * s_data[idx01 + src_c] +
+                            w10 * s_data[idx10 + src_c] +
+                            w11 * s_data[idx11 + src_c];
                 d_data[out_idx + c] = static_cast<uint8_t>(std::clamp(std::round(val), 0.0f, 255.0f));
             }
         }
     }
 }
 
-// 图像简单双线性缩放 (RGB)
+// 图像简单双线性缩放 (RGB/BGR)
 void resize_bilinear(const ImageBuffer& src, ImageBuffer& dst) {
     const uint8_t* s_data = src.data.data();
     uint32_t sw = src.width;
@@ -354,45 +353,66 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
     return true;
 }
 
-bool Preprocessor::warp_plate_168x48(const ImageBuffer& orig_rgb,
+bool Preprocessor::warp_plate_320x48(const ImageBuffer& orig_rgb,
                                     const float landmarks_8[8],
                                     bool is_double_layer,
-                                    ImageBuffer& out_plate_168x48,
+                                    ImageBuffer& out_plate_320x48,
                                     std::string& error) {
     if (orig_rgb.data.empty() || orig_rgb.width == 0 || orig_rgb.height == 0) {
         error = "empty source image for plate warp";
         return false;
     }
 
-    // landmarks_8: (tl_x, tl_y, tr_x, tr_y, br_x, br_y, bl_x, bl_y)
+    // 4 点角点自适应边缘外扩 (安全边距，避免车牌检测角点紧贴导致首字汉字或尾字被裁切)
+    float h_top_x = landmarks_8[2] - landmarks_8[0];
+    float h_top_y = landmarks_8[3] - landmarks_8[1];
+    float h_bot_x = landmarks_8[4] - landmarks_8[6];
+    float h_bot_y = landmarks_8[5] - landmarks_8[7];
+    float h_vec_x = (h_top_x + h_bot_x) * 0.5f;
+    float h_vec_y = (h_top_y + h_bot_y) * 0.5f;
+
+    float v_left_x = landmarks_8[6] - landmarks_8[0];
+    float v_left_y = landmarks_8[7] - landmarks_8[1];
+    float v_right_x = landmarks_8[4] - landmarks_8[2];
+    float v_right_y = landmarks_8[5] - landmarks_8[3];
+    float v_vec_x = (v_left_x + v_right_x) * 0.5f;
+    float v_vec_y = (v_left_y + v_right_y) * 0.5f;
+
+    const float exp_w = 0.25f;
+    const float exp_h = 0.25f;
+
     float src_pts[4][2] = {
-        {landmarks_8[0], landmarks_8[1]},
-        {landmarks_8[2], landmarks_8[3]},
-        {landmarks_8[4], landmarks_8[5]},
-        {landmarks_8[6], landmarks_8[7]}
+        {landmarks_8[0] - exp_w * h_vec_x - exp_h * v_vec_x,
+         landmarks_8[1] - exp_w * h_vec_y - exp_h * v_vec_y},
+        {landmarks_8[2] + exp_w * h_vec_x - exp_h * v_vec_x,
+         landmarks_8[3] + exp_w * h_vec_y - exp_h * v_vec_y},
+        {landmarks_8[4] + exp_w * h_vec_x + exp_h * v_vec_x,
+         landmarks_8[5] + exp_w * h_vec_y + exp_h * v_vec_y},
+        {landmarks_8[6] - exp_w * h_vec_x + exp_h * v_vec_x,
+         landmarks_8[7] - exp_w * h_vec_y + exp_h * v_vec_y}
     };
 
     if (!is_double_layer) {
-        out_plate_168x48.width = 168;
-        out_plate_168x48.height = 48;
-        out_plate_168x48.channels = 3;
-        out_plate_168x48.data.resize(168 * 48 * 3);
+        out_plate_320x48.width = 320;
+        out_plate_320x48.height = 48;
+        out_plate_320x48.channels = 3;
+        out_plate_320x48.data.resize(320 * 48 * 3);
 
         std::array<float, 9> H{};
-        if (!compute_homography_dst_to_src(168.0f, 48.0f, src_pts, H)) {
+        if (!compute_homography_dst_to_src(320.0f, 48.0f, src_pts, H)) {
             error = "failed to compute perspective homography for single layer plate";
             return false;
         }
 
-        warp_perspective_bilinear(orig_rgb, H, out_plate_168x48);
+        warp_perspective_bilinear(orig_rgb, H, out_plate_320x48, false);
         return true;
     } else {
-        // 双层车牌：先透视变换到一个正方形/大矩形 (例如 168 x 96)，然后上下分割并水平拼接
+        // 双层车牌：先透视变换到一个正方形/大矩形，然后上下分割并水平拼接
         float wA = std::hypot(src_pts[2][0] - src_pts[3][0], src_pts[2][1] - src_pts[3][1]);
-        float wB = std::hypot(src_pts[1][0] - src_pts[0][0], src_pts[1][1] - src_pts[0][1]);
-        float hA = std::hypot(src_pts[1][0] - src_pts[2][0], src_pts[1][1] - src_pts[2][1]);
-        float hB = std::hypot(src_pts[0][0] - src_pts[3][0], src_pts[0][1] - src_pts[3][1]);
-        uint32_t maxWidth = static_cast<uint32_t>(std::max(168.0f, std::max(wA, wB)));
+        float wB = std::hypot(src_pts[1][0] - src_pts[0][0], src_pts[1][0] - src_pts[0][0]);
+        float hA = std::hypot(src_pts[1][0] - src_pts[2][0], src_pts[1][0] - src_pts[2][1]);
+        float hB = std::hypot(src_pts[0][0] - src_pts[3][0], src_pts[0][0] - src_pts[3][1]);
+        uint32_t maxWidth = static_cast<uint32_t>(std::max(320.0f, std::max(wA, wB)));
         uint32_t maxHeight = static_cast<uint32_t>(std::max(96.0f, std::max(hA, hB)));
 
         ImageBuffer raw_warped;
@@ -406,7 +426,7 @@ bool Preprocessor::warp_plate_168x48(const ImageBuffer& orig_rgb,
             error = "failed to compute perspective homography for double layer plate";
             return false;
         }
-        warp_perspective_bilinear(orig_rgb, H, raw_warped);
+        warp_perspective_bilinear(orig_rgb, H, raw_warped, false);
 
         // 上半部分: y in [0, 5/12 * H]
         // 下半部分: y in [1/3 * H, H]
@@ -451,12 +471,12 @@ bool Preprocessor::warp_plate_168x48(const ImageBuffer& orig_rgb,
             std::memcpy(dst_row + (maxWidth * 3), l_row, maxWidth * 3);
         }
 
-        // 最终缩放到 168 x 48
-        out_plate_168x48.width = 168;
-        out_plate_168x48.height = 48;
-        out_plate_168x48.channels = 3;
-        out_plate_168x48.data.resize(168 * 48 * 3);
-        resize_bilinear(merged, out_plate_168x48);
+        // 最终缩放到 320 x 48
+        out_plate_320x48.width = 320;
+        out_plate_320x48.height = 48;
+        out_plate_320x48.channels = 3;
+        out_plate_320x48.data.resize(320 * 48 * 3);
+        resize_bilinear(merged, out_plate_320x48);
         return true;
     }
 }

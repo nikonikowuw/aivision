@@ -4,13 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+PYTHON_BIN="${PYTHON_BIN:-/Users/zhang/.venv/bin/python3}"
 
-echo "[convert.sh] Converting ONNX models to Core ML .mlpackage format (640x384 detection)..."
+echo "[convert.sh] Converting ONNX models to Core ML .mlpackage format (640x384 detection & PP-OCRv4 recognition)..."
 
 "${PYTHON_BIN}" - << 'EOF'
 import os
 import sys
+import urllib.request
 import onnx
 from onnx import numpy_helper
 import numpy as np
@@ -23,6 +24,7 @@ pkg_dir = os.path.abspath(os.path.join(script_dir, ".."))
 weights_dir = os.path.join(pkg_dir, "weights")
 model_dir = os.path.join(pkg_dir, "model")
 
+os.makedirs(weights_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
 # 1. Plate Detector (Adapted to 640x384 for standard 16:9 IPC camera streams)
@@ -145,21 +147,56 @@ if os.path.exists(detect_onnx):
     detect_mlmodel.save(os.path.join(model_dir, "plate_detect.mlpackage"))
     print("Plate Detector (640x384) converted.")
 
-# 2. Plate Recognition & Color
-rec_onnx = os.path.join(weights_dir, "plate_rec_color.onnx")
+# 2. Multilingual License Plate Recognizer (PP-OCRv4-mobile)
+rec_onnx = os.path.join(weights_dir, "ch_PP-OCRv4_rec_infer.onnx")
+fixed_rec_onnx = os.path.join(weights_dir, "ppocr_fixed.onnx")
+dict_file = os.path.join(weights_dir, "ppocr_keys_v1.txt")
+
+if not os.path.exists(dict_file):
+    print("Downloading PP-OCRv4 character dictionary...")
+    urllib.request.urlretrieve(
+        "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/release/2.7/ppocr/utils/ppocr_keys_v1.txt",
+        dict_file
+    )
+
 if os.path.exists(rec_onnx):
-    print("Converting plate_rec_color.onnx (FP16 compute precision)...")
-    rec_torch = onnx2torch.convert(rec_onnx).eval()
-    dummy_rec = torch.randn(1, 3, 48, 168)
-    traced_rec = torch.jit.trace(rec_torch, dummy_rec)
-    rec_mlmodel = ct.convert(
-        traced_rec,
-        inputs=[ct.TensorType(name='input', shape=(1, 3, 48, 168), dtype=np.float32)],
+    print("Converting PP-OCRv4 recognition ONNX to Core ML (320x48 input, FP16)...")
+    m = onnx.load(rec_onnx)
+    m.graph.input[0].type.tensor_type.shape.dim[0].dim_value = 1
+    m.graph.input[0].type.tensor_type.shape.dim[1].dim_value = 3
+    m.graph.input[0].type.tensor_type.shape.dim[2].dim_value = 48
+    m.graph.input[0].type.tensor_type.shape.dim[3].dim_value = 320
+
+    m.graph.output[0].type.tensor_type.shape.dim[0].dim_value = 1
+    m.graph.output[0].type.tensor_type.shape.dim[1].dim_value = 40
+    m.graph.output[0].type.tensor_type.shape.dim[2].dim_value = 6625
+
+    init_names = {i.name for i in m.graph.initializer}
+    nodes_to_remove = []
+    for node in m.graph.node:
+        if node.op_type == "Shape":
+            nodes_to_remove.append(node)
+
+    for node in nodes_to_remove:
+        m.graph.node.remove(node)
+
+    if not any(i.name == "Constant_401" for i in m.graph.initializer):
+        m.graph.initializer.append(numpy_helper.from_array(np.array([1, 40, 120], dtype=np.int64), name="Constant_401"))
+
+    onnx.save(m, fixed_rec_onnx)
+
+    torch_model = onnx2torch.convert(fixed_rec_onnx).eval()
+    dummy = torch.randn(1, 3, 48, 320)
+    traced = torch.jit.trace(torch_model, dummy)
+
+    mlmodel = ct.convert(
+        traced,
+        inputs=[ct.TensorType(name="x", shape=(1, 3, 48, 320), dtype=np.float32)],
         compute_precision=ct.precision.FLOAT16,
         minimum_deployment_target=ct.target.macOS14
     )
-    rec_mlmodel.save(os.path.join(model_dir, "plate_rec_color.mlpackage"))
-    print("Plate Recognizer converted.")
+    mlmodel.save(os.path.join(model_dir, "plate_rec_ppocr.mlpackage"))
+    print("PP-OCRv4 Recognizer converted successfully.")
 EOF
 
 echo "[convert.sh] Done."

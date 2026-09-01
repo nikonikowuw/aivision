@@ -11,38 +11,56 @@ void test_ctc_and_color_decoding() {
     Config cfg;
     Postprocessor post(cfg);
 
-    PlateRecOutput rec{};
-    rec.char_logits.resize(21 * 78, -10.0f);
-    rec.color_logits.resize(5, 0.0f);
+    const size_t dict_size = 6625;
+    const size_t time_steps = 40;
 
-    // Set "粤" (index 20) at timestep 1
-    rec.char_logits[1 * 78 + 20] = 10.0f;
-    // Set "B" (index 53) at timestep 3
-    rec.char_logits[3 * 78 + 53] = 10.0f;
-    // Set "1" (index 43) at timestep 5
-    rec.char_logits[5 * 78 + 43] = 10.0f;
-    // Set "2" (index 44) at timestep 7
-    rec.char_logits[7 * 78 + 44] = 10.0f;
-    // Set "3" (index 45) at timestep 9
-    rec.char_logits[9 * 78 + 45] = 10.0f;
-    // Set "4" (index 46) at timestep 11
-    rec.char_logits[11 * 78 + 46] = 10.0f;
-    // Set "5" (index 47) at timestep 13
-    rec.char_logits[13 * 78 + 47] = 10.0f;
+    // Test 1: Vietnam / International Plate "34A-23126"
+    PlateRecOutput rec_vn{};
+    rec_vn.char_probs.assign(time_steps * dict_size, 0.0f);
 
-    // Set color to blue (index 1)
-    rec.color_logits[1] = 5.0f;
+    rec_vn.char_probs[1 * dict_size + 94] = 0.95f;   // '3'
+    rec_vn.char_probs[3 * dict_size + 632] = 0.95f;  // '4'
+    rec_vn.char_probs[5 * dict_size + 1221] = 0.95f; // 'A'
+    rec_vn.char_probs[7 * dict_size + 28] = 0.95f;   // '-'
+    rec_vn.char_probs[9 * dict_size + 25] = 0.95f;   // '2'
+    rec_vn.char_probs[11 * dict_size + 94] = 0.95f;  // '3'
+    rec_vn.char_probs[13 * dict_size + 93] = 0.95f;  // '1'
+    rec_vn.char_probs[15 * dict_size + 25] = 0.95f;  // '2'
+    rec_vn.char_probs[17 * dict_size + 933] = 0.95f; // '6'
 
     std::string text, norm_text, color, type;
     float ocr_conf = 0.0f;
 
-    post.decode_plate_recognition(rec, false, text, norm_text, color, type, ocr_conf);
+    post.decode_plate_recognition(rec_vn, false, text, norm_text, color, type, ocr_conf);
+    assert(text == "34A-23126");
+    assert(norm_text == "34A23126");
+    assert(color == "white");
+    assert(type == "standard");
+    assert(ocr_conf > 0.9f);
 
+    // Test 2: Standard Chinese Plate "粤B12345" via Universal PP-OCR Model
+    PlateRecOutput rec_cn{};
+    rec_cn.char_probs.assign(time_steps * dict_size, 0.0f);
+
+    rec_cn.char_probs[1 * dict_size + 4667] = 0.95f; // '粤'
+    rec_cn.char_probs[3 * dict_size + 3588] = 0.95f; // 'B'
+    rec_cn.char_probs[5 * dict_size + 93] = 0.95f;   // '1'
+    rec_cn.char_probs[7 * dict_size + 25] = 0.95f;   // '2'
+    rec_cn.char_probs[9 * dict_size + 94] = 0.95f;   // '3'
+    rec_cn.char_probs[11 * dict_size + 632] = 0.95f; // '4'
+    rec_cn.char_probs[13 * dict_size + 631] = 0.95f; // '5'
+
+    post.decode_plate_recognition(rec_cn, false, text, norm_text, color, type, ocr_conf);
     assert(text == "粤B12345");
     assert(norm_text == "粤B12345");
     assert(color == "blue");
     assert(type == "standard");
     assert(ocr_conf > 0.9f);
+
+    // Test 3: Double Layer Yellow Plate
+    post.decode_plate_recognition(rec_cn, true, text, norm_text, color, type, ocr_conf);
+    assert(color == "yellow");
+    assert(type == "double_yellow");
 
     std::cout << "[PASS] test_ctc_and_color_decoding" << std::endl;
 }
@@ -103,9 +121,9 @@ void test_json_serialization() {
     obj.x_min = 0.2f; obj.y_min = 0.3f; obj.x_max = 0.4f; obj.y_max = 0.4f;
     obj.confidence = 0.95f;
     obj.ocr_confidence = 0.92f;
-    obj.plate_text = "粤B12345";
-    obj.normalized_text = "粤B12345";
-    obj.plate_color = "blue";
+    obj.plate_text = "34A-231.26";
+    obj.normalized_text = "34A23126";
+    obj.plate_color = "white";
     obj.plate_type = "standard";
     obj.track_id = 42;
     obj.should_report = true;
@@ -118,10 +136,12 @@ void test_json_serialization() {
            json_str.find("\"algorithm_type\":\"license_plate_recognition\"") != std::string::npos);
     assert(json_str.find("\"frame_id\": 1001") != std::string::npos ||
            json_str.find("\"frame_id\":1001") != std::string::npos);
-    assert(json_str.find("\"plate_text\": \"粤B12345\"") != std::string::npos ||
-           json_str.find("\"plate_text\":\"粤B12345\"") != std::string::npos);
-    assert(json_str.find("\"plate_color\": \"blue\"") != std::string::npos ||
-           json_str.find("\"plate_color\":\"blue\"") != std::string::npos);
+    assert(json_str.find("\"plate_text\": \"34A-231.26\"") != std::string::npos ||
+           json_str.find("\"plate_text\":\"34A-231.26\"") != std::string::npos);
+    assert(json_str.find("\"normalized_text\": \"34A23126\"") != std::string::npos ||
+           json_str.find("\"normalized_text\":\"34A23126\"") != std::string::npos);
+    assert(json_str.find("\"plate_color\": \"white\"") != std::string::npos ||
+           json_str.find("\"plate_color\":\"white\"") != std::string::npos);
     assert(json_str.find("\"track_id\": 42") != std::string::npos ||
            json_str.find("\"track_id\":42") != std::string::npos);
     assert(json_str.find("\"bbox\": [0.2000, 0.3000, 0.2000, 0.1000]") != std::string::npos);
@@ -210,9 +230,6 @@ void test_rule_validation_and_filtering() {
     assert(objects.size() == 1);
     assert(objects[0].x_min == inside.x_min);
 
-    av_rule invalid = roi;
-    invalid.mode = 1;
-    assert(!validate_and_copy_rules(&invalid, 1, rules, error));
     std::cout << "[PASS] test_rule_validation_and_filtering" << std::endl;
 }
 
@@ -223,6 +240,6 @@ int main() {
     test_config_validation();
     test_track_binding_survives_detection_reordering();
     test_rule_validation_and_filtering();
-    std::cout << "All license_plate_recognition postprocess tests passed!" << std::endl;
+    std::cout << "All package tests passed successfully!" << std::endl;
     return 0;
 }

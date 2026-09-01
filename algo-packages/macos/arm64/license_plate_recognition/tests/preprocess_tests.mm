@@ -16,18 +16,18 @@ void test_warp_plate_geometry() {
     // Quad points in src
     float landmarks[8] = {
         100.0f, 100.0f, // tl
-        268.0f, 100.0f, // tr
-        268.0f, 148.0f, // br
+        420.0f, 100.0f, // tr
+        420.0f, 148.0f, // br
         100.0f, 148.0f  // bl
     };
 
     ImageBuffer out_plate;
     std::string err;
-    bool ok = Preprocessor::warp_plate_168x48(src, landmarks, false, out_plate, err);
+    bool ok = Preprocessor::warp_plate_320x48(src, landmarks, false, out_plate, err);
     assert(ok);
-    assert(out_plate.width == 168);
+    assert(out_plate.width == 320);
     assert(out_plate.height == 48);
-    assert(out_plate.data.size() == 168 * 48 * 3);
+    assert(out_plate.data.size() == 320 * 48 * 3);
     assert(out_plate.data[0] == 200);
 
     std::cout << "[PASS] test_warp_plate_geometry" << std::endl;

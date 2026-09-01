@@ -12,6 +12,9 @@ run: build
 benchmark: build
 	./build/src/runner/license_plate_recognition_runner benchmark
 
+test: build
+	ctest --test-dir build --output-on-failure
+
 asan:
 	cmake -B build_asan -DCMAKE_BUILD_TYPE=Debug -DENABLE_ASAN=ON
 	cmake --build build_asan --config Debug -j$$(sysctl -n hw.ncpu)

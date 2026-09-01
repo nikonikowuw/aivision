@@ -214,7 +214,7 @@ const columns = [
   {
     title: $t('system.common.action'),
     key: 'action',
-    width: 120,
+    width: 140,
     fixed: 'right' as const,
   },
 ];
@@ -343,14 +343,14 @@ function getStatusTag(status: number) {
             </template>
 
             <template v-else-if="column.key === 'action'">
-              <Space :size="8">
+              <Space :size="8" class="flex-nowrap">
                 <Button
                   v-access:code="['resource:task:edit']"
                   type="link"
                   size="small"
                   @click="handleEdit(record as TaskApi.InstanceItem)"
                 >
-                  {{ $t('resource.task.instance.edit') }}
+                  {{ $t('system.common.edit') }}
                 </Button>
                 <Popconfirm
                   :title="$t('resource.task.instance.deleteConfirm')"
@@ -362,7 +362,7 @@ function getStatusTag(status: number) {
                     danger
                     size="small"
                   >
-                    {{ $t('resource.task.instance.delete') }}
+                    {{ $t('system.common.delete') }}
                   </Button>
                 </Popconfirm>
               </Space>

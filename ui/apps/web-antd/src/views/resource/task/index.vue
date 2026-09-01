@@ -364,7 +364,7 @@ const gridOptions: VxeTableGridOptions<TaskApi.TaskItem> = {
       showOverflow: false,
       slots: { default: 'actions' },
       title: $t('system.common.action'),
-      width: 200,
+      width: 240,
       align: 'center',
     },
   ],
@@ -788,7 +788,7 @@ function handleFormSuccess() {
 
       <!-- 操作列 -->
       <template #actions="{ row }">
-        <Space :size="4">
+        <Space :size="4" class="flex-nowrap">
           <Button type="link" size="small" @click="handleOpenDrawer(row)">
             {{ $t('resource.task.instanceDrawer') }}
           </Button>
@@ -798,7 +798,7 @@ function handleFormSuccess() {
             size="small"
             @click="handleEdit(row)"
           >
-            {{ $t('resource.task.edit') }}
+            {{ $t('system.common.edit') }}
           </Button>
           <Popconfirm
             :title="$t('resource.task.deleteConfirm')"
@@ -810,7 +810,7 @@ function handleFormSuccess() {
               danger
               size="small"
             >
-              {{ $t('resource.task.delete') }}
+              {{ $t('system.common.delete') }}
             </Button>
           </Popconfirm>
         </Space>
@@ -859,7 +859,7 @@ function handleFormSuccess() {
                   danger
                   ghost
                 >
-                  {{ $t('resource.task.instance.deleteTask') }}
+                  {{ $t('system.common.delete') }}
                 </Button>
               </Popconfirm>
             </div>
@@ -1005,7 +1005,7 @@ function handleFormSuccess() {
                     class="p-0 text-xs"
                     @click="handleOpenEditInstance(row, inst)"
                   >
-                    {{ $t('resource.task.instance.paramConfig') }}
+                    {{ $t('system.common.edit') }}
                   </Button>
                   <span class="text-border">|</span>
                   <Popconfirm
@@ -1019,7 +1019,7 @@ function handleFormSuccess() {
                       size="small"
                       class="p-0 text-xs"
                     >
-                      {{ $t('resource.task.instance.remove') }}
+                      {{ $t('system.common.delete') }}
                     </Button>
                   </Popconfirm>
                 </Space>

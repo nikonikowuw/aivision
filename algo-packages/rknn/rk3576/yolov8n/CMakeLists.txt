@@ -26,7 +26,7 @@ endif()
 add_subdirectory(src)
 
 argus_add_algo_package(yolov8n
-    ALGORITHM_ID yolov8n
+    ALGORITHM_ID general_detection
     VERSION 1.0.0
     PLATFORM_ID rk3576-rknn
     SRCS $<TARGET_OBJECTS:yolov8n_core>

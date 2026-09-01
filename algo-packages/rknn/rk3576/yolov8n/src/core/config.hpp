@@ -1,16 +1,55 @@
 #pragma once
 
+#include <bitset>
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <unordered_set>
+#include <vector>
 
 namespace yolov8n {
 
+inline const char* const kCocoClasses[80] = {
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+    "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+    "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+    "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+    "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+    "hair drier", "toothbrush"
+};
+
+inline int get_coco_class_id(std::string_view name) {
+    for (int i = 0; i < 80; ++i) {
+        if (name == kCocoClasses[i]) return i;
+    }
+    return -1;
+}
+
 struct InstanceConfig {
-    float confidence_threshold = 0.5f;
+    float confidence_threshold = 0.45f;
     float iou_threshold = 0.45f;
+    std::vector<std::string> target_classes = {"person", "car", "motorcycle", "bicycle", "bus", "truck"};
+    std::bitset<80> enabled_classes_mask{0};
+    std::string custom_alarm_label;
+
+    void update_mask() {
+        enabled_classes_mask.reset();
+        if (target_classes.empty()) {
+            enabled_classes_mask.set(); // 默认全开
+            return;
+        }
+        for (const auto& cls : target_classes) {
+            int id = get_coco_class_id(cls);
+            if (id >= 0 && id < 80) {
+                enabled_classes_mask.set(static_cast<size_t>(id));
+            }
+        }
+    }
 };
 
 namespace detail {
@@ -62,6 +101,22 @@ public:
             out.push_back(c);
         }
         return false;
+    }
+
+    bool parse_string_array(std::vector<std::string>& out) {
+        skip_whitespace();
+        if (!consume('[')) return false;
+        out.clear();
+        skip_whitespace();
+        if (consume(']')) return true;
+        while (true) {
+            std::string item;
+            if (!parse_string(item)) return false;
+            out.push_back(std::move(item));
+            skip_whitespace();
+            if (consume(']')) return true;
+            if (!consume(',')) return false;
+        }
     }
 
     bool parse_number(float& out) {
@@ -118,6 +173,8 @@ inline bool parse_instance_config(std::string_view json, InstanceConfig& out, st
 
     bool has_confidence = false;
     bool has_iou = false;
+    bool has_target_classes = false;
+    bool has_custom_label = false;
     cursor.skip_whitespace();
     if (!cursor.consume('}')) {
         while (true) {
@@ -127,15 +184,14 @@ inline bool parse_instance_config(std::string_view json, InstanceConfig& out, st
                 return false;
             }
 
-            float value = 0.0f;
-            if (!cursor.parse_number(value) || value < 0.0f || value > 1.0f) {
-                error = "config thresholds must be finite numbers in [0, 1]";
-                return false;
-            }
-
             if (key == "confidence_threshold") {
                 if (has_confidence) {
                     error = "config contains duplicate confidence_threshold";
+                    return false;
+                }
+                float value = 0.0f;
+                if (!cursor.parse_number(value) || value < 0.0f || value > 1.0f) {
+                    error = "config confidence_threshold must be a finite number in [0, 1]";
                     return false;
                 }
                 out.confidence_threshold = value;
@@ -145,8 +201,53 @@ inline bool parse_instance_config(std::string_view json, InstanceConfig& out, st
                     error = "config contains duplicate iou_threshold";
                     return false;
                 }
+                float value = 0.0f;
+                if (!cursor.parse_number(value) || value < 0.0f || value > 1.0f) {
+                    error = "config iou_threshold must be a finite number in [0, 1]";
+                    return false;
+                }
                 out.iou_threshold = value;
                 has_iou = true;
+            } else if (key == "target_classes") {
+                if (has_target_classes) {
+                    error = "config contains duplicate target_classes";
+                    return false;
+                }
+                std::vector<std::string> classes;
+                if (!cursor.parse_string_array(classes)) {
+                    error = "config target_classes must be an array of strings";
+                    return false;
+                }
+                std::unordered_set<std::string> seen;
+                for (const auto& cls : classes) {
+                    if (get_coco_class_id(cls) < 0) {
+                        error = "config target_classes contains unknown COCO class: " + cls;
+                        return false;
+                    }
+                    if (seen.count(cls) > 0) {
+                        error = "config target_classes contains duplicate class: " + cls;
+                        return false;
+                    }
+                    seen.insert(cls);
+                }
+                out.target_classes = std::move(classes);
+                has_target_classes = true;
+            } else if (key == "custom_alarm_label") {
+                if (has_custom_label) {
+                    error = "config contains duplicate custom_alarm_label";
+                    return false;
+                }
+                std::string label;
+                if (!cursor.parse_string(label)) {
+                    error = "config custom_alarm_label must be a string";
+                    return false;
+                }
+                if (label.size() > 64) {
+                    error = "config custom_alarm_label exceeds max length 64";
+                    return false;
+                }
+                out.custom_alarm_label = std::move(label);
+                has_custom_label = true;
             } else {
                 error = "config contains an unknown property: " + key;
                 return false;
@@ -169,6 +270,8 @@ inline bool parse_instance_config(std::string_view json, InstanceConfig& out, st
         error = "config requires confidence_threshold and iou_threshold";
         return false;
     }
+
+    out.update_mask();
     return true;
 }
 

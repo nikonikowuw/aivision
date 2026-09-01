@@ -2,6 +2,7 @@
 
 #include "argus/cv/letterbox.hpp"
 #include "argus/cv/nms.hpp"
+#include <bitset>
 #include <cstdint>
 #include <vector>
 #include <string>
@@ -25,6 +26,7 @@ public:
         const argus::cv::LetterboxInfo& letterbox,
         float conf_threshold,
         float nms_threshold,
+        const std::bitset<80>& enabled_classes_mask,
         int src_w,
         int src_h
     );

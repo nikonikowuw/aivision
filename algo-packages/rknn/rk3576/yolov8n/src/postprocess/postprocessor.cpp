@@ -1,4 +1,5 @@
 #include "postprocessor.hpp"
+#include "../core/config.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -6,7 +7,16 @@
 
 namespace yolov8n {
 
-static std::vector<std::string> g_labels;
+static std::vector<std::string> init_default_labels() {
+    std::vector<std::string> labels;
+    labels.reserve(80);
+    for (int i = 0; i < 80; ++i) {
+        labels.emplace_back(kCocoClasses[i]);
+    }
+    return labels;
+}
+
+static std::vector<std::string> g_labels = init_default_labels();
 
 void Postprocessor::set_labels(const std::vector<std::string>& labels) {
     g_labels = labels;
@@ -56,22 +66,22 @@ std::vector<DetectionBox> Postprocessor::decode(
     const argus::cv::LetterboxInfo& letterbox,
     float conf_threshold,
     float nms_threshold,
+    const std::bitset<80>& enabled_classes_mask,
     int src_w,
     int src_h
 ) {
     std::vector<DetectionBox> candidates;
+    if (outputs.empty() || !enabled_classes_mask.any()) {
+        return candidates;
+    }
+
     const int strides[3] = {8, 16, 32};
     const int dfl_len = 16;
     const int num_classes = 80;
 
-    // Handle outputs:
     // Case 1: Single combined tensor [1, 84, 5040] (cx, cy, w, h + 80 class scores)
-    // Case 2: 9 branches (3 scales * [box, cls, sum])
-    // Case 3: 6 branches (3 scales * [box, cls])
-    // Case 4: 3 branches (3 scales * [box])
     if (outputs.size() == 1 && outputs[0].data != nullptr) {
         constexpr int kAnchors = 5040;
-        constexpr int kChannels = 84;
         const auto& out_buf = outputs[0];
 
         if (out_buf.is_quantized) {
@@ -83,6 +93,7 @@ std::vector<DetectionBox> Postprocessor::decode(
                 int8_t max_score = -128;
 
                 for (int c = 0; c < num_classes; ++c) {
+                    if (!enabled_classes_mask.test(static_cast<size_t>(c))) continue;
                     int8_t score_i8 = ptr[(4 + c) * kAnchors + a];
                     if (score_i8 > conf_th_i8 && score_i8 > max_score) {
                         max_score = score_i8;
@@ -128,6 +139,7 @@ std::vector<DetectionBox> Postprocessor::decode(
                 float max_score = 0.0f;
 
                 for (int c = 0; c < num_classes; ++c) {
+                    if (!enabled_classes_mask.test(static_cast<size_t>(c))) continue;
                     float score = ptr[(4 + c) * kAnchors + a];
                     if (score > conf_threshold && score > max_score) {
                         max_score = score;
@@ -168,7 +180,7 @@ std::vector<DetectionBox> Postprocessor::decode(
             }
         }
     } else {
-        // Multi-branch decode
+        // Multi-branch decode (6 branches or 9 branches)
         bool is_9_branches = (outputs.size() >= 9);
 
         for (int s = 0; s < 3; ++s) {
@@ -182,22 +194,33 @@ std::vector<DetectionBox> Postprocessor::decode(
             const RknnOutputBuffer* sum_buf = nullptr;
 
             if (is_9_branches) {
-                // Model outputs: 318(box0), sum326(cls0), 331(sum0), 338(box1), sum346(cls1), 350(sum1), 357(box2), sum365(cls2), 369(sum2)
                 box_buf = &outputs[s * 3 + 0];
                 cls_buf = &outputs[s * 3 + 1];
                 sum_buf = &outputs[s * 3 + 2];
             } else if (outputs.size() == 6) {
-                box_buf = &outputs[s * 2 + 0];
-                cls_buf = &outputs[s * 2 + 1];
+                // Check if ordered by [box0, cls0, box1, cls1, ...] or [box0, box1, box2, cls0, cls1, cls2]
+                if (outputs[s * 2 + 0].size == static_cast<size_t>(64 * grid_len)) {
+                    box_buf = &outputs[s * 2 + 0];
+                    cls_buf = &outputs[s * 2 + 1];
+                } else if (outputs[s].size == static_cast<size_t>(64 * grid_len) &&
+                           outputs[s + 3].size == static_cast<size_t>(80 * grid_len)) {
+                    box_buf = &outputs[s];
+                    cls_buf = &outputs[s + 3];
+                } else {
+                    box_buf = &outputs[s * 2 + 0];
+                    cls_buf = &outputs[s * 2 + 1];
+                }
             } else if (outputs.size() == 3) {
                 box_buf = &outputs[s];
             } else {
                 continue;
             }
 
+            if (!box_buf || !box_buf->data) continue;
+
             const int8_t* box_ptr = reinterpret_cast<const int8_t*>(box_buf->data);
-            const int8_t* cls_ptr = cls_buf ? reinterpret_cast<const int8_t*>(cls_buf->data) : nullptr;
-            const int8_t* sum_ptr = sum_buf ? reinterpret_cast<const int8_t*>(sum_buf->data) : nullptr;
+            const int8_t* cls_ptr = (cls_buf && cls_buf->data) ? reinterpret_cast<const int8_t*>(cls_buf->data) : nullptr;
+            const int8_t* sum_ptr = (sum_buf && sum_buf->data) ? reinterpret_cast<const int8_t*>(sum_buf->data) : nullptr;
 
             int8_t cls_th_i8 = cls_buf ? quant_f32(conf_threshold, cls_buf->zero_point, cls_buf->scale) : 0;
             int8_t sum_th_i8 = sum_buf ? quant_f32(conf_threshold, sum_buf->zero_point, sum_buf->scale) : 0;
@@ -211,19 +234,23 @@ std::vector<DetectionBox> Postprocessor::decode(
                     }
 
                     int max_class_id = -1;
-                    int8_t max_score = cls_buf ? -cls_buf->zero_point : -128;
+                    int8_t max_score = cls_buf ? -128 : 0;
 
                     if (cls_ptr) {
                         int c_offset = offset;
                         for (int c = 0; c < num_classes; ++c) {
-                            if (cls_ptr[c_offset] > cls_th_i8 && cls_ptr[c_offset] > max_score) {
-                                max_score = cls_ptr[c_offset];
-                                max_class_id = c;
+                            if (enabled_classes_mask.test(static_cast<size_t>(c))) {
+                                int8_t val = cls_ptr[c_offset];
+                                if (val > cls_th_i8 && val > max_score) {
+                                    max_score = val;
+                                    max_class_id = c;
+                                }
                             }
                             c_offset += grid_len;
                         }
                     }
 
+                    // Early exit: If no enabled class surpassed threshold at this anchor, skip DFL computation!
                     if (max_class_id >= 0 && max_score > cls_th_i8) {
                         int b_offset = offset;
                         float before_dfl[64];
@@ -254,7 +281,7 @@ std::vector<DetectionBox> Postprocessor::decode(
                         det.y = unletterboxed.y_min;
                         det.w = unletterboxed.x_max - unletterboxed.x_min;
                         det.h = unletterboxed.y_max - unletterboxed.y_min;
-                        det.confidence = dequant_i8(max_score, cls_buf->zero_point, cls_buf->scale);
+                        det.confidence = cls_buf ? dequant_i8(max_score, cls_buf->zero_point, cls_buf->scale) : 0.0f;
                         det.class_id = max_class_id;
                         det.label = get_label(max_class_id);
 

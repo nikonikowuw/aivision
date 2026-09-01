@@ -49,18 +49,25 @@ std::vector<argus::cv::DetectionBox> Postprocessor::decode_yolo_persons(
     std::vector<argus::cv::DetectionBox> candidates;
     if (yolo_out.data.empty() || orig_w == 0 || orig_h == 0) return candidates;
 
-    // Shape can be [84, 8400] or [8400, 84]
+    // Shape can be [84, num_boxes] or [num_boxes, 84]
     const size_t total_elements = yolo_out.data.size();
-    const bool is_transposed = (total_elements == 84 * 8400); // typically [1, 84, 8400] in PyTorch/CoreML
+    size_t num_boxes = yolo_out.num_boxes;
+    bool is_transposed = true;
+    if (total_elements % 84 == 0) {
+        num_boxes = total_elements / 84;
+    }
 
-    for (uint32_t i = 0; i < 8400; ++i) {
+    const float net_w = lb_info.net_w > 0 ? static_cast<float>(lb_info.net_w) : 640.0f;
+    const float net_h = lb_info.net_h > 0 ? static_cast<float>(lb_info.net_h) : 384.0f;
+
+    for (size_t i = 0; i < num_boxes; ++i) {
         float cx, cy, w, h, person_score;
         if (is_transposed) {
-            cx = yolo_out.data[0 * 8400 + i];
-            cy = yolo_out.data[1 * 8400 + i];
-            w = yolo_out.data[2 * 8400 + i];
-            h = yolo_out.data[3 * 8400 + i];
-            person_score = yolo_out.data[4 * 8400 + i]; // class 0 = person
+            cx = yolo_out.data[0 * num_boxes + i];
+            cy = yolo_out.data[1 * num_boxes + i];
+            w = yolo_out.data[2 * num_boxes + i];
+            h = yolo_out.data[3 * num_boxes + i];
+            person_score = yolo_out.data[4 * num_boxes + i]; // class 0 = person
         } else {
             cx = yolo_out.data[i * 84 + 0];
             cy = yolo_out.data[i * 84 + 1];
@@ -71,7 +78,7 @@ std::vector<argus::cv::DetectionBox> Postprocessor::decode_yolo_persons(
 
         if (person_score < conf_thresh) continue;
 
-        // Bounding box in letterbox 640x640 space
+        // Bounding box in letterbox space
         float x1 = cx - w * 0.5f;
         float y1 = cy - h * 0.5f;
         float x2 = cx + w * 0.5f;
@@ -79,10 +86,10 @@ std::vector<argus::cv::DetectionBox> Postprocessor::decode_yolo_persons(
 
         // Unletterbox to original normalized coordinates
         argus::cv::NormalizedBBox norm_lb{
-            .x_min = x1 / 640.0f,
-            .y_min = y1 / 640.0f,
-            .x_max = x2 / 640.0f,
-            .y_max = y2 / 640.0f
+            .x_min = x1 / net_w,
+            .y_min = y1 / net_h,
+            .x_max = x2 / net_w,
+            .y_max = y2 / net_h
         };
         argus::cv::NormalizedBBox orig_norm = lb_info.unletterbox_bbox(norm_lb, orig_w, orig_h);
 
@@ -118,10 +125,13 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
     const float pad_y = lb_info.pad_y;
     const float scale = lb_info.scale;
 
+    const float net_w = lb_info.net_w > 0 ? static_cast<float>(lb_info.net_w) : 640.0f;
+    const float net_h = lb_info.net_h > 0 ? static_cast<float>(lb_info.net_h) : 384.0f;
+
     for (int stride_idx = 0; stride_idx < 3; ++stride_idx) {
         int stride = feat_strides[stride_idx];
-        int feat_h = 640 / stride;
-        int feat_w = 640 / stride;
+        int feat_h = static_cast<int>(net_h) / stride;
+        int feat_w = static_cast<int>(net_w) / stride;
         int num_anchors = 2; // SCRFD 10G has 2 anchors per location
 
         const float* score_ptr = scores[stride_idx];

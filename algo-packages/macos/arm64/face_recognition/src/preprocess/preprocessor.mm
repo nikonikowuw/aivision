@@ -227,12 +227,14 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
     // ARGB to RGB for original image
     vImageConvert_ARGB8888toRGB888(&dst_argb, &dst_rgb, kvImageNoFlags);
 
-    // Letterbox to 640x640
-    out.letterbox_info = argus::cv::compute_letterbox(width, height, 640, 640);
-    out.letterbox_rgb.width = 640;
-    out.letterbox_rgb.height = 640;
+    // Letterbox to 640x384 (Surveillance 16:9 optimized)
+    constexpr uint32_t kTargetWidth = 640;
+    constexpr uint32_t kTargetHeight = 384;
+    out.letterbox_info = argus::cv::compute_letterbox(width, height, kTargetWidth, kTargetHeight);
+    out.letterbox_rgb.width = kTargetWidth;
+    out.letterbox_rgb.height = kTargetHeight;
     out.letterbox_rgb.channels = 3;
-    out.letterbox_rgb.data.assign(640 * 640 * 3, 114); // 114 pad color
+    out.letterbox_rgb.data.assign(kTargetWidth * kTargetHeight * 3, 114); // 114 pad color
 
     uint32_t nw = static_cast<uint32_t>(std::round(static_cast<float>(width) * out.letterbox_info.scale));
     uint32_t nh = static_cast<uint32_t>(std::round(static_cast<float>(height) * out.letterbox_info.scale));
@@ -250,10 +252,10 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
     vImageScale_ARGB8888(&dst_argb, &scaled_argb_buf, nullptr, kvImageHighQualityResampling);
 
     vImage_Buffer roi_rgb_buf = {
-        .data = out.letterbox_rgb.data.data() + (pad_y * 640 + pad_x) * 3,
+        .data = out.letterbox_rgb.data.data() + (pad_y * kTargetWidth + pad_x) * 3,
         .height = nh,
         .width = nw,
-        .rowBytes = 640 * 3
+        .rowBytes = kTargetWidth * 3
     };
 
     vImageConvert_ARGB8888toRGB888(&scaled_argb_buf, &roi_rgb_buf, kvImageNoFlags);

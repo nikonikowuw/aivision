@@ -13,3 +13,4 @@
 {"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "记录列表页与实例配置表单的 Vue3 + Ant Design Vue 组件规范"}
 {"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "相似度归一化口径、event_id 幂等语义在 Engine -> Go -> 前端的一致传播"}
 {"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 plate_observations 的记录模块、capture_id 抓拍与孤儿图片对账链路"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "实现实例移除时同步 ABI 回调结束后再清理 track 状态"}

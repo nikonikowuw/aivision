@@ -9,3 +9,4 @@
 {"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核对 pnpm check（typecheck / oxlint / cspell）通过"}
 {"file": ".trellis/spec/frontend/i18n-guidelines.md", "reason": "核对三语词条无遗漏、无硬编码中文"}
 {"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对相似度全链路只传归一化值，无任何位置出现原始 cosine"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "复核同步 ABI 回调、instance stop/join 与 face_track_states_ 清理顺序"}

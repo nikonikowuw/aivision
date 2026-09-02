@@ -1,6 +1,13 @@
 import { requestClient } from '#/api/request';
 
 export namespace FaceCaptureApi {
+  export interface FaceCandidate {
+    faceId: string;
+    personId: string;
+    personName: string;
+    similarity: number;
+  }
+
   export interface FaceCaptureSnapshotItem {
     snapshotIndex: number;
     wallTimeNs: number;
@@ -12,6 +19,7 @@ export namespace FaceCaptureApi {
     faceId?: string;
     personId?: string;
     personName?: string;
+    candidates?: FaceCandidate[];
     panoramaImageUrl: string;
     faceImageUrl: string;
     imageId: string;
@@ -38,6 +46,7 @@ export namespace FaceCaptureApi {
     bestPersonId?: string;
     bestPersonName?: string;
     bestBbox?: [number, number, number, number];
+    bestCandidates?: FaceCandidate[];
     bestFaceCropUrl: string;
     bestPanoramaUrl: string;
     panoramaImageUrl?: string;

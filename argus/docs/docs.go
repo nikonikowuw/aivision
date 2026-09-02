@@ -3419,6 +3419,23 @@ const docTemplate = `{
                 "DetectionRuleRoleLine"
             ]
         },
+        "argus_app_internal_model.FaceCandidateItem": {
+            "type": "object",
+            "properties": {
+                "faceId": {
+                    "type": "string"
+                },
+                "personId": {
+                    "type": "string"
+                },
+                "personName": {
+                    "type": "string"
+                },
+                "similarity": {
+                    "type": "number"
+                }
+            }
+        },
         "argus_app_internal_model.Menu": {
             "type": "object",
             "properties": {
@@ -3923,6 +3940,12 @@ const docTemplate = `{
                 },
                 "cameraName": {
                     "type": "string"
+                },
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_model.FaceCandidateItem"
+                    }
                 },
                 "createdAt": {
                     "type": "string"

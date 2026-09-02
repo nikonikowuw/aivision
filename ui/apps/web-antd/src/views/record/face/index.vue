@@ -26,6 +26,7 @@ import {
 import { getTodayRange } from '#/utils/date';
 
 import CaptureThumbnail from '../capture/components/CaptureThumbnail.vue';
+import FaceCandidatesTable from '../capture/components/FaceCandidatesTable.vue';
 
 const currentDetail = ref<FaceObservationApi.FaceObservationItem | null>(null);
 
@@ -374,6 +375,15 @@ function formatSimilarity(value?: number): string {
             </div>
           </Card>
         </div>
+
+        <!-- Top-5 候选比对分析卡片 -->
+        <Card size="small" :title="$t('record.face.detail.candidatesTitle')">
+          <FaceCandidatesTable
+            :candidates="currentDetail.candidates"
+            :top1-similarity="currentDetail.similarity"
+            :empty-text="$t('record.face.detail.noCandidates')"
+          />
+        </Card>
       </div>
     </DetailModal>
   </Page>

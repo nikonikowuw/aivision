@@ -72,6 +72,14 @@ message ReportPlateObservationResponse {
   string error_message = 2; // 诊断信息，客户端不得解析其文本
 }
 
+// 人脸比对候选条目（用于 Top-K 候选匹配排查与溯源）
+message FaceCandidate {
+  string face_id = 1;
+  string person_id = 2;
+  string person_name = 3;     // 底库快照
+  float similarity = 4;       // 归一化 [0,1]
+}
+
 // 人脸识别通行观测事件上报
 message FaceObservation {
   // 目标级全局事件 ID = "<instance_run_id>/<track_id>"，track 稳定，覆盖上报时不变
@@ -93,6 +101,7 @@ message FaceObservation {
   string face_image_id = 16;   // 人脸特写图
   string face_image_rel_path = 17;
   string camera_name = 18;      // 摄像头名称快照，可为空
+  repeated FaceCandidate candidates = 19; // Top-K 候选识别结果（通常 Top-5，降序）
 }
 
 message ReportFaceObservationRequest {
@@ -119,6 +128,7 @@ message FaceCaptureSnapshot {
   string image_rel_path = 11;
   string face_image_id = 12;
   string face_image_rel_path = 13;
+  repeated FaceCandidate candidates = 14; // Top-K 候选识别结果（通常 Top-5，降序）
 }
 
 // 人脸抓拍全量事件上报（包含陌生人与已知人，单 Track 支持 1~5 组增量上报）

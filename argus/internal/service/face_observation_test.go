@@ -207,3 +207,55 @@ func TestFaceObservationService_ReadImageStream(t *testing.T) {
 		t.Errorf("pano thumb size=%d, mime=%s", sizeThumb, mimeThumb)
 	}
 }
+
+func TestFaceObservationService_CandidatesPersistenceAndMapping(t *testing.T) {
+	db := newTestFaceDB(t)
+	faceRepo := repository.NewFaceObservationRepository(db)
+	camRepo := repository.NewCameraRepository(db)
+	adapter := service.NewReportAdapterWithAlarm(
+		repository.NewTaskRepository(db), nil, nil, faceRepo, nil, nil, zap.NewNop(),
+	)
+	ctx := context.Background()
+
+	obs := &argusv1.FaceObservation{
+		EventId:    "run-1/cand-test",
+		InstanceId: "instance-1",
+		CameraId:   "camera-1",
+		TrackId:    99,
+		FaceId:     "face-top1",
+		PersonId:   "person-top1",
+		PersonName: "Top One",
+		Similarity: 0.95,
+		WallTimeNs: time.Now().UnixNano(),
+		Candidates: []*argusv1.FaceCandidate{
+			{FaceId: "face-top1", PersonId: "person-top1", PersonName: "Top One", Similarity: 0.95},
+			{FaceId: "face-top2", PersonId: "person-top2", PersonName: "Top Two", Similarity: 0.81},
+			{FaceId: "face-top3", PersonId: "person-top3", PersonName: "Top Three", Similarity: 0.70},
+			{FaceId: "face-top4", PersonId: "person-top4", PersonName: "Top Four", Similarity: 0.65},
+			{FaceId: "face-top5", PersonId: "person-top5", PersonName: "Top Five", Similarity: 0.50},
+		},
+	}
+
+	if err := adapter.AcceptFaceObservation(ctx, obs); err != nil {
+		t.Fatalf("accept face observation with candidates: %v", err)
+	}
+
+	svc := service.NewFaceObservationService(faceRepo, camRepo, nil)
+	result, err := svc.ListPage(ctx, &service.FaceObservationQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list page: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(result.Items))
+	}
+	item := result.Items[0]
+	if len(item.Candidates) != 5 {
+		t.Fatalf("expected 5 candidates, got %d", len(item.Candidates))
+	}
+	if item.Candidates[0].PersonName != "Top One" || item.Candidates[0].Similarity != 0.95 {
+		t.Errorf("candidate[0] mismatch: %+v", item.Candidates[0])
+	}
+	if item.Candidates[4].PersonName != "Top Five" || item.Candidates[4].Similarity != 0.50 {
+		t.Errorf("candidate[4] mismatch: %+v", item.Candidates[4])
+	}
+}

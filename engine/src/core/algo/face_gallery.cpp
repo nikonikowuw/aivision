@@ -156,16 +156,25 @@ std::size_t FaceGallery::size() const {
     return metadata_.size();
 }
 
-std::optional<FaceMatch> FaceGallery::match(const float* query_embedding) const {
-    if (!valid_embedding(query_embedding)) return std::nullopt;
+std::vector<FaceMatch> FaceGallery::match_topk(const float* query_embedding, std::size_t k) const {
+    if (k == 0 || !valid_embedding(query_embedding)) return {};
 
     std::shared_lock<std::shared_mutex> lock(mutex_);
     if (metadata_.empty() || embeddings_.size() != metadata_.size() * kFaceEmbeddingDimensions) {
-        return std::nullopt;
+        return {};
     }
 
-    std::size_t best_index = 0;
-    float best_similarity = -std::numeric_limits<float>::infinity();
+    struct Candidate {
+        std::size_t index;
+        float similarity;
+    };
+
+    auto cmp = [](const Candidate& a, const Candidate& b) {
+        return a.similarity > b.similarity; // 小顶堆比较器
+    };
+    std::vector<Candidate> min_heap;
+    min_heap.reserve(k + 1);
+
     for (std::size_t i = 0; i < metadata_.size(); ++i) {
         const float* base = embeddings_.data() + i * kFaceEmbeddingDimensions;
         float dot = 0.0f;
@@ -174,14 +183,37 @@ std::optional<FaceMatch> FaceGallery::match(const float* query_embedding) const 
         }
         if (!std::isfinite(dot)) continue;
         const float normalized = std::clamp((dot + 1.0f) * 0.5f, 0.0f, 1.0f);
-        if (normalized > best_similarity) {
-            best_similarity = normalized;
-            best_index = i;
+        if (!std::isfinite(normalized)) continue;
+
+        if (min_heap.size() < k) {
+            min_heap.push_back({i, normalized});
+            std::push_heap(min_heap.begin(), min_heap.end(), cmp);
+        } else if (normalized > min_heap.front().similarity) {
+            std::pop_heap(min_heap.begin(), min_heap.end(), cmp);
+            min_heap.back() = {i, normalized};
+            std::push_heap(min_heap.begin(), min_heap.end(), cmp);
         }
     }
 
-    if (!std::isfinite(best_similarity)) return std::nullopt;
-    return FaceMatch{metadata_[best_index], best_similarity};
+    if (min_heap.empty()) return {};
+
+    std::sort(min_heap.begin(), min_heap.end(), [](const Candidate& a, const Candidate& b) {
+        return a.similarity > b.similarity;
+    });
+
+    std::vector<FaceMatch> results;
+    results.reserve(min_heap.size());
+    for (const auto& item : min_heap) {
+        results.push_back(FaceMatch{metadata_[item.index], item.similarity});
+    }
+
+    return results;
+}
+
+std::optional<FaceMatch> FaceGallery::match(const float* query_embedding) const {
+    const auto top = match_topk(query_embedding, 1);
+    if (top.empty()) return std::nullopt;
+    return top.front();
 }
 
 } // namespace argus::core

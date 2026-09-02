@@ -98,8 +98,8 @@ int main() {
     assert(accepted.pixel_format_count == 1);
     assert(accepted.pixel_formats[0] == AV_PIX_NV12);
 
-    // Update config
-    std::string new_cfg = R"({"quality_threshold": 40.0, "max_recognitions_per_track": 2})";
+    // Update config with person detection enabled to exercise the YOLOv8n inference path
+    std::string new_cfg = R"({"quality_threshold": 40.0, "max_recognitions_per_track": 2, "enable_person_detection": true})";
     st = abi->instance_update_config(inst, new_cfg.c_str(), static_cast<uint32_t>(new_cfg.size()));
     assert(st == AV_OK);
 

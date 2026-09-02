@@ -1,10 +1,19 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/plugin/soft_delete"
 )
+
+// FaceCandidateItem 存储在 candidates_json 中的单个候选条目（供 Top-K 溯源排查）。
+type FaceCandidateItem struct {
+	FaceID     string  `json:"faceId"`
+	PersonID   string  `json:"personId"`
+	PersonName string  `json:"personName"`
+	Similarity float32 `json:"similarity"`
+}
 
 // FaceObservation 人脸通行识别记录模型。
 // 对应 face_observations 生产表（000031 迁移），采用 track 级单调 upsert 语义（按 event_id 去重与更新）。
@@ -22,6 +31,7 @@ type FaceObservation struct {
 	PersonID         string                `gorm:"column:person_id;size:64;not null;default:'';index:idx_face_observations_person_id" json:"personId"`
 	PersonName       string                `gorm:"column:person_name;size:128;not null;default:''" json:"personName"`
 	Similarity       float32               `gorm:"column:similarity;not null;default:0" json:"similarity"`
+	CandidatesJSON   JSONRaw               `gorm:"column:candidates_json;type:jsonb;not null;default:'[]'" json:"candidatesJson"`
 	BBoxJSON         JSONRaw               `gorm:"column:bbox_json;type:jsonb;not null;default:'{}'" json:"bboxJson"`
 	TimeSynced       bool                  `gorm:"column:time_synced;not null;default:false" json:"timeSynced"`
 	ImageID          string                `gorm:"column:image_id;size:200;not null;default:'';index:idx_face_observations_image_id" json:"imageId"`
@@ -34,4 +44,16 @@ type FaceObservation struct {
 // TableName 显式声明表名。
 func (FaceObservation) TableName() string {
 	return "face_observations"
+}
+
+// ParseCandidates 解析 candidates_json 数组。
+func (f *FaceObservation) ParseCandidates() ([]FaceCandidateItem, error) {
+	if len(f.CandidatesJSON) == 0 {
+		return []FaceCandidateItem{}, nil
+	}
+	var items []FaceCandidateItem
+	if err := json.Unmarshal(f.CandidatesJSON, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

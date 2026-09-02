@@ -678,35 +678,105 @@ func (x *ReportPlateObservationResponse) GetErrorMessage() string {
 	return ""
 }
 
+// 人脸比对候选条目（用于 Top-K 候选匹配排查与溯源）
+type FaceCandidate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FaceId        string                 `protobuf:"bytes,1,opt,name=face_id,json=faceId,proto3" json:"face_id,omitempty"`
+	PersonId      string                 `protobuf:"bytes,2,opt,name=person_id,json=personId,proto3" json:"person_id,omitempty"`
+	PersonName    string                 `protobuf:"bytes,3,opt,name=person_name,json=personName,proto3" json:"person_name,omitempty"` // 底库快照
+	Similarity    float32                `protobuf:"fixed32,4,opt,name=similarity,proto3" json:"similarity,omitempty"`                 // 归一化 [0,1]
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FaceCandidate) Reset() {
+	*x = FaceCandidate{}
+	mi := &file_argus_v1_app_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FaceCandidate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FaceCandidate) ProtoMessage() {}
+
+func (x *FaceCandidate) ProtoReflect() protoreflect.Message {
+	mi := &file_argus_v1_app_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FaceCandidate.ProtoReflect.Descriptor instead.
+func (*FaceCandidate) Descriptor() ([]byte, []int) {
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *FaceCandidate) GetFaceId() string {
+	if x != nil {
+		return x.FaceId
+	}
+	return ""
+}
+
+func (x *FaceCandidate) GetPersonId() string {
+	if x != nil {
+		return x.PersonId
+	}
+	return ""
+}
+
+func (x *FaceCandidate) GetPersonName() string {
+	if x != nil {
+		return x.PersonName
+	}
+	return ""
+}
+
+func (x *FaceCandidate) GetSimilarity() float32 {
+	if x != nil {
+		return x.Similarity
+	}
+	return 0
+}
+
 // 人脸识别通行观测事件上报
 type FaceObservation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 目标级全局事件 ID = "<instance_run_id>/<track_id>"，track 稳定，覆盖上报时不变
-	EventId          string       `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
-	InstanceId       string       `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	CameraId         string       `protobuf:"bytes,3,opt,name=camera_id,json=cameraId,proto3" json:"camera_id,omitempty"`
-	AlgorithmId      string       `protobuf:"bytes,4,opt,name=algorithm_id,json=algorithmId,proto3" json:"algorithm_id,omitempty"`
-	AlgorithmVersion string       `protobuf:"bytes,5,opt,name=algorithm_version,json=algorithmVersion,proto3" json:"algorithm_version,omitempty"`
-	WallTimeNs       int64        `protobuf:"varint,6,opt,name=wall_time_ns,json=wallTimeNs,proto3" json:"wall_time_ns,omitempty"`
-	TimeSynced       bool         `protobuf:"varint,7,opt,name=time_synced,json=timeSynced,proto3" json:"time_synced,omitempty"`
-	TrackId          int64        `protobuf:"varint,8,opt,name=track_id,json=trackId,proto3" json:"track_id,omitempty"`
-	FaceId           string       `protobuf:"bytes,9,opt,name=face_id,json=faceId,proto3" json:"face_id,omitempty"` // 命中的底库条目
-	PersonId         string       `protobuf:"bytes,10,opt,name=person_id,json=personId,proto3" json:"person_id,omitempty"`
-	PersonName       string       `protobuf:"bytes,11,opt,name=person_name,json=personName,proto3" json:"person_name,omitempty"` // 底库快照，Go 侧直接落库不再回查
-	Similarity       float32      `protobuf:"fixed32,12,opt,name=similarity,proto3" json:"similarity,omitempty"`                 // 归一化 [0,1]
-	FaceBbox         *BoundingBox `protobuf:"bytes,13,opt,name=face_bbox,json=faceBbox,proto3" json:"face_bbox,omitempty"`
-	ImageId          string       `protobuf:"bytes,14,opt,name=image_id,json=imageId,proto3" json:"image_id,omitempty"` // 全景图
-	ImageRelPath     string       `protobuf:"bytes,15,opt,name=image_rel_path,json=imageRelPath,proto3" json:"image_rel_path,omitempty"`
-	FaceImageId      string       `protobuf:"bytes,16,opt,name=face_image_id,json=faceImageId,proto3" json:"face_image_id,omitempty"` // 人脸特写图
-	FaceImageRelPath string       `protobuf:"bytes,17,opt,name=face_image_rel_path,json=faceImageRelPath,proto3" json:"face_image_rel_path,omitempty"`
-	CameraName       string       `protobuf:"bytes,18,opt,name=camera_name,json=cameraName,proto3" json:"camera_name,omitempty"` // 摄像头名称快照，可为空
+	EventId          string           `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	InstanceId       string           `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	CameraId         string           `protobuf:"bytes,3,opt,name=camera_id,json=cameraId,proto3" json:"camera_id,omitempty"`
+	AlgorithmId      string           `protobuf:"bytes,4,opt,name=algorithm_id,json=algorithmId,proto3" json:"algorithm_id,omitempty"`
+	AlgorithmVersion string           `protobuf:"bytes,5,opt,name=algorithm_version,json=algorithmVersion,proto3" json:"algorithm_version,omitempty"`
+	WallTimeNs       int64            `protobuf:"varint,6,opt,name=wall_time_ns,json=wallTimeNs,proto3" json:"wall_time_ns,omitempty"`
+	TimeSynced       bool             `protobuf:"varint,7,opt,name=time_synced,json=timeSynced,proto3" json:"time_synced,omitempty"`
+	TrackId          int64            `protobuf:"varint,8,opt,name=track_id,json=trackId,proto3" json:"track_id,omitempty"`
+	FaceId           string           `protobuf:"bytes,9,opt,name=face_id,json=faceId,proto3" json:"face_id,omitempty"` // 命中的底库条目
+	PersonId         string           `protobuf:"bytes,10,opt,name=person_id,json=personId,proto3" json:"person_id,omitempty"`
+	PersonName       string           `protobuf:"bytes,11,opt,name=person_name,json=personName,proto3" json:"person_name,omitempty"` // 底库快照，Go 侧直接落库不再回查
+	Similarity       float32          `protobuf:"fixed32,12,opt,name=similarity,proto3" json:"similarity,omitempty"`                 // 归一化 [0,1]
+	FaceBbox         *BoundingBox     `protobuf:"bytes,13,opt,name=face_bbox,json=faceBbox,proto3" json:"face_bbox,omitempty"`
+	ImageId          string           `protobuf:"bytes,14,opt,name=image_id,json=imageId,proto3" json:"image_id,omitempty"` // 全景图
+	ImageRelPath     string           `protobuf:"bytes,15,opt,name=image_rel_path,json=imageRelPath,proto3" json:"image_rel_path,omitempty"`
+	FaceImageId      string           `protobuf:"bytes,16,opt,name=face_image_id,json=faceImageId,proto3" json:"face_image_id,omitempty"` // 人脸特写图
+	FaceImageRelPath string           `protobuf:"bytes,17,opt,name=face_image_rel_path,json=faceImageRelPath,proto3" json:"face_image_rel_path,omitempty"`
+	CameraName       string           `protobuf:"bytes,18,opt,name=camera_name,json=cameraName,proto3" json:"camera_name,omitempty"` // 摄像头名称快照，可为空
+	Candidates       []*FaceCandidate `protobuf:"bytes,19,rep,name=candidates,proto3" json:"candidates,omitempty"`                   // Top-K 候选识别结果（通常 Top-5，降序）
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
 func (x *FaceObservation) Reset() {
 	*x = FaceObservation{}
-	mi := &file_argus_v1_app_proto_msgTypes[6]
+	mi := &file_argus_v1_app_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -718,7 +788,7 @@ func (x *FaceObservation) String() string {
 func (*FaceObservation) ProtoMessage() {}
 
 func (x *FaceObservation) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[6]
+	mi := &file_argus_v1_app_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -731,7 +801,7 @@ func (x *FaceObservation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FaceObservation.ProtoReflect.Descriptor instead.
 func (*FaceObservation) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{6}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *FaceObservation) GetEventId() string {
@@ -860,6 +930,13 @@ func (x *FaceObservation) GetCameraName() string {
 	return ""
 }
 
+func (x *FaceObservation) GetCandidates() []*FaceCandidate {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
 type ReportFaceObservationRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Observation   *FaceObservation       `protobuf:"bytes,1,opt,name=observation,proto3" json:"observation,omitempty"`
@@ -869,7 +946,7 @@ type ReportFaceObservationRequest struct {
 
 func (x *ReportFaceObservationRequest) Reset() {
 	*x = ReportFaceObservationRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[7]
+	mi := &file_argus_v1_app_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -881,7 +958,7 @@ func (x *ReportFaceObservationRequest) String() string {
 func (*ReportFaceObservationRequest) ProtoMessage() {}
 
 func (x *ReportFaceObservationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[7]
+	mi := &file_argus_v1_app_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -894,7 +971,7 @@ func (x *ReportFaceObservationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportFaceObservationRequest.ProtoReflect.Descriptor instead.
 func (*ReportFaceObservationRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{7}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ReportFaceObservationRequest) GetObservation() *FaceObservation {
@@ -914,7 +991,7 @@ type ReportFaceObservationResponse struct {
 
 func (x *ReportFaceObservationResponse) Reset() {
 	*x = ReportFaceObservationResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[8]
+	mi := &file_argus_v1_app_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -926,7 +1003,7 @@ func (x *ReportFaceObservationResponse) String() string {
 func (*ReportFaceObservationResponse) ProtoMessage() {}
 
 func (x *ReportFaceObservationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[8]
+	mi := &file_argus_v1_app_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -939,7 +1016,7 @@ func (x *ReportFaceObservationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportFaceObservationResponse.ProtoReflect.Descriptor instead.
 func (*ReportFaceObservationResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{8}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ReportFaceObservationResponse) GetCode() string {
@@ -972,13 +1049,14 @@ type FaceCaptureSnapshot struct {
 	ImageRelPath     string                 `protobuf:"bytes,11,opt,name=image_rel_path,json=imageRelPath,proto3" json:"image_rel_path,omitempty"`
 	FaceImageId      string                 `protobuf:"bytes,12,opt,name=face_image_id,json=faceImageId,proto3" json:"face_image_id,omitempty"`
 	FaceImageRelPath string                 `protobuf:"bytes,13,opt,name=face_image_rel_path,json=faceImageRelPath,proto3" json:"face_image_rel_path,omitempty"`
+	Candidates       []*FaceCandidate       `protobuf:"bytes,14,rep,name=candidates,proto3" json:"candidates,omitempty"` // Top-K 候选识别结果（通常 Top-5，降序）
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
 func (x *FaceCaptureSnapshot) Reset() {
 	*x = FaceCaptureSnapshot{}
-	mi := &file_argus_v1_app_proto_msgTypes[9]
+	mi := &file_argus_v1_app_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -990,7 +1068,7 @@ func (x *FaceCaptureSnapshot) String() string {
 func (*FaceCaptureSnapshot) ProtoMessage() {}
 
 func (x *FaceCaptureSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[9]
+	mi := &file_argus_v1_app_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1003,7 +1081,7 @@ func (x *FaceCaptureSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FaceCaptureSnapshot.ProtoReflect.Descriptor instead.
 func (*FaceCaptureSnapshot) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{9}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FaceCaptureSnapshot) GetSnapshotIndex() int32 {
@@ -1097,6 +1175,13 @@ func (x *FaceCaptureSnapshot) GetFaceImageRelPath() string {
 	return ""
 }
 
+func (x *FaceCaptureSnapshot) GetCandidates() []*FaceCandidate {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
 // 人脸抓拍全量事件上报（包含陌生人与已知人，单 Track 支持 1~5 组增量上报）
 type FaceCapture struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1115,7 +1200,7 @@ type FaceCapture struct {
 
 func (x *FaceCapture) Reset() {
 	*x = FaceCapture{}
-	mi := &file_argus_v1_app_proto_msgTypes[10]
+	mi := &file_argus_v1_app_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1127,7 +1212,7 @@ func (x *FaceCapture) String() string {
 func (*FaceCapture) ProtoMessage() {}
 
 func (x *FaceCapture) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[10]
+	mi := &file_argus_v1_app_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1140,7 +1225,7 @@ func (x *FaceCapture) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FaceCapture.ProtoReflect.Descriptor instead.
 func (*FaceCapture) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{10}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *FaceCapture) GetEventId() string {
@@ -1208,7 +1293,7 @@ type ReportFaceCaptureRequest struct {
 
 func (x *ReportFaceCaptureRequest) Reset() {
 	*x = ReportFaceCaptureRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[11]
+	mi := &file_argus_v1_app_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1220,7 +1305,7 @@ func (x *ReportFaceCaptureRequest) String() string {
 func (*ReportFaceCaptureRequest) ProtoMessage() {}
 
 func (x *ReportFaceCaptureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[11]
+	mi := &file_argus_v1_app_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1233,7 +1318,7 @@ func (x *ReportFaceCaptureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportFaceCaptureRequest.ProtoReflect.Descriptor instead.
 func (*ReportFaceCaptureRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{11}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ReportFaceCaptureRequest) GetCapture() *FaceCapture {
@@ -1253,7 +1338,7 @@ type ReportFaceCaptureResponse struct {
 
 func (x *ReportFaceCaptureResponse) Reset() {
 	*x = ReportFaceCaptureResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[12]
+	mi := &file_argus_v1_app_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1265,7 +1350,7 @@ func (x *ReportFaceCaptureResponse) String() string {
 func (*ReportFaceCaptureResponse) ProtoMessage() {}
 
 func (x *ReportFaceCaptureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[12]
+	mi := &file_argus_v1_app_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1278,7 +1363,7 @@ func (x *ReportFaceCaptureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportFaceCaptureResponse.ProtoReflect.Descriptor instead.
 func (*ReportFaceCaptureResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{12}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ReportFaceCaptureResponse) GetCode() string {
@@ -1307,7 +1392,7 @@ type TaskState struct {
 
 func (x *TaskState) Reset() {
 	*x = TaskState{}
-	mi := &file_argus_v1_app_proto_msgTypes[13]
+	mi := &file_argus_v1_app_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1319,7 +1404,7 @@ func (x *TaskState) String() string {
 func (*TaskState) ProtoMessage() {}
 
 func (x *TaskState) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[13]
+	mi := &file_argus_v1_app_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1332,7 +1417,7 @@ func (x *TaskState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskState.ProtoReflect.Descriptor instead.
 func (*TaskState) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{13}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TaskState) GetCameraId() string {
@@ -1372,7 +1457,7 @@ type ReportTaskStateRequest struct {
 
 func (x *ReportTaskStateRequest) Reset() {
 	*x = ReportTaskStateRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[14]
+	mi := &file_argus_v1_app_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1384,7 +1469,7 @@ func (x *ReportTaskStateRequest) String() string {
 func (*ReportTaskStateRequest) ProtoMessage() {}
 
 func (x *ReportTaskStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[14]
+	mi := &file_argus_v1_app_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1397,7 +1482,7 @@ func (x *ReportTaskStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskStateRequest.ProtoReflect.Descriptor instead.
 func (*ReportTaskStateRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{14}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ReportTaskStateRequest) GetTaskState() *TaskState {
@@ -1417,7 +1502,7 @@ type ReportTaskStateResponse struct {
 
 func (x *ReportTaskStateResponse) Reset() {
 	*x = ReportTaskStateResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[15]
+	mi := &file_argus_v1_app_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1429,7 +1514,7 @@ func (x *ReportTaskStateResponse) String() string {
 func (*ReportTaskStateResponse) ProtoMessage() {}
 
 func (x *ReportTaskStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[15]
+	mi := &file_argus_v1_app_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1442,7 +1527,7 @@ func (x *ReportTaskStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskStateResponse.ProtoReflect.Descriptor instead.
 func (*ReportTaskStateResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{15}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ReportTaskStateResponse) GetCode() string {
@@ -1471,7 +1556,7 @@ type InstanceState struct {
 
 func (x *InstanceState) Reset() {
 	*x = InstanceState{}
-	mi := &file_argus_v1_app_proto_msgTypes[16]
+	mi := &file_argus_v1_app_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1483,7 +1568,7 @@ func (x *InstanceState) String() string {
 func (*InstanceState) ProtoMessage() {}
 
 func (x *InstanceState) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[16]
+	mi := &file_argus_v1_app_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1496,7 +1581,7 @@ func (x *InstanceState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceState.ProtoReflect.Descriptor instead.
 func (*InstanceState) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{16}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *InstanceState) GetInstanceId() string {
@@ -1536,7 +1621,7 @@ type ReportInstanceStateRequest struct {
 
 func (x *ReportInstanceStateRequest) Reset() {
 	*x = ReportInstanceStateRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[17]
+	mi := &file_argus_v1_app_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1548,7 +1633,7 @@ func (x *ReportInstanceStateRequest) String() string {
 func (*ReportInstanceStateRequest) ProtoMessage() {}
 
 func (x *ReportInstanceStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[17]
+	mi := &file_argus_v1_app_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1561,7 +1646,7 @@ func (x *ReportInstanceStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportInstanceStateRequest.ProtoReflect.Descriptor instead.
 func (*ReportInstanceStateRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{17}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ReportInstanceStateRequest) GetInstanceState() *InstanceState {
@@ -1581,7 +1666,7 @@ type ReportInstanceStateResponse struct {
 
 func (x *ReportInstanceStateResponse) Reset() {
 	*x = ReportInstanceStateResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[18]
+	mi := &file_argus_v1_app_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1593,7 +1678,7 @@ func (x *ReportInstanceStateResponse) String() string {
 func (*ReportInstanceStateResponse) ProtoMessage() {}
 
 func (x *ReportInstanceStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[18]
+	mi := &file_argus_v1_app_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1606,7 +1691,7 @@ func (x *ReportInstanceStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportInstanceStateResponse.ProtoReflect.Descriptor instead.
 func (*ReportInstanceStateResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{18}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ReportInstanceStateResponse) GetCode() string {
@@ -1633,7 +1718,7 @@ type ReportMetricsRequest struct {
 
 func (x *ReportMetricsRequest) Reset() {
 	*x = ReportMetricsRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[19]
+	mi := &file_argus_v1_app_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1645,7 +1730,7 @@ func (x *ReportMetricsRequest) String() string {
 func (*ReportMetricsRequest) ProtoMessage() {}
 
 func (x *ReportMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[19]
+	mi := &file_argus_v1_app_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1658,7 +1743,7 @@ func (x *ReportMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportMetricsRequest.ProtoReflect.Descriptor instead.
 func (*ReportMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{19}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ReportMetricsRequest) GetTelemetry() *DeviceTelemetry {
@@ -1678,7 +1763,7 @@ type ReportMetricsResponse struct {
 
 func (x *ReportMetricsResponse) Reset() {
 	*x = ReportMetricsResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[20]
+	mi := &file_argus_v1_app_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1690,7 +1775,7 @@ func (x *ReportMetricsResponse) String() string {
 func (*ReportMetricsResponse) ProtoMessage() {}
 
 func (x *ReportMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[20]
+	mi := &file_argus_v1_app_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1703,7 +1788,7 @@ func (x *ReportMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportMetricsResponse.ProtoReflect.Descriptor instead.
 func (*ReportMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{20}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ReportMetricsResponse) GetCode() string {
@@ -1734,7 +1819,7 @@ type OrphanImageEntry struct {
 
 func (x *OrphanImageEntry) Reset() {
 	*x = OrphanImageEntry{}
-	mi := &file_argus_v1_app_proto_msgTypes[21]
+	mi := &file_argus_v1_app_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1746,7 +1831,7 @@ func (x *OrphanImageEntry) String() string {
 func (*OrphanImageEntry) ProtoMessage() {}
 
 func (x *OrphanImageEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[21]
+	mi := &file_argus_v1_app_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1759,7 +1844,7 @@ func (x *OrphanImageEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrphanImageEntry.ProtoReflect.Descriptor instead.
 func (*OrphanImageEntry) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{21}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *OrphanImageEntry) GetEventId() string {
@@ -1799,7 +1884,7 @@ type ReportOrphanImagesRequest struct {
 
 func (x *ReportOrphanImagesRequest) Reset() {
 	*x = ReportOrphanImagesRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[22]
+	mi := &file_argus_v1_app_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1811,7 +1896,7 @@ func (x *ReportOrphanImagesRequest) String() string {
 func (*ReportOrphanImagesRequest) ProtoMessage() {}
 
 func (x *ReportOrphanImagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[22]
+	mi := &file_argus_v1_app_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1824,7 +1909,7 @@ func (x *ReportOrphanImagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportOrphanImagesRequest.ProtoReflect.Descriptor instead.
 func (*ReportOrphanImagesRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{22}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ReportOrphanImagesRequest) GetOrphanImages() []*OrphanImageEntry {
@@ -1846,7 +1931,7 @@ type ReportOrphanImagesResponse struct {
 
 func (x *ReportOrphanImagesResponse) Reset() {
 	*x = ReportOrphanImagesResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[23]
+	mi := &file_argus_v1_app_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1858,7 +1943,7 @@ func (x *ReportOrphanImagesResponse) String() string {
 func (*ReportOrphanImagesResponse) ProtoMessage() {}
 
 func (x *ReportOrphanImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[23]
+	mi := &file_argus_v1_app_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1871,7 +1956,7 @@ func (x *ReportOrphanImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportOrphanImagesResponse.ProtoReflect.Descriptor instead.
 func (*ReportOrphanImagesResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{23}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ReportOrphanImagesResponse) GetRetainImageIds() []string {
@@ -1912,7 +1997,7 @@ type GetDesiredStateRequest struct {
 
 func (x *GetDesiredStateRequest) Reset() {
 	*x = GetDesiredStateRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[24]
+	mi := &file_argus_v1_app_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1924,7 +2009,7 @@ func (x *GetDesiredStateRequest) String() string {
 func (*GetDesiredStateRequest) ProtoMessage() {}
 
 func (x *GetDesiredStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[24]
+	mi := &file_argus_v1_app_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1937,7 +2022,7 @@ func (x *GetDesiredStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDesiredStateRequest.ProtoReflect.Descriptor instead.
 func (*GetDesiredStateRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{24}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetDesiredStateRequest) GetCurrentRevision() uint64 {
@@ -1958,7 +2043,7 @@ type GetDesiredStateResponse struct {
 
 func (x *GetDesiredStateResponse) Reset() {
 	*x = GetDesiredStateResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[25]
+	mi := &file_argus_v1_app_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1970,7 +2055,7 @@ func (x *GetDesiredStateResponse) String() string {
 func (*GetDesiredStateResponse) ProtoMessage() {}
 
 func (x *GetDesiredStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[25]
+	mi := &file_argus_v1_app_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1983,7 +2068,7 @@ func (x *GetDesiredStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDesiredStateResponse.ProtoReflect.Descriptor instead.
 func (*GetDesiredStateResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{25}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetDesiredStateResponse) GetDesiredState() *DesiredState {
@@ -2020,7 +2105,7 @@ type FaceGalleryEntry struct {
 
 func (x *FaceGalleryEntry) Reset() {
 	*x = FaceGalleryEntry{}
-	mi := &file_argus_v1_app_proto_msgTypes[26]
+	mi := &file_argus_v1_app_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2032,7 +2117,7 @@ func (x *FaceGalleryEntry) String() string {
 func (*FaceGalleryEntry) ProtoMessage() {}
 
 func (x *FaceGalleryEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[26]
+	mi := &file_argus_v1_app_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2045,7 +2130,7 @@ func (x *FaceGalleryEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FaceGalleryEntry.ProtoReflect.Descriptor instead.
 func (*FaceGalleryEntry) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{26}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *FaceGalleryEntry) GetFaceId() string {
@@ -2085,7 +2170,7 @@ type GetFaceGalleryRequest struct {
 
 func (x *GetFaceGalleryRequest) Reset() {
 	*x = GetFaceGalleryRequest{}
-	mi := &file_argus_v1_app_proto_msgTypes[27]
+	mi := &file_argus_v1_app_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2097,7 +2182,7 @@ func (x *GetFaceGalleryRequest) String() string {
 func (*GetFaceGalleryRequest) ProtoMessage() {}
 
 func (x *GetFaceGalleryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[27]
+	mi := &file_argus_v1_app_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2110,7 +2195,7 @@ func (x *GetFaceGalleryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFaceGalleryRequest.ProtoReflect.Descriptor instead.
 func (*GetFaceGalleryRequest) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{27}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetFaceGalleryRequest) GetCurrentGalleryRevision() uint64 {
@@ -2133,7 +2218,7 @@ type GetFaceGalleryResponse struct {
 
 func (x *GetFaceGalleryResponse) Reset() {
 	*x = GetFaceGalleryResponse{}
-	mi := &file_argus_v1_app_proto_msgTypes[28]
+	mi := &file_argus_v1_app_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2145,7 +2230,7 @@ func (x *GetFaceGalleryResponse) String() string {
 func (*GetFaceGalleryResponse) ProtoMessage() {}
 
 func (x *GetFaceGalleryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_argus_v1_app_proto_msgTypes[28]
+	mi := &file_argus_v1_app_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2158,7 +2243,7 @@ func (x *GetFaceGalleryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFaceGalleryResponse.ProtoReflect.Descriptor instead.
 func (*GetFaceGalleryResponse) Descriptor() ([]byte, []int) {
-	return file_argus_v1_app_proto_rawDescGZIP(), []int{28}
+	return file_argus_v1_app_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetFaceGalleryResponse) GetGalleryRevision() uint64 {
@@ -2260,7 +2345,15 @@ const file_argus_v1_app_proto_rawDesc = "" +
 	"\vobservation\x18\x01 \x01(\v2\x1a.argus.v1.PlateObservationR\vobservation\"Y\n" +
 	"\x1eReportPlateObservationResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xf8\x04\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\x86\x01\n" +
+	"\rFaceCandidate\x12\x17\n" +
+	"\aface_id\x18\x01 \x01(\tR\x06faceId\x12\x1b\n" +
+	"\tperson_id\x18\x02 \x01(\tR\bpersonId\x12\x1f\n" +
+	"\vperson_name\x18\x03 \x01(\tR\n" +
+	"personName\x12\x1e\n" +
+	"\n" +
+	"similarity\x18\x04 \x01(\x02R\n" +
+	"similarity\"\xb1\x05\n" +
 	"\x0fFaceObservation\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\tR\n" +
@@ -2287,12 +2380,15 @@ const file_argus_v1_app_proto_rawDesc = "" +
 	"\rface_image_id\x18\x10 \x01(\tR\vfaceImageId\x12-\n" +
 	"\x13face_image_rel_path\x18\x11 \x01(\tR\x10faceImageRelPath\x12\x1f\n" +
 	"\vcamera_name\x18\x12 \x01(\tR\n" +
-	"cameraName\"[\n" +
+	"cameraName\x127\n" +
+	"\n" +
+	"candidates\x18\x13 \x03(\v2\x17.argus.v1.FaceCandidateR\n" +
+	"candidates\"[\n" +
 	"\x1cReportFaceObservationRequest\x12;\n" +
 	"\vobservation\x18\x01 \x01(\v2\x19.argus.v1.FaceObservationR\vobservation\"X\n" +
 	"\x1dReportFaceObservationResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xe3\x03\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\x9c\x04\n" +
 	"\x13FaceCaptureSnapshot\x12%\n" +
 	"\x0esnapshot_index\x18\x01 \x01(\x05R\rsnapshotIndex\x12 \n" +
 	"\fwall_time_ns\x18\x02 \x01(\x03R\n" +
@@ -2312,7 +2408,10 @@ const file_argus_v1_app_proto_rawDesc = "" +
 	" \x01(\tR\aimageId\x12$\n" +
 	"\x0eimage_rel_path\x18\v \x01(\tR\fimageRelPath\x12\"\n" +
 	"\rface_image_id\x18\f \x01(\tR\vfaceImageId\x12-\n" +
-	"\x13face_image_rel_path\x18\r \x01(\tR\x10faceImageRelPath\"\xad\x02\n" +
+	"\x13face_image_rel_path\x18\r \x01(\tR\x10faceImageRelPath\x127\n" +
+	"\n" +
+	"candidates\x18\x0e \x03(\v2\x17.argus.v1.FaceCandidateR\n" +
+	"candidates\"\xad\x02\n" +
 	"\vFaceCapture\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\tR\n" +
@@ -2430,7 +2529,7 @@ func file_argus_v1_app_proto_rawDescGZIP() []byte {
 }
 
 var file_argus_v1_app_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_argus_v1_app_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_argus_v1_app_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_argus_v1_app_proto_goTypes = []any{
 	(TaskStatusCode)(0),                    // 0: argus.v1.TaskStatusCode
 	(InstanceStatusCode)(0),                // 1: argus.v1.InstanceStatusCode
@@ -2440,78 +2539,81 @@ var file_argus_v1_app_proto_goTypes = []any{
 	(*PlateObservation)(nil),               // 5: argus.v1.PlateObservation
 	(*ReportPlateObservationRequest)(nil),  // 6: argus.v1.ReportPlateObservationRequest
 	(*ReportPlateObservationResponse)(nil), // 7: argus.v1.ReportPlateObservationResponse
-	(*FaceObservation)(nil),                // 8: argus.v1.FaceObservation
-	(*ReportFaceObservationRequest)(nil),   // 9: argus.v1.ReportFaceObservationRequest
-	(*ReportFaceObservationResponse)(nil),  // 10: argus.v1.ReportFaceObservationResponse
-	(*FaceCaptureSnapshot)(nil),            // 11: argus.v1.FaceCaptureSnapshot
-	(*FaceCapture)(nil),                    // 12: argus.v1.FaceCapture
-	(*ReportFaceCaptureRequest)(nil),       // 13: argus.v1.ReportFaceCaptureRequest
-	(*ReportFaceCaptureResponse)(nil),      // 14: argus.v1.ReportFaceCaptureResponse
-	(*TaskState)(nil),                      // 15: argus.v1.TaskState
-	(*ReportTaskStateRequest)(nil),         // 16: argus.v1.ReportTaskStateRequest
-	(*ReportTaskStateResponse)(nil),        // 17: argus.v1.ReportTaskStateResponse
-	(*InstanceState)(nil),                  // 18: argus.v1.InstanceState
-	(*ReportInstanceStateRequest)(nil),     // 19: argus.v1.ReportInstanceStateRequest
-	(*ReportInstanceStateResponse)(nil),    // 20: argus.v1.ReportInstanceStateResponse
-	(*ReportMetricsRequest)(nil),           // 21: argus.v1.ReportMetricsRequest
-	(*ReportMetricsResponse)(nil),          // 22: argus.v1.ReportMetricsResponse
-	(*OrphanImageEntry)(nil),               // 23: argus.v1.OrphanImageEntry
-	(*ReportOrphanImagesRequest)(nil),      // 24: argus.v1.ReportOrphanImagesRequest
-	(*ReportOrphanImagesResponse)(nil),     // 25: argus.v1.ReportOrphanImagesResponse
-	(*GetDesiredStateRequest)(nil),         // 26: argus.v1.GetDesiredStateRequest
-	(*GetDesiredStateResponse)(nil),        // 27: argus.v1.GetDesiredStateResponse
-	(*FaceGalleryEntry)(nil),               // 28: argus.v1.FaceGalleryEntry
-	(*GetFaceGalleryRequest)(nil),          // 29: argus.v1.GetFaceGalleryRequest
-	(*GetFaceGalleryResponse)(nil),         // 30: argus.v1.GetFaceGalleryResponse
-	(*DetectedObject)(nil),                 // 31: argus.v1.DetectedObject
-	(*BoundingBox)(nil),                    // 32: argus.v1.BoundingBox
-	(*DeviceTelemetry)(nil),                // 33: argus.v1.DeviceTelemetry
-	(*DesiredState)(nil),                   // 34: argus.v1.DesiredState
+	(*FaceCandidate)(nil),                  // 8: argus.v1.FaceCandidate
+	(*FaceObservation)(nil),                // 9: argus.v1.FaceObservation
+	(*ReportFaceObservationRequest)(nil),   // 10: argus.v1.ReportFaceObservationRequest
+	(*ReportFaceObservationResponse)(nil),  // 11: argus.v1.ReportFaceObservationResponse
+	(*FaceCaptureSnapshot)(nil),            // 12: argus.v1.FaceCaptureSnapshot
+	(*FaceCapture)(nil),                    // 13: argus.v1.FaceCapture
+	(*ReportFaceCaptureRequest)(nil),       // 14: argus.v1.ReportFaceCaptureRequest
+	(*ReportFaceCaptureResponse)(nil),      // 15: argus.v1.ReportFaceCaptureResponse
+	(*TaskState)(nil),                      // 16: argus.v1.TaskState
+	(*ReportTaskStateRequest)(nil),         // 17: argus.v1.ReportTaskStateRequest
+	(*ReportTaskStateResponse)(nil),        // 18: argus.v1.ReportTaskStateResponse
+	(*InstanceState)(nil),                  // 19: argus.v1.InstanceState
+	(*ReportInstanceStateRequest)(nil),     // 20: argus.v1.ReportInstanceStateRequest
+	(*ReportInstanceStateResponse)(nil),    // 21: argus.v1.ReportInstanceStateResponse
+	(*ReportMetricsRequest)(nil),           // 22: argus.v1.ReportMetricsRequest
+	(*ReportMetricsResponse)(nil),          // 23: argus.v1.ReportMetricsResponse
+	(*OrphanImageEntry)(nil),               // 24: argus.v1.OrphanImageEntry
+	(*ReportOrphanImagesRequest)(nil),      // 25: argus.v1.ReportOrphanImagesRequest
+	(*ReportOrphanImagesResponse)(nil),     // 26: argus.v1.ReportOrphanImagesResponse
+	(*GetDesiredStateRequest)(nil),         // 27: argus.v1.GetDesiredStateRequest
+	(*GetDesiredStateResponse)(nil),        // 28: argus.v1.GetDesiredStateResponse
+	(*FaceGalleryEntry)(nil),               // 29: argus.v1.FaceGalleryEntry
+	(*GetFaceGalleryRequest)(nil),          // 30: argus.v1.GetFaceGalleryRequest
+	(*GetFaceGalleryResponse)(nil),         // 31: argus.v1.GetFaceGalleryResponse
+	(*DetectedObject)(nil),                 // 32: argus.v1.DetectedObject
+	(*BoundingBox)(nil),                    // 33: argus.v1.BoundingBox
+	(*DeviceTelemetry)(nil),                // 34: argus.v1.DeviceTelemetry
+	(*DesiredState)(nil),                   // 35: argus.v1.DesiredState
 }
 var file_argus_v1_app_proto_depIdxs = []int32{
-	31, // 0: argus.v1.AlarmEvent.objects:type_name -> argus.v1.DetectedObject
+	32, // 0: argus.v1.AlarmEvent.objects:type_name -> argus.v1.DetectedObject
 	2,  // 1: argus.v1.ReportAlarmRequest.alarm:type_name -> argus.v1.AlarmEvent
-	32, // 2: argus.v1.PlateObservation.plate_bbox:type_name -> argus.v1.BoundingBox
-	32, // 3: argus.v1.PlateObservation.vehicle_bbox:type_name -> argus.v1.BoundingBox
+	33, // 2: argus.v1.PlateObservation.plate_bbox:type_name -> argus.v1.BoundingBox
+	33, // 3: argus.v1.PlateObservation.vehicle_bbox:type_name -> argus.v1.BoundingBox
 	5,  // 4: argus.v1.ReportPlateObservationRequest.observation:type_name -> argus.v1.PlateObservation
-	32, // 5: argus.v1.FaceObservation.face_bbox:type_name -> argus.v1.BoundingBox
-	8,  // 6: argus.v1.ReportFaceObservationRequest.observation:type_name -> argus.v1.FaceObservation
-	32, // 7: argus.v1.FaceCaptureSnapshot.face_bbox:type_name -> argus.v1.BoundingBox
-	11, // 8: argus.v1.FaceCapture.snapshot:type_name -> argus.v1.FaceCaptureSnapshot
-	12, // 9: argus.v1.ReportFaceCaptureRequest.capture:type_name -> argus.v1.FaceCapture
-	0,  // 10: argus.v1.TaskState.status:type_name -> argus.v1.TaskStatusCode
-	15, // 11: argus.v1.ReportTaskStateRequest.task_state:type_name -> argus.v1.TaskState
-	1,  // 12: argus.v1.InstanceState.status:type_name -> argus.v1.InstanceStatusCode
-	18, // 13: argus.v1.ReportInstanceStateRequest.instance_state:type_name -> argus.v1.InstanceState
-	33, // 14: argus.v1.ReportMetricsRequest.telemetry:type_name -> argus.v1.DeviceTelemetry
-	23, // 15: argus.v1.ReportOrphanImagesRequest.orphan_images:type_name -> argus.v1.OrphanImageEntry
-	34, // 16: argus.v1.GetDesiredStateResponse.desired_state:type_name -> argus.v1.DesiredState
-	28, // 17: argus.v1.GetFaceGalleryResponse.entries:type_name -> argus.v1.FaceGalleryEntry
-	26, // 18: argus.v1.ControlPlaneService.GetDesiredState:input_type -> argus.v1.GetDesiredStateRequest
-	29, // 19: argus.v1.ControlPlaneService.GetFaceGallery:input_type -> argus.v1.GetFaceGalleryRequest
-	3,  // 20: argus.v1.ReportService.ReportAlarm:input_type -> argus.v1.ReportAlarmRequest
-	6,  // 21: argus.v1.ReportService.ReportPlateObservation:input_type -> argus.v1.ReportPlateObservationRequest
-	9,  // 22: argus.v1.ReportService.ReportFaceObservation:input_type -> argus.v1.ReportFaceObservationRequest
-	13, // 23: argus.v1.ReportService.ReportFaceCapture:input_type -> argus.v1.ReportFaceCaptureRequest
-	16, // 24: argus.v1.ReportService.ReportTaskState:input_type -> argus.v1.ReportTaskStateRequest
-	19, // 25: argus.v1.ReportService.ReportInstanceState:input_type -> argus.v1.ReportInstanceStateRequest
-	21, // 26: argus.v1.ReportService.ReportMetrics:input_type -> argus.v1.ReportMetricsRequest
-	24, // 27: argus.v1.ReportService.ReportOrphanImages:input_type -> argus.v1.ReportOrphanImagesRequest
-	27, // 28: argus.v1.ControlPlaneService.GetDesiredState:output_type -> argus.v1.GetDesiredStateResponse
-	30, // 29: argus.v1.ControlPlaneService.GetFaceGallery:output_type -> argus.v1.GetFaceGalleryResponse
-	4,  // 30: argus.v1.ReportService.ReportAlarm:output_type -> argus.v1.ReportAlarmResponse
-	7,  // 31: argus.v1.ReportService.ReportPlateObservation:output_type -> argus.v1.ReportPlateObservationResponse
-	10, // 32: argus.v1.ReportService.ReportFaceObservation:output_type -> argus.v1.ReportFaceObservationResponse
-	14, // 33: argus.v1.ReportService.ReportFaceCapture:output_type -> argus.v1.ReportFaceCaptureResponse
-	17, // 34: argus.v1.ReportService.ReportTaskState:output_type -> argus.v1.ReportTaskStateResponse
-	20, // 35: argus.v1.ReportService.ReportInstanceState:output_type -> argus.v1.ReportInstanceStateResponse
-	22, // 36: argus.v1.ReportService.ReportMetrics:output_type -> argus.v1.ReportMetricsResponse
-	25, // 37: argus.v1.ReportService.ReportOrphanImages:output_type -> argus.v1.ReportOrphanImagesResponse
-	28, // [28:38] is the sub-list for method output_type
-	18, // [18:28] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	33, // 5: argus.v1.FaceObservation.face_bbox:type_name -> argus.v1.BoundingBox
+	8,  // 6: argus.v1.FaceObservation.candidates:type_name -> argus.v1.FaceCandidate
+	9,  // 7: argus.v1.ReportFaceObservationRequest.observation:type_name -> argus.v1.FaceObservation
+	33, // 8: argus.v1.FaceCaptureSnapshot.face_bbox:type_name -> argus.v1.BoundingBox
+	8,  // 9: argus.v1.FaceCaptureSnapshot.candidates:type_name -> argus.v1.FaceCandidate
+	12, // 10: argus.v1.FaceCapture.snapshot:type_name -> argus.v1.FaceCaptureSnapshot
+	13, // 11: argus.v1.ReportFaceCaptureRequest.capture:type_name -> argus.v1.FaceCapture
+	0,  // 12: argus.v1.TaskState.status:type_name -> argus.v1.TaskStatusCode
+	16, // 13: argus.v1.ReportTaskStateRequest.task_state:type_name -> argus.v1.TaskState
+	1,  // 14: argus.v1.InstanceState.status:type_name -> argus.v1.InstanceStatusCode
+	19, // 15: argus.v1.ReportInstanceStateRequest.instance_state:type_name -> argus.v1.InstanceState
+	34, // 16: argus.v1.ReportMetricsRequest.telemetry:type_name -> argus.v1.DeviceTelemetry
+	24, // 17: argus.v1.ReportOrphanImagesRequest.orphan_images:type_name -> argus.v1.OrphanImageEntry
+	35, // 18: argus.v1.GetDesiredStateResponse.desired_state:type_name -> argus.v1.DesiredState
+	29, // 19: argus.v1.GetFaceGalleryResponse.entries:type_name -> argus.v1.FaceGalleryEntry
+	27, // 20: argus.v1.ControlPlaneService.GetDesiredState:input_type -> argus.v1.GetDesiredStateRequest
+	30, // 21: argus.v1.ControlPlaneService.GetFaceGallery:input_type -> argus.v1.GetFaceGalleryRequest
+	3,  // 22: argus.v1.ReportService.ReportAlarm:input_type -> argus.v1.ReportAlarmRequest
+	6,  // 23: argus.v1.ReportService.ReportPlateObservation:input_type -> argus.v1.ReportPlateObservationRequest
+	10, // 24: argus.v1.ReportService.ReportFaceObservation:input_type -> argus.v1.ReportFaceObservationRequest
+	14, // 25: argus.v1.ReportService.ReportFaceCapture:input_type -> argus.v1.ReportFaceCaptureRequest
+	17, // 26: argus.v1.ReportService.ReportTaskState:input_type -> argus.v1.ReportTaskStateRequest
+	20, // 27: argus.v1.ReportService.ReportInstanceState:input_type -> argus.v1.ReportInstanceStateRequest
+	22, // 28: argus.v1.ReportService.ReportMetrics:input_type -> argus.v1.ReportMetricsRequest
+	25, // 29: argus.v1.ReportService.ReportOrphanImages:input_type -> argus.v1.ReportOrphanImagesRequest
+	28, // 30: argus.v1.ControlPlaneService.GetDesiredState:output_type -> argus.v1.GetDesiredStateResponse
+	31, // 31: argus.v1.ControlPlaneService.GetFaceGallery:output_type -> argus.v1.GetFaceGalleryResponse
+	4,  // 32: argus.v1.ReportService.ReportAlarm:output_type -> argus.v1.ReportAlarmResponse
+	7,  // 33: argus.v1.ReportService.ReportPlateObservation:output_type -> argus.v1.ReportPlateObservationResponse
+	11, // 34: argus.v1.ReportService.ReportFaceObservation:output_type -> argus.v1.ReportFaceObservationResponse
+	15, // 35: argus.v1.ReportService.ReportFaceCapture:output_type -> argus.v1.ReportFaceCaptureResponse
+	18, // 36: argus.v1.ReportService.ReportTaskState:output_type -> argus.v1.ReportTaskStateResponse
+	21, // 37: argus.v1.ReportService.ReportInstanceState:output_type -> argus.v1.ReportInstanceStateResponse
+	23, // 38: argus.v1.ReportService.ReportMetrics:output_type -> argus.v1.ReportMetricsResponse
+	26, // 39: argus.v1.ReportService.ReportOrphanImages:output_type -> argus.v1.ReportOrphanImagesResponse
+	30, // [30:40] is the sub-list for method output_type
+	20, // [20:30] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_argus_v1_app_proto_init() }
@@ -2527,7 +2629,7 @@ func file_argus_v1_app_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_argus_v1_app_proto_rawDesc), len(file_argus_v1_app_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   29,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

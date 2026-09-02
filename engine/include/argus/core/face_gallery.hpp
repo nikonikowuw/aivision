@@ -91,6 +91,14 @@ public:
      */
     [[nodiscard]] std::optional<FaceMatch> match(const float* query_embedding) const;
 
+    /**
+     * @brief 对一个 512 维 L2 归一化 query 执行 1:N 比对，返回 Top-K 候选（降序排列）。
+     * @param query_embedding 指向至少 512 个 float 的只读缓冲区。
+     * @param k 最大返回候选数量，默认 5。
+     * @return 降序排列的 Top-K 候选结果；query 非法或底库为空时返回空 vector。
+     */
+    [[nodiscard]] std::vector<FaceMatch> match_topk(const float* query_embedding, std::size_t k = 5) const;
+
 private:
     mutable std::shared_mutex mutex_;
     std::vector<float> embeddings_; ///< N * 512 的连续向量，便于顺序点积。

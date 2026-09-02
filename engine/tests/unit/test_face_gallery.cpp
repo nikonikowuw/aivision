@@ -225,3 +225,41 @@ TEST(FaceGalleryTest, EnforcesMaximumEntryCount) {
     EXPECT_EQ(gallery.revision(), 0U);
     EXPECT_EQ(gallery.size(), 0U);
 }
+
+TEST(FaceGalleryTest, MatchTopKReturnsDescendingCandidates) {
+    argus::core::FaceGallery gallery;
+    argus::v1::GetFaceGalleryResponse response;
+    fill_gallery_response(&response, 1, {
+        {"face-0", unit_vector(0)}, // dot with unit(0) = 1.0 -> sim 1.0
+        {"face-1", unit_vector(1)}, // dot with unit(0) = 0.0 -> sim 0.5
+        {"face-2", unit_vector(2)}, // dot with unit(0) = 0.0 -> sim 0.5
+        {"face-3", unit_vector(3)}, // dot with unit(0) = 0.0 -> sim 0.5
+        {"face-4", unit_vector(4)}, // dot with unit(0) = 0.0 -> sim 0.5
+        {"face-5", unit_vector(5)}, // dot with unit(0) = 0.0 -> sim 0.5
+    });
+
+    std::string error;
+    ASSERT_TRUE(gallery.load_from(response, &error)) << error;
+    EXPECT_EQ(gallery.size(), 6U);
+
+    const auto top3 = gallery.match_topk(unit_vector(0).data(), 3);
+    ASSERT_EQ(top3.size(), 3U);
+    EXPECT_EQ(top3[0].entry.face_id, "face-0");
+    EXPECT_FLOAT_EQ(top3[0].similarity, 1.0f);
+    // 后续两名相似度为 0.5
+    EXPECT_FLOAT_EQ(top3[1].similarity, 0.5f);
+    EXPECT_FLOAT_EQ(top3[2].similarity, 0.5f);
+    EXPECT_GE(top3[0].similarity, top3[1].similarity);
+    EXPECT_GE(top3[1].similarity, top3[2].similarity);
+
+    // 请求 k 大于库大小，返回全部
+    const auto top10 = gallery.match_topk(unit_vector(0).data(), 10);
+    EXPECT_EQ(top10.size(), 6U);
+    EXPECT_EQ(top10[0].entry.face_id, "face-0");
+
+    // k = 0 或非法 embedding 返回空
+    EXPECT_TRUE(gallery.match_topk(unit_vector(0).data(), 0).empty());
+    auto invalid_query = unit_vector(0);
+    invalid_query[0] = 3.0f;
+    EXPECT_TRUE(gallery.match_topk(invalid_query.data(), 5).empty());
+}

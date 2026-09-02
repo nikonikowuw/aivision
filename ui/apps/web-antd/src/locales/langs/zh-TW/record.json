@@ -179,7 +179,16 @@
       "trackId": "Track ID",
       "faceCrop": "人臉特寫圖",
       "panorama": "全景抓拍圖",
-      "noImage": "暫無圖片"
+      "noImage": "暫無圖片",
+      "candidatesTitle": "Top-5 候選人員比對",
+      "candidatesRank": "排名",
+      "candidatesPhoto": "底庫照片",
+      "candidatesPerson": "候選姓名",
+      "candidatesPersonId": "人員 ID",
+      "candidatesSimilarity": "相似度",
+      "candidatesFaceId": "樣本 ID",
+      "candidatesDiff": "與 Top-1 分差",
+      "noCandidates": "暫無候選匹配數據"
     }
   },
   "capture": {
@@ -258,7 +267,19 @@
       "getFaceImageFailed": "無法取得抓拍照像",
       "registerFailed": "註冊人員失敗",
       "quality": "品質",
-      "noImage": "暫無圖片"
+      "noImage": "暫無圖片",
+      "candidatesTitle": "🎯 Top-5 候選底庫比對分析",
+      "candidatesRank": "排名",
+      "candidatesPhoto": "底庫照片",
+      "candidatesPerson": "候選姓名",
+      "candidatesPersonId": "人員 ID",
+      "candidatesSimilarity": "相似度",
+      "candidatesFaceId": "樣本 ID",
+      "candidatesDiff": "與 Top-1 分差",
+      "noCandidates": "暫無底庫候選數據",
+      "candidateMatchStatus": "狀態",
+      "matched": "命中",
+      "unmatched": "未達標"
     }
   }
 }

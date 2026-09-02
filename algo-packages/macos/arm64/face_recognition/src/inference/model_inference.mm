@@ -124,37 +124,75 @@ MLModel* compile_and_load_model(const std::filesystem::path& model_path, std::st
     }
 }
 
-bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& target, size_t dim1) {
+bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& target, size_t /*dim1*/ = 0) {
     if (!arr) return false;
-    size_t total_elements = arr.count;
-    if (dim1 == 0) dim1 = 1;
-    size_t dim0 = total_elements / dim1;
+    const size_t total_elements = static_cast<size_t>(arr.count);
+    target.resize(total_elements);
+    if (total_elements == 0) return true;
 
-    NSInteger row_stride = dim1;
-    if (arr.strides.count >= 2) {
-        row_stride = arr.strides[arr.strides.count - 2].integerValue;
-    } else if (arr.strides.count == 1) {
-        row_stride = arr.strides[0].integerValue;
+    // 优先检查内存布局是否连续（C 风格行优先）
+    bool is_contiguous = true;
+    NSInteger expected_stride = 1;
+    for (NSInteger i = static_cast<NSInteger>(arr.shape.count) - 1; i >= 0; --i) {
+        if (arr.strides[i].integerValue != expected_stride) {
+            is_contiguous = false;
+            break;
+        }
+        expected_stride *= arr.shape[i].integerValue;
     }
 
-    target.resize(total_elements);
-    if (arr.dataType == MLMultiArrayDataTypeFloat16) {
-        const _Float16* src16 = static_cast<const _Float16*>(arr.dataPointer);
-        for (size_t r = 0; r < dim0; ++r) {
-            const _Float16* row_src = src16 + r * row_stride;
-            float* row_dst = target.data() + r * dim1;
-            for (size_t c = 0; c < dim1; ++c) {
-                row_dst[c] = static_cast<float>(row_src[c]);
-            }
+    if (is_contiguous) {
+        if (arr.dataType == MLMultiArrayDataTypeFloat32) {
+            std::memcpy(target.data(), arr.dataPointer, total_elements * sizeof(float));
+            return true;
         }
-    } else {
-        const float* src = static_cast<const float*>(arr.dataPointer);
-        if (static_cast<size_t>(row_stride) == dim1) {
-            std::memcpy(target.data(), src, total_elements * sizeof(float));
-        } else {
-            for (size_t r = 0; r < dim0; ++r) {
-                std::memcpy(target.data() + r * dim1, src + r * row_stride, dim1 * sizeof(float));
+        if (arr.dataType == MLMultiArrayDataTypeFloat16) {
+            const _Float16* src16 = static_cast<const _Float16*>(arr.dataPointer);
+            for (size_t i = 0; i < total_elements; ++i) {
+                target[i] = static_cast<float>(src16[i]);
             }
+            return true;
+        }
+        if (arr.dataType == MLMultiArrayDataTypeDouble) {
+            const double* src64 = static_cast<const double*>(arr.dataPointer);
+            for (size_t i = 0; i < total_elements; ++i) {
+                target[i] = static_cast<float>(src64[i]);
+            }
+            return true;
+        }
+    }
+
+    // 通用 N 维跨距遍历
+    const size_t ndim = static_cast<size_t>(arr.shape.count);
+    if (ndim == 0) return false;
+
+    std::vector<NSInteger> shape(ndim);
+    std::vector<NSInteger> strides(ndim);
+    for (size_t i = 0; i < ndim; ++i) {
+        shape[i] = arr.shape[i].integerValue;
+        strides[i] = arr.strides[i].integerValue;
+    }
+
+    std::vector<NSInteger> coords(ndim, 0);
+    for (size_t idx = 0; idx < total_elements; ++idx) {
+        NSInteger offset = 0;
+        for (size_t d = 0; d < ndim; ++d) {
+            offset += coords[d] * strides[d];
+        }
+        if (arr.dataType == MLMultiArrayDataTypeFloat32) {
+            target[idx] = static_cast<const float*>(arr.dataPointer)[offset];
+        } else if (arr.dataType == MLMultiArrayDataTypeFloat16) {
+            target[idx] = static_cast<float>(static_cast<const _Float16*>(arr.dataPointer)[offset]);
+        } else if (arr.dataType == MLMultiArrayDataTypeDouble) {
+            target[idx] = static_cast<float>(static_cast<const double*>(arr.dataPointer)[offset]);
+        }
+        // 推进 N 维坐标
+        for (int d = static_cast<int>(ndim) - 1; d >= 0; --d) {
+            coords[d]++;
+            if (coords[d] < shape[d] || d == 0) {
+                break;
+            }
+            coords[d] = 0;
         }
     }
     return true;

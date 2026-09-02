@@ -179,7 +179,16 @@
       "trackId": "Track ID",
       "faceCrop": "Face Closeup",
       "panorama": "Panorama Image",
-      "noImage": "No Image Available"
+      "noImage": "No Image Available",
+      "candidatesTitle": "Top-5 Candidate Matches",
+      "candidatesRank": "Rank",
+      "candidatesPhoto": "Gallery Face",
+      "candidatesPerson": "Candidate Name",
+      "candidatesPersonId": "Person ID",
+      "candidatesSimilarity": "Similarity",
+      "candidatesFaceId": "Sample ID",
+      "candidatesDiff": "Diff from Top-1",
+      "noCandidates": "No candidate matches available"
     }
   },
   "capture": {
@@ -258,7 +267,19 @@
       "getFaceImageFailed": "Failed to get face image",
       "registerFailed": "Failed to register person",
       "quality": "Quality",
-      "noImage": "No Image Available"
+      "noImage": "No Image Available",
+      "candidatesTitle": "🎯 Top-5 Candidate Matches Analysis",
+      "candidatesRank": "Rank",
+      "candidatesPhoto": "Gallery Face",
+      "candidatesPerson": "Candidate Name",
+      "candidatesPersonId": "Person ID",
+      "candidatesSimilarity": "Similarity",
+      "candidatesFaceId": "Sample ID",
+      "candidatesDiff": "Diff from Top-1",
+      "noCandidates": "No candidate matches available",
+      "candidateMatchStatus": "Status",
+      "matched": "Matched",
+      "unmatched": "Sub-threshold"
     }
   }
 }

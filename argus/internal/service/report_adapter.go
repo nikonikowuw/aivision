@@ -435,6 +435,22 @@ func (a *ReportAdapter) AcceptFaceObservation(ctx context.Context, obs *argusv1.
 		observedAt = time.Unix(0, obs.GetWallTimeNs())
 	}
 
+	candidates := make([]model.FaceCandidateItem, 0, len(obs.GetCandidates()))
+	for _, c := range obs.GetCandidates() {
+		if c != nil {
+			candidates = append(candidates, model.FaceCandidateItem{
+				FaceID:     c.GetFaceId(),
+				PersonID:   c.GetPersonId(),
+				PersonName: c.GetPersonName(),
+				Similarity: c.GetSimilarity(),
+			})
+		}
+	}
+	candidatesJSON, err := json.Marshal(candidates)
+	if err != nil {
+		return fmt.Errorf("marshal face candidates: %w", err)
+	}
+
 	record := &model.FaceObservation{
 		EventID:          eventID,
 		InstanceID:       obs.GetInstanceId(),
@@ -447,6 +463,7 @@ func (a *ReportAdapter) AcceptFaceObservation(ctx context.Context, obs *argusv1.
 		PersonID:         obs.GetPersonId(),
 		PersonName:       obs.GetPersonName(),
 		Similarity:       obs.GetSimilarity(),
+		CandidatesJSON:   candidatesJSON,
 		BBoxJSON:         bboxJSON,
 		TimeSynced:       obs.GetTimeSynced(),
 		ImageID:          imgID,
@@ -528,6 +545,18 @@ func (a *ReportAdapter) AcceptFaceCapture(ctx context.Context, capture *argusv1.
 		TrackID:          capture.GetTrackId(),
 	}
 
+	snapCandidates := make([]model.FaceCandidateItem, 0, len(snap.GetCandidates()))
+	for _, c := range snap.GetCandidates() {
+		if c != nil {
+			snapCandidates = append(snapCandidates, model.FaceCandidateItem{
+				FaceID:     c.GetFaceId(),
+				PersonID:   c.GetPersonId(),
+				PersonName: c.GetPersonName(),
+				Similarity: c.GetSimilarity(),
+			})
+		}
+	}
+
 	snapshotItem := &model.SnapshotItem{
 		SnapshotIndex:    snap.GetSnapshotIndex(),
 		WallTimeNs:       snap.GetWallTimeNs(),
@@ -543,6 +572,7 @@ func (a *ReportAdapter) AcceptFaceCapture(ctx context.Context, capture *argusv1.
 		FaceID:           snap.GetFaceId(),
 		PersonID:         snap.GetPersonId(),
 		PersonName:       snap.GetPersonName(),
+		Candidates:       snapCandidates,
 	}
 
 	if err := a.captureRepo.UpsertIncremental(ctx, modelCapture, snapshotItem); err != nil {

@@ -98,6 +98,7 @@ func (r *faceObservationRepository) UpsertMonotonic(ctx context.Context, record 
 				"person_id":           record.PersonID,
 				"person_name":         record.PersonName,
 				"similarity":          record.Similarity,
+				"candidates_json":     record.CandidatesJSON,
 				"bbox_json":           record.BBoxJSON,
 				"time_synced":         record.TimeSynced,
 				"image_id":            record.ImageID,

@@ -333,8 +333,8 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces", "resource:person:face:manage")
 		deps.PermMiddleware.Register(http.MethodDelete, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId", "resource:person:face:manage")
 		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+personRoutePath+personIDRoutePath+"/primary-face", "resource:person:face:manage")
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/image", "resource:person:face:manage")
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/aligned-image", "resource:person:face:manage")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/image", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+personRoutePath+personIDRoutePath+"/faces/:faceId/aligned-image", middleware.PermCodeAuthenticated)
 
 		algoGroup := apiGroup.Group(algorithmRoutePath)
 		{

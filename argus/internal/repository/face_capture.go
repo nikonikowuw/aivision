@@ -107,6 +107,9 @@ func (r *faceCaptureRepository) UpsertIncremental(ctx context.Context, capture *
 				capture.BestFaceImageID = snapshot.FaceImageID
 				capture.BestFaceRelPath = snapshot.FaceImageRelPath
 				capture.BestBBoxJSON = snapshot.BBoxJSON
+				if candJSON, cErr := json.Marshal(snapshot.Candidates); cErr == nil {
+					capture.BestCandidatesJSON = model.JSONRaw(candJSON)
+				}
 
 				if cErr := tx.Create(capture).Error; cErr != nil {
 					return writeError(cErr)
@@ -156,6 +159,9 @@ func (r *faceCaptureRepository) UpsertIncremental(ctx context.Context, capture *
 			updates["best_face_image_id"] = snapshot.FaceImageID
 			updates["best_face_rel_path"] = snapshot.FaceImageRelPath
 			updates["best_bbox_json"] = snapshot.BBoxJSON
+			if candJSON, cErr := json.Marshal(snapshot.Candidates); cErr == nil {
+				updates["best_candidates_json"] = model.JSONRaw(candJSON)
+			}
 		}
 
 		res := tx.Model(&model.FaceCapture{}).

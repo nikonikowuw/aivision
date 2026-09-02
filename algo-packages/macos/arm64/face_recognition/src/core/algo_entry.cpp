@@ -171,18 +171,25 @@ void copy_text(char (&dst)[N], std::string_view src) noexcept {
     copy_text(dst, N, src);
 }
 
-// 计算人脸中心是否落在人体框内
+// 计算人脸中心是否落在人体框内 (支持顶部 20% 自适应上延，防止人体框在锁骨/下巴截断时头部人脸脱靶)
 bool face_center_in_person(const FaceDetection& face, const argus::cv::DetectionBox& person, uint32_t orig_w, uint32_t orig_h) {
-    float face_cx = (face.x1 + face.x2) * 0.5f;
-    float face_cy = (face.y1 + face.y2) * 0.5f;
+    const float face_cx = (face.x1 + face.x2) * 0.5f;
+    const float face_cy = (face.y1 + face.y2) * 0.5f;
 
-    float person_x1 = person.x * static_cast<float>(orig_w);
-    float person_y1 = person.y * static_cast<float>(orig_h);
-    float person_x2 = (person.x + person.w) * static_cast<float>(orig_w);
-    float person_y2 = (person.y + person.h) * static_cast<float>(orig_h);
+    const float person_x1 = person.x * static_cast<float>(orig_w);
+    const float person_y1 = person.y * static_cast<float>(orig_h);
+    const float person_x2 = (person.x + person.w) * static_cast<float>(orig_w);
+    const float person_y2 = (person.y + person.h) * static_cast<float>(orig_h);
 
-    return (face_cx >= person_x1 && face_cx <= person_x2 &&
-            face_cy >= person_y1 && face_cy <= person_y2);
+    const float person_h = person_y2 - person_y1;
+    const float person_w = person_x2 - person_x1;
+
+    const float expanded_x1 = person_x1 - person_w * 0.05f;
+    const float expanded_x2 = person_x2 + person_w * 0.05f;
+    const float expanded_y1 = person_y1 - person_h * 0.20f;
+
+    return (face_cx >= expanded_x1 && face_cx <= expanded_x2 &&
+            face_cy >= expanded_y1 && face_cy <= person_y2);
 }
 
 // 计算人脸与人体的交并比

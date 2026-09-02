@@ -154,6 +154,17 @@ definitions:
     - DetectionRuleRoleROI
     - DetectionRuleRoleMask
     - DetectionRuleRoleLine
+  argus_app_internal_model.FaceCandidateItem:
+    properties:
+      faceId:
+        type: string
+      personId:
+        type: string
+      personName:
+        type: string
+      similarity:
+        type: number
+    type: object
   argus_app_internal_model.Menu:
     properties:
       affix:
@@ -495,6 +506,10 @@ definitions:
         type: string
       cameraName:
         type: string
+      candidates:
+        items:
+          $ref: '#/definitions/argus_app_internal_model.FaceCandidateItem'
+        type: array
       createdAt:
         type: string
       eventId:

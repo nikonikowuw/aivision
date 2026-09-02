@@ -34,54 +34,56 @@ type FaceCaptureQuery struct {
 
 // SnapshotItemView 单张抓拍快照前端展示结构。
 type SnapshotItemView struct {
-	SnapshotIndex    int32     `json:"snapshotIndex"`
-	WallTimeNs       int64     `json:"wallTimeNs"`
-	TimeSynced       bool      `json:"timeSynced"`
-	ObservedAt       time.Time `json:"observedAt"`
-	CapturedAt       string    `json:"capturedAt"`
-	ImageID          string    `json:"imageId"`
-	ImageRelPath     string    `json:"imageRelPath"`
-	FaceImageID      string    `json:"faceImageId"`
-	FaceImageRelPath string    `json:"faceImageRelPath"`
-	PanoramaImageURL string    `json:"panoramaImageUrl"`
-	FaceImageURL     string    `json:"faceImageUrl"`
-	BBox             []float32 `json:"bbox"`
-	FaceBBox         []float32 `json:"faceBbox"`
-	QualityScore     float32   `json:"qualityScore"`
-	Similarity       float32   `json:"similarity"`
-	PersonID         string    `json:"personId"`
-	PersonName       string    `json:"personName"`
+	SnapshotIndex    int32                     `json:"snapshotIndex"`
+	WallTimeNs       int64                     `json:"wallTimeNs"`
+	TimeSynced       bool                      `json:"timeSynced"`
+	ObservedAt       time.Time                 `json:"observedAt"`
+	CapturedAt       string                    `json:"capturedAt"`
+	ImageID          string                    `json:"imageId"`
+	ImageRelPath     string                    `json:"imageRelPath"`
+	FaceImageID      string                    `json:"faceImageId"`
+	FaceImageRelPath string                    `json:"faceImageRelPath"`
+	PanoramaImageURL string                    `json:"panoramaImageUrl"`
+	FaceImageURL     string                    `json:"faceImageUrl"`
+	BBox             []float32                 `json:"bbox"`
+	FaceBBox         []float32                 `json:"faceBbox"`
+	QualityScore     float32                   `json:"qualityScore"`
+	Similarity       float32                   `json:"similarity"`
+	PersonID         string                    `json:"personId"`
+	PersonName       string                    `json:"personName"`
+	Candidates       []model.FaceCandidateItem `json:"candidates"`
 }
 
 // FaceCaptureItem 人脸抓拍记录前端返回视图。
 type FaceCaptureItem struct {
-	ID               uint64             `json:"id"`
-	EventID          string             `json:"eventId"`
-	InstanceID       string             `json:"instanceId"`
-	CameraID         string             `json:"cameraId"`
-	CameraName       string             `json:"cameraName"`
-	AlgorithmID      string             `json:"algorithmId"`
-	AlgorithmVersion string             `json:"algorithmVersion"`
-	TrackID          int64              `json:"trackId"`
-	BestSimilarity   float32            `json:"bestSimilarity"`
-	BestQualityScore float32            `json:"bestQualityScore"`
-	BestPersonID     string             `json:"bestPersonId"`
-	BestPersonName   string             `json:"bestPersonName"`
-	BestImageID      string             `json:"bestImageId"`
-	BestImageRelPath string             `json:"bestImageRelPath"`
-	BestFaceImageID  string             `json:"bestFaceImageId"`
-	BestFaceRelPath  string             `json:"bestFaceRelPath"`
-	BestBBox         []float32          `json:"bestBbox"`
-	PanoramaImageURL string             `json:"panoramaImageUrl"`
-	FaceImageURL     string             `json:"faceImageUrl"`
-	BestPanoramaURL  string             `json:"bestPanoramaUrl"`
-	BestFaceCropURL  string             `json:"bestFaceCropUrl"`
-	IsStranger       bool               `json:"isStranger"`
-	SnapshotCount    int32              `json:"snapshotCount"`
-	Snapshots        []SnapshotItemView `json:"snapshots,omitempty"`
-	FirstObservedAt  time.Time          `json:"firstObservedAt"`
-	LastObservedAt   time.Time          `json:"lastObservedAt"`
-	CreatedAt        time.Time          `json:"createdAt"`
+	ID               uint64                    `json:"id"`
+	EventID          string                    `json:"eventId"`
+	InstanceID       string                    `json:"instanceId"`
+	CameraID         string                    `json:"cameraId"`
+	CameraName       string                    `json:"cameraName"`
+	AlgorithmID      string                    `json:"algorithmId"`
+	AlgorithmVersion string                    `json:"algorithmVersion"`
+	TrackID          int64                     `json:"trackId"`
+	BestSimilarity   float32                   `json:"bestSimilarity"`
+	BestQualityScore float32                   `json:"bestQualityScore"`
+	BestPersonID     string                    `json:"bestPersonId"`
+	BestPersonName   string                    `json:"bestPersonName"`
+	BestImageID      string                    `json:"bestImageId"`
+	BestImageRelPath string                    `json:"bestImageRelPath"`
+	BestFaceImageID  string                    `json:"bestFaceImageId"`
+	BestFaceRelPath  string                    `json:"bestFaceRelPath"`
+	BestBBox         []float32                 `json:"bestBbox"`
+	BestCandidates   []model.FaceCandidateItem `json:"bestCandidates"`
+	PanoramaImageURL string                    `json:"panoramaImageUrl"`
+	FaceImageURL     string                    `json:"faceImageUrl"`
+	BestPanoramaURL  string                    `json:"bestPanoramaUrl"`
+	BestFaceCropURL  string                    `json:"bestFaceCropUrl"`
+	IsStranger       bool                      `json:"isStranger"`
+	SnapshotCount    int32                     `json:"snapshotCount"`
+	Snapshots        []SnapshotItemView        `json:"snapshots,omitempty"`
+	FirstObservedAt  time.Time                 `json:"firstObservedAt"`
+	LastObservedAt   time.Time                 `json:"lastObservedAt"`
+	CreatedAt        time.Time                 `json:"createdAt"`
 }
 
 // FaceCapturePageResult 人脸抓拍记录分页结果。
@@ -252,6 +254,11 @@ func parseBBoxFromJSON(data []byte) []float32 {
 }
 
 func (s *faceCaptureService) toItem(r *model.FaceCapture, includeSnapshots bool) FaceCaptureItem {
+	bestCandidates, _ := r.ParseBestCandidates()
+	if bestCandidates == nil {
+		bestCandidates = []model.FaceCandidateItem{}
+	}
+
 	item := FaceCaptureItem{
 		ID:               r.ID,
 		EventID:          r.EventID,
@@ -270,6 +277,7 @@ func (s *faceCaptureService) toItem(r *model.FaceCapture, includeSnapshots bool)
 		BestFaceImageID:  r.BestFaceImageID,
 		BestFaceRelPath:  r.BestFaceRelPath,
 		BestBBox:         parseBBoxFromJSON(r.BestBBoxJSON),
+		BestCandidates:   bestCandidates,
 		PanoramaImageURL: fmt.Sprintf("/api/record/captures/%d/panorama", r.ID),
 		FaceImageURL:     fmt.Sprintf("/api/record/captures/%d/face", r.ID),
 		BestPanoramaURL:  fmt.Sprintf("/api/record/captures/%d/panorama", r.ID),
@@ -287,6 +295,10 @@ func (s *faceCaptureService) toItem(r *model.FaceCapture, includeSnapshots bool)
 			views := make([]SnapshotItemView, 0, len(rawSnapshots))
 			for _, snap := range rawSnapshots {
 				bbox := parseBBoxFromJSON(snap.BBoxJSON)
+				candidates := snap.Candidates
+				if candidates == nil {
+					candidates = []model.FaceCandidateItem{}
+				}
 				views = append(views, SnapshotItemView{
 					SnapshotIndex:    snap.SnapshotIndex,
 					WallTimeNs:       snap.WallTimeNs,
@@ -305,6 +317,7 @@ func (s *faceCaptureService) toItem(r *model.FaceCapture, includeSnapshots bool)
 					Similarity:       snap.Similarity,
 					PersonID:         snap.PersonID,
 					PersonName:       snap.PersonName,
+					Candidates:       candidates,
 				})
 			}
 			item.Snapshots = views

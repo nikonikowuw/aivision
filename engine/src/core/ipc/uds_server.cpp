@@ -2498,6 +2498,7 @@ private:
                 size_t image_request_index = 0;
                 std::vector<float> embedding;
                 FaceMatch match;
+                std::vector<FaceMatch> candidates;
             };
             std::vector<ParsedFace> faces_with_embedding;
             faces_with_embedding.reserve(value["persons"].size());
@@ -2610,19 +2611,21 @@ private:
                     reject("face embedding values are invalid");
                     return;
                 }
-                const auto match = FaceGallery::instance().match(query.data());
-                if (!match.has_value() || !std::isfinite(match->similarity) ||
-                    match->similarity < 0.0f || match->similarity > 1.0f) {
+                const auto candidates = FaceGallery::instance().match_topk(query.data(), 5);
+                if (candidates.empty() || !std::isfinite(candidates.front().similarity) ||
+                    candidates.front().similarity < 0.0f || candidates.front().similarity > 1.0f) {
                     reject("face embedding cannot be matched");
                     return;
                 }
+                const auto match = candidates.front();
                 faces_with_embedding.push_back(ParsedFace{
                     .track_id = track_id,
                     .bbox = face_bbox,
                     .quality_score = face_confidence,
                     .image_request_index = faces_with_embedding.size(),
                     .embedding = std::move(query),
-                    .match = *match,
+                    .match = match,
+                    .candidates = candidates,
                 });
             }
 
@@ -2739,6 +2742,13 @@ private:
                     snap->mutable_face_bbox()->set_y_min(static_cast<float>(parsed.bbox[1]));
                     snap->mutable_face_bbox()->set_x_max(static_cast<float>(parsed.bbox[0] + parsed.bbox[2]));
                     snap->mutable_face_bbox()->set_y_max(static_cast<float>(parsed.bbox[1] + parsed.bbox[3]));
+                    for (const auto& cand : parsed.candidates) {
+                        auto* candidate = snap->add_candidates();
+                        candidate->set_face_id(cand.entry.face_id);
+                        candidate->set_person_id(cand.entry.person_id);
+                        candidate->set_person_name(cand.entry.person_name);
+                        candidate->set_similarity(std::clamp(cand.similarity, 0.0f, 1.0f));
+                    }
                     const size_t crop_index = pending.face_crop_rois.size();
                     pending.captures.push_back(std::move(capture));
 
@@ -2761,6 +2771,13 @@ private:
                         observation.mutable_face_bbox()->set_y_min(static_cast<float>(parsed.bbox[1]));
                         observation.mutable_face_bbox()->set_x_max(static_cast<float>(parsed.bbox[0] + parsed.bbox[2]));
                         observation.mutable_face_bbox()->set_y_max(static_cast<float>(parsed.bbox[1] + parsed.bbox[3]));
+                        for (const auto& cand : parsed.candidates) {
+                            auto* candidate = observation.add_candidates();
+                            candidate->set_face_id(cand.entry.face_id);
+                            candidate->set_person_id(cand.entry.person_id);
+                            candidate->set_person_name(cand.entry.person_name);
+                            candidate->set_similarity(std::clamp(cand.similarity, 0.0f, 1.0f));
+                        }
                         pending.faces.push_back(std::move(observation));
                         pending.face_observation_crop_indices.push_back(crop_index);
                     }

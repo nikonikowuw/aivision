@@ -33,28 +33,29 @@ type FaceObservationQuery struct {
 // FaceObservationItem 人脸识别记录前端返回视图。
 // 不包含 embedding 等敏感生物特征数据。
 type FaceObservationItem struct {
-	ID               uint64    `json:"id"`
-	EventID          string    `json:"eventId"`
-	InstanceID       string    `json:"instanceId"`
-	CameraID         string    `json:"cameraId"`
-	CameraName       string    `json:"cameraName"`
-	AlgorithmID      string    `json:"algorithmId"`
-	AlgorithmVersion string    `json:"algorithmVersion"`
-	TimeSynced       bool      `json:"timeSynced"`
-	TrackID          int64     `json:"trackId"`
-	FaceID           string    `json:"faceId"`
-	PersonID         string    `json:"personId"`
-	PersonName       string    `json:"personName"`
-	Similarity       float32   `json:"similarity"`
-	BBox             []float32 `json:"bbox"`
-	PanoramaImageURL string    `json:"panoramaImageUrl"`
-	FaceImageURL     string    `json:"faceImageUrl"`
-	ImageID          string    `json:"imageId"`
-	ImageRelPath     string    `json:"imageRelPath"`
-	FaceImageID      string    `json:"faceImageId"`
-	FaceImageRelPath string    `json:"faceImageRelPath"`
-	ObservedAt       time.Time `json:"observedAt"`
-	CreatedAt        time.Time `json:"createdAt"`
+	ID               uint64                    `json:"id"`
+	EventID          string                    `json:"eventId"`
+	InstanceID       string                    `json:"instanceId"`
+	CameraID         string                    `json:"cameraId"`
+	CameraName       string                    `json:"cameraName"`
+	AlgorithmID      string                    `json:"algorithmId"`
+	AlgorithmVersion string                    `json:"algorithmVersion"`
+	TimeSynced       bool                      `json:"timeSynced"`
+	TrackID          int64                     `json:"trackId"`
+	FaceID           string                    `json:"faceId"`
+	PersonID         string                    `json:"personId"`
+	PersonName       string                    `json:"personName"`
+	Similarity       float32                   `json:"similarity"`
+	Candidates       []model.FaceCandidateItem `json:"candidates"`
+	BBox             []float32                 `json:"bbox"`
+	PanoramaImageURL string                    `json:"panoramaImageUrl"`
+	FaceImageURL     string                    `json:"faceImageUrl"`
+	ImageID          string                    `json:"imageId"`
+	ImageRelPath     string                    `json:"imageRelPath"`
+	FaceImageID      string                    `json:"faceImageId"`
+	FaceImageRelPath string                    `json:"faceImageRelPath"`
+	ObservedAt       time.Time                 `json:"observedAt"`
+	CreatedAt        time.Time                 `json:"createdAt"`
 }
 
 // FaceObservationPageResult 人脸识别记录分页查询结果。
@@ -173,6 +174,11 @@ func (s *faceObservationService) toItem(record model.FaceObservation, currentCam
 		faceURL = fmt.Sprintf("/api/record/faces/%d/face", record.ID)
 	}
 
+	candidates, _ := record.ParseCandidates()
+	if candidates == nil {
+		candidates = []model.FaceCandidateItem{}
+	}
+
 	return FaceObservationItem{
 		ID:               record.ID,
 		EventID:          record.EventID,
@@ -187,6 +193,7 @@ func (s *faceObservationService) toItem(record model.FaceObservation, currentCam
 		PersonID:         record.PersonID,
 		PersonName:       record.PersonName,
 		Similarity:       record.Similarity,
+		Candidates:       candidates,
 		BBox:             bbox,
 		PanoramaImageURL: panoramaURL,
 		FaceImageURL:     faceURL,

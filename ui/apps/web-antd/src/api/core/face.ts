@@ -1,6 +1,13 @@
 import { requestClient } from '#/api/request';
 
 export namespace FaceObservationApi {
+  export interface FaceCandidate {
+    faceId: string;
+    personId: string;
+    personName: string;
+    similarity: number;
+  }
+
   export interface FaceObservationItem {
     id: number;
     eventId: string;
@@ -15,6 +22,7 @@ export namespace FaceObservationApi {
     personId: string;
     personName: string;
     similarity: number;
+    candidates?: FaceCandidate[];
     bbox: [number, number, number, number];
     panoramaImageUrl: string;
     faceImageUrl: string;

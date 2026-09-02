@@ -27,6 +27,7 @@ import {
 import { createPersonApi, registerPersonFaceApi } from '#/api';
 
 import CaptureThumbnail from './CaptureThumbnail.vue';
+import FaceCandidatesTable from './FaceCandidatesTable.vue';
 
 const props = defineProps<{
   capture: FaceCaptureApi.FaceCaptureItem | null;
@@ -53,6 +54,10 @@ const activeSnapshot = computed(() => {
   const list = currentSnapshots.value;
   if (list.length === 0) return null;
   return list[activeIndex.value] ?? list[0] ?? null;
+});
+
+const activeCandidates = computed(() => {
+  return activeSnapshot.value?.candidates ?? [];
 });
 
 const activeBbox = computed<[number, number, number, number] | null>(() => {
@@ -385,6 +390,36 @@ async function handleConfirmRegister() {
           </div>
         </Card>
       </div>
+
+      <!-- Top-5 候选底库比对分析卡片 -->
+      <Card size="small" class="border bg-white dark:bg-neutral-900">
+        <template #title>
+          <div class="flex items-center justify-between">
+            <span
+              class="font-semibold text-xs text-neutral-700 dark:text-neutral-300"
+            >
+              {{ $t('record.capture.drawer.candidatesTitle') }} ({{
+                $t('record.capture.drawer.snapshotIndex', {
+                  index: activeSnapshot?.snapshotIndex || 1,
+                })
+              }})
+            </span>
+            <span class="text-xs text-neutral-400">
+              {{
+                activeCandidates.length > 0
+                  ? `${activeCandidates.length} 条底库候选`
+                  : $t('record.capture.drawer.noCandidates')
+              }}
+            </span>
+          </div>
+        </template>
+
+        <FaceCandidatesTable
+          :candidates="activeCandidates"
+          :show-match-badge="true"
+          :match-threshold="0.7"
+        />
+      </Card>
 
       <!-- 底部时序胶卷序列 Filmstrip -->
       <Card size="small" class="border">

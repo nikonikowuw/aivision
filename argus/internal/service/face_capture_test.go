@@ -203,3 +203,52 @@ func TestFaceCaptureService_ReadImageStream(t *testing.T) {
 		t.Errorf("face size=%d, mime=%s", sizeFace, mimeFace)
 	}
 }
+
+func TestFaceCaptureService_CandidatesPersistenceAndMapping(t *testing.T) {
+	db := newTestFaceCaptureDB(t)
+	captureRepo := repository.NewFaceCaptureRepository(db)
+	camRepo := repository.NewCameraRepository(db)
+	adapter := service.NewReportAdapterWithAlarm(
+		repository.NewTaskRepository(db), nil, nil, nil, captureRepo, nil, zap.NewNop(),
+	)
+	ctx := context.Background()
+
+	capProto := &argusv1.FaceCapture{
+		EventId:    "run-1/capture-cand",
+		InstanceId: "instance-1",
+		CameraId:   "camera-1",
+		TrackId:    77,
+		Snapshot: &argusv1.FaceCaptureSnapshot{
+			SnapshotIndex: 1,
+			WallTimeNs:    time.Now().UnixNano(),
+			Similarity:    0.91,
+			QualityScore:  0.88,
+			PersonId:      "p-1",
+			PersonName:    "Alice",
+			Candidates: []*argusv1.FaceCandidate{
+				{FaceId: "f-1", PersonId: "p-1", PersonName: "Alice", Similarity: 0.91},
+				{FaceId: "f-2", PersonId: "p-2", PersonName: "Bob", Similarity: 0.75},
+				{FaceId: "f-3", PersonId: "p-3", PersonName: "Charlie", Similarity: 0.60},
+			},
+		},
+	}
+
+	if err := adapter.AcceptFaceCapture(ctx, capProto); err != nil {
+		t.Fatalf("accept face capture: %v", err)
+	}
+
+	svc := service.NewFaceCaptureService(captureRepo, camRepo, &config.Config{})
+	detail, err := svc.GetDetail(ctx, 1)
+	if err != nil {
+		t.Fatalf("get detail: %v", err)
+	}
+	if len(detail.BestCandidates) != 3 {
+		t.Fatalf("expected 3 best candidates, got %d", len(detail.BestCandidates))
+	}
+	if len(detail.Snapshots) != 1 || len(detail.Snapshots[0].Candidates) != 3 {
+		t.Fatalf("expected snapshot candidates count 3, got %+v", detail.Snapshots)
+	}
+	if detail.BestCandidates[0].PersonName != "Alice" || detail.BestCandidates[0].Similarity != 0.91 {
+		t.Errorf("candidate[0] mismatch: %+v", detail.BestCandidates[0])
+	}
+}

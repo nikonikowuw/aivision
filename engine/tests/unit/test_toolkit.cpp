@@ -11,6 +11,7 @@
 #include "argus/cv/resize.hpp"
 #include "argus/cv/letterbox.hpp"
 #include "argus/cv/nms.hpp"
+#include "argus/cv/tracker.hpp"
 #include "argus/utils/env.hpp"
 #include "argus/utils/json.hpp"
 #include "argus/utils/event_id.hpp"
@@ -119,4 +120,87 @@ TEST(UtilsToolkitTest, ProfilerStats) {
     auto stats = argus::utils::BenchmarkStats::compute(samples);
     EXPECT_GT(stats.avg_ms, 0.0);
     EXPECT_GT(stats.fps, 0.0);
+}
+
+TEST(CVToolkitTest, ByteTrackerMaintainsContinuousTrackIdAcrossMotion) {
+    argus::cv::ByteTracker tracker(0.35f, 0.10f, 0.30f, 30, 1);
+
+    // 连续移动的人体
+    for (int frame = 0; frame < 10; ++frame) {
+        float x = 0.10f + frame * 0.02f; // 每帧向右移动 0.02
+        std::vector<argus::cv::DetectionBox> dets = {
+            {"person", 0, 0.85f, x, 0.20f, 0.15f, 0.40f, -1}
+        };
+        auto tracked = tracker.update(dets);
+        ASSERT_EQ(tracked.size(), 1U);
+        EXPECT_EQ(tracked[0].track_id, 1);
+        EXPECT_EQ(tracked[0].label, "person");
+    }
+}
+
+TEST(CVToolkitTest, ByteTrackerRescuesLowConfidenceDetection) {
+    argus::cv::ByteTracker tracker(0.35f, 0.10f, 0.30f, 30, 1);
+
+    // Frame 1: 高分检出
+    std::vector<argus::cv::DetectionBox> det1 = {
+        {"person", 0, 0.85f, 0.20f, 0.20f, 0.15f, 0.40f, -1}
+    };
+    auto trk1 = tracker.update(det1);
+    ASSERT_EQ(trk1.size(), 1U);
+    int64_t person_id = trk1[0].track_id;
+
+    // Frame 2: 转身或模糊导致置信度骤降至 0.18 (低于 high_thresh=0.35)
+    std::vector<argus::cv::DetectionBox> det2 = {
+        {"person", 0, 0.18f, 0.22f, 0.20f, 0.15f, 0.40f, -1}
+    };
+    auto trk2 = tracker.update(det2);
+    ASSERT_EQ(trk2.size(), 1U);
+    // Byte 匹配第二阶段应该成功拯救该轨迹，且保持原有 ID
+    EXPECT_EQ(trk2[0].track_id, person_id);
+}
+
+TEST(CVToolkitTest, ByteTrackerRecoversBriefOcclusionViaKalmanPrediction) {
+    argus::cv::ByteTracker tracker(0.35f, 0.10f, 0.30f, 30, 1);
+
+    // 建立稳定轨迹 (带向右速度)
+    for (int frame = 0; frame < 5; ++frame) {
+        float x = 0.10f + frame * 0.02f;
+        std::vector<argus::cv::DetectionBox> dets = {
+            {"person", 0, 0.85f, x, 0.20f, 0.15f, 0.40f, -1}
+        };
+        auto tracked = tracker.update(dets);
+        ASSERT_EQ(tracked.size(), 1U);
+        EXPECT_EQ(tracked[0].track_id, 1);
+    }
+
+    // 发生 2 帧遮挡 (无检测输出)
+    tracker.update({});
+    tracker.update({});
+
+    // 遮挡结束，在预测位置附近再次出现
+    std::vector<argus::cv::DetectionBox> det_after = {
+        {"person", 0, 0.80f, 0.24f, 0.20f, 0.15f, 0.40f, -1}
+    };
+    auto trk_after = tracker.update(det_after);
+    ASSERT_EQ(trk_after.size(), 1U);
+    // 应该恢复原有 Track ID=1，而不是分配新 ID
+    EXPECT_EQ(trk_after[0].track_id, 1);
+}
+
+TEST(CVToolkitTest, ByteTrackerMultiPersonNoIdSwitch) {
+    argus::cv::ByteTracker tracker(0.35f, 0.10f, 0.30f, 30, 1);
+
+    // 两人并排前行
+    for (int frame = 0; frame < 8; ++frame) {
+        float x1 = 0.10f + frame * 0.015f;
+        float x2 = 0.40f + frame * 0.015f;
+        std::vector<argus::cv::DetectionBox> dets = {
+            {"person", 0, 0.88f, x1, 0.20f, 0.15f, 0.40f, -1},
+            {"person", 0, 0.82f, x2, 0.20f, 0.15f, 0.40f, -1}
+        };
+        auto tracked = tracker.update(dets);
+        ASSERT_EQ(tracked.size(), 2U);
+        EXPECT_EQ(tracked[0].track_id, 1);
+        EXPECT_EQ(tracked[1].track_id, 2);
+    }
 }

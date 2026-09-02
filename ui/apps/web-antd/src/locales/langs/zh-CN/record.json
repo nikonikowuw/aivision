@@ -179,7 +179,16 @@
       "trackId": "Track ID",
       "faceCrop": "人脸特写图",
       "panorama": "全景抓拍图",
-      "noImage": "暂无图片"
+      "noImage": "暂无图片",
+      "candidatesTitle": "Top-5 候选人员比对",
+      "candidatesRank": "排名",
+      "candidatesPhoto": "底库照片",
+      "candidatesPerson": "候选姓名",
+      "candidatesPersonId": "人员 ID",
+      "candidatesSimilarity": "相似度",
+      "candidatesFaceId": "样本 ID",
+      "candidatesDiff": "与 Top-1 分差",
+      "noCandidates": "暂无候选匹配数据"
     }
   },
   "capture": {
@@ -258,7 +267,19 @@
       "getFaceImageFailed": "无法获取抓拍人脸图像",
       "registerFailed": "注册人员失败",
       "quality": "质量",
-      "noImage": "暂无图片"
+      "noImage": "暂无图片",
+      "candidatesTitle": "🎯 Top-5 候选底库比对分析",
+      "candidatesRank": "排名",
+      "candidatesPhoto": "底库照片",
+      "candidatesPerson": "候选姓名",
+      "candidatesPersonId": "人员 ID",
+      "candidatesSimilarity": "相似度",
+      "candidatesFaceId": "样本 ID",
+      "candidatesDiff": "与 Top-1 分差",
+      "noCandidates": "暂无底库候选数据",
+      "candidateMatchStatus": "状态",
+      "matched": "命中",
+      "unmatched": "未达标"
     }
   }
 }

@@ -134,6 +134,14 @@ const algorithmOptions = computed(() => {
     }));
 });
 
+// 是否支持 target_classes 属性
+const hasTargetClasses = computed(() => {
+  const schema = currentConfigSchema.value;
+  if (!schema || typeof schema !== 'object') return false;
+  const properties = (schema as Record<string, any>).properties;
+  return Boolean(properties && 'target_classes' in properties);
+});
+
 // 当前生效的目标类别（供绘制区域时做明确指示）
 const activeTargetClasses = computed<string[]>(() => {
   const val = paramsJson.value?.target_classes;
@@ -197,8 +205,7 @@ watch(
         motionGateEnabled.value = true;
         motionGateKeepaliveMs.value = 2000;
       }
-      similarityThreshold.value =
-        props.instance.similarityThreshold ?? 0.7;
+      similarityThreshold.value = props.instance.similarityThreshold ?? 0.7;
     } else {
       // 新建默认
       analysisFps.value = 25;
@@ -510,8 +517,9 @@ async function handleOk() {
         </template>
 
         <div class="pt-2 space-y-2.5">
-          <!-- 生效目标提示栏 -->
+          <!-- 生效目标提示栏（仅在算法支持目标类别过滤配置时展示） -->
           <div
+            v-if="hasTargetClasses"
             class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/20 px-3 py-2 text-xs"
           >
             <div class="flex flex-wrap items-center gap-1.5 overflow-hidden">

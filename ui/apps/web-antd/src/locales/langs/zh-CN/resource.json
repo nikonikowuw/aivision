@@ -201,7 +201,7 @@
       "tabRules": "区域与警戒线绘制",
       "currentTargets": "当前生效目标",
       "adjustTargets": "调整检测目标",
-      "allTargetsActive": "全部 80 类目标"
+      "allTargetsActive": "全部支持目标 (全通配)"
     },
     "ruleEditor": {
       "role": {

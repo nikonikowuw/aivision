@@ -201,7 +201,7 @@
       "tabRules": "Detection Zones & Rules",
       "currentTargets": "Active Target Classes",
       "adjustTargets": "Adjust Targets",
-      "allTargetsActive": "All 80 Targets"
+      "allTargetsActive": "All Supported Targets (Wildcard)"
     },
     "ruleEditor": {
       "role": {

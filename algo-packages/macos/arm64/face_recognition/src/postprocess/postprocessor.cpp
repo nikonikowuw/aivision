@@ -291,6 +291,7 @@ std::string Postprocessor::serialize_recognition_json(
             ss << "        \"bbox\": [" << p.face_bbox[0] << ", " << p.face_bbox[1] << ", "
                << p.face_bbox[2] << ", " << p.face_bbox[3] << "],\n";
             ss << "        \"confidence\": " << p.face_confidence << ",\n";
+            ss << "        \"quality_score\": " << p.face_quality << ",\n";
             ss << "        \"landmarks\": [\n";
             for (int k = 0; k < 5; ++k) {
                 ss << "          [" << p.face_landmarks[k * 2] << ", " << p.face_landmarks[k * 2 + 1] << "]"

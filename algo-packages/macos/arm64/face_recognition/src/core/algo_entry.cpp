@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -292,6 +293,7 @@ void process_face_feature_and_track_state(
     float face_h_px = best_face->y2 - best_face->y1;
     float min_dim = std::min(face_w_px, face_h_px);
     float q_score = evaluate_face_quality(*best_face, orig_w, orig_h);
+    rp.face_quality = std::clamp(q_score / 100.0f, 0.0f, 1.0f);
 
     bool need_extract = true;
     if (inst->mode != AV_INSTANCE_INSTALL_SELF_TEST && inst->config.feature_mode == "best_shot") {
@@ -361,7 +363,14 @@ static int library_open(const av_algo_library_args* args, av_algo_library* out) 
         if (env_vars.contains("YOLO_MODEL_PATH")) lib->yolo_path = env_vars["YOLO_MODEL_PATH"];
         if (env_vars.contains("SCRFD_MODEL_PATH")) lib->scrfd_path = env_vars["SCRFD_MODEL_PATH"];
         if (env_vars.contains("SCRFD_REG_MODEL_PATH")) lib->scrfd_reg_path = env_vars["SCRFD_REG_MODEL_PATH"];
-        if (env_vars.contains("GLINTR_MODEL_PATH")) lib->glintr_path = env_vars["GLINTR_MODEL_PATH"];
+        if (env_vars.contains("GLINTR_MODEL_PATH")) {
+            lib->glintr_path = env_vars["GLINTR_MODEL_PATH"];
+        } else {
+            std::filesystem::path root(lib->package_root);
+            if (!std::filesystem::exists(root / lib->glintr_path) && std::filesystem::exists(root / "model/adaface_ir101.mlpackage")) {
+                lib->glintr_path = "model/adaface_ir101.mlpackage";
+            }
+        }
 
         if (env_vars.contains("ENABLE_PERSON_DETECTION")) {
             lib->default_config.enable_person_detection = (env_vars["ENABLE_PERSON_DETECTION"] == "true" || env_vars["ENABLE_PERSON_DETECTION"] == "1");

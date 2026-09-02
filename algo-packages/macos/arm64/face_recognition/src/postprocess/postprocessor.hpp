@@ -31,6 +31,7 @@ struct RecognizedPerson {
     bool has_face = false;
     float face_bbox[4] = {0};     // 原图归一化坐标 [x, y, w, h]
     float face_confidence = 0.0f;
+    float face_quality = 0.0f;    // 综合人脸质量得分 [0.0, 1.0]
     float face_landmarks[10] = {0}; // 原图归一化坐标 [x0, y0, ..., x4, y4]
     std::string embedding_base64; // 512 float32 little-endian Base64
 };

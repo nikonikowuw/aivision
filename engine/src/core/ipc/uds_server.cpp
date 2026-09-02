@@ -2553,6 +2553,7 @@ private:
             bool has_face = false;
             double person_confidence = 0.0;
             double face_confidence = 0.0;
+            double quality_score = 0.0;
             std::string attributes_json;
         };
         const auto valid_bbox = [](const nlohmann::json& json, std::array<double, 4>& bbox) {
@@ -2607,7 +2608,24 @@ private:
                     candidate.face_confidence > 1.0) {
                     return;
                 }
+                if (face.contains("quality_score") && face["quality_score"].is_number()) {
+                    double q = face["quality_score"].get<double>();
+                    if (std::isfinite(q) && q >= 0.0) {
+                        if (q > 1.0 && q <= 100.0) q /= 100.0;
+                        candidate.quality_score = std::clamp(q, 0.0, 1.0);
+                    }
+                } else {
+                    candidate.quality_score = candidate.face_confidence;
+                }
                 candidate.has_face = true;
+            } else if (person.contains("quality_score") && person["quality_score"].is_number()) {
+                double q = person["quality_score"].get<double>();
+                if (std::isfinite(q) && q >= 0.0) {
+                    if (q > 1.0 && q <= 100.0) q /= 100.0;
+                    candidate.quality_score = std::clamp(q, 0.0, 1.0);
+                }
+            } else {
+                candidate.quality_score = candidate.person_confidence;
             }
 
             if (person.contains("target_type")) {
@@ -2623,8 +2641,10 @@ private:
             nlohmann::json attributes = nlohmann::json::object();
             attributes["has_face"] = candidate.has_face;
             attributes["person_confidence"] = candidate.person_confidence;
+            attributes["quality_score"] = candidate.quality_score;
             if (candidate.has_face) {
                 attributes["face_confidence"] = candidate.face_confidence;
+                attributes["face_quality_score"] = candidate.quality_score;
                 attributes["face_bbox"] = {candidate.face_bbox[0], candidate.face_bbox[1],
                                              candidate.face_bbox[2], candidate.face_bbox[3]};
             }
@@ -2658,8 +2678,7 @@ private:
             for (const auto& candidate : candidates) {
                 const std::string state_key = instance->get_run_id() + "/" + std::to_string(candidate.track_id);
                 const auto state = generic_track_states_.find(state_key);
-                const float quality = static_cast<float>(candidate.has_face ? candidate.face_confidence
-                                                                            : candidate.person_confidence);
+                const float quality = static_cast<float>(candidate.quality_score);
                 const bool due = state == generic_track_states_.end() ||
                                  now - state->second.last_report_at >= std::chrono::milliseconds(800) ||
                                  quality >= state->second.last_quality + 0.15f;
@@ -2687,7 +2706,9 @@ private:
                     event.mutable_sub_bbox()->set_x_max(static_cast<float>(candidate.face_bbox[0] + candidate.face_bbox[2]));
                     event.mutable_sub_bbox()->set_y_max(static_cast<float>(candidate.face_bbox[1] + candidate.face_bbox[3]));
                 }
-                event.set_confidence(static_cast<float>(candidate.person_confidence));
+                const float detection_confidence = static_cast<float>(
+                    candidate.target_type == "face" && candidate.has_face ? candidate.face_confidence : candidate.person_confidence);
+                event.set_confidence(detection_confidence);
                 event.set_quality_score(quality);
                 event.set_is_recognized(recognized_track_ids.contains(candidate.track_id));
                 event.set_attributes_json(candidate.attributes_json);
@@ -2912,7 +2933,7 @@ private:
 
                 const auto& face = person["face"];
                 if (!face.is_object() || !field_allowed(face, {
-                        "bbox", "confidence", "landmarks", "embedding"}) ||
+                        "bbox", "confidence", "quality_score", "landmarks", "embedding"}) ||
                     !face.contains("bbox") || !face.contains("confidence") ||
                     !face["confidence"].is_number() || !face.contains("landmarks") ||
                     !face.contains("embedding")) {
@@ -2929,6 +2950,22 @@ private:
                     face_confidence > 1.0) {
                     reject("face confidence is invalid");
                     return;
+                }
+                double face_quality = face_confidence;
+                if (face.contains("quality_score")) {
+                    if (!face["quality_score"].is_number()) {
+                        reject("face quality score is invalid");
+                        return;
+                    }
+                    face_quality = face["quality_score"].get<double>();
+                    if (!std::isfinite(face_quality) || face_quality < 0.0) {
+                        reject("face quality score is invalid");
+                        return;
+                    }
+                    if (face_quality > 1.0 && face_quality <= 100.0) {
+                        face_quality /= 100.0;
+                    }
+                    face_quality = std::clamp(face_quality, 0.0, 1.0);
                 }
                 const auto& landmarks = face["landmarks"];
                 if (!landmarks.is_array() || landmarks.size() != 5) {
@@ -2995,7 +3032,7 @@ private:
                 faces_with_embedding.push_back(ParsedFace{
                     .track_id = track_id,
                     .bbox = face_bbox,
-                    .quality_score = face_confidence,
+                    .quality_score = face_quality,
                     .image_request_index = faces_with_embedding.size(),
                     .embedding = std::move(query),
                     .match = match,

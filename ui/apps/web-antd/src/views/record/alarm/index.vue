@@ -6,6 +6,7 @@ import { ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
+import { formatDateTime } from '@vben/utils';
 
 import {
   Button,
@@ -384,7 +385,7 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
             >
               <DescriptionsItem :label="$t('record.alarm.detail.occurredAt')">
                 <span class="text-xs text-foreground">{{
-                  currentDetail.occurredAt
+                  formatDateTime(currentDetail.occurredAt) || '-'
                 }}</span>
               </DescriptionsItem>
               <DescriptionsItem :label="$t('record.alarm.detail.camera')">

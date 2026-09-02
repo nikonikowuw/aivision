@@ -6,6 +6,7 @@ import { ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
+import { formatDateTime } from '@vben/utils';
 
 import {
   Button,
@@ -320,7 +321,7 @@ function formatSimilarity(value?: number): string {
             {{ currentDetail.cameraName || currentDetail.cameraId || '-' }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.face.detail.observedAt')">
-            {{ currentDetail.observedAt }}
+            {{ formatDateTime(currentDetail.observedAt) || '-' }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.face.detail.eventId')" :span="2">
             <Tooltip :title="currentDetail.eventId">

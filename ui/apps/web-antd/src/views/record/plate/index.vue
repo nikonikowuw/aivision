@@ -6,6 +6,7 @@ import { ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
+import { formatDateTime } from '@vben/utils';
 
 import {
   Button,
@@ -416,7 +417,7 @@ function getPlateColorLabel(color?: string): string {
             {{ currentDetail.cameraName || currentDetail.cameraId }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.observedAt')">
-            {{ currentDetail.observedAt }}
+            {{ formatDateTime(currentDetail.observedAt) || '-' }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.eventId')">
             <Tooltip :title="currentDetail.eventId">

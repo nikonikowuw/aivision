@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { $t } from '@vben/locales';
 import { useAccessStore } from '@vben/stores';
+import { formatDateTime } from '@vben/utils';
 
 import {
   Badge,
@@ -237,10 +238,10 @@ async function handleConfirmRegister() {
             </span>
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.capture.drawer.startTime')">
-            {{ capture.firstObservedAt }}
+            {{ formatDateTime(capture.firstObservedAt) || '-' }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.capture.drawer.endTime')">
-            {{ capture.lastObservedAt }}
+            {{ formatDateTime(capture.lastObservedAt) || '-' }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.capture.drawer.algorithm')">
             <span class="text-xs text-neutral-500">
@@ -268,7 +269,11 @@ async function handleConfirmRegister() {
               </span>
               <span class="text-neutral-400">
                 {{ $t('record.capture.drawer.snapshotTime') }}:
-                {{ activeSnapshot.capturedAt || activeSnapshot.observedAt }}
+                {{
+                  formatDateTime(
+                    activeSnapshot.capturedAt || activeSnapshot.observedAt,
+                  ) || '-'
+                }}
               </span>
             </div>
           </template>

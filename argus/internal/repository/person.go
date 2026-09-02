@@ -95,8 +95,17 @@ func (r *personRepository) Delete(ctx context.Context, personID string) (bool, e
 			return nil
 		}
 		affected = true
+		var faceCount int64
+		if err := tx.Model(&model.PersonFace{}).Where("person_id = ?", personID).Count(&faceCount).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("person_id = ?", personID).Delete(&model.PersonFace{}).Error; err != nil {
 			return err
+		}
+		if faceCount > 0 {
+			if _, err := BumpFaceGalleryRevisionTx(ctx, tx); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -115,7 +124,16 @@ func (r *personRepository) BatchDelete(ctx context.Context, personIDs []string) 
 		if err := tx.Where("person_id IN ?", personIDs).Delete(&model.Person{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("person_id IN ?", personIDs).Delete(&model.PersonFace{}).Error
+		res := tx.Where("person_id IN ?", personIDs).Delete(&model.PersonFace{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected > 0 {
+			if _, err := BumpFaceGalleryRevisionTx(ctx, tx); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return writeError(err)
@@ -234,4 +252,3 @@ func (r *personRepository) UpdatePrimaryFaceID(ctx context.Context, personID, fa
 	}
 	return &person, nil
 }
-

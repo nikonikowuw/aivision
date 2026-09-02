@@ -30,10 +30,15 @@ type Runtime struct {
 	serveDone chan struct{}
 }
 
+// MaxGRPCMessageSize 限制 gRPC 单次传输消息大小为 32MB（容纳 5000 条目人脸底库与高清抓拍）
+const MaxGRPCMessageSize = 32 << 20
+
 // NewRuntime 构造入站 gRPC server 并注册 ControlPlane/Report 服务。
 // 业务 adapter 由调用方显式注入（生产为 unavailable fail-closed 适配器，测试为 recording fakes）。
 func NewRuntime(log *zap.Logger, desiredState DesiredStateAdapter, report ReportAdapter) *Runtime {
 	server := grpc.NewServer(
+		grpc.MaxRecvMsgSize(MaxGRPCMessageSize),
+		grpc.MaxSendMsgSize(MaxGRPCMessageSize),
 		grpc.ChainUnaryInterceptor(
 			recoveryServerInterceptor(log),
 			loggingServerInterceptor(log),

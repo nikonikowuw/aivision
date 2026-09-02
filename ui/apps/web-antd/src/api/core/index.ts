@@ -3,6 +3,7 @@ export * from './algorithm';
 export * from './auth';
 export * from './camera';
 export * from './dept';
+export * from './face';
 export * from './file';
 export * from './log';
 export * from './menu';

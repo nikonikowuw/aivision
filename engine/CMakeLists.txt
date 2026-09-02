@@ -41,6 +41,7 @@ endfunction()
 
 if(ENGINE_ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_compile_definitions(PROTOBUF_MESSAGE_GLOBALS_TEMPORARY_OPTOUT)
     add_link_options(-fsanitize=address)
 endif()
 

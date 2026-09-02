@@ -131,5 +131,55 @@
       "hk_macau": "港澳车牌",
       "other": "其他车牌"
     }
+  },
+  "face": {
+    "title": "人脸识别记录",
+    "query": "查询人脸记录",
+    "export": "导出人脸记录",
+    "filter": {
+      "camera": "摄像头",
+      "cameraPlaceholder": "请选择摄像头",
+      "personName": "人员姓名",
+      "personNamePlaceholder": "输入人员姓名(支持模糊匹配)",
+      "personId": "人员 ID",
+      "personIdPlaceholder": "输入人员 ID",
+      "timeRange": "识别时间",
+      "minSimilarity": "最低相似度",
+      "maxSimilarity": "最高相似度",
+      "search": "查询",
+      "reset": "重置"
+    },
+    "columns": {
+      "id": "ID",
+      "faceCrop": "人脸特写",
+      "panorama": "全景图",
+      "personName": "识别人员",
+      "personId": "人员 ID",
+      "similarity": "相似度",
+      "cameraName": "摄像头",
+      "observedAt": "识别时间",
+      "trackId": "Track ID",
+      "action": "操作"
+    },
+    "detail": {
+      "title": "人脸识别详情",
+      "eventInfo": "识别信息",
+      "eventId": "事件标识",
+      "camera": "识别摄像头",
+      "algorithm": "识别算法",
+      "algorithmVersion": "算法版本",
+      "timeSynced": "时间同步",
+      "synced": "已同步",
+      "notSynced": "未同步",
+      "observedAt": "识别时间",
+      "personName": "人员姓名",
+      "personId": "人员 ID",
+      "faceId": "人脸样本 ID",
+      "similarity": "相似度",
+      "trackId": "Track ID",
+      "faceCrop": "人脸特写图",
+      "panorama": "全景抓拍图",
+      "noImage": "暂无图片"
+    }
   }
 }

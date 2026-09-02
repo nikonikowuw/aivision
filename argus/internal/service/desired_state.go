@@ -16,18 +16,19 @@ import (
 const deviceIDPlaceholder = "edge-node-01"
 
 // desiredStateAdapter 实现 engineipc.DesiredStateAdapter：
-// 以 repository 的 revision 与全量快照应答 Engine 的 GetDesiredState（design §3.3）。
+// 以 repository 的 revision 与全量快照应答 Engine 的 GetDesiredState 与 GetFaceGallery。
 type desiredStateAdapter struct {
-	repo repository.TaskRepository
-	log  *zap.Logger
+	repo     repository.TaskRepository
+	faceRepo repository.PersonFaceRepository
+	log      *zap.Logger
 }
 
 // NewDesiredStateAdapter 创建 desiredStateAdapter。
-func NewDesiredStateAdapter(repo repository.TaskRepository, log *zap.Logger) engineipc.DesiredStateAdapter {
+func NewDesiredStateAdapter(repo repository.TaskRepository, faceRepo repository.PersonFaceRepository, log *zap.Logger) engineipc.DesiredStateAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &desiredStateAdapter{repo: repo, log: log}
+	return &desiredStateAdapter{repo: repo, faceRepo: faceRepo, log: log}
 }
 
 // DesiredState 返回当前 revision 下的完整期望状态。
@@ -43,4 +44,26 @@ func (a *desiredStateAdapter) DesiredState(ctx context.Context, _ uint64) (*argu
 	}
 	state.DeviceId = deviceIDPlaceholder
 	return state, nil
+}
+
+// FaceGallery 返回当前 revision 下的人脸底库快照。
+// 对齐 PRD R1/R2/AC2：若 currentGalleryRevision 与当前库一致，返回 changed=false 且 entries 为空。
+func (a *desiredStateAdapter) FaceGallery(ctx context.Context, currentGalleryRevision uint64) (*argusv1.GetFaceGalleryResponse, error) {
+	if a.faceRepo == nil {
+		return &argusv1.GetFaceGalleryResponse{
+			GalleryRevision: 0,
+			Changed:         false,
+			Code:            engineipc.CodeOK,
+		}, nil
+	}
+	rev, changed, entries, err := a.faceRepo.LoadFaceGallery(ctx, currentGalleryRevision)
+	if err != nil {
+		return nil, err
+	}
+	return &argusv1.GetFaceGalleryResponse{
+		GalleryRevision: rev,
+		Changed:         changed,
+		Entries:         entries,
+		Code:            engineipc.CodeOK,
+	}, nil
 }

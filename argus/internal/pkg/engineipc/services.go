@@ -48,6 +48,35 @@ func (s *controlPlaneService) GetDesiredState(ctx context.Context, req *argusv1.
 	return &argusv1.GetDesiredStateResponse{DesiredState: ds, Code: CodeOK}, nil
 }
 
+// GetFaceGallery 返回 Go 权威的人脸底库快照；adapter 错误归一化为稳定响应 code。
+func (s *controlPlaneService) GetFaceGallery(ctx context.Context, req *argusv1.GetFaceGalleryRequest) (*argusv1.GetFaceGalleryResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+	resp, err := s.adapter.FaceGallery(ctx, req.GetCurrentGalleryRevision())
+	if err != nil {
+		if isTransportError(err) {
+			return nil, err
+		}
+		code, msg := normalizeAdapterError(err)
+		if code == CodeInternalError {
+			s.log.Warn("face gallery adapter failed",
+				zap.String("method", "/argus.v1.ControlPlaneService/GetFaceGallery"),
+				zap.Error(err))
+		}
+		return &argusv1.GetFaceGalleryResponse{Code: code, ErrorMessage: msg}, nil
+	}
+	if resp == nil {
+		s.log.Error("face gallery adapter returned nil response",
+			zap.String("method", "/argus.v1.ControlPlaneService/GetFaceGallery"))
+		return &argusv1.GetFaceGalleryResponse{
+			Code:         CodeInternalError,
+			ErrorMessage: "internal error",
+		}, nil
+	}
+	return resp, nil
+}
+
 // reportService 实现生成的 ReportServiceServer：Engine 通过 app.sock 异步上报
 // 告警、任务/实例状态、遥测与孤儿图片。
 type reportService struct {
@@ -115,6 +144,19 @@ func (s *reportService) ReportPlateObservation(ctx context.Context, req *argusv1
 		return nil, transportErr
 	}
 	return &argusv1.ReportPlateObservationResponse{Code: code, ErrorMessage: msg}, nil
+}
+
+// ReportFaceObservation 接收人脸识别记录上报。
+func (s *reportService) ReportFaceObservation(ctx context.Context, req *argusv1.ReportFaceObservationRequest) (*argusv1.ReportFaceObservationResponse, error) {
+	const method = "/argus.v1.ReportService/ReportFaceObservation"
+	if req == nil || req.Observation == nil {
+		return nil, invalidArgument(method)
+	}
+	code, msg, transportErr := s.adapterResult(method, s.adapter.AcceptFaceObservation(ctx, req.Observation))
+	if transportErr != nil {
+		return nil, transportErr
+	}
+	return &argusv1.ReportFaceObservationResponse{Code: code, ErrorMessage: msg}, nil
 }
 
 // ReportTaskState 接收任务状态上报；只有 adapter 成功接受后才返回空 code。

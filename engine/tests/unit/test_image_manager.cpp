@@ -10,6 +10,19 @@
 #include "argus/core/image_manager.hpp"
 #include "argus/platform/mock_platform.hpp"
 
+namespace {
+
+class ThumbnailFailureProcessor final : public argus::platform::MockImageProcessor {
+public:
+    av_status encode_thumbnail_jpeg(const av_frame_desc*, int, int,
+                                    std::vector<uint8_t>& out_jpeg) override {
+        out_jpeg.clear();
+        return AV_ERR_INTERNAL;
+    }
+};
+
+} // namespace
+
 
 TEST(ImageManagerTest, AppendsSuffixWhenImageArtifactsAreOccupied) {
     namespace fs = std::filesystem;
@@ -71,6 +84,36 @@ TEST(ImageManagerTest, AppendsSuffixWhenImageArtifactsAreOccupied) {
     ASSERT_EQ(unreported.size(), 1U);
     EXPECT_EQ(unreported[0].image_id, record.image_id);
 
+    fs::remove_all(root);
+}
+
+TEST(ImageManagerTest, RejectsThumbnailEncodingFailureWithoutCatalogEntry) {
+    namespace fs = std::filesystem;
+    const fs::path root = "build/test_images_thumbnail_failure";
+    fs::remove_all(root);
+
+    auto processor = std::make_shared<ThumbnailFailureProcessor>();
+    argus::core::ImageManager mgr([] { return int64_t{1788185888000000000LL}; });
+    mgr.init(root.string(), processor);
+
+    av_frame_desc frame{};
+    frame.size = sizeof(av_frame_desc);
+    frame.api_version = AV_ALGO_API_VERSION;
+    frame.width = 1920;
+    frame.height = 1080;
+    frame.pixel_format = AV_PIX_NV12;
+
+    argus::core::ImageRecord record;
+    EXPECT_EQ(mgr.save_detection_image(&frame, nullptr, "thumbnail-failure", &record), AV_ERR_INTERNAL);
+    EXPECT_TRUE(mgr.list_unreported_images().empty());
+
+    std::error_code ec;
+    for (const auto& entry : fs::recursive_directory_iterator(root, ec)) {
+        ASSERT_FALSE(ec);
+        if (entry.is_regular_file()) {
+            EXPECT_NE(entry.path().extension(), ".jpg");
+        }
+    }
     fs::remove_all(root);
 }
 

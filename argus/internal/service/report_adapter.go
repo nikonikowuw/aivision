@@ -43,12 +43,14 @@ type InstanceRuntimeState struct {
 //   - AcceptTaskState / AcceptInstanceState 更新内存缓存，仅状态码变化时落库（D6）；
 //   - AcceptAlarm 幂等持久化单目标告警到 alarm_records 表；
 //   - AcceptPlateObservation 幂等持久化车牌抓拍过车记录到 plate_observations 表；
+//   - AcceptFaceObservation 单调 upsert 人脸抓拍识别记录到 face_observations 表；
 //   - ReconcileOrphanImages 针对已落库图片保留（retain），超期未落库图片删除（delete）；
 //   - AcceptMetrics 保持 fail-closed。
 type ReportAdapter struct {
 	repo      repository.TaskRepository
 	alarmRepo repository.AlarmRecordRepository
 	plateRepo repository.PlateObservationRepository
+	faceRepo  repository.FaceObservationRepository
 	log       *zap.Logger
 
 	mu    sync.RWMutex
@@ -64,14 +66,15 @@ type ReportAdapter struct {
 
 // NewReportAdapter 创建 ReportAdapter（保持原有两参数构造函数签名，兼容既有单测与调用者）。
 func NewReportAdapter(repo repository.TaskRepository, log *zap.Logger) *ReportAdapter {
-	return NewReportAdapterWithAlarm(repo, nil, nil, log)
+	return NewReportAdapterWithAlarm(repo, nil, nil, nil, log)
 }
 
-// NewReportAdapterWithAlarm 具备告警落库与车牌观测记录落库能力的完整构造函数。
+// NewReportAdapterWithAlarm 具备告警落库、车牌观测与人脸识别记录落库能力的完整构造函数。
 func NewReportAdapterWithAlarm(
 	repo repository.TaskRepository,
 	alarmRepo repository.AlarmRecordRepository,
 	plateRepo repository.PlateObservationRepository,
+	faceRepo repository.FaceObservationRepository,
 	log *zap.Logger,
 ) *ReportAdapter {
 	if log == nil {
@@ -81,6 +84,7 @@ func NewReportAdapterWithAlarm(
 		repo:      repo,
 		alarmRepo: alarmRepo,
 		plateRepo: plateRepo,
+		faceRepo:  faceRepo,
 		log:       log,
 		tasks:     make(map[string]TaskRuntimeState),
 		insts:     make(map[string]InstanceRuntimeState),
@@ -353,6 +357,72 @@ func (a *ReportAdapter) AcceptPlateObservation(ctx context.Context, obs *argusv1
 	return nil
 }
 
+// AcceptFaceObservation 人脸抓拍识别记录持久化：根据 event_id 单调 upsert。
+func (a *ReportAdapter) AcceptFaceObservation(ctx context.Context, obs *argusv1.FaceObservation) error {
+	if a.faceRepo == nil {
+		return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "face observation report service unavailable")
+	}
+	if obs == nil {
+		return errors.New("face observation is nil")
+	}
+	eventID := strings.TrimSpace(obs.GetEventId())
+	if eventID == "" {
+		return errors.New("face observation event_id is empty")
+	}
+
+	// 校验图片路径安全性
+	for _, p := range []string{obs.GetImageRelPath(), obs.GetFaceImageRelPath()} {
+		if p != "" {
+			cleanPath := filepath.Clean(p)
+			if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+				return errors.New("face observation image path is invalid")
+			}
+		}
+	}
+
+	var bbox []float32
+	if pbBBox := obs.GetFaceBbox(); pbBBox != nil {
+		bbox = []float32{pbBBox.GetXMin(), pbBBox.GetYMin(), pbBBox.GetXMax(), pbBBox.GetYMax()}
+	}
+	bboxJSON, err := json.Marshal(bbox)
+	if err != nil {
+		return fmt.Errorf("marshal face bbox: %w", err)
+	}
+
+	observedAt := time.Now()
+	if obs.GetWallTimeNs() > 0 {
+		observedAt = time.Unix(0, obs.GetWallTimeNs())
+	}
+
+	record := &model.FaceObservation{
+		EventID:          eventID,
+		InstanceID:       obs.GetInstanceId(),
+		CameraID:         obs.GetCameraId(),
+		CameraName:       obs.GetCameraName(),
+		AlgorithmID:      obs.GetAlgorithmId(),
+		AlgorithmVersion: obs.GetAlgorithmVersion(),
+		TrackID:          obs.GetTrackId(),
+		FaceID:           obs.GetFaceId(),
+		PersonID:         obs.GetPersonId(),
+		PersonName:       obs.GetPersonName(),
+		Similarity:       obs.GetSimilarity(),
+		BBoxJSON:         bboxJSON,
+		TimeSynced:       obs.GetTimeSynced(),
+		ImageID:          obs.GetImageId(),
+		ImageRelPath:     obs.GetImageRelPath(),
+		FaceImageID:      obs.GetFaceImageId(),
+		FaceImageRelPath: obs.GetFaceImageRelPath(),
+		ObservedAt:       observedAt,
+	}
+
+	if err := a.faceRepo.UpsertMonotonic(ctx, record); err != nil {
+		a.log.Error("persist face observation failed", zap.String("event_id", eventID), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // AcceptMetrics 设备遥测时序落库属后续任务，语义保持 fail-closed。
 func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry) error {
 	return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "metrics report service unavailable")
@@ -364,7 +434,7 @@ func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry)
 // 3. 未命中且生成时间超过保护期（5分钟）放入 DeleteImageIDs；
 // 4. 未命中但在保护期内的图片不做处理（等待下轮对账或落库）。
 func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*argusv1.OrphanImageEntry) (engineipc.OrphanDisposition, error) {
-	if a.alarmRepo == nil && a.plateRepo == nil {
+	if a.alarmRepo == nil && a.plateRepo == nil && a.faceRepo == nil {
 		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "image reference repositories unavailable")
 	}
 
@@ -400,6 +470,16 @@ func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*ar
 		existingIDs, err := a.plateRepo.FindExistingImageIDs(ctx, allImageIDs)
 		if err != nil {
 			a.log.Error("find plate image ids failed during orphan reconciliation", zap.Error(err))
+			return engineipc.OrphanDisposition{}, err
+		}
+		for _, id := range existingIDs {
+			existingMap[id] = struct{}{}
+		}
+	}
+	if a.faceRepo != nil {
+		existingIDs, err := a.faceRepo.FindExistingImageIDs(ctx, allImageIDs)
+		if err != nil {
+			a.log.Error("find face image ids failed during orphan reconciliation", zap.Error(err))
 			return engineipc.OrphanDisposition{}, err
 		}
 		for _, id := range existingIDs {

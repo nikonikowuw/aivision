@@ -113,6 +113,19 @@ func (a *blockingDesiredStateAdapter) DesiredState(ctx context.Context, _ uint64
 	}
 }
 
+func (a *blockingDesiredStateAdapter) FaceGallery(ctx context.Context, _ uint64) (*argusv1.GetFaceGalleryResponse, error) {
+	select {
+	case a.entered <- struct{}{}:
+	default:
+	}
+	select {
+	case <-a.release:
+		return &argusv1.GetFaceGalleryResponse{}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (a *blockingDesiredStateAdapter) free() {
 	a.once.Do(func() { close(a.release) })
 }

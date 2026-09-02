@@ -274,7 +274,7 @@ void process_face_feature_and_track_state(
     rp.face_bbox[0] = best_face->x1 / static_cast<float>(orig_w);
     rp.face_bbox[1] = best_face->y1 / static_cast<float>(orig_h);
     rp.face_bbox[2] = (best_face->x2 - best_face->x1) / static_cast<float>(orig_w);
-    rp.face_bbox[3] = (best_face->y2 - best_face->y1) / static_cast<float>(orig_w);
+    rp.face_bbox[3] = (best_face->y2 - best_face->y1) / static_cast<float>(orig_h);
     rp.face_confidence = best_face->score;
     for (int k = 0; k < 5; ++k) {
         rp.face_landmarks[k * 2 + 0] = best_face->landmarks[k * 2 + 0] / static_cast<float>(orig_w);

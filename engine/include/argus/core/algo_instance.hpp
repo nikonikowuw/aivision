@@ -124,6 +124,19 @@ public:
     [[nodiscard]] const MotionGate& get_motion_gate() const { return motion_gate_; }
 
     /**
+     * @brief 设置实例级人脸比对阈值
+     * @param threshold 归一化相似度阈值，范围 [0,1]
+     */
+    void set_face_similarity_threshold(float threshold) { face_similarity_threshold_.store(threshold, std::memory_order_release); }
+
+    /**
+     * @brief 获取实例级人脸比对阈值
+     */
+    [[nodiscard]] float get_face_similarity_threshold() const {
+        return face_similarity_threshold_.load(std::memory_order_acquire);
+    }
+
+    /**
      * @brief 设置推理结果到达时的外部处理回调
      */
     void set_result_callback(std::function<void(const av_algo_result&, const av_frame_desc&)> cb) {
@@ -150,6 +163,7 @@ private:
     int32_t target_fps_ = 25;
     std::string params_json_;
     std::string run_id_;
+    std::atomic<float> face_similarity_threshold_{0.7f}; ///< 未配置时的人脸比对阈值
 
     const av_algo_abi* abi_ = nullptr;
     av_algo_library lib_handle_ = nullptr;

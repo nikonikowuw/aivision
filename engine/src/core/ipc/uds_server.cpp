@@ -17,6 +17,7 @@
 #include "argus/core/logging/log_adapter.hpp"
 #include "argus/core/probe_rtsp.hpp"
 #include "argus/core/resource_ledger.hpp"
+#include "argus/core/face_gallery.hpp"
 #include "argus/core/task_scheduler.hpp"
 #include "argus/core/telemetry_collector.hpp"
 #include "argus/platform/platform_api.hpp"
@@ -67,6 +68,55 @@ bool safe_package_component(const std::string& value) {
     if (value.empty() || value == "." || value == ".." || value.size() > 128) return false;
     for (const unsigned char ch : value) {
         if (!(std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.')) return false;
+    }
+    return true;
+}
+
+bool decode_base64_strict(std::string_view encoded, std::vector<uint8_t>& decoded) {
+    decoded.clear();
+    if (encoded.empty() || encoded.size() % 4 != 0) return false;
+
+    const auto value_of = [](char ch) -> int {
+        if (ch >= 'A' && ch <= 'Z') return ch - 'A';
+        if (ch >= 'a' && ch <= 'z') return ch - 'a' + 26;
+        if (ch >= '0' && ch <= '9') return ch - '0' + 52;
+        if (ch == '+') return 62;
+        if (ch == '/') return 63;
+        return -1;
+    };
+
+    size_t padding = 0;
+    if (encoded.back() == '=') ++padding;
+    if (encoded.size() > 1 && encoded[encoded.size() - 2] == '=') ++padding;
+    if (padding > 2) return false;
+    for (size_t index = 0; index + padding < encoded.size(); ++index) {
+        if (encoded[index] == '=') return false;
+    }
+    decoded.reserve(encoded.size() / 4 * 3 - padding);
+
+    for (size_t offset = 0; offset < encoded.size(); offset += 4) {
+        const bool last_block = offset + 4 == encoded.size();
+        const int first = value_of(encoded[offset]);
+        const int second = value_of(encoded[offset + 1]);
+        const bool third_padding = encoded[offset + 2] == '=';
+        const bool fourth_padding = encoded[offset + 3] == '=';
+        const int third = third_padding ? 0 : value_of(encoded[offset + 2]);
+        const int fourth = fourth_padding ? 0 : value_of(encoded[offset + 3]);
+        if (first < 0 || second < 0 || third < 0 || fourth < 0 ||
+            (!last_block && (third_padding || fourth_padding)) ||
+            (third_padding && !fourth_padding) ||
+            (third_padding && (second & 0x0f) != 0) ||
+            (!third_padding && fourth_padding && (third & 0x03) != 0) ||
+            (!last_block && (third_padding || fourth_padding))) {
+            return false;
+        }
+        decoded.push_back(static_cast<uint8_t>((first << 2) | (second >> 4)));
+        if (!third_padding) {
+            decoded.push_back(static_cast<uint8_t>((second << 4) | (third >> 2)));
+        }
+        if (!fourth_padding) {
+            decoded.push_back(static_cast<uint8_t>((third << 6) | fourth));
+        }
     }
     return true;
 }
@@ -400,6 +450,10 @@ public:
             if (desired_task_ids.find(camera_id) != desired_task_ids.end()) continue;
             TaskScheduler::instance().stop_task(camera_id);
             task_configs_.erase(camera_id);
+            {
+                std::lock_guard<std::mutex> lock(camera_names_mutex_);
+                camera_names_.erase(camera_id);
+            }
             auto* item = response->add_results();
             item->set_kind(argus::v1::RECONCILE_ITEM_KIND_TASK);
             item->set_id(camera_id);
@@ -890,11 +944,13 @@ public:
 private:
     // 一个异步 pending 对应一个检测或识别批次：多个目标事件共享同一帧引用和抓拍图片。
     struct PendingCapture {
-        enum class Kind { Alarm, PlateObservation };
+        enum class Kind { Alarm, PlateObservation, FaceObservation };
         Kind kind = Kind::Alarm;
         std::vector<argus::v1::AlarmEvent> alarms;
         std::vector<argus::v1::PlateObservation> plates;
+        std::vector<argus::v1::FaceObservation> faces;
         std::vector<av_rect> plate_crop_rois;
+        std::vector<av_rect> face_crop_rois;
         std::string capture_id;
         av_frame_desc frame{};
         av_rect image_roi{};
@@ -910,7 +966,8 @@ private:
 
         PendingCapture(PendingCapture&& other) noexcept
             : kind(other.kind), alarms(std::move(other.alarms)), plates(std::move(other.plates)),
-              plate_crop_rois(std::move(other.plate_crop_rois)), capture_id(std::move(other.capture_id)),
+              faces(std::move(other.faces)), plate_crop_rois(std::move(other.plate_crop_rois)),
+              face_crop_rois(std::move(other.face_crop_rois)), capture_id(std::move(other.capture_id)),
               frame(other.frame), image_roi(other.image_roi), frame_ops(other.frame_ops),
               has_image(other.has_image), images_ready(other.images_ready),
               frame_retained(other.frame_retained), retry_count(other.retry_count) {
@@ -924,7 +981,9 @@ private:
             kind = other.kind;
             alarms = std::move(other.alarms);
             plates = std::move(other.plates);
+            faces = std::move(other.faces);
             plate_crop_rois = std::move(other.plate_crop_rois);
+            face_crop_rois = std::move(other.face_crop_rois);
             capture_id = std::move(other.capture_id);
             frame = other.frame;
             image_roi = other.image_roi;
@@ -957,6 +1016,13 @@ private:
     static constexpr size_t kMaxPendingAlarmQueueSize = 256;
     static constexpr size_t kMaxReportedEventIds = 65536;
     static constexpr uint32_t kMaxPlateReportRetries = 3;
+    static constexpr uint32_t kMaxFaceReportRetries = 3;
+    static constexpr size_t kMaxFaceTrackStates = 4096;
+    static constexpr float kFaceReportImprovementMargin = 0.03f;
+
+    struct FaceTrackReportState {
+        float reported_similarity = 0.0f;
+    };
 
     bool remember_event_id(const std::string& event_id) {
         const auto [it, inserted] = reported_events_.insert(event_id);
@@ -969,6 +1035,31 @@ private:
         return true;
     }
 
+    void forget_face_track_state_locked(const argus::v1::FaceObservation& face) {
+        const auto it = face_track_states_.find(face.event_id());
+        if (it == face_track_states_.end()) return;
+        if (it->second.reported_similarity <= face.similarity() + 1e-6f) {
+            face_track_states_.erase(it);
+        }
+    }
+
+    void forget_pending_face_states_locked(const PendingCapture& pending) {
+        if (pending.kind != PendingCapture::Kind::FaceObservation) return;
+        for (const auto& face : pending.faces) forget_face_track_state_locked(face);
+    }
+
+    void forget_face_track_states_for_run_id(const std::string& run_id) {
+        const std::string prefix = run_id + "/";
+        std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+        for (auto it = face_track_states_.begin(); it != face_track_states_.end();) {
+            if (it->first.starts_with(prefix)) {
+                it = face_track_states_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     void forget_pending_event_ids_locked(const PendingCapture& pending) {
         const auto forget = [this](const std::string& event_id) {
             if (reported_events_.erase(event_id) == 0) return;
@@ -979,6 +1070,8 @@ private:
             for (const auto& alarm : pending.alarms) forget(alarm.event_id());
         } else if (pending.kind == PendingCapture::Kind::PlateObservation) {
             for (const auto& plate : pending.plates) forget(plate.event_id());
+        } else if (pending.kind == PendingCapture::Kind::FaceObservation) {
+            for (const auto& face : pending.faces) forget(face.event_id());
         }
     }
 
@@ -987,63 +1080,76 @@ private:
         forget_pending_event_ids_locked(pending);
     }
 
-    void enqueue_pending_capture(PendingCapture pending, bool bypass_event_dedup = false) {
+    bool enqueue_pending_capture(PendingCapture pending, bool bypass_event_dedup = false) {
         PendingCapture dropped;
         bool accepted = false;
         {
             std::lock_guard<std::mutex> queue_lock(capture_mutex_);
-            if (capture_accepting_.load(std::memory_order_acquire) && capture_worker_running_) {
-                if (pending.kind == PendingCapture::Kind::Alarm) {
-                    std::vector<argus::v1::AlarmEvent> new_alarms;
-                    new_alarms.reserve(pending.alarms.size());
-                    for (auto& alarm : pending.alarms) {
-                        if (bypass_event_dedup || remember_event_id(alarm.event_id())) {
-                            new_alarms.push_back(std::move(alarm));
-                        }
-                    }
-                    if (!new_alarms.empty()) {
-                        pending.alarms = std::move(new_alarms);
-                        accepted = true;
-                    }
-                } else if (pending.kind == PendingCapture::Kind::PlateObservation) {
-                    if (bypass_event_dedup) {
-                        accepted = !pending.plates.empty();
-                    } else {
-                        std::vector<argus::v1::PlateObservation> new_plates;
-                        std::vector<av_rect> new_rois;
-                        new_plates.reserve(pending.plates.size());
-                        new_rois.reserve(pending.plate_crop_rois.size());
-                        for (size_t i = 0; i < pending.plates.size(); ++i) {
-                            if (remember_event_id(pending.plates[i].event_id())) {
-                                new_plates.push_back(std::move(pending.plates[i]));
-                                if (i < pending.plate_crop_rois.size()) {
-                                    new_rois.push_back(pending.plate_crop_rois[i]);
-                                }
-                            }
-                        }
-                        if (!new_plates.empty()) {
-                            pending.plates = std::move(new_plates);
-                            pending.plate_crop_rois = std::move(new_rois);
-                            accepted = true;
-                        }
-                    }
-                }
-                if (accepted) {
-                    if (capture_queue_.size() >= kMaxPendingAlarmQueueSize) {
-                        dropped = std::move(capture_queue_.front());
-                        capture_queue_.pop_front();
-                        forget_pending_event_ids_locked(dropped);
-                        capture_queue_dropped_.fetch_add(1, std::memory_order_relaxed);
-                    }
-                    capture_queue_.push_back(std::move(pending));
-                    capture_enqueued_.fetch_add(1, std::memory_order_relaxed);
-                }
-            }
+            accepted = enqueue_pending_capture_locked(pending, bypass_event_dedup, dropped);
         }
         // 释放被丢弃的旧帧和未入队（重复/停机）的当前帧，均不在队列锁内执行平台回调。
         dropped.release_frame();
         if (!accepted) pending.release_frame();
         if (accepted) capture_cv_.notify_one();
+        return accepted;
+    }
+
+    bool enqueue_pending_capture_locked(PendingCapture& pending, bool bypass_event_dedup,
+                                        PendingCapture& dropped) {
+        bool accepted = false;
+        if (capture_accepting_.load(std::memory_order_acquire) && capture_worker_running_) {
+            if (pending.kind == PendingCapture::Kind::Alarm) {
+                std::vector<argus::v1::AlarmEvent> new_alarms;
+                new_alarms.reserve(pending.alarms.size());
+                for (auto& alarm : pending.alarms) {
+                    if (bypass_event_dedup || remember_event_id(alarm.event_id())) {
+                        new_alarms.push_back(std::move(alarm));
+                    }
+                }
+                if (!new_alarms.empty()) {
+                    pending.alarms = std::move(new_alarms);
+                    accepted = true;
+                }
+            } else if (pending.kind == PendingCapture::Kind::PlateObservation) {
+                if (bypass_event_dedup) {
+                    accepted = !pending.plates.empty();
+                } else {
+                    std::vector<argus::v1::PlateObservation> new_plates;
+                    std::vector<av_rect> new_rois;
+                    new_plates.reserve(pending.plates.size());
+                    new_rois.reserve(pending.plate_crop_rois.size());
+                    for (size_t i = 0; i < pending.plates.size(); ++i) {
+                        if (remember_event_id(pending.plates[i].event_id())) {
+                            new_plates.push_back(std::move(pending.plates[i]));
+                            if (i < pending.plate_crop_rois.size()) {
+                                new_rois.push_back(pending.plate_crop_rois[i]);
+                            }
+                        }
+                    }
+                    if (!new_plates.empty()) {
+                        pending.plates = std::move(new_plates);
+                        pending.plate_crop_rois = std::move(new_rois);
+                        accepted = true;
+                    }
+                }
+            } else if (pending.kind == PendingCapture::Kind::FaceObservation) {
+                // 人脸同一 track 的相似度提升必须复用 event_id，由 track 状态负责去重。
+                // reported_events_ 只服务于告警/车牌事件，不能阻断更优人脸结果。
+                accepted = !pending.faces.empty();
+            }
+            if (accepted) {
+                if (capture_queue_.size() >= kMaxPendingAlarmQueueSize) {
+                    dropped = std::move(capture_queue_.front());
+                    capture_queue_.pop_front();
+                    forget_pending_event_ids_locked(dropped);
+                    forget_pending_face_states_locked(dropped);
+                    capture_queue_dropped_.fetch_add(1, std::memory_order_relaxed);
+                }
+                capture_queue_.push_back(std::move(pending));
+                capture_enqueued_.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+        return accepted;
     }
 
     void process_pending_capture(PendingCapture& pending) noexcept {
@@ -1173,9 +1279,105 @@ private:
                     // 图片已落盘，重试只复用 protobuf 中的图片引用，不再次访问已释放的帧。
                     enqueue_pending_capture(std::move(retry), true);
                 }
+            } else if (pending.kind == PendingCapture::Kind::FaceObservation) {
+                std::string pano_image_id;
+                std::string pano_image_rel_path;
+                std::vector<std::pair<std::string, std::string>> face_images;
+                bool capture_succeeded = pending.has_image;
+                if (pending.has_image && !pending.images_ready) {
+                    ImageRecord pano_record;
+                    const av_status pano_status = ImageManager::instance().save_detection_image(
+                        &pending.frame, nullptr, pending.capture_id + "-pano", &pano_record);
+                    if (pano_status == AV_OK) {
+                        pano_image_id = pano_record.image_id;
+                        pano_image_rel_path = pano_record.rel_path;
+                    } else {
+                        capture_succeeded = false;
+                        capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                    }
+
+                    if (capture_succeeded) {
+                        if (pending.face_crop_rois.size() != pending.faces.size()) {
+                            capture_succeeded = false;
+                            capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                        } else {
+                            face_images.resize(pending.faces.size());
+                            for (size_t i = 0; i < pending.faces.size(); ++i) {
+                                ImageRecord face_record;
+                                const av_status face_status = ImageManager::instance().save_detection_image(
+                                    &pending.frame, &pending.face_crop_rois[i],
+                                    pending.capture_id + "-face-" + std::to_string(i + 1), &face_record);
+                                if (face_status == AV_OK) {
+                                    face_images[i] = {face_record.image_id, face_record.rel_path};
+                                } else {
+                                    capture_succeeded = false;
+                                    capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                                }
+                            }
+                        }
+                    }
+                    // JPEG 编码完成后立即归还帧引用；后续 protobuf/IPC 不再依赖平台帧。
+                    pending.release_frame();
+
+                    if (capture_succeeded) {
+                        for (size_t i = 0; i < pending.faces.size(); ++i) {
+                            pending.faces[i].set_image_id(pano_image_id);
+                            pending.faces[i].set_image_rel_path(pano_image_rel_path);
+                            pending.faces[i].set_face_image_id(face_images[i].first);
+                            pending.faces[i].set_face_image_rel_path(face_images[i].second);
+                        }
+                    }
+                } else if (!pending.has_image) {
+                    pending.release_frame();
+                }
+
+                if (!capture_succeeded) {
+                    // 图片集合不完整时不发送观测，并释放 track 状态，允许完整结果再次入队。
+                    std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+                    forget_pending_event_ids_locked(pending);
+                    forget_pending_face_states_locked(pending);
+                    capture_processed_.fetch_add(1, std::memory_order_relaxed);
+                    return;
+                }
+
+                PendingCapture retry;
+                retry.kind = PendingCapture::Kind::FaceObservation;
+                retry.capture_id = pending.capture_id;
+                retry.has_image = true;
+                retry.images_ready = true;
+                retry.retry_count = pending.retry_count + 1;
+                for (const auto& face : pending.faces) {
+                    if (!app_client_ || !app_client_->report_face_observation(face)) {
+                        capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
+                        if (retry.retry_count <= kMaxFaceReportRetries) {
+                            retry.faces.push_back(face);
+                        } else {
+                            std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+                            forget_face_track_state_locked(face);
+                        }
+                    } else {
+                        if (!face.image_id().empty() &&
+                            ImageManager::instance().mark_reported(face.image_id()) != AV_OK) {
+                            capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                        if (!face.face_image_id().empty() &&
+                            ImageManager::instance().mark_reported(face.face_image_id()) != AV_OK) {
+                            capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
+                }
+                if (!retry.faces.empty()) {
+                    // 图片已落盘，重试只复用 protobuf 中的图片引用，不再次访问已释放的帧。
+                    enqueue_pending_capture(std::move(retry), true);
+                }
             }
         } catch (...) {
             capture_processing_failures_.fetch_add(1, std::memory_order_relaxed);
+            if (pending.kind == PendingCapture::Kind::FaceObservation) {
+                // 处理过程中发生异常时不能遗留“已上报”状态，否则同一 track 将永久无法重试。
+                std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+                forget_pending_face_states_locked(pending);
+            }
         }
         pending.release_frame();
         capture_processed_.fetch_add(1, std::memory_order_relaxed);
@@ -1295,6 +1497,10 @@ private:
             std::lock_guard<std::mutex> lock(capture_mutex_);
             capture_worker_running_ = false;
             discarded.swap(capture_queue_);
+            for (const auto& pending : discarded) {
+                forget_pending_event_ids_locked(pending);
+                forget_pending_face_states_locked(pending);
+            }
         }
         for (auto& pending : discarded) pending.release_frame();
         capture_cv_.notify_one();
@@ -1331,6 +1537,10 @@ private:
         TaskScheduler::instance().stop_all();
         ResourceLedger::instance().clear();
         task_configs_.clear();
+        {
+            std::lock_guard<std::mutex> lock(camera_names_mutex_);
+            camera_names_.clear();
+        }
         instance_configs_.clear();
         instance_resources_.clear();
         loaded_packages_.clear();
@@ -1555,8 +1765,11 @@ private:
             if (forget_config) instance_configs_.erase(instance_id);
             return;
         }
+        const std::string run_id = instance->get_run_id();
         const auto task = TaskScheduler::instance().get_task(instance->get_camera_id());
+        // remove() 会停止并 join 实例 worker，确保同步 ABI 回调不会在状态清理后重新登记 track。
         AlgoManager::instance().remove(instance_id);
+        forget_face_track_states_for_run_id(run_id);
         if (task) task->remove_instance(instance_id);
         ResourceLedger::instance().release(instance_id);
         instance_resources_.erase(instance_id);
@@ -1566,6 +1779,14 @@ private:
     std::string reconcile_instance(const argus::v1::AlgorithmInstanceConfig& config) {
         if (!safe_package_component(config.algorithm_id()) || !safe_package_component(config.algorithm_version()) ||
             config.algorithm_version().empty()) return "CONFIG_INVALID";
+        float face_similarity_threshold = 0.7f;
+        if (config.has_face_recognition()) {
+            face_similarity_threshold = config.face_recognition().similarity_threshold();
+            if (!std::isfinite(face_similarity_threshold) || face_similarity_threshold < 0.0f ||
+                face_similarity_threshold > 1.0f) {
+                return "CONFIG_INVALID";
+            }
+        }
         const auto task = TaskScheduler::instance().get_task(config.camera_id());
         const auto existing = AlgoManager::instance().get(config.instance_id());
         if (!config.enabled()) {
@@ -1594,6 +1815,7 @@ private:
             if (config.has_motion_gate()) {
                 apply_motion_gate_proto(current, config.motion_gate());
             }
+            current->set_face_similarity_threshold(face_similarity_threshold);
             if (current->set_rules(rules) != AV_OK) return "CONFIG_INVALID";
             task->add_instance(current);
             instance_configs_[config.instance_id()] = config;
@@ -1631,6 +1853,7 @@ private:
             config.instance_id(), config.camera_id(), config.algorithm_id(), config.algorithm_version(),
             target_fps, config.params_json().empty() ? "{}" : config.params_json(), package->abi, package->library,
             package->algorithm_type);
+        instance->set_face_similarity_threshold(face_similarity_threshold);
         const auto adapter = platform::PlatformRegistry::instance().get_active_adapter();
         if (!adapter || instance->init(FramePool::instance().get_frame_ops(), adapter->get_c_image_ops()) != AV_OK) {
             ResourceLedger::instance().release(config.instance_id());
@@ -1699,6 +1922,8 @@ private:
         } else if (result.kind == AV_RESULT_RECOGNITION) {
             if (instance->get_algorithm_type() == "license_plate_recognition") {
                 handle_license_plate_result(instance, result, frame);
+            } else if (instance->get_algorithm_type() == "face_recognition") {
+                handle_face_recognition_result(instance, result, frame);
             }
         } else if (result.kind != AV_RESULT_SELF_TEST) {
             log_invalid_result(instance, result, frame, "unsupported result kind");
@@ -2078,6 +2303,376 @@ private:
         }
     }
 
+    void handle_face_recognition_result(const std::shared_ptr<AlgorithmInstance>& instance,
+                                        const av_algo_result& result, const av_frame_desc& frame) {
+        const auto reject = [this, &instance, &result, &frame](std::string_view reason) {
+            log_invalid_result(instance, result, frame, reason);
+        };
+
+        try {
+            const auto value = nlohmann::json::parse(result.json, result.json + result.json_len);
+            const auto field_allowed = [](const nlohmann::json& object,
+                                          std::initializer_list<const char*> allowed) {
+                for (const auto& [key, ignored] : object.items()) {
+                    (void)ignored;
+                    if (std::none_of(allowed.begin(), allowed.end(),
+                                     [&key](const char* name) { return key == name; })) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+            const auto read_nonnegative_u64 = [](const nlohmann::json& json, uint64_t& value_out) {
+                if (json.is_number_unsigned()) {
+                    value_out = json.get<uint64_t>();
+                    return true;
+                }
+                if (!json.is_number_integer()) return false;
+                const int64_t signed_value = json.get<int64_t>();
+                if (signed_value < 0) return false;
+                value_out = static_cast<uint64_t>(signed_value);
+                return true;
+            };
+            const auto read_nonnegative_i64 = [](const nlohmann::json& json, int64_t& value_out) {
+                if (json.is_number_integer()) {
+                    value_out = json.get<int64_t>();
+                    return value_out >= 0;
+                }
+                if (!json.is_number_unsigned()) return false;
+                const uint64_t unsigned_value = json.get<uint64_t>();
+                if (unsigned_value > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+                    return false;
+                }
+                value_out = static_cast<int64_t>(unsigned_value);
+                return true;
+            };
+            const auto valid_bbox = [](const nlohmann::json& json,
+                                       std::array<double, 4>& bbox) {
+                if (!json.is_array() || json.size() != bbox.size()) return false;
+                for (size_t index = 0; index < bbox.size(); ++index) {
+                    if (!json[index].is_number()) return false;
+                    bbox[index] = json[index].get<double>();
+                    if (!std::isfinite(bbox[index]) || bbox[index] < 0.0 || bbox[index] > 1.0) {
+                        return false;
+                    }
+                }
+                return bbox[2] > 0.0 && bbox[3] > 0.0 &&
+                       bbox[0] + bbox[2] <= 1.0 && bbox[1] + bbox[3] <= 1.0;
+            };
+            const auto close_to = [](double left, double right) {
+                return std::fabs(left - right) <= 1e-4;
+            };
+            const auto valid_embedding = [](const std::vector<float>& embedding) {
+                if (embedding.size() != kFaceEmbeddingDimensions) return false;
+                double norm_squared = 0.0;
+                for (const float value : embedding) {
+                    if (!std::isfinite(value)) return false;
+                    const double value_as_double = static_cast<double>(value);
+                    norm_squared += value_as_double * value_as_double;
+                }
+                if (!std::isfinite(norm_squared)) return false;
+                const double norm = std::sqrt(norm_squared);
+                return std::isfinite(norm) && norm >= 0.98 && norm <= 1.02;
+            };
+            const auto valid_image_request = [](const av_algo_image_req& request) {
+                constexpr uint32_t kImagePurposeFaceCrop = 0;
+                return request.size >= sizeof(av_algo_image_req) &&
+                       request.api_version == AV_ALGO_API_VERSION &&
+                       request.purpose == kImagePurposeFaceCrop &&
+                       std::isfinite(request.x) && std::isfinite(request.y) &&
+                       std::isfinite(request.w) && std::isfinite(request.h) &&
+                       request.x >= 0.0f && request.y >= 0.0f && request.w > 0.0f &&
+                       request.h > 0.0f && request.x + request.w <= 1.0f &&
+                       request.y + request.h <= 1.0f;
+            };
+
+            if (!value.is_object() || !field_allowed(value, {
+                    "schema_version", "frame_id", "pts_ns", "algorithm_type", "persons"}) ||
+                !value.contains("schema_version") || !value["schema_version"].is_number_integer() ||
+                value["schema_version"].get<int64_t>() != 1 ||
+                !value.contains("persons") || !value["persons"].is_array() ||
+                value["persons"].empty() || value["persons"].size() > 4096) {
+                reject("face recognition result envelope is invalid");
+                return;
+            }
+            if (value.contains("algorithm_type") &&
+                (!value["algorithm_type"].is_string() ||
+                 value["algorithm_type"].get<std::string>() != "face_recognition")) {
+                reject("face recognition algorithm type is invalid");
+                return;
+            }
+            if (value.contains("frame_id")) {
+                uint64_t parsed_frame_id = 0;
+                if (!read_nonnegative_u64(value["frame_id"], parsed_frame_id) ||
+                    parsed_frame_id != frame.frame_id) {
+                    reject("face recognition frame_id is invalid");
+                    return;
+                }
+            }
+            if (result.frame_id != frame.frame_id) {
+                reject("face recognition result frame_id is invalid");
+                return;
+            }
+
+            if (!FaceGallery::instance().ready()) return;
+
+            struct ParsedFace {
+                int64_t track_id = 0;
+                std::array<double, 4> bbox{};
+                size_t image_request_index = 0;
+                std::vector<float> embedding;
+                FaceMatch match;
+            };
+            std::vector<ParsedFace> faces_with_embedding;
+            faces_with_embedding.reserve(value["persons"].size());
+            std::unordered_set<int64_t> track_ids;
+            bool has_previous_track_id = false;
+            int64_t previous_track_id = 0;
+
+            for (const auto& person : value["persons"]) {
+                int64_t track_id = 0;
+                if (!person.is_object() || !field_allowed(person, {
+                        "track_id", "bbox", "confidence", "face"}) ||
+                    !person.contains("track_id") || !read_nonnegative_i64(person["track_id"], track_id) ||
+                    !person.contains("bbox") || !person.contains("confidence") ||
+                    !person["confidence"].is_number()) {
+                    reject("face person fields are invalid");
+                    return;
+                }
+                if (!track_ids.insert(track_id).second) {
+                    reject("face track_id is duplicated");
+                    return;
+                }
+                if (has_previous_track_id && track_id < previous_track_id) {
+                    reject("face track_id order is invalid");
+                    return;
+                }
+                previous_track_id = track_id;
+                has_previous_track_id = true;
+                std::array<double, 4> person_bbox{};
+                if (!valid_bbox(person["bbox"], person_bbox)) {
+                    reject("person bbox is invalid");
+                    return;
+                }
+                const double person_confidence = person["confidence"].get<double>();
+                if (!std::isfinite(person_confidence) || person_confidence < 0.0 ||
+                    person_confidence > 1.0) {
+                    reject("person confidence is invalid");
+                    return;
+                }
+                if (!person.contains("face") || person["face"].is_null()) continue;
+
+                const auto& face = person["face"];
+                if (!face.is_object() || !field_allowed(face, {
+                        "bbox", "confidence", "landmarks", "embedding"}) ||
+                    !face.contains("bbox") || !face.contains("confidence") ||
+                    !face["confidence"].is_number() || !face.contains("landmarks") ||
+                    !face.contains("embedding")) {
+                    reject("face fields are invalid");
+                    return;
+                }
+                std::array<double, 4> face_bbox{};
+                if (!valid_bbox(face["bbox"], face_bbox)) {
+                    reject("face bbox is invalid");
+                    return;
+                }
+                const double face_confidence = face["confidence"].get<double>();
+                if (!std::isfinite(face_confidence) || face_confidence < 0.0 ||
+                    face_confidence > 1.0) {
+                    reject("face confidence is invalid");
+                    return;
+                }
+                const auto& landmarks = face["landmarks"];
+                if (!landmarks.is_array() || landmarks.size() != 5) {
+                    reject("face landmarks are invalid");
+                    return;
+                }
+                for (const auto& landmark : landmarks) {
+                    if (!landmark.is_array() || landmark.size() != 2 ||
+                        !landmark[0].is_number() || !landmark[1].is_number()) {
+                        reject("face landmark fields are invalid");
+                        return;
+                    }
+                    const double x = landmark[0].get<double>();
+                    const double y = landmark[1].get<double>();
+                    if (!std::isfinite(x) || !std::isfinite(y) || x < 0.0 || x > 1.0 ||
+                        y < 0.0 || y > 1.0) {
+                        reject("face landmark coordinates are invalid");
+                        return;
+                    }
+                }
+
+                const auto& embedding = face["embedding"];
+                if (embedding.is_null()) continue;
+                if (!embedding.is_object() || !field_allowed(embedding, {
+                        "model", "dimension", "dtype", "normalized", "encoding", "byte_order", "data"}) ||
+                    !embedding.contains("model") || !embedding["model"].is_string() ||
+                    embedding["model"].get<std::string>().empty() ||
+                    !embedding.contains("dimension") || !embedding["dimension"].is_number_integer() ||
+                    embedding["dimension"].get<int64_t>() != static_cast<int64_t>(kFaceEmbeddingDimensions) ||
+                    !embedding.contains("dtype") || !embedding["dtype"].is_string() ||
+                    embedding["dtype"].get<std::string>() != "float32" ||
+                    !embedding.contains("normalized") || !embedding["normalized"].is_boolean() ||
+                    !embedding["normalized"].get<bool>() || !embedding.contains("encoding") ||
+                    !embedding["encoding"].is_string() || embedding["encoding"].get<std::string>() != "base64" ||
+                    !embedding.contains("byte_order") || !embedding["byte_order"].is_string() ||
+                    embedding["byte_order"].get<std::string>() != "little_endian" ||
+                    !embedding.contains("data") || !embedding["data"].is_string()) {
+                    reject("face embedding schema is invalid");
+                    return;
+                }
+
+                std::vector<uint8_t> decoded;
+                if (!decode_base64_strict(embedding["data"].get<std::string>(), decoded) ||
+                    decoded.size() != kFaceEmbeddingBytes) {
+                    reject("face embedding base64 is invalid");
+                    return;
+                }
+                std::vector<float> query(kFaceEmbeddingDimensions);
+                std::memcpy(query.data(), decoded.data(), kFaceEmbeddingBytes);
+                if (!valid_embedding(query)) {
+                    reject("face embedding values are invalid");
+                    return;
+                }
+                const auto match = FaceGallery::instance().match(query.data());
+                if (!match.has_value() || !std::isfinite(match->similarity) ||
+                    match->similarity < 0.0f || match->similarity > 1.0f) {
+                    reject("face embedding cannot be matched");
+                    return;
+                }
+                faces_with_embedding.push_back(ParsedFace{
+                    .track_id = track_id,
+                    .bbox = face_bbox,
+                    .image_request_index = faces_with_embedding.size(),
+                    .embedding = std::move(query),
+                    .match = *match,
+                });
+            }
+
+            if (result.image_count != faces_with_embedding.size() ||
+                (result.image_count > 0 && !result.images)) {
+                reject("face crop image request count does not match embeddings");
+                return;
+            }
+            for (const auto& parsed : faces_with_embedding) {
+                const auto& request = result.images[parsed.image_request_index];
+                if (!valid_image_request(request) ||
+                    !close_to(request.x, parsed.bbox[0]) || !close_to(request.y, parsed.bbox[1]) ||
+                    !close_to(request.w, parsed.bbox[2]) || !close_to(request.h, parsed.bbox[3])) {
+                    reject("face crop image request does not match face bbox");
+                    return;
+                }
+            }
+            if (faces_with_embedding.empty()) return;
+
+            if (!frame.frame_token || !frame.opaque || frame.size < sizeof(av_frame_desc)) {
+                reject("capture frame is invalid");
+                return;
+            }
+            if (!safe_package_component(instance->get_run_id())) {
+                reject("face run_id is invalid");
+                return;
+            }
+            const float similarity_threshold = instance->get_face_similarity_threshold();
+            if (!std::isfinite(similarity_threshold) || similarity_threshold < 0.0f ||
+                similarity_threshold > 1.0f) {
+                reject("face similarity threshold is invalid");
+                return;
+            }
+
+            PendingCapture pending;
+            pending.kind = PendingCapture::Kind::FaceObservation;
+            pending.capture_id = instance->get_run_id() + "/" + std::to_string(frame.frame_id);
+            pending.has_image = true;
+            pending.frame = frame;
+            pending.image_roi.size = sizeof(av_rect);
+            pending.image_roi.api_version = AV_ALGO_API_VERSION;
+            pending.image_roi.x = 0.0f;
+            pending.image_roi.y = 0.0f;
+            pending.image_roi.width = 1.0f;
+            pending.image_roi.height = 1.0f;
+            pending.frame_ops = FramePool::instance().get_frame_ops();
+            if (!pending.frame_ops || !pending.frame_ops->retain || !pending.frame_ops->release ||
+                pending.frame_ops->retain(pending.frame_ops->ctx, pending.frame.frame_token) != AV_OK) {
+                capture_retain_failures_.fetch_add(1, std::memory_order_relaxed);
+                reject("capture frame retain failed");
+                return;
+            }
+            pending.frame_retained = true;
+
+            std::vector<std::pair<std::string, float>> state_updates;
+            PendingCapture dropped;
+            bool accepted = false;
+            {
+                std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+                for (const auto& parsed : faces_with_embedding) {
+                    const std::string event_id = instance->get_run_id() + "/" +
+                                                 std::to_string(parsed.track_id);
+                    const auto state = face_track_states_.find(event_id);
+                    if (parsed.match.similarity < similarity_threshold ||
+                        (state != face_track_states_.end() &&
+                         parsed.match.similarity < state->second.reported_similarity +
+                                                        kFaceReportImprovementMargin)) {
+                        continue;
+                    }
+
+                    argus::v1::FaceObservation observation;
+                    observation.set_event_id(event_id);
+                    observation.set_instance_id(instance->get_instance_id());
+                    observation.set_camera_id(instance->get_camera_id());
+                    observation.set_camera_name(camera_name_for(instance->get_camera_id()));
+                    observation.set_algorithm_id(instance->get_algorithm_id());
+                    observation.set_algorithm_version(instance->get_version());
+                    observation.set_wall_time_ns(frame.wall_time_ns);
+                    observation.set_time_synced(frame.time_synced != 0);
+                    observation.set_track_id(parsed.track_id);
+                    observation.set_face_id(parsed.match.entry.face_id);
+                    observation.set_person_id(parsed.match.entry.person_id);
+                    observation.set_person_name(parsed.match.entry.person_name);
+                    observation.set_similarity(std::clamp(parsed.match.similarity, 0.0f, 1.0f));
+                    observation.mutable_face_bbox()->set_x_min(static_cast<float>(parsed.bbox[0]));
+                    observation.mutable_face_bbox()->set_y_min(static_cast<float>(parsed.bbox[1]));
+                    observation.mutable_face_bbox()->set_x_max(static_cast<float>(parsed.bbox[0] + parsed.bbox[2]));
+                    observation.mutable_face_bbox()->set_y_max(static_cast<float>(parsed.bbox[1] + parsed.bbox[3]));
+                    pending.faces.push_back(std::move(observation));
+
+                    av_rect crop_roi{};
+                    crop_roi.size = sizeof(av_rect);
+                    crop_roi.api_version = AV_ALGO_API_VERSION;
+                    crop_roi.x = static_cast<float>(parsed.bbox[0]);
+                    crop_roi.y = static_cast<float>(parsed.bbox[1]);
+                    crop_roi.width = static_cast<float>(parsed.bbox[2]);
+                    crop_roi.height = static_cast<float>(parsed.bbox[3]);
+                    pending.face_crop_rois.push_back(crop_roi);
+                    state_updates.emplace_back(event_id, parsed.match.similarity);
+                }
+
+                size_t new_state_count = 0;
+                for (const auto& [event_id, ignored_similarity] : state_updates) {
+                    (void)ignored_similarity;
+                    if (!face_track_states_.contains(event_id)) ++new_state_count;
+                }
+                if (face_track_states_.size() + new_state_count > kMaxFaceTrackStates) {
+                    // 异常 track_id 分配不能让进程级服务持续积累状态；当前批次重新建立状态。
+                    face_track_states_.clear();
+                }
+                if (!pending.faces.empty()) {
+                    accepted = enqueue_pending_capture_locked(pending, false, dropped);
+                    if (accepted) {
+                        for (const auto& [event_id, similarity] : state_updates) {
+                            face_track_states_[event_id] = FaceTrackReportState{similarity};
+                        }
+                    }
+                }
+            }
+            dropped.release_frame();
+            if (!accepted) pending.release_frame();
+            if (accepted) capture_cv_.notify_one();
+        } catch (...) {
+            reject("malformed face recognition result");
+        }
+    }
+
     void mark_package_degraded(const std::vector<argus::v1::AlgorithmInstanceConfig>& affected,
                                const std::string& reason) {
         runtime_degraded_ = true;
@@ -2324,11 +2919,21 @@ private:
         }
     }
 
+    std::string camera_name_for(const std::string& camera_id) const {
+        std::lock_guard<std::mutex> lock(camera_names_mutex_);
+        const auto it = camera_names_.find(camera_id);
+        return it == camera_names_.end() ? std::string{} : it->second;
+    }
+
     std::string upsert_task(const argus::v1::CameraTaskConfig& config) {
         if (config.camera_id().empty() || config.rtsp_url().empty()) return "INVALID_ARG";
         if (!config.enabled()) {
             TaskScheduler::instance().stop_task(config.camera_id());
             task_configs_.erase(config.camera_id());
+            {
+                std::lock_guard<std::mutex> lock(camera_names_mutex_);
+                camera_names_.erase(config.camera_id());
+            }
             return {};
         }
         if (!platform_adapter_ || !media_backend_) return "PLATFORM_UNAVAILABLE";
@@ -2339,11 +2944,19 @@ private:
             it->second.rtsp_url() == config.rtsp_url() &&
             it->second.enabled() == config.enabled()) {
             task_configs_[config.camera_id()] = config;
+            {
+                std::lock_guard<std::mutex> lock(camera_names_mutex_);
+                camera_names_[config.camera_id()] = config.camera_name();
+            }
             return {};
         }
 
         TaskScheduler::instance().stop_task(config.camera_id());
         task_configs_.erase(config.camera_id());
+        {
+            std::lock_guard<std::mutex> lock(camera_names_mutex_);
+            camera_names_.erase(config.camera_id());
+        }
         auto task = std::make_shared<CameraTask>(
             config.camera_id(), config.rtsp_url(), platform_adapter_, media_backend_);
         if (!TaskScheduler::instance().add_task(task)) return "TASK_ALREADY_EXISTS";
@@ -2352,6 +2965,10 @@ private:
             return "MEDIA_START_FAILED";
         }
         task_configs_[config.camera_id()] = config;
+        {
+            std::lock_guard<std::mutex> lock(camera_names_mutex_);
+            camera_names_[config.camera_id()] = config.camera_name();
+        }
         return {};
     }
 
@@ -2377,12 +2994,15 @@ private:
     std::unordered_map<std::string, std::shared_ptr<LoadedPackage>> loaded_packages_;
     std::unordered_map<std::string, ResourceRequirement> instance_resources_;
     std::unordered_map<std::string, argus::v1::CameraTaskConfig> task_configs_;
+    std::unordered_map<std::string, std::string> camera_names_;
+    mutable std::mutex camera_names_mutex_;
     std::unordered_map<std::string, argus::v1::AlgorithmInstanceConfig> instance_configs_;
     bool runtime_degraded_ = false;
     std::unordered_set<std::string> degraded_instance_ids_;
     std::unordered_map<std::string, std::string> restart_failures_;
     std::unordered_set<std::string> reported_events_;
     std::deque<std::string> reported_event_order_;
+    std::unordered_map<std::string, FaceTrackReportState> face_track_states_;
     std::mutex reconcile_mutex_;
     std::atomic<uint64_t> applied_revision_{0};
     argus::v1::DesiredState applied_desired_state_;
@@ -2393,12 +3013,6 @@ class PersonServiceImpl final : public argus::v1::PersonService::Service {
 public:
     explicit PersonServiceImpl(EngineServiceImpl* engine_service)
         : engine_service_(engine_service) {}
-
-    grpc::Status SyncPersons(grpc::ServerContext*, const argus::v1::SyncPersonsRequest*,
-                             argus::v1::SyncPersonsResponse*) override {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
-                            "Person synchronization is not implemented in this phase");
-    }
 
     grpc::Status ExtractFaceFeature(grpc::ServerContext*,
                                    const argus::v1::ExtractFaceFeatureRequest* request,
@@ -2517,6 +3131,8 @@ bool UdsServer::start() {
     if (server_ || !prepare_socket_path(sock_path_)) return false;
 
     grpc::ServerBuilder builder;
+    builder.SetMaxReceiveMessageSize(32 * 1024 * 1024);
+    builder.SetMaxSendMessageSize(32 * 1024 * 1024);
     builder.AddListeningPort("unix://" + sock_path_, grpc::InsecureServerCredentials());
     engine_service_ = std::make_unique<EngineServiceImpl>(platform_adapter_, media_backend_, app_sock_path_);
     person_service_ = std::make_unique<PersonServiceImpl>(dynamic_cast<EngineServiceImpl*>(engine_service_.get()));

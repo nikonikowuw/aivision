@@ -195,6 +195,8 @@
       "motionGateHint": "畫面靜止時跳過 AI 推理以節省算力功耗；檢測到運動或達到保活週期時自動放行",
       "motionGateKeepalive": "保活推理週期 (ms)",
       "motionGateKeepaliveHint": "靜止狀態下定期放行基準幀的間隔",
+      "faceSimilarityThreshold": "人臉相似度閾值",
+      "faceSimilarityThresholdHint": "僅對 face_recognition 生效，範圍 0 到 1；數值越高越嚴格",
       "tabParams": "演算法與參數配置",
       "tabRules": "區域與警戒線繪製",
       "currentTargets": "當前生效目標",

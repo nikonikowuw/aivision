@@ -45,6 +45,11 @@ public:
     bool report_plate_observation(const argus::v1::PlateObservation& observation);
 
     /**
+     * @brief 上报人脸识别观测记录
+     */
+    bool report_face_observation(const argus::v1::FaceObservation& observation);
+
+    /**
      * @brief 上报设备性能与健康遥测数据
      */
     bool report_telemetry(const argus::v1::DeviceTelemetry& telemetry);
@@ -69,6 +74,12 @@ public:
      * @brief 向 App 拉取指定 revision 的期望配置（DesiredState）
      */
     bool get_desired_state(uint64_t current_revision, argus::v1::DesiredState* out_state);
+
+    /**
+     * @brief 向 App 拉取指定 revision 的全量人脸底库快照
+     */
+    bool get_face_gallery(uint64_t current_gallery_revision,
+                          argus::v1::GetFaceGalleryResponse* out_response);
 
 private:
     std::shared_ptr<grpc::Channel> channel_;

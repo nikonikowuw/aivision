@@ -11,6 +11,7 @@ message CameraTaskConfig {
   string camera_id = 1;
   string rtsp_url = 2;
   bool enabled = 3;
+  string camera_name = 4; // 摄像头名称快照，供 Engine 识别记录回传
 }
 
 // 检测规则角色（对齐 C ABI av_rule_role，0 为未指定占位）
@@ -51,6 +52,11 @@ message MotionGateConfig {
   uint64 keepalive_interval_ms = 5;
 }
 
+// 人脸识别比对配置（系统/引擎级，不进入算法 params_json）
+message FaceRecognitionConfig {
+  float similarity_threshold = 1; // 归一化 [0,1]
+}
+
 // 算法实例运行配置
 message AlgorithmInstanceConfig {
   string instance_id = 1;
@@ -63,6 +69,7 @@ message AlgorithmInstanceConfig {
   bool enabled = 7;
   repeated DetectionRule rules = 8; // 任务级检测规则；空表示不过滤
   MotionGateConfig motion_gate = 9; // 系统级运动门控配置
+  FaceRecognitionConfig face_recognition = 10; // 系统级人脸识别比对配置
 }
 
 // 算法包版本信息

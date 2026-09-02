@@ -231,7 +231,10 @@ av_status ImageManager::save_detection_image(
 
     // 1.1 并行利用硬件图像处理器编码生成低带宽轻量缩略图（宽度 360px，Q=70）
     std::vector<uint8_t> thumb_jpeg_data;
-    processor_->encode_thumbnail_jpeg(frame, 360, 70, thumb_jpeg_data);
+    const av_status thumb_status = processor_->encode_thumbnail_jpeg(frame, 360, 70, thumb_jpeg_data);
+    if (thumb_status != AV_OK || thumb_jpeg_data.empty()) {
+        return thumb_status == AV_OK ? AV_ERR_INTERNAL : thumb_status;
+    }
 
     // 2. 生成安全 image_id 并按 UTC 日期构建存储子目录（如 2025-05-18/img-xxx.jpg）
     const int64_t now_ns = now_provider_();
@@ -272,9 +275,12 @@ av_status ImageManager::save_detection_image(
                            std::string(reinterpret_cast<const char*>(jpeg_data.data()), jpeg_data.size()), true)) {
         return AV_ERR_INTERNAL;
     }
-    if (!thumb_jpeg_data.empty()) {
-        write_atomic_file(thumb_temporary, thumb_final_path,
-                          std::string(reinterpret_cast<const char*>(thumb_jpeg_data.data()), thumb_jpeg_data.size()), true);
+    if (!thumb_jpeg_data.empty() &&
+        !write_atomic_file(thumb_temporary, thumb_final_path,
+                           std::string(reinterpret_cast<const char*>(thumb_jpeg_data.data()), thumb_jpeg_data.size()), true)) {
+        std::error_code cleanup_error;
+        fs::remove(final_path, cleanup_error);
+        return AV_ERR_INTERNAL;
     }
 
     // 5. 更新本地内存 Catalog 记录并原子刷盘 catalog.json
@@ -289,6 +295,7 @@ av_status ImageManager::save_detection_image(
     if (!persist_catalog_locked()) {
         catalog_.erase(image_id);
         fs::remove(final_path, ec);
+        fs::remove(thumb_final_path, ec);
         return AV_ERR_INTERNAL;
     }
 

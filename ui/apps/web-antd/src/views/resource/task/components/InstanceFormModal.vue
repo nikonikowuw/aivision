@@ -69,6 +69,7 @@ const analysisFps = ref<number>(25);
 const autoEnable = ref<boolean>(true);
 const motionGateEnabled = ref<boolean>(true);
 const motionGateKeepaliveMs = ref<number>(2000);
+const similarityThreshold = ref<number>(0.7);
 const paramsJson = ref<Record<string, unknown>>({});
 const rules = ref<TaskApi.DetectionRule[]>([]);
 const ruleEditorRef = ref<InstanceType<typeof DetectionRuleEditor>>();
@@ -81,6 +82,10 @@ const currentAlgorithm = computed(() => {
     ) || null
   );
 });
+
+const isFaceRecognition = computed(
+  () => currentAlgorithm.value?.algorithmType === 'face_recognition',
+);
 
 const currentActiveVersion = computed(() => {
   if (!currentAlgorithm.value || !currentAlgorithm.value.activeVersion) {
@@ -192,12 +197,15 @@ watch(
         motionGateEnabled.value = true;
         motionGateKeepaliveMs.value = 2000;
       }
+      similarityThreshold.value =
+        props.instance.similarityThreshold ?? 0.7;
     } else {
       // 新建默认
       analysisFps.value = 25;
       autoEnable.value = true;
       motionGateEnabled.value = true;
       motionGateKeepaliveMs.value = 2000;
+      similarityThreshold.value = 0.7;
       paramsJson.value = {};
       rules.value = [];
       // 保证每次新建时都重新选择默认算法并触发 schema 变化
@@ -261,6 +269,9 @@ async function handleOk() {
         paramsJson: paramsJson.value,
         rules: submittedRules,
         motionGate: motionGatePayload,
+        similarityThreshold: isFaceRecognition.value
+          ? similarityThreshold.value
+          : undefined,
       });
       message.success($t('system.common.success'));
     } else {
@@ -271,6 +282,9 @@ async function handleOk() {
         paramsJson: paramsJson.value,
         rules: submittedRules,
         motionGate: motionGatePayload,
+        similarityThreshold: isFaceRecognition.value
+          ? similarityThreshold.value
+          : undefined,
         enabled: autoEnable.value,
       });
       message.success($t('system.common.success'));
@@ -424,6 +438,25 @@ async function handleOk() {
                   class="w-32"
                 />
               </div>
+            </div>
+          </FormItem>
+
+          <!-- 人脸 1:N 比对阈值 -->
+          <FormItem
+            v-if="isFaceRecognition"
+            :label="$t('resource.task.instance.faceSimilarityThreshold')"
+            class="mb-3"
+          >
+            <InputNumber
+              v-model:value="similarityThreshold"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :precision="2"
+              class="w-full"
+            />
+            <div class="text-muted-foreground mt-1 text-xs">
+              {{ $t('resource.task.instance.faceSimilarityThresholdHint') }}
             </div>
           </FormItem>
 

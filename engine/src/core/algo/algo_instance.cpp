@@ -7,6 +7,7 @@
 #include "argus/core/logging/logger.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <nlohmann/json.hpp>
 
@@ -232,6 +233,13 @@ void AlgorithmInstance::push_frame(const av_frame_desc& frame) {
     }
 
     std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (!running_.load(std::memory_order_acquire)) {
+        // stop() 可能在 retain 后并发执行；此时不能把新帧留在已停止的队列中。
+        if (frame_ops_ && frame_ops_->release) {
+            frame_ops_->release(frame_ops_->ctx, frame.frame_token);
+        }
+        return;
+    }
     // 队列满时丢弃最旧的未处理帧，保证实时性（丢最老帧策略）
     if (frame_queue_.size() >= max_queue_size_) {
         av_frame_desc oldest = frame_queue_.front();

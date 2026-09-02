@@ -594,7 +594,7 @@ func TestAlgorithmServiceActivateBumpsRevisionAndDesiredState(t *testing.T) {
 		t.Fatalf("activate v2 failed: %v", err)
 	}
 
-	adapter := NewDesiredStateAdapter(taskRepo, zap.NewNop())
+	adapter := NewDesiredStateAdapter(taskRepo, nil, zap.NewNop())
 	state, err := adapter.DesiredState(ctx, 0)
 	if err != nil {
 		t.Fatalf("desired state error: %v", err)

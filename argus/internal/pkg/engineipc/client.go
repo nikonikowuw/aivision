@@ -68,6 +68,10 @@ func NewEngineClient(cfg *config.Config) (*EngineClient, error) {
 	conn, err := grpc.NewClient(
 		"unix://"+socketPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(MaxGRPCMessageSize),
+			grpc.MaxCallSendMsgSize(MaxGRPCMessageSize),
+		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create engine grpc client for %s: %w", socketPath, err)

@@ -13,6 +13,7 @@
 
 #include "argus/core/uds_ipc.hpp"
 #include "argus/core/algo_manager.hpp"
+#include "argus/core/face_gallery.hpp"
 #include "argus/core/image_manager.hpp"
 #include "argus/core/live_stream_manager.hpp"
 #include "argus/core/logging/logger.hpp"
@@ -240,6 +241,7 @@ int main() {
     std::thread control_plane_thread([&server, platform_adapter, app_socket] {
         argus::core::UdsClient client(app_socket);
         uint64_t applied_revision = 0;
+        uint64_t applied_gallery_revision = argus::core::FaceGallery::instance().revision();
         auto last_telemetry = std::chrono::steady_clock::now() - std::chrono::seconds(10);
         while (!g_stop_requested.load(std::memory_order_acquire)) {
             // 拉取并应用控制面的期望状态（DesiredState）
@@ -249,6 +251,39 @@ int main() {
             if (desired_received && desired.revision() > applied_revision &&
                 server.apply_desired_state(desired, &response) && response.code().empty()) {
                 applied_revision = response.applied_revision();
+            }
+
+            // 人脸底库使用独立 revision 主动拉取，避免注册样本触发媒体管线重应用。
+            argus::v1::GetFaceGalleryResponse gallery_response;
+            if (client.get_face_gallery(applied_gallery_revision, &gallery_response)) {
+                if (gallery_response.changed()) {
+                    if (gallery_response.gallery_revision() == 0 ||
+                        gallery_response.gallery_revision() <= applied_gallery_revision) {
+                        LOG_WARN("engine.face_gallery", "face_gallery.response_invalid",
+                                 "changed face gallery response has stale revision",
+                                 "FACE_GALLERY_RESPONSE_INVALID",
+                                 {{"revision", std::to_string(gallery_response.gallery_revision())},
+                                  {"applied_revision", std::to_string(applied_gallery_revision)}});
+                    } else {
+                        std::string gallery_error;
+                        if (argus::core::FaceGallery::instance().load_from(gallery_response, &gallery_error)) {
+                            applied_gallery_revision = gallery_response.gallery_revision();
+                        } else {
+                            LOG_WARN("engine.face_gallery", "face_gallery.sync_failed",
+                                     gallery_error.empty() ? "face gallery snapshot rejected" : gallery_error,
+                                     "FACE_GALLERY_SYNC_FAILED",
+                                     {{"revision", std::to_string(gallery_response.gallery_revision())}});
+                        }
+                    }
+                } else if (gallery_response.gallery_revision() != applied_gallery_revision ||
+                           gallery_response.entries_size() != 0) {
+                    LOG_WARN("engine.face_gallery", "face_gallery.response_invalid",
+                             "unchanged face gallery response has unexpected revision or entries",
+                             "FACE_GALLERY_RESPONSE_INVALID",
+                             {{"revision", std::to_string(gallery_response.gallery_revision())},
+                              {"applied_revision", std::to_string(applied_gallery_revision)},
+                              {"entry_count", std::to_string(gallery_response.entries_size())}});
+                }
             }
             // 运行态上报独立于 DesiredState 拉取：控制面短暂不可用时仍需刷新 FPS/状态，
             // 上报失败由下一轮重试，避免 Go 侧长期停留在旧的 STARTING/0。

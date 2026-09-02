@@ -90,6 +90,7 @@ type Deps struct {
 	TaskHandler             *api.TaskHandler
 	AlarmRecordHandler      *api.AlarmRecordHandler
 	PlateObservationHandler *api.PlateObservationHandler
+	FaceObservationHandler  *api.FaceObservationHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -378,6 +379,10 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			recordGroup.GET("/plates"+idRoutePath, deps.PlateObservationHandler.GetDetail)
 			recordGroup.GET("/plates"+idRoutePath+"/panorama", deps.PlateObservationHandler.ReadPanoramaImage)
 			recordGroup.GET("/plates"+idRoutePath+"/plate", deps.PlateObservationHandler.ReadPlateImage)
+			recordGroup.GET("/faces", deps.FaceObservationHandler.ListPage)
+			recordGroup.GET("/faces"+idRoutePath, deps.FaceObservationHandler.GetDetail)
+			recordGroup.GET("/faces"+idRoutePath+"/panorama", deps.FaceObservationHandler.ReadPanoramaImage)
+			recordGroup.GET("/faces"+idRoutePath+"/face", deps.FaceObservationHandler.ReadFaceImage)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath, "record:alarm")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath+idRoutePath, "record:alarm")
@@ -386,6 +391,10 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/plates"+idRoutePath, "record:plate")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/plates"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/plates"+idRoutePath+"/plate", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces", "record:face")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces"+idRoutePath, "record:face")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces"+idRoutePath+"/face", middleware.PermCodeAuthenticated)
 
 		plateObsGroup := apiGroup.Group("/v1/plate-observations")
 		{

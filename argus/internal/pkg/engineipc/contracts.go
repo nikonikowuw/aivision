@@ -51,10 +51,11 @@ type OrphanDisposition struct {
 	DeleteImageIDs []string
 }
 
-// DesiredStateAdapter 提供 Go 权威的 DesiredState 与 revision。
+// DesiredStateAdapter 提供 Go 权威的 DesiredState 与 revision，以及人脸底库快照。
 // DesiredState 返回 (nil, nil) 视为内部实现错误，由 service 归一化为 INTERNAL_ERROR。
 type DesiredStateAdapter interface {
 	DesiredState(ctx context.Context, currentRevision uint64) (*argusv1.DesiredState, error)
+	FaceGallery(ctx context.Context, currentGalleryRevision uint64) (*argusv1.GetFaceGalleryResponse, error)
 }
 
 // ReportAdapter 承接 Engine 的上报。只有 adapter 真正接受了数据，service 才返回空 code；
@@ -62,6 +63,7 @@ type DesiredStateAdapter interface {
 type ReportAdapter interface {
 	AcceptAlarm(ctx context.Context, alarm *argusv1.AlarmEvent) error
 	AcceptPlateObservation(ctx context.Context, obs *argusv1.PlateObservation) error
+	AcceptFaceObservation(ctx context.Context, obs *argusv1.FaceObservation) error
 	AcceptTaskState(ctx context.Context, state *argusv1.TaskState) error
 	AcceptInstanceState(ctx context.Context, state *argusv1.InstanceState) error
 	AcceptMetrics(ctx context.Context, telemetry *argusv1.DeviceTelemetry) error
@@ -107,6 +109,10 @@ func (unavailableDesiredStateAdapter) DesiredState(context.Context, uint64) (*ar
 	return nil, NewAdapterError(CodeIPCUNAVAILABLE, "desired state service unavailable")
 }
 
+func (unavailableDesiredStateAdapter) FaceGallery(context.Context, uint64) (*argusv1.GetFaceGalleryResponse, error) {
+	return nil, NewAdapterError(CodeIPCUNAVAILABLE, "face gallery service unavailable")
+}
+
 // unavailableReportAdapter 是生产默认上报 adapter：未配置持久化实现时 fail closed，
 // 禁止对未持久化的告警、状态、遥测或孤儿图片上报返回成功 ACK。
 type unavailableReportAdapter struct{}
@@ -116,6 +122,10 @@ func (unavailableReportAdapter) AcceptAlarm(context.Context, *argusv1.AlarmEvent
 }
 
 func (unavailableReportAdapter) AcceptPlateObservation(context.Context, *argusv1.PlateObservation) error {
+	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
+}
+
+func (unavailableReportAdapter) AcceptFaceObservation(context.Context, *argusv1.FaceObservation) error {
 	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
 }
 

@@ -4,12 +4,10 @@ package argus.v1;
 
 option go_package = "argus/app/internal/proto/argus/v1;argusv1";
 
-// 人脸识别预留（D4 / 本任务不含人脸子系统）：
-// - 当前 handler 一律返回 UNIMPLEMENTED；
-// - 特征向量、注册图字节属于张量/图片数据，禁止进入常规 gRPC message
-//   （对齐 runtime-guidelines §3.2）；有界 JPEG 与特征向量的大小限制与
-//   安全校验由独立任务定义，本文件只预留名称，不写死字段。
-// - FeatureService（特征管理）为后续扩展预留，本任务不定义。
+// 人脸识别（特征提取）：
+// - ExtractFaceFeature: 一次性静态图片单人脸特征提取与标准化切图
+// - 特征向量属于张量数据，有界 float32 小端字节流（512 维精确 2048 字节）
+// - 底库下发统一走 app.proto 的 ControlPlaneService.GetFaceGallery
 
 // 归一化矩形框 [0.0, 1.0]
 message NormalizedRect {
@@ -38,29 +36,8 @@ message ExtractFaceFeatureResponse {
   string algorithm_version = 9;// 算法包版本号 (如 "1.0.0")
 }
 
-// 人员档案（预留）
-message PersonRecord {
-  string person_id = 1;
-  string name = 2;
-  string feature_version = 3; // 特征提取模型版本
-  // 预留：特征向量与注册图（不在本契约定义，见文件头注释）
-}
-
-message SyncPersonsRequest {
-  repeated PersonRecord persons = 1;
-}
-
-message SyncPersonsResponse {
-  int32 total_indexed = 1;
-  string code = 2;          // 空串表示成功
-  string error_message = 3; // 诊断信息，客户端不得解析其文本
-}
-
 // PersonService: 运行在 C++ 引擎（绑定 engine.sock），供 Go 控制面调用
 service PersonService {
-  // 预留人脸库同步 RPC（当前返回 UNIMPLEMENTED）
-  rpc SyncPersons(SyncPersonsRequest) returns (SyncPersonsResponse);
-
   // 一次性静态图片单人脸特征提取与标准化切图
   rpc ExtractFaceFeature(ExtractFaceFeatureRequest) returns (ExtractFaceFeatureResponse);
 }

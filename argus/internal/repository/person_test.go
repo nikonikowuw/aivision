@@ -26,6 +26,7 @@ func newPersonTestDB(t *testing.T) *gorm.DB {
 	if err := model.AutoMigrate(db); err != nil {
 		t.Fatalf("automigrate: %v", err)
 	}
+	_ = db.Create(&model.FaceGalleryRevision{ID: 1, Revision: 0}).Error
 	return db
 }
 

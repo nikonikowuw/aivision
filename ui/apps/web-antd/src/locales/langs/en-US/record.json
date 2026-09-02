@@ -131,5 +131,55 @@
       "hk_macau": "HK/Macau",
       "other": "Other"
     }
+  },
+  "face": {
+    "title": "Face Recognition Records",
+    "query": "Query Face Records",
+    "export": "Export Face Records",
+    "filter": {
+      "camera": "Camera",
+      "cameraPlaceholder": "Select camera",
+      "personName": "Person Name",
+      "personNamePlaceholder": "Input person name",
+      "personId": "Person ID",
+      "personIdPlaceholder": "Input person ID",
+      "timeRange": "Recognition Time",
+      "minSimilarity": "Min Similarity",
+      "maxSimilarity": "Max Similarity",
+      "search": "Search",
+      "reset": "Reset"
+    },
+    "columns": {
+      "id": "ID",
+      "faceCrop": "Face Crop",
+      "panorama": "Panorama",
+      "personName": "Matched Person",
+      "personId": "Person ID",
+      "similarity": "Similarity",
+      "cameraName": "Camera",
+      "observedAt": "Recognized At",
+      "trackId": "Track ID",
+      "action": "Action"
+    },
+    "detail": {
+      "title": "Face Recognition Details",
+      "eventInfo": "Recognition Information",
+      "eventId": "Event ID",
+      "camera": "Camera",
+      "algorithm": "Algorithm",
+      "algorithmVersion": "Version",
+      "timeSynced": "Time Synced",
+      "synced": "Synced",
+      "notSynced": "Not Synced",
+      "observedAt": "Recognized At",
+      "personName": "Person Name",
+      "personId": "Person ID",
+      "faceId": "Face Sample ID",
+      "similarity": "Similarity",
+      "trackId": "Track ID",
+      "faceCrop": "Face Closeup",
+      "panorama": "Panorama Image",
+      "noImage": "No Image Available"
+    }
   }
 }

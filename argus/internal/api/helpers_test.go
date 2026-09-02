@@ -22,5 +22,6 @@ func newTestAPIDB(t *testing.T, name string) *gorm.DB {
 	if err := model.AutoMigrate(db); err != nil {
 		t.Fatalf("migrate sqlite: %v", err)
 	}
+	_ = db.Create(&model.FaceGalleryRevision{ID: 1, Revision: 0}).Error
 	return db
 }

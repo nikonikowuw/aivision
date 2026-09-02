@@ -129,6 +129,7 @@ export namespace TaskApi {
     paramsJson: Record<string, unknown> | string;
     rules: DetectionRule[];
     motionGate?: MotionGateConfig;
+    similarityThreshold?: number;
     enabled: boolean;
     actualStatus: InstanceStatusCode;
     statusMessage: string;
@@ -143,6 +144,7 @@ export namespace TaskApi {
     paramsJson?: Record<string, unknown> | string;
     rules?: DetectionRule[];
     motionGate?: MotionGateConfig;
+    similarityThreshold?: number;
     enabled?: boolean;
   }
 
@@ -151,6 +153,7 @@ export namespace TaskApi {
     paramsJson: Record<string, unknown> | string;
     rules: DetectionRule[];
     motionGate?: MotionGateConfig;
+    similarityThreshold?: number;
   }
 }
 

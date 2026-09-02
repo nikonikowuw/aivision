@@ -112,21 +112,37 @@ type MotionGateConfig struct {
 type AlgorithmInstance struct {
 	BaseModel
 	// 覆写 BaseModel.DeletedAt 以加入 instance_id 复合唯一索引。
-	DeletedAt      soft_delete.DeletedAt `gorm:"column:deleted_at;softDelete:milli;default:0;uniqueIndex:uk_algorithm_instances_instance_id" json:"-"`
-	InstanceID     string                `gorm:"column:instance_id;size:36;not null;uniqueIndex:uk_algorithm_instances_instance_id" json:"instanceId"`
-	CameraID       string                `gorm:"column:camera_id;size:36;not null;index:idx_algorithm_instances_camera_id" json:"cameraId"`
-	AlgorithmID    string                `gorm:"column:algorithm_id;size:64;not null;index:idx_algorithm_instances_algorithm_id" json:"algorithmId"`
-	AnalysisFPS    int32                 `gorm:"column:analysis_fps;not null;default:0" json:"analysisFps"`
-	ParamsJSON     JSONRaw               `gorm:"column:params_json;type:jsonb;not null;default:'{}'" json:"paramsJson"`
-	RulesJSON      JSONRaw               `gorm:"column:rules_json;type:jsonb;not null;default:'[]'" json:"rulesJson"`
-	MotionGateJSON JSONRaw               `gorm:"column:motion_gate_json;type:jsonb;not null;default:'{}'" json:"motionGateJson"`
-	Enabled        bool                  `gorm:"column:enabled;not null;default:false" json:"enabled"`
-	ActualStatus   int8                  `gorm:"column:actual_status;not null" json:"actualStatus"`
-	StatusMessage  string                `gorm:"column:status_message;size:255;not null;default:''" json:"statusMessage"`
+	DeletedAt           soft_delete.DeletedAt `gorm:"column:deleted_at;softDelete:milli;default:0;uniqueIndex:uk_algorithm_instances_instance_id" json:"-"`
+	InstanceID          string                `gorm:"column:instance_id;size:36;not null;uniqueIndex:uk_algorithm_instances_instance_id" json:"instanceId"`
+	CameraID            string                `gorm:"column:camera_id;size:36;not null;index:idx_algorithm_instances_camera_id" json:"cameraId"`
+	AlgorithmID         string                `gorm:"column:algorithm_id;size:64;not null;index:idx_algorithm_instances_algorithm_id" json:"algorithmId"`
+	AnalysisFPS         int32                 `gorm:"column:analysis_fps;not null;default:0" json:"analysisFps"`
+	ParamsJSON          JSONRaw               `gorm:"column:params_json;type:jsonb;not null;default:'{}'" json:"paramsJson"`
+	RulesJSON           JSONRaw               `gorm:"column:rules_json;type:jsonb;not null;default:'[]'" json:"rulesJson"`
+	MotionGateJSON      JSONRaw               `gorm:"column:motion_gate_json;type:jsonb;not null;default:'{}'" json:"motionGateJson"`
+	FaceRecognitionJSON JSONRaw               `gorm:"column:face_recognition_json;type:jsonb;not null;default:'{}'" json:"faceRecognitionJson"`
+	Enabled             bool                  `gorm:"column:enabled;not null;default:false" json:"enabled"`
+	ActualStatus        int8                  `gorm:"column:actual_status;not null" json:"actualStatus"`
+	StatusMessage       string                `gorm:"column:status_message;size:255;not null;default:''" json:"statusMessage"`
 }
 
 // TableName 显式声明表名。
 func (AlgorithmInstance) TableName() string { return "algorithm_instances" }
+
+// FaceRecognitionConfigJSON 算法实例人脸识别比对配置（存储于 algorithm_instances.face_recognition_json）。
+type FaceRecognitionConfigJSON struct {
+	SimilarityThreshold float32 `json:"similarityThreshold"`
+}
+
+// FaceGalleryRevision 人脸底库版本计数器表模型（单行 id=1，只增不减）。
+// 生产表由 000032 迁移创建并初始化；模型供 sqlite 单测建表与 repository 查询使用。
+type FaceGalleryRevision struct {
+	ID       int16 `gorm:"column:id;primaryKey;default:1" json:"id"`
+	Revision int64 `gorm:"column:revision;not null;default:0" json:"revision"`
+}
+
+// TableName 显式声明表名。
+func (FaceGalleryRevision) TableName() string { return "face_gallery_revision" }
 
 // DesiredStateRevision 期望状态版本计数器表模型（单行 id=1，只增不减，见 design D4）。
 // 生产表由 000019 迁移创建并初始化；模型供 sqlite 单测建表与 repository 查询使用。

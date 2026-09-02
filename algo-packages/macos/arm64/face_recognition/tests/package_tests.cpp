@@ -14,6 +14,9 @@ void test_embedding_normalization_and_encoding() {
     assert(Postprocessor::process_and_encode_embedding(raw, b64, err));
     assert(!b64.empty());
     assert(err.empty());
+    assert(b64.size() == ((512 * sizeof(float) + 2) / 3) * 4);
+    assert(b64.back() == '=');
+    assert(b64[b64.size() - 2] != '=');
 
     // Test with NaN
     raw[10] = NAN;

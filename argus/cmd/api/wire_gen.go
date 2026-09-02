@@ -87,13 +87,16 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	algorithmHandler := api.NewAlgorithmHandler(algorithmService)
 	alarmRecordRepository := repository.NewAlarmRecordRepository(gormDB)
 	plateObservationRepository := repository.NewPlateObservationRepository(gormDB)
-	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, zapLogger)
+	faceObservationRepository := repository.NewFaceObservationRepository(gormDB)
+	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, zapLogger)
 	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
 	taskHandler := api.NewTaskHandler(taskService)
 	alarmRecordService := service.NewAlarmRecordService(alarmRecordRepository, cameraRepository, algorithmRepository, taskRepository, cfg)
 	alarmRecordHandler := api.NewAlarmRecordHandler(alarmRecordService)
 	plateObservationService := service.NewPlateObservationService(plateObservationRepository, cameraRepository, cfg)
 	plateObservationHandler := api.NewPlateObservationHandler(plateObservationService)
+	faceObservationService := service.NewFaceObservationService(faceObservationRepository, cameraRepository, cfg)
+	faceObservationHandler := api.NewFaceObservationHandler(faceObservationService)
 	deps := router.Deps{
 		ErrorHandler:            handlerFunc,
 		AuthMiddleware:          authMiddleware,
@@ -115,9 +118,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		TaskHandler:             taskHandler,
 		AlarmRecordHandler:      alarmRecordHandler,
 		PlateObservationHandler: plateObservationHandler,
+		FaceObservationHandler:  faceObservationHandler,
 	}
 	engine := router.New(cfg, deps)
-	desiredStateAdapter := service.NewDesiredStateAdapter(taskRepository, zapLogger)
+	desiredStateAdapter := service.NewDesiredStateAdapter(taskRepository, personFaceRepository, zapLogger)
 	runtime := engineipc.NewRuntime(zapLogger, desiredStateAdapter, reportAdapter)
 	app := &App{
 		DB:           gormDB,

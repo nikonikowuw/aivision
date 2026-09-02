@@ -14,6 +14,7 @@
   },
   "record": {
     "alarm": "Alarm Records",
+    "face": "Face Recognition",
     "plate": "License Plate",
     "record": "AI Records"
   },

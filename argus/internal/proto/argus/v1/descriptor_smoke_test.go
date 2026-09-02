@@ -31,17 +31,18 @@ var expectedServices = map[string][]string{
 	},
 	"argus.v1.ControlPlaneService": {
 		"GetDesiredState",
+		"GetFaceGallery",
 	},
 	"argus.v1.ReportService": {
 		"ReportAlarm",
 		"ReportPlateObservation",
+		"ReportFaceObservation",
 		"ReportTaskState",
 		"ReportInstanceState",
 		"ReportMetrics",
 		"ReportOrphanImages",
 	},
 	"argus.v1.PersonService": {
-		"SyncPersons",
 		"ExtractFaceFeature",
 	},
 }
@@ -86,14 +87,13 @@ func TestGeneratedDescriptorMatchesProto(t *testing.T) {
 			t.Errorf("service %q missing from generated descriptor", name)
 		}
 	}
-	// 本任务范围：7 个入站（ControlPlane 1 + Report 6）+ 15 个出站 EngineService = 22。
-	// PersonService.SyncPersons 为预留接口，不计入本任务 22 个 RPC。
+	// 本任务范围：9 个入站（ControlPlane 2 + Report 7）+ 15 个出站 EngineService = 24。
 	taskRPCs := 0
 	for _, svc := range []string{"argus.v1.EngineService", "argus.v1.ControlPlaneService", "argus.v1.ReportService"} {
 		taskRPCs += len(expectedServices[svc])
 	}
-	if taskRPCs != 22 {
-		t.Errorf("in-scope RPC count = %d, want 22", taskRPCs)
+	if taskRPCs != 24 {
+		t.Errorf("in-scope RPC count = %d, want 24", taskRPCs)
 	}
 }
 

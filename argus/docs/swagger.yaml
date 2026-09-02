@@ -481,6 +481,64 @@ definitions:
       username:
         type: string
     type: object
+  argus_app_internal_service.FaceObservationItem:
+    properties:
+      algorithmId:
+        type: string
+      algorithmVersion:
+        type: string
+      bbox:
+        items:
+          type: number
+        type: array
+      cameraId:
+        type: string
+      cameraName:
+        type: string
+      createdAt:
+        type: string
+      eventId:
+        type: string
+      faceId:
+        type: string
+      faceImageId:
+        type: string
+      faceImageRelPath:
+        type: string
+      faceImageUrl:
+        type: string
+      id:
+        type: integer
+      imageId:
+        type: string
+      imageRelPath:
+        type: string
+      instanceId:
+        type: string
+      observedAt:
+        type: string
+      panoramaImageUrl:
+        type: string
+      personId:
+        type: string
+      personName:
+        type: string
+      similarity:
+        type: number
+      timeSynced:
+        type: boolean
+      trackId:
+        type: integer
+    type: object
+  argus_app_internal_service.FaceObservationPageResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/argus_app_internal_service.FaceObservationItem'
+        type: array
+      total:
+        type: integer
+    type: object
   argus_app_internal_service.LogPageResult:
     properties:
       items:
@@ -2069,6 +2127,175 @@ paths:
       summary: 查询告警记录详情
       tags:
       - 告警记录
+  /api/record/faces:
+    get:
+      description: 支持按人员、摄像头、时间区间和相似度组合分页查询
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数
+        in: query
+        name: pageSize
+        type: integer
+      - description: 开始时间
+        in: query
+        name: startTime
+        type: string
+      - description: 结束时间
+        in: query
+        name: endTime
+        type: string
+      - description: 摄像头ID
+        in: query
+        name: cameraId
+        type: string
+      - description: 人员ID
+        in: query
+        name: personId
+        type: string
+      - description: 人员姓名
+        in: query
+        name: personName
+        type: string
+      - description: 最低相似度
+        in: query
+        name: minSimilarity
+        type: number
+      - description: 最高相似度
+        in: query
+        name: maxSimilarity
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 人脸识别记录分页数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/argus_app_internal_service.FaceObservationPageResult'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 分页查询人脸识别记录
+      tags:
+      - 人脸识别记录
+  /api/record/faces/{id}:
+    get:
+      description: 获取单条人脸识别记录，包含人员、相似度、算法来源及两张抓拍图
+      parameters:
+      - description: 人脸识别记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 人脸识别详情数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/argus_app_internal_service.FaceObservationItem'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: 记录不存在
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 查询人脸识别记录详情
+      tags:
+      - 人脸识别记录
+  /api/record/faces/{id}/face:
+    get:
+      parameters:
+      - description: 人脸识别记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: 人脸特写图片文件流
+          schema:
+            type: file
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: 图片不存在
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 读取人脸特写图
+      tags:
+      - 人脸识别记录
+  /api/record/faces/{id}/panorama:
+    get:
+      parameters:
+      - description: 人脸识别记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: 全景图片文件流
+          schema:
+            type: file
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: 图片不存在
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 读取人脸识别全景图
+      tags:
+      - 人脸识别记录
   /api/record/images/{id}:
     get:
       description: 校验 Bearer Token 并在后端代理读取 Engine var/images 下的安全图片流，支持 type=thumb

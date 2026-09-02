@@ -24,16 +24,17 @@ std::string base64_encode(const uint8_t* data, size_t len) {
 
     size_t i = 0;
     while (i < len) {
-        uint32_t octet_a = i < len ? data[i++] : 0;
-        uint32_t octet_b = i < len ? data[i++] : 0;
-        uint32_t octet_c = i < len ? data[i++] : 0;
-
-        uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
+        const size_t remaining = len - i;
+        const size_t bytes_in_block = std::min<std::size_t>(remaining, 3);
+        const uint32_t octet_a = data[i++];
+        const uint32_t octet_b = bytes_in_block > 1 ? data[i++] : 0;
+        const uint32_t octet_c = bytes_in_block > 2 ? data[i++] : 0;
+        const uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
 
         ret.push_back(base64_chars[(triple >> 18) & 0x3F]);
         ret.push_back(base64_chars[(triple >> 12) & 0x3F]);
-        ret.push_back((i > len + 1) ? '=' : base64_chars[(triple >> 6) & 0x3F]);
-        ret.push_back((i > len) ? '=' : base64_chars[triple & 0x3F]);
+        ret.push_back(bytes_in_block > 1 ? base64_chars[(triple >> 6) & 0x3F] : '=');
+        ret.push_back(bytes_in_block > 2 ? base64_chars[triple & 0x3F] : '=');
     }
     return ret;
 }
@@ -168,7 +169,7 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
             face.x1 = std::clamp((x1_lb - pad_x) / scale, 0.0f, static_cast<float>(orig_w));
             face.y1 = std::clamp((y1_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_h));
             face.x2 = std::clamp((x2_lb - pad_x) / scale, 0.0f, static_cast<float>(orig_w));
-            face.y2 = std::clamp((y2_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_w));
+            face.y2 = std::clamp((y2_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_h));
 
             for (int k = 0; k < 5; ++k) {
                 float kx_lb = anchor_x + kps_ptr[a_idx * 10 + k * 2 + 0] * stride;
@@ -233,24 +234,25 @@ bool Postprocessor::process_and_encode_embedding(
     }
 
     // Check for non-finite values (NaN / Inf)
-    float l2_norm_sq = 0.0f;
+    double l2_norm_sq = 0.0;
     for (float v : raw_embedding) {
         if (!std::isfinite(v)) {
             error = "embedding contains non-finite values";
             return false;
         }
-        l2_norm_sq += v * v;
+        const double value = static_cast<double>(v);
+        l2_norm_sq += value * value;
     }
 
-    float norm = std::sqrt(l2_norm_sq);
-    if (norm < 1e-12f) {
-        error = "embedding norm is zero";
+    const double norm = std::sqrt(l2_norm_sq);
+    if (!std::isfinite(norm) || norm < 1e-12) {
+        error = "embedding norm is zero or invalid";
         return false;
     }
 
     std::vector<float> normalized(512);
     for (size_t i = 0; i < 512; ++i) {
-        normalized[i] = raw_embedding[i] / norm;
+        normalized[i] = static_cast<float>(static_cast<double>(raw_embedding[i]) / norm);
     }
 
     // Convert to little-endian bytes and Base64 encode

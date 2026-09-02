@@ -1,0 +1,26 @@
+{
+  "manifest_version": 1,
+  "algorithm_id": "mock-face",
+  "version": "1.0.0",
+  "name": "Mock Face Recognition",
+  "description": "Deterministic face recognition test algorithm package",
+  "algorithm_type": "face_recognition",
+  "platform_id": "mock",
+  "min_adapter_version": "1.0.0",
+  "runtime_constraints": {
+    "min_os_version": "0.0"
+  },
+  "resource_profile": {
+    "min_free_memory_mb": 1,
+    "fps_tiers": [
+      {
+        "fps": 1,
+        "units": 1
+      }
+    ]
+  },
+  "self_test": {
+    "timeout_ms": 10000,
+    "input_mode": "test_image"
+  }
+}

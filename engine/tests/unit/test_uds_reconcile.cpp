@@ -8,6 +8,7 @@
 #include "argus/core/algo_manager.hpp"
 #include "argus/core/frame_pool.hpp"
 #include "argus/core/image_manager.hpp"
+#include "argus/core/face_gallery.hpp"
 #include "argus/core/resource_ledger.hpp"
 #include "argus/core/task_scheduler.hpp"
 #include "argus/core/uds_ipc.hpp"
@@ -33,6 +34,10 @@
 #define ARGUS_LPR_FIXTURE_PACKAGE_DIR "tests/fixtures/packages/mock_lpr_pkg"
 #endif
 
+#ifndef ARGUS_FACE_FIXTURE_PACKAGE_DIR
+#define ARGUS_FACE_FIXTURE_PACKAGE_DIR "tests/fixtures/packages/mock_face_pkg"
+#endif
+
 namespace {
 
 class NoopSource final : public argus::media::IMediaSource {
@@ -55,6 +60,18 @@ class NoopBackend final : public argus::media::IMediaBackend {
 public:
     std::unique_ptr<argus::media::IMediaSource> create_source(const std::string&) override {
         return std::make_unique<NoopSource>();
+    }
+};
+
+class FailingImageProcessor final : public argus::platform::IImageProcessor {
+public:
+    av_status resize(const av_frame_desc*, av_image_view*) override { return AV_ERR_INTERNAL; }
+    av_status letterbox(const av_frame_desc*, av_image_view*, float*, float*, float*) override {
+        return AV_ERR_INTERNAL;
+    }
+    av_status convert_color(const av_image_view*, av_image_view*) override { return AV_ERR_INTERNAL; }
+    av_status encode_jpeg(const av_frame_desc*, const av_rect*, int, std::vector<uint8_t>&) override {
+        return AV_ERR_INTERNAL;
     }
 };
 
@@ -102,6 +119,29 @@ public:
         }
         observations_.push_back(request->observation());
         plate_cv_.notify_all();
+        return grpc::Status::OK; // code 留空 = 接受
+    }
+    grpc::Status ReportFaceObservation(grpc::ServerContext*,
+                                       const argus::v1::ReportFaceObservationRequest* request,
+                                       argus::v1::ReportFaceObservationResponse* response) override {
+        if (!request || !request->has_observation()) {
+            response->set_code("INVALID_ARG");
+            return grpc::Status::OK;
+        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        ++face_report_count_;
+        if (fail_all_face_ || fail_next_face_) {
+            fail_next_face_ = false;
+            response->set_code("TEMPORARY_FAILURE");
+            return grpc::Status::OK;
+        }
+        if (block_face_) {
+            face_started_ = true;
+            face_cv_.notify_all();
+            face_cv_.wait(lock, [this] { return !block_face_ || release_face_; });
+        }
+        face_observations_.push_back(request->observation());
+        face_cv_.notify_all();
         return grpc::Status::OK; // code 留空 = 接受
     }
     grpc::Status ReportTaskState(grpc::ServerContext*, const argus::v1::ReportTaskStateRequest*,
@@ -161,6 +201,50 @@ public:
         return plate_cv_.wait_for(lock, timeout, [this] { return !observations_.empty(); });
     }
 
+    void block_face() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        block_face_ = true;
+        release_face_ = false;
+        face_started_ = false;
+    }
+
+    bool wait_for_face_report_start(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return face_cv_.wait_for(lock, timeout, [this] { return face_started_; });
+    }
+
+    void release_face() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        release_face_ = true;
+        block_face_ = false;
+        face_cv_.notify_all();
+    }
+
+    void fail_all_face_observations(bool fail) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        fail_all_face_ = fail;
+    }
+
+    void fail_next_face_observation() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        fail_next_face_ = true;
+    }
+
+    size_t face_report_count() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return face_report_count_;
+    }
+
+    bool wait_for_face_observation(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return face_cv_.wait_for(lock, timeout, [this] { return !face_observations_.empty(); });
+    }
+
+    std::vector<argus::v1::FaceObservation> face_observations() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return face_observations_;
+    }
+
     std::vector<argus::v1::InstanceState> captured() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return states_;
@@ -170,11 +254,19 @@ private:
     mutable std::mutex mutex_;
     std::condition_variable alarm_cv_;
     std::condition_variable plate_cv_;
+    std::condition_variable face_cv_;
     std::vector<argus::v1::InstanceState> states_;
     std::vector<argus::v1::AlarmEvent> alarms_;
     std::vector<argus::v1::PlateObservation> observations_;
+    std::vector<argus::v1::FaceObservation> face_observations_;
     size_t plate_report_count_ = 0;
+    size_t face_report_count_ = 0;
     bool fail_next_plate_ = false;
+    bool fail_next_face_ = false;
+    bool fail_all_face_ = false;
+    bool block_face_ = false;
+    bool release_face_ = false;
+    bool face_started_ = false;
     bool block_alarm_ = false;
     bool release_alarm_ = false;
     bool alarm_started_ = false;
@@ -1053,6 +1145,220 @@ TEST(UdsReconcileTest, LicensePlateObservationCaptureValidationAndRetry) {
     ::unsetenv("ARGUS_PACKAGE_DIR");
     std::filesystem::remove_all(package_dir);
     std::filesystem::remove_all(image_dir);
+}
+
+TEST(UdsReconcileTest, FaceRecognitionObservationUsesRealUdsCallbackAndRetry) {
+    const std::string package_dir = "var/face-observation-packages";
+    const std::string image_dir = "build/face-observation-images";
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+    std::filesystem::create_directories(package_dir + "/mock-face");
+    std::error_code package_copy_error;
+    std::filesystem::copy(
+        ARGUS_FACE_FIXTURE_PACKAGE_DIR,
+        package_dir + "/mock-face/1.0.0",
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+        package_copy_error);
+    ASSERT_FALSE(package_copy_error);
+    ASSERT_EQ(::setenv("ARGUS_PACKAGE_DIR", package_dir.c_str(), 1), 0);
+
+    auto adapter = std::make_shared<argus::platform::MockPlatformAdapter>();
+    auto backend = std::make_shared<NoopBackend>();
+    auto& registry = argus::platform::PlatformRegistry::instance();
+    registry.register_adapter("mock", adapter);
+    registry.set_active_platform("mock");
+    argus::core::ResourceLedger::instance().clear();
+    argus::core::ResourceLedger::instance().set_limits(1000, 100, 0);
+    argus::core::ResourceLedger::instance().set_free_memory_provider([] {
+        return uint64_t{2} * 1024 * 1024 * 1024;
+    });
+    auto normal_image_processor =
+        std::shared_ptr<argus::platform::IImageProcessor>(adapter, adapter->get_image_processor());
+    argus::core::ImageManager::instance().init(image_dir, std::make_shared<FailingImageProcessor>());
+
+    auto& gallery = argus::core::FaceGallery::instance();
+    std::vector<float> gallery_embedding(argus::core::kFaceEmbeddingDimensions, 0.0f);
+    gallery_embedding[0] = 1.0f;
+    const uint64_t gallery_revision = gallery.revision() + 1;
+    std::string gallery_error;
+    ASSERT_TRUE(gallery.replace(
+        gallery_revision, std::move(gallery_embedding),
+        {argus::core::FaceGalleryEntry{"face-1", "person-1", "Alice"}}, &gallery_error))
+        << gallery_error;
+
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start("/tmp/argus-test-app-face.sock"));
+    app_server.service().fail_next_face_observation();
+    argus::core::UdsServer server("/tmp/argus-test-face.sock", adapter, backend,
+                                  "/tmp/argus-test-app-face.sock");
+    ASSERT_TRUE(server.start());
+
+    argus::v1::DesiredState desired;
+    desired.set_revision(1);
+    auto* task = desired.add_tasks();
+    task->set_camera_id("face-camera");
+    task->set_camera_name("Front Gate");
+    task->set_rtsp_url("rtsp://unused");
+    task->set_enabled(true);
+    auto* instance_config = add_instance(
+        &desired, "face-instance", "face-camera", "mock-face", "1.0.0", 1);
+    instance_config->mutable_face_recognition()->set_similarity_threshold(0.8f);
+
+    argus::v1::ApplyDesiredStateResponse response;
+    ASSERT_TRUE(server.apply_desired_state(desired, &response));
+    ASSERT_TRUE(response.code().empty()) << response.error_message();
+    const auto instance = argus::core::AlgoManager::instance().get("face-instance");
+    ASSERT_NE(instance, nullptr);
+
+    auto& pool = argus::core::FramePool::instance();
+    auto push_frame = [&](uint64_t frame_id) {
+        av_frame_desc* frame = pool.acquire_frame();
+        ASSERT_NE(frame, nullptr);
+        frame->frame_id = frame_id;
+        frame->opaque = reinterpret_cast<void*>(0x1);
+        frame->wall_time_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->pts_ns = static_cast<int64_t>(frame_id) * 1'000'000'000;
+        frame->memory_type = AV_MEM_HOST;
+        frame->pixel_format = AV_PIX_NV12;
+        frame->width = 1920;
+        frame->height = 1080;
+        instance->push_frame(*frame);
+        EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
+    };
+    auto wait_for_processed = [&](uint64_t expected) {
+        for (int attempt = 0; attempt < 600 && instance->get_processed_frames() < expected; ++attempt) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        EXPECT_GE(instance->get_processed_frames(), expected);
+    };
+
+    // 抓拍编码失败时不得上报，也不得遗留 track 状态；随后恢复编码器验证同一 track 可以重新入队。
+    push_frame(1);
+    wait_for_processed(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(app_server.service().face_report_count(), 0U);
+    EXPECT_TRUE(app_server.service().face_observations().empty());
+    EXPECT_TRUE(argus::core::ImageManager::instance().list_unreported_images().empty());
+    EXPECT_EQ(pool.active_frame_count(), 0U);
+    argus::core::ImageManager::instance().init(image_dir, normal_image_processor);
+
+    // 非法 JSON、Base64、零范数、frame_id、image_count 和 ROI 都必须在抓拍前拒绝。
+    uint64_t expected_processed = instance->get_processed_frames();
+    for (uint64_t frame_id = 4; frame_id <= 9; ++frame_id) {
+        push_frame(frame_id);
+        wait_for_processed(++expected_processed);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(app_server.service().face_report_count(), 0U);
+    EXPECT_TRUE(app_server.service().face_observations().empty());
+    EXPECT_TRUE(argus::core::ImageManager::instance().list_unreported_images().empty());
+
+    // 阈值等于 0.8 时应接受 0.8，低于阈值的 0.5 不应产生副作用。
+    push_frame(10);
+    wait_for_processed(++expected_processed);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(app_server.service().face_report_count(), 0U);
+    push_frame(1);
+    wait_for_processed(++expected_processed);
+
+    // 首次相似度为 0.8；第一次 UDS 上报故意失败，随后由同一抓拍引用重试成功。
+    ASSERT_TRUE(app_server.service().wait_for_face_observation(std::chrono::seconds(3)));
+    ASSERT_EQ(app_server.service().face_report_count(), 2U);
+    auto observations = app_server.service().face_observations();
+    ASSERT_EQ(observations.size(), 1U);
+    EXPECT_EQ(observations[0].event_id().starts_with("face-instance-run-"), true);
+    EXPECT_TRUE(observations[0].event_id().ends_with("/7"));
+    EXPECT_EQ(observations[0].instance_id(), "face-instance");
+    EXPECT_EQ(observations[0].camera_name(), "Front Gate");
+    EXPECT_EQ(observations[0].face_id(), "face-1");
+    EXPECT_EQ(observations[0].person_id(), "person-1");
+    EXPECT_EQ(observations[0].person_name(), "Alice");
+    EXPECT_NEAR(observations[0].similarity(), 0.8f, 0.001f);
+    EXPECT_FALSE(observations[0].image_id().empty());
+    EXPECT_FALSE(observations[0].face_image_id().empty());
+    EXPECT_TRUE(std::filesystem::exists(image_dir + "/" + observations[0].image_rel_path()));
+    EXPECT_TRUE(std::filesystem::exists(image_dir + "/" + observations[0].face_image_rel_path()));
+
+    // 同一 track 的提升不足阈值不再上报；提升到 1.0 时复用同一 event_id 重新上报。
+    push_frame(2);
+    wait_for_processed(++expected_processed);
+    push_frame(3);
+    wait_for_processed(++expected_processed);
+    for (int attempt = 0; attempt < 600 && app_server.service().face_observations().size() < 2U; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    observations = app_server.service().face_observations();
+    ASSERT_EQ(app_server.service().face_report_count(), 3U);
+    ASSERT_EQ(observations.size(), 2U);
+    EXPECT_EQ(observations[1].event_id(), observations[0].event_id());
+    EXPECT_FLOAT_EQ(observations[1].similarity(), 1.0f);
+    EXPECT_NE(observations[1].image_id(), observations[0].image_id());
+    EXPECT_NE(observations[1].face_image_id(), observations[0].face_image_id());
+
+    // 一个 pending 批次内的多个 face 共享同一张全景图；首个 face 故意失败以覆盖重试路径。
+    app_server.service().fail_next_face_observation();
+    const uint64_t multi_face_processed = expected_processed;
+    push_frame(3000);
+    wait_for_processed(++expected_processed);
+    for (int attempt = 0; attempt < 600 && app_server.service().face_observations().size() < 4U; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    observations = app_server.service().face_observations();
+    EXPECT_GT(expected_processed, multi_face_processed);
+    ASSERT_EQ(observations.size(), 4U);
+    EXPECT_EQ(observations[2].image_id(), observations[3].image_id());
+    EXPECT_NE(observations[2].face_image_id(), observations[3].face_image_id());
+    EXPECT_TRUE(argus::core::ImageManager::instance().list_unreported_images().empty());
+
+    // 报告连续失败达到上限后必须清理 track 状态；同一 track 的后续完整结果仍可重新上报。
+    const uint64_t processed_before_exhaustion = instance->get_processed_frames();
+    const size_t reports_before_exhaustion = app_server.service().face_report_count();
+    const size_t observations_before_exhaustion = observations.size();
+    app_server.service().fail_all_face_observations(true);
+    push_frame(2000);
+    wait_for_processed(processed_before_exhaustion + 1);
+    for (int attempt = 0; attempt < 1200 &&
+                              app_server.service().face_report_count() < reports_before_exhaustion + 4U; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(app_server.service().face_report_count(), reports_before_exhaustion + 4U);
+    EXPECT_EQ(app_server.service().face_observations().size(), observations_before_exhaustion);
+    EXPECT_EQ(pool.active_frame_count(), 0U);
+    EXPECT_EQ(argus::core::ImageManager::instance().list_unreported_images().size(), 2U);
+
+    app_server.service().fail_all_face_observations(false);
+    push_frame(2001);
+    wait_for_processed(processed_before_exhaustion + 2);
+    for (int attempt = 0; attempt < 600 && app_server.service().face_observations().size() <= observations_before_exhaustion; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(app_server.service().face_report_count(), reports_before_exhaustion + 5U);
+    EXPECT_EQ(app_server.service().face_observations().size(), observations_before_exhaustion + 1U);
+    EXPECT_EQ(argus::core::ImageManager::instance().list_unreported_images().size(), 2U);
+    EXPECT_EQ(pool.active_frame_count(), 0U);
+
+    // 阻塞首个报告并填满有界抓拍队列，确认 258 次算法输入只保留一个正在处理项和 256 个排队项。
+    app_server.service().block_face();
+    push_frame(1000);
+    ASSERT_TRUE(app_server.service().wait_for_face_report_start(std::chrono::seconds(3)));
+    expected_processed = instance->get_processed_frames();
+    for (uint64_t frame_id = 1001; frame_id <= 1257; ++frame_id) {
+        push_frame(frame_id);
+        wait_for_processed(++expected_processed);
+    }
+    EXPECT_EQ(pool.active_frame_count(), 256U);
+    app_server.service().release_face();
+
+    server.stop();
+    app_server.stop();
+    EXPECT_EQ(pool.active_frame_count(), 0U);
+    argus::core::ResourceLedger::instance().clear();
+    ::unsetenv("ARGUS_PACKAGE_DIR");
+    std::filesystem::remove_all(package_dir);
+    std::filesystem::remove_all(image_dir);
+
+    std::string cleanup_error;
+    EXPECT_TRUE(gallery.replace(gallery.revision() + 1, {}, {}, &cleanup_error)) << cleanup_error;
 }
 
 TEST(UdsReconcileTest, PlateObservationReportAndClient) {

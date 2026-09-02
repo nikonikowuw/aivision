@@ -260,7 +260,10 @@ func (s *personService) DeletePerson(ctx context.Context, personID string) error
 	if err := validatePersonIDFormat(personID); err != nil {
 		return err
 	}
-	faces, _ := s.faceRepo.DeleteAllByPersonID(ctx, personID)
+	faces, err := s.faceRepo.ListByPersonID(ctx, personID)
+	if err != nil {
+		return err
+	}
 	deleted, err := s.repo.Delete(ctx, personID)
 	if err != nil {
 		return err
@@ -292,14 +295,24 @@ func (s *personService) BatchDeletePerson(ctx context.Context, input *BatchDelet
 			ids = append(ids, trimmed)
 		}
 	}
+	deletedFaces := make(map[string][]model.PersonFace, len(ids))
 	for _, id := range ids {
-		faces, _ := s.faceRepo.DeleteAllByPersonID(ctx, id)
+		faces, err := s.faceRepo.ListByPersonID(ctx, id)
+		if err != nil {
+			return err
+		}
+		deletedFaces[id] = faces
+	}
+	if err := s.repo.BatchDelete(ctx, ids); err != nil {
+		return err
+	}
+	for _, faces := range deletedFaces {
 		for _, f := range faces {
 			_ = s.storage.Delete(ctx, f.RawImageKey)
 			_ = s.storage.Delete(ctx, f.AlignedFaceKey)
 		}
 	}
-	return s.repo.BatchDelete(ctx, ids)
+	return nil
 }
 
 // SyncUpsertPerson 对开放同步请求执行幂等新增、更新或恢复。
@@ -351,8 +364,11 @@ func (s *personService) SyncDeletePerson(ctx context.Context, personID string) e
 	if err := validatePersonIDFormat(personID); err != nil {
 		return err
 	}
-	faces, _ := s.faceRepo.DeleteAllByPersonID(ctx, personID)
-	_, err := s.repo.Delete(ctx, personID)
+	faces, err := s.faceRepo.ListByPersonID(ctx, personID)
+	if err != nil {
+		return err
+	}
+	_, err = s.repo.Delete(ctx, personID)
 	if err != nil {
 		return err
 	}
@@ -522,6 +538,9 @@ func (s *personService) RegisterFace(ctx context.Context, personID string, fileH
 	if err := s.faceRepo.Create(ctx, faceModel); err != nil {
 		_ = s.storage.Delete(ctx, rawKey)
 		_ = s.storage.Delete(ctx, alignedKey)
+		if errors.Is(err, repository.ErrFaceGalleryFull) {
+			return nil, errno.NewError(errno.CodeFaceGalleryFull)
+		}
 		if errors.Is(err, repository.ErrLimitExceeded) {
 			return nil, errno.NewError(errno.CodeFaceLimitExceeded)
 		}

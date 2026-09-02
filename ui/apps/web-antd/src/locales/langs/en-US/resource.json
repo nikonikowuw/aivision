@@ -195,6 +195,8 @@
       "motionGateHint": "Skip AI inference during static scenes to save compute power; resume immediately on motion or keepalive intervals",
       "motionGateKeepalive": "Keepalive Interval (ms)",
       "motionGateKeepaliveHint": "Interval between periodic baseline frames during static scenes",
+      "faceSimilarityThreshold": "Face Similarity Threshold",
+      "faceSimilarityThresholdHint": "Applies only to face_recognition. Range: 0 to 1; higher values are stricter",
       "tabParams": "Algorithm & Parameters",
       "tabRules": "Detection Zones & Rules",
       "currentTargets": "Active Target Classes",

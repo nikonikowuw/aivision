@@ -6,13 +6,17 @@
 #include "argus/core/uds_ipc.hpp"
 
 #include <chrono>
+#include <utility>
 
 
 namespace argus::core {
 
 UdsClient::UdsClient(const std::string& app_sock_path) {
+    grpc::ChannelArguments args;
+    args.SetMaxReceiveMessageSize(32 * 1024 * 1024);
+    args.SetMaxSendMessageSize(32 * 1024 * 1024);
     // 创建 Unix Domain Socket (UDS) gRPC 传输通道并实例化客户端 Stub
-    channel_ = grpc::CreateChannel("unix://" + app_sock_path, grpc::InsecureChannelCredentials());
+    channel_ = grpc::CreateCustomChannel("unix://" + app_sock_path, grpc::InsecureChannelCredentials(), args);
     report_stub_ = argus::v1::ReportService::NewStub(channel_);
     control_plane_stub_ = argus::v1::ControlPlaneService::NewStub(channel_);
 }
@@ -40,6 +44,17 @@ bool UdsClient::report_plate_observation(const argus::v1::PlateObservation& obse
 
     grpc::Status status = report_stub_->ReportPlateObservation(&ctx, req, &resp);
     return status.ok() && resp.code().empty();
+}
+
+bool UdsClient::report_face_observation(const argus::v1::FaceObservation& observation) {
+    if (!report_stub_) return false;
+    argus::v1::ReportFaceObservationRequest request;
+    *request.mutable_observation() = observation;
+    argus::v1::ReportFaceObservationResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
+    const grpc::Status status = report_stub_->ReportFaceObservation(&context, request, &response);
+    return status.ok() && response.code().empty();
 }
 
 bool UdsClient::report_telemetry(const argus::v1::DeviceTelemetry& telemetry) {
@@ -100,6 +115,21 @@ bool UdsClient::get_desired_state(uint64_t current_revision, argus::v1::DesiredS
         return true;
     }
     return false;
+}
+
+bool UdsClient::get_face_gallery(uint64_t current_gallery_revision,
+                                 argus::v1::GetFaceGalleryResponse* out_response) {
+    if (!control_plane_stub_ || !out_response) return false;
+    argus::v1::GetFaceGalleryRequest request;
+    request.set_current_gallery_revision(current_gallery_revision);
+    argus::v1::GetFaceGalleryResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
+
+    const grpc::Status status = control_plane_stub_->GetFaceGallery(&context, request, &response);
+    if (!status.ok() || !response.code().empty()) return false;
+    *out_response = std::move(response);
+    return true;
 }
 
 } // namespace argus::core

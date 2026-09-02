@@ -75,7 +75,7 @@ func TestDesiredStateAdapterFullSnapshot(t *testing.T) {
 		t.Fatalf("bump revision: %v", err)
 	}
 
-	adapter := NewDesiredStateAdapter(taskRepo, zap.NewNop())
+	adapter := NewDesiredStateAdapter(taskRepo, nil, zap.NewNop())
 	// 传入当前 revision=1（未变化）也应返回完整快照（design §3.3）。
 	state, err := adapter.DesiredState(ctx, 1)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestDesiredStateAdapterFailClosed(t *testing.T) {
 	if err := db.Delete(&model.DesiredStateRevision{}, "id = ?", 1).Error; err != nil {
 		t.Fatalf("delete revision row: %v", err)
 	}
-	adapter := NewDesiredStateAdapter(repository.NewTaskRepository(db), zap.NewNop())
+	adapter := NewDesiredStateAdapter(repository.NewTaskRepository(db), nil, zap.NewNop())
 	if _, err := adapter.DesiredState(context.Background(), 0); err == nil {
 		t.Fatal("DesiredState unexpectedly succeeded with missing revision row")
 	}

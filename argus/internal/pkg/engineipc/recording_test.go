@@ -10,12 +10,16 @@ import (
 // recordingDesiredStateAdapter 是 DesiredStateAdapter 的 recording fake：
 // 记录调用参数，按配置返回状态或错误。
 type recordingDesiredStateAdapter struct {
-	mu       sync.Mutex
-	state    *argusv1.DesiredState
-	err      error
-	panic    bool
-	revision uint64
-	calls    int
+	mu           sync.Mutex
+	state        *argusv1.DesiredState
+	galleryResp  *argusv1.GetFaceGalleryResponse
+	err          error
+	galleryErr   error
+	panic        bool
+	revision     uint64
+	galleryRev   uint64
+	calls        int
+	galleryCalls int
 }
 
 func (a *recordingDesiredStateAdapter) DesiredState(_ context.Context, rev uint64) (*argusv1.DesiredState, error) {
@@ -32,6 +36,20 @@ func (a *recordingDesiredStateAdapter) DesiredState(_ context.Context, rev uint6
 	return a.state, nil
 }
 
+func (a *recordingDesiredStateAdapter) FaceGallery(_ context.Context, rev uint64) (*argusv1.GetFaceGalleryResponse, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.galleryRev = rev
+	a.galleryCalls++
+	if a.panic {
+		panic("boom")
+	}
+	if a.galleryErr != nil {
+		return nil, a.galleryErr
+	}
+	return a.galleryResp, nil
+}
+
 func (a *recordingDesiredStateAdapter) callCount() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -40,16 +58,17 @@ func (a *recordingDesiredStateAdapter) callCount() int {
 
 // recordingReportAdapter 是 ReportAdapter 的 recording fake。
 type recordingReportAdapter struct {
-	mu            sync.Mutex
-	alarms        []*argusv1.AlarmEvent
-	observations  []*argusv1.PlateObservation
-	taskStates    []*argusv1.TaskState
-	instStates    []*argusv1.InstanceState
-	metrics       []*argusv1.DeviceTelemetry
-	orphanReports [][]*argusv1.OrphanImageEntry
-	err           error
-	panic         bool
-	disposition   OrphanDisposition
+	mu               sync.Mutex
+	alarms           []*argusv1.AlarmEvent
+	observations     []*argusv1.PlateObservation
+	faceObservations []*argusv1.FaceObservation
+	taskStates       []*argusv1.TaskState
+	instStates       []*argusv1.InstanceState
+	metrics          []*argusv1.DeviceTelemetry
+	orphanReports    [][]*argusv1.OrphanImageEntry
+	err              error
+	panic            bool
+	disposition      OrphanDisposition
 }
 
 func (a *recordingReportAdapter) AcceptAlarm(_ context.Context, alarm *argusv1.AlarmEvent) error {
@@ -75,6 +94,19 @@ func (a *recordingReportAdapter) AcceptPlateObservation(_ context.Context, obs *
 		return a.err
 	}
 	a.observations = append(a.observations, obs)
+	return nil
+}
+
+func (a *recordingReportAdapter) AcceptFaceObservation(_ context.Context, obs *argusv1.FaceObservation) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.panic {
+		panic("boom")
+	}
+	if a.err != nil {
+		return a.err
+	}
+	a.faceObservations = append(a.faceObservations, obs)
 	return nil
 }
 

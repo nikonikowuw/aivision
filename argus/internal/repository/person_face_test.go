@@ -133,3 +133,45 @@ func TestPersonFaceRepositoryCRUDAndLimit(t *testing.T) {
 		t.Fatalf("face count after person delete: got %d, want 0", count)
 	}
 }
+
+func TestPersonFaceRepositoryRejectsOverLimitGallerySnapshot(t *testing.T) {
+	db := newPersonTestDB(t)
+	faceRepo := repository.NewPersonFaceRepository(db)
+	ctx := context.Background()
+
+	faces := make([]model.PersonFace, repository.MaxFaceGalleryEntries+1)
+	embedding := make([]byte, 2048)
+	for i := range faces {
+		faces[i] = model.PersonFace{
+			PersonID:         "over-limit-person",
+			FaceID:           fmt.Sprintf("over-limit-face-%05d", i),
+			AlgorithmID:      "face_recognition",
+			AlgorithmVersion: "1.0.0",
+			Embedding:        embedding,
+			RawImageKey:      fmt.Sprintf("persons/over-limit/raw_%05d.jpg", i),
+			RawImageSHA256:   fmt.Sprintf("over-limit-sha-%05d", i),
+			RawImageSize:     1024,
+			RawImageMime:     "image/jpeg",
+			AlignedFaceKey:   fmt.Sprintf("persons/over-limit/aligned_%05d.jpg", i),
+			AlignedFaceSize:  512,
+			AlignedFaceMime:  "image/jpeg",
+		}
+	}
+	if err := db.CreateInBatches(&faces, 250).Error; err != nil {
+		t.Fatalf("seed over-limit face gallery: %v", err)
+	}
+
+	if err := db.Model(&model.FaceGalleryRevision{}).Where("id = ?", 1).Update("revision", 1).Error; err != nil {
+		t.Fatalf("set gallery revision: %v", err)
+	}
+
+	revision, changed, entries, err := faceRepo.LoadFaceGallery(ctx, 0)
+	if !errors.Is(err, repository.ErrFaceGalleryFull) {
+		t.Fatalf("expected ErrFaceGalleryFull, got revision=%d changed=%v entries=%d err=%v",
+			revision, changed, len(entries), err)
+	}
+	if revision != 0 || changed || len(entries) != 0 {
+		t.Fatalf("over-limit snapshot must not be returned: revision=%d changed=%v entries=%d",
+			revision, changed, len(entries))
+	}
+}

@@ -33,7 +33,7 @@ func TestAutoMigrateCreatesAllTables(t *testing.T) {
 		"users", "roles", "menus", "departments", "user_roles", "role_menus",
 		"refresh_tokens", "operation_logs", "system_configs", "cameras", "persons",
 		"algorithms", "algorithm_versions", "analysis_tasks", "algorithm_instances",
-		"desired_state_revision", "alarm_records", "plate_observations",
+		"desired_state_revision", "face_gallery_revision", "alarm_records", "plate_observations", "face_observations",
 	}
 	for _, name := range want {
 		if !gdb.Migrator().HasTable(name) {
@@ -83,8 +83,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 61 {
-		t.Errorf("menu rows = %d, want 61", menuCount)
+	if menuCount != 64 {
+		t.Errorf("menu rows = %d, want 64", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -145,6 +145,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"ai:algorithm", "ai:algorithm:upload", "ai:algorithm:activate", "ai:algorithm:uninstall",
 		"record:alarm", "record:alarm:query", "record:alarm:export",
 		"record:plate", "record:plate:query", "record:plate:export",
+		"record:face", "record:face:query", "record:face:export",
 		"live:preview", "live:preview:stream",
 	}
 	sort.Strings(got)
@@ -159,11 +160,11 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		}
 	}
 
-	// super 角色绑定全部 61 条菜单
+	// super 角色绑定全部 64 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 61 {
-		t.Errorf("role_menus for super = %d, want 61", rmCount)
+	if rmCount != 64 {
+		t.Errorf("role_menus for super = %d, want 64", rmCount)
 	}
 
 	// 初始系统配置与 desired_state_revision
@@ -218,5 +219,63 @@ func TestSeedCleansExpiredRefreshTokens(t *testing.T) {
 	gdb.Find(&remaining)
 	if len(remaining) != 1 || remaining[0].Token != "valid-token" {
 		t.Errorf("after cleanup remaining tokens = %+v, want only valid-token", remaining)
+	}
+}
+
+func TestSeedIncrementalSystemSingletonsWhenAdminExists(t *testing.T) {
+	gdb := newSmokeDB(t)
+	// 首次 seed 初始化全部数据
+	if _, err := Seed(gdb); err != nil {
+		t.Fatalf("initial seed: %v", err)
+	}
+
+	// 模拟旧库：admin 和已有的人脸样本都存在，但新增的单例行缺失。
+	legacyFace := PersonFace{
+		PersonID:         "legacy-person",
+		FaceID:           "legacy-face",
+		AlgorithmID:      "face_recognition",
+		AlgorithmVersion: "1.0.0",
+		Embedding:        []byte{1},
+		RawImageKey:      "legacy/raw.jpg",
+		RawImageSHA256:   "legacy-sha256",
+		RawImageSize:     1,
+		RawImageMime:     "image/jpeg",
+		AlignedFaceKey:   "legacy/aligned.jpg",
+		AlignedFaceSize:  1,
+		AlignedFaceMime:  "image/jpeg",
+	}
+	if err := gdb.Create(&legacyFace).Error; err != nil {
+		t.Fatalf("create legacy face: %v", err)
+	}
+	if err := gdb.Exec("DELETE FROM face_gallery_revision").Error; err != nil {
+		t.Fatalf("delete face_gallery_revision: %v", err)
+	}
+	if err := gdb.Exec("DELETE FROM desired_state_revision").Error; err != nil {
+		t.Fatalf("delete desired_state_revision: %v", err)
+	}
+
+	// 再次执行 Seed（由于 admin 存在，返回 false，但必须成功补充缺失的系统单例）
+	seeded, err := Seed(gdb)
+	if err != nil {
+		t.Fatalf("seed after singleton deleted: %v", err)
+	}
+	if seeded {
+		t.Fatal("Seed should report seeded=false when admin exists")
+	}
+
+	var fgRev FaceGalleryRevision
+	if err := gdb.Where("id = ?", 1).First(&fgRev).Error; err != nil {
+		t.Fatalf("face_gallery_revision singleton missing after incremental seed: %v", err)
+	}
+	if fgRev.Revision != 1 {
+		t.Errorf("face_gallery_revision.revision = %d, want 1 for existing faces", fgRev.Revision)
+	}
+
+	var dsRev DesiredStateRevision
+	if err := gdb.Where("id = ?", 1).First(&dsRev).Error; err != nil {
+		t.Fatalf("desired_state_revision singleton missing after incremental seed: %v", err)
+	}
+	if dsRev.Revision != 0 {
+		t.Errorf("desired_state_revision.revision = %d, want 0", dsRev.Revision)
 	}
 }

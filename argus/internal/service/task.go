@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,11 @@ import (
 	"argus/app/internal/pkg/errno"
 	argusv1 "argus/app/internal/proto/argus/v1"
 	"argus/app/internal/repository"
+)
+
+const (
+	// DefaultFaceSimilarityThreshold 是实例未显式配置时的 Engine 比对阈值。
+	DefaultFaceSimilarityThreshold float32 = 0.7
 )
 
 // ── 配额上限缓存 ────────────────────────────────────────────────────────
@@ -243,8 +249,9 @@ type InstanceItem struct {
 	AnalysisFPS   int32                   `json:"analysisFps"`
 	ParamsJSON    json.RawMessage         `json:"paramsJson"`
 	Rules         []model.DetectionRule   `json:"rules"`
-	MotionGate    *model.MotionGateConfig `json:"motionGate,omitempty"`
-	Enabled       bool                    `json:"enabled"`
+	MotionGate          *model.MotionGateConfig `json:"motionGate,omitempty"`
+	SimilarityThreshold *float32               `json:"similarityThreshold,omitempty"`
+	Enabled             bool                   `json:"enabled"`
 	ActualStatus  int8                    `json:"actualStatus"`
 	StatusMessage string                  `json:"statusMessage"`
 	CurrentFps    *float32                `json:"currentFps"` // 实时字段：无上报时为 null
@@ -260,6 +267,7 @@ type CreateInstanceInput struct {
 	ParamsJSON  json.RawMessage         `json:"paramsJson"`
 	Rules       []model.DetectionRule   `json:"rules"`
 	MotionGate  *model.MotionGateConfig `json:"motionGate"`
+	SimilarityThreshold *float32        `json:"similarityThreshold"`
 	Enabled     bool                    `json:"enabled"`
 }
 
@@ -272,6 +280,7 @@ type UpdateInstanceInput struct {
 	ParamsJSON  json.RawMessage         `json:"paramsJson" binding:"required"`
 	Rules       []model.DetectionRule   `json:"rules" binding:"required"`
 	MotionGate  *model.MotionGateConfig `json:"motionGate"`
+	SimilarityThreshold *float32        `json:"similarityThreshold"`
 }
 
 // ── TaskService ─────────────────────────────────────────────────────────
@@ -692,16 +701,17 @@ func (s *taskService) ListInstances(ctx context.Context, cameraID string) ([]*In
 // mergeInstance 库中配置/状态码为底，合并内存实时字段（D6）。
 func (s *taskService) mergeInstance(inst *model.AlgorithmInstance, taskDesiredEnabled bool) *InstanceItem {
 	item := &InstanceItem{
-		InstanceID:    inst.InstanceID,
-		CameraID:      inst.CameraID,
-		AlgorithmID:   inst.AlgorithmID,
-		AnalysisFPS:   inst.AnalysisFPS,
-		ParamsJSON:    json.RawMessage(inst.ParamsJSON),
-		Rules:         s.parseStoredRules(inst),
-		MotionGate:    s.parseStoredMotionGate(inst),
-		Enabled:       inst.Enabled,
-		ActualStatus:  inst.ActualStatus,
-		StatusMessage: inst.StatusMessage,
+		InstanceID:          inst.InstanceID,
+		CameraID:            inst.CameraID,
+		AlgorithmID:         inst.AlgorithmID,
+		AnalysisFPS:         inst.AnalysisFPS,
+		ParamsJSON:          json.RawMessage(inst.ParamsJSON),
+		Rules:               s.parseStoredRules(inst),
+		MotionGate:          s.parseStoredMotionGate(inst),
+		SimilarityThreshold: s.parseStoredFaceSimilarityThreshold(inst),
+		Enabled:             inst.Enabled,
+		ActualStatus:        inst.ActualStatus,
+		StatusMessage:       inst.StatusMessage,
 	}
 	if rt, ok := s.report.InstanceRuntime(inst.InstanceID); ok {
 		fps := rt.CurrentFps
@@ -732,6 +742,70 @@ func (s *taskService) parseStoredMotionGate(inst *model.AlgorithmInstance) *mode
 		return nil
 	}
 	return &mg
+}
+
+// parseStoredFaceSimilarityThreshold 解析实例人脸比对阈值；旧记录或空 JSON 返回 nil，
+// Engine 侧会使用默认阈值 0.7。
+func (s *taskService) parseStoredFaceSimilarityThreshold(inst *model.AlgorithmInstance) *float32 {
+	if len(inst.FaceRecognitionJSON) == 0 {
+		return nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(inst.FaceRecognitionJSON, &raw); err != nil {
+		return nil
+	}
+	value, ok := raw["similarityThreshold"]
+	if !ok {
+		return nil
+	}
+	var threshold float32
+	if err := json.Unmarshal(value, &threshold); err != nil || !validFaceSimilarityThreshold(threshold) {
+		return nil
+	}
+	return &threshold
+}
+
+func validFaceSimilarityThreshold(threshold float32) bool {
+	return !math.IsNaN(float64(threshold)) && !math.IsInf(float64(threshold), 0) &&
+		threshold >= 0 && threshold <= 1
+}
+
+func validFaceSimilarityThresholdValue(threshold *float32) bool {
+	return threshold == nil || validFaceSimilarityThreshold(*threshold)
+}
+
+func normalizeFaceRecognitionJSON(threshold *float32) (model.JSONRaw, error) {
+	if threshold == nil {
+		return model.JSONRaw("{}"), nil
+	}
+	if !validFaceSimilarityThreshold(*threshold) {
+		return nil, errno.New(errno.CodeInvalidParam)
+	}
+	value, err := json.Marshal(model.FaceRecognitionConfigJSON{SimilarityThreshold: *threshold})
+	if err != nil {
+		return nil, errno.New(errno.CodeInvalidParam)
+	}
+	return model.JSONRaw(value), nil
+}
+
+// parseStoredFaceSimilarityThresholdStrict 读取已持久化阈值；损坏数据拒绝启用/下发。
+func parseStoredFaceSimilarityThresholdStrict(raw model.JSONRaw) (*float32, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil, errno.New(errno.CodeInternal)
+	}
+	value, ok := values["similarityThreshold"]
+	if !ok {
+		return nil, nil
+	}
+	var threshold float32
+	if err := json.Unmarshal(value, &threshold); err != nil || !validFaceSimilarityThreshold(threshold) {
+		return nil, errno.New(errno.CodeInternal)
+	}
+	return &threshold, nil
 }
 
 // parseStoredRules 解析实例规则 JSON；损坏时记 warn 并返回空列表（列表展示不 500）。
@@ -792,9 +866,10 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 			zap.String("algorithm_id", algorithmID))
 		return nil, errno.New(errno.CodeInvalidParam)
 	}
+	if !validFaceSimilarityThresholdValue(input.SimilarityThreshold) {
+		return nil, errno.New(errno.CodeInvalidParam)
+	}
 	// 3-5. 校验顺序固定：schema → 几何 → 配额；任一失败零副作用。
-	// 配额校验仅对「创建即启用」的实例执行：停用实例不占资源，允许 Engine
-	// 离线时先完成编排（design §7「拒绝启用」语义，非拒绝一切实例写入）。
 	requested, err := s.validateInstanceConfig(ctx, algorithmID, algo.ActiveVersion,
 		input.AnalysisFPS, input.ParamsJSON, input.Rules, "", input.Enabled)
 	if err != nil {
@@ -815,16 +890,21 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 			motionGateJSON = model.JSONRaw(b)
 		}
 	}
+	faceRecognitionJSON, err := normalizeFaceRecognitionJSON(input.SimilarityThreshold)
+	if err != nil {
+		return nil, err
+	}
 	inst := &model.AlgorithmInstance{
 		InstanceID:     uuid.NewString(),
 		CameraID:       cameraID,
 		AlgorithmID:    algorithmID,
-		AnalysisFPS:    input.AnalysisFPS,
-		ParamsJSON:     model.JSONRaw(paramsJSON),
-		RulesJSON:      model.JSONRaw(rulesJSON),
-		MotionGateJSON: motionGateJSON,
-		Enabled:        input.Enabled,
-		ActualStatus:   model.InstanceStatusStopped,
+		AnalysisFPS:         input.AnalysisFPS,
+		ParamsJSON:          model.JSONRaw(paramsJSON),
+		RulesJSON:           model.JSONRaw(rulesJSON),
+		MotionGateJSON:      motionGateJSON,
+		FaceRecognitionJSON: faceRecognitionJSON,
+		Enabled:             input.Enabled,
+		ActualStatus:        model.InstanceStatusStopped,
 	}
 	if input.Enabled {
 		// 乐观提交（D3）：Go 预校验通过即写库，Engine ≤2s 内应用并回报真实状态；
@@ -883,6 +963,9 @@ func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, inp
 			zap.String("algorithm_id", inst.AlgorithmID))
 		return errno.New(errno.CodeInvalidParam)
 	}
+	if !validFaceSimilarityThresholdValue(input.SimilarityThreshold) {
+		return errno.New(errno.CodeInvalidParam)
+	}
 	fps := *input.AnalysisFPS
 	// 整份提交：schema → 几何 → 配额全量复校；配额排除自身旧占用，避免重复计数。
 	// 配额校验仅对已启用实例执行（停用实例不占资源，Engine 离线时仍可修改配置）。
@@ -907,6 +990,11 @@ func (s *taskService) UpdateInstance(ctx context.Context, instanceID string, inp
 	} else {
 		inst.MotionGateJSON = model.JSONRaw("{}")
 	}
+	faceRecognitionJSON, err := normalizeFaceRecognitionJSON(input.SimilarityThreshold)
+	if err != nil {
+		return err
+	}
+	inst.FaceRecognitionJSON = faceRecognitionJSON
 	inst.AnalysisFPS = fps
 	inst.ParamsJSON = model.JSONRaw(paramsJSON)
 	inst.RulesJSON = model.JSONRaw(rulesJSON)
@@ -966,6 +1054,9 @@ func (s *taskService) SetInstanceEnabled(ctx context.Context, instanceID string,
 		// 不得静默降级为空规则放行——与快照组装（LoadDesiredSnapshot）语义一致。
 		rules, err := s.parseStoredRulesStrict(inst)
 		if err != nil {
+			return err
+		}
+		if _, err := parseStoredFaceSimilarityThresholdStrict(inst.FaceRecognitionJSON); err != nil {
 			return err
 		}
 		var errVal error

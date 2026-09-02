@@ -53,6 +53,14 @@ var seedMenuTree = []seedMenuItem{
 					{Type: MenuTypeButton, Name: "record.plate.export", Permission: "record:plate:export"},
 				},
 			},
+			{
+				Type: MenuTypeMenu, Name: "RecordFace", Title: "routes.record.face", Path: "/record/face", Component: "/record/face/index",
+				Icon: "ant-design:user-outlined", Permission: "record:face", KeepAlive: true,
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "record.face.query", Permission: "record:face:query"},
+					{Type: MenuTypeButton, Name: "record.face.export", Permission: "record:face:export"},
+				},
+			},
 		},
 	},
 	{
@@ -185,39 +193,58 @@ var seedMenuTree = []seedMenuItem{
 const (
 	seedAdminPassword = "admin123"
 	seedDeptName      = "演示部门"
+
+	seedSingletonID                int16 = 1
+	faceGalleryRevisionInitialSync int64 = 1
 )
 
 // Seed 幂等播种种子数据。
-// 每次启动先清理过期 refresh token；users 表已存在 admin 则整体跳过（不覆盖用户对菜单的后续修改）。
-// 返回是否执行了播种。
+// 1. 惰性清理过期 refresh token；
+// 2. 幂等播种系统单例与内置算法（版本计数器、系统配置、内置算法等）；
+// 3. 检查 admin 用户：
+//   - 若已存在：增量同步菜单树给超级管理员，返回 false, nil；
+//   - 若不存在：创建初始部门、超级管理员角色、全量菜单绑定、admin 用户及角色绑定，返回 true, nil。
 func Seed(db *gorm.DB) (bool, error) {
 	// 惰性清理过期 refresh token（父 design.md §2：不做定时任务）。
 	if err := db.Where("expires_at < ?", time.Now()).Delete(&RefreshToken{}).Error; err != nil {
 		return false, fmt.Errorf("clean expired refresh tokens: %w", err)
 	}
 
-	var count int64
-	if err := db.Model(&User{}).Where("username = ?", AdminUsername).Count(&count).Error; err != nil {
-		return false, fmt.Errorf("check admin exists: %w", err)
-	}
-	if count > 0 {
-		// 增量同步菜单树给超级管理员（幂等补充新增的系统菜单）
-		var superRole Role
-		if err := db.Where("code = ?", RoleSuperCode).First(&superRole).Error; err == nil {
-			_ = db.Transaction(func(tx *gorm.DB) error {
-				return seedMenuBranch(tx, superRole.ID, 0, seedMenuTree)
-			})
+	seeded := false
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		// 系统单例与内置算法必须在每次 seed 时幂等补齐，不能依赖 admin 是否存在。
+		if err := seedSystemSingletons(tx); err != nil {
+			return fmt.Errorf("seed system singletons: %w", err)
 		}
-		return false, nil
-	}
 
-	if err := db.Transaction(seedAll); err != nil {
+		var count int64
+		if err := tx.Model(&User{}).Where("username = ?", AdminUsername).Count(&count).Error; err != nil {
+			return fmt.Errorf("check admin exists: %w", err)
+		}
+		if count > 0 {
+			// 增量同步菜单树给超级管理员（幂等补充新增的系统菜单）。
+			var superRole Role
+			if err := tx.Where("code = ?", RoleSuperCode).First(&superRole).Error; err == nil {
+				if err := seedMenuBranch(tx, superRole.ID, 0, seedMenuTree); err != nil {
+					return fmt.Errorf("sync incremental menu tree: %w", err)
+				}
+			}
+			return nil
+		}
+
+		if err := seedInitialRBAC(tx); err != nil {
+			return err
+		}
+		seeded = true
+		return nil
+	}); err != nil {
 		return false, err
 	}
-	return true, nil
+	return seeded, nil
 }
 
-func seedAll(tx *gorm.DB) error {
+// seedInitialRBAC 初始化演示部门、超级管理员角色、菜单权限、admin 用户及其角色绑定。
+func seedInitialRBAC(tx *gorm.DB) error {
 	// demo 部门
 	dept := Department{Name: seedDeptName, ParentID: 0, Sort: 0, Status: StatusEnabled}
 	if err := tx.Where("name = ?", dept.Name).FirstOrCreate(&dept).Error; err != nil {
@@ -262,11 +289,11 @@ func seedAll(tx *gorm.DB) error {
 		return fmt.Errorf("seed user_role: %w", err)
 	}
 
-	// 菜单树 + super 角色全量绑定
-	if err := seedMenuBranch(tx, role.ID, 0, seedMenuTree); err != nil {
-		return err
-	}
+	return nil
+}
 
+// seedSystemSingletons 幂等补齐系统配置、版本计数器与内置算法。
+func seedSystemSingletons(tx *gorm.DB) error {
 	// 基础系统配置 (system:time)
 	timeCfg := SystemConfig{
 		Key:    ConfigKeyTime,
@@ -278,9 +305,30 @@ func seedAll(tx *gorm.DB) error {
 	}
 
 	// 任务版本计数器单行初始化 (id=1, revision=0)
-	rev := DesiredStateRevision{ID: 1, Revision: 0}
-	if err := tx.Where("id = ?", 1).FirstOrCreate(&rev).Error; err != nil {
+	rev := DesiredStateRevision{ID: seedSingletonID, Revision: 0}
+	if err := tx.Where("id = ?", seedSingletonID).FirstOrCreate(&rev).Error; err != nil {
 		return fmt.Errorf("seed desired_state_revision: %w", err)
+	}
+
+	// 人脸底库版本计数器单行初始化 (id=1, revision=0)
+	galleryRev := FaceGalleryRevision{ID: seedSingletonID, Revision: 0}
+	if err := tx.Where("id = ?", seedSingletonID).FirstOrCreate(&galleryRev).Error; err != nil {
+		return fmt.Errorf("seed face_gallery_revision: %w", err)
+	}
+	// 旧库可能已经有样本，但迁移只创建了 revision=0 的初始行；将其标记为一次变更，
+	// 让 Engine 冷启动时拉取已有底库，而不是误判为 unchanged。
+	if galleryRev.Revision == 0 {
+		var faceCount int64
+		if err := tx.Model(&PersonFace{}).Count(&faceCount).Error; err != nil {
+			return fmt.Errorf("check existing face gallery: %w", err)
+		}
+		if faceCount > 0 {
+			if err := tx.Model(&FaceGalleryRevision{}).
+				Where("id = ?", seedSingletonID).
+				Update("revision", faceGalleryRevisionInitialSync).Error; err != nil {
+				return fmt.Errorf("initialize face_gallery_revision for existing faces: %w", err)
+			}
+		}
 	}
 
 	// 内置算法: 通用目标检测 (general_detection)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"gorm.io/gorm"
@@ -321,12 +322,12 @@ func (r *taskRepository) ListInstancesByCameraIDs(ctx context.Context, cameraIDs
 // AlgoExists 为空表示算法行缺失（LEFT JOIN 未命中）；ActiveVersion 为空表示算法未激活；
 // FPSTiers 为空表示激活版本行缺失或已软删——service 层均按「不占资源」跳过（与原 N+1 语义一致）。
 type EnabledInstanceQuotaRow struct {
-	InstanceID    string         `gorm:"column:instance_id"`
-	AlgorithmID   string         `gorm:"column:algorithm_id"`
-	AlgoExists    string         `gorm:"column:algo_exists"`
-	ActiveVersion string         `gorm:"column:active_version"`
-	AnalysisFPS   int32          `gorm:"column:analysis_fps"`
-	FPSTiers      model.JSONRaw  `gorm:"column:fps_tiers"`
+	InstanceID    string        `gorm:"column:instance_id"`
+	AlgorithmID   string        `gorm:"column:algorithm_id"`
+	AlgoExists    string        `gorm:"column:algo_exists"`
+	ActiveVersion string        `gorm:"column:active_version"`
+	AnalysisFPS   int32         `gorm:"column:analysis_fps"`
+	FPSTiers      model.JSONRaw `gorm:"column:fps_tiers"`
 }
 
 // ListEnabledInstanceQuotaRows 一次 JOIN 返回全部实际调度实例的配额计价行，
@@ -434,19 +435,21 @@ func (r *taskRepository) InTx(ctx context.Context, fn func(ctx context.Context, 
 // taskSnapshotRow 快照组装行：desired_enabled=true 的任务及其摄像头 rtsp_url。
 type taskSnapshotRow struct {
 	CameraID string `gorm:"column:camera_id"`
+	Name     string `gorm:"column:name"`
 	RtspURL  string `gorm:"column:rtsp_url"`
 }
 
 // instanceSnapshotRow 快照组装行：enabled=true 的实例及其算法激活版本。
 type instanceSnapshotRow struct {
-	InstanceID     string        `gorm:"column:instance_id"`
-	CameraID       string        `gorm:"column:camera_id"`
-	AlgorithmID    string        `gorm:"column:algorithm_id"`
-	ActiveVersion  string        `gorm:"column:active_version"`
-	AnalysisFPS    int32         `gorm:"column:analysis_fps"`
-	ParamsJSON     model.JSONRaw `gorm:"column:params_json"`
-	RulesJSON      model.JSONRaw `gorm:"column:rules_json"`
-	MotionGateJSON model.JSONRaw `gorm:"column:motion_gate_json"`
+	InstanceID          string        `gorm:"column:instance_id"`
+	CameraID            string        `gorm:"column:camera_id"`
+	AlgorithmID         string        `gorm:"column:algorithm_id"`
+	ActiveVersion       string        `gorm:"column:active_version"`
+	AnalysisFPS         int32         `gorm:"column:analysis_fps"`
+	ParamsJSON          model.JSONRaw `gorm:"column:params_json"`
+	RulesJSON           model.JSONRaw `gorm:"column:rules_json"`
+	MotionGateJSON      model.JSONRaw `gorm:"column:motion_gate_json"`
+	FaceRecognitionJSON model.JSONRaw `gorm:"column:face_recognition_json"`
 }
 
 // activeVersionRow 算法激活版本行。
@@ -490,7 +493,7 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 	var taskRows []taskSnapshotRow
 	if err := r.db.WithContext(ctx).
 		Model(&model.AnalysisTask{}).
-		Select("analysis_tasks.camera_id, cameras.rtsp_url").
+		Select("analysis_tasks.camera_id, cameras.name, cameras.rtsp_url").
 		Joins("JOIN cameras ON cameras.camera_id = analysis_tasks.camera_id AND cameras.deleted_at = 0").
 		Where("analysis_tasks.desired_enabled = ?", true).
 		Order("analysis_tasks.id ASC").
@@ -503,7 +506,7 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 		Model(&model.AlgorithmInstance{}).
 		Select("algorithm_instances.instance_id, algorithm_instances.camera_id, algorithm_instances.algorithm_id, "+
 			"algorithms.active_version, algorithm_instances.analysis_fps, "+
-			"algorithm_instances.params_json, algorithm_instances.rules_json, algorithm_instances.motion_gate_json").
+			"algorithm_instances.params_json, algorithm_instances.rules_json, algorithm_instances.motion_gate_json, algorithm_instances.face_recognition_json").
 		Joins("JOIN algorithms ON algorithms.algorithm_id = algorithm_instances.algorithm_id AND algorithms.deleted_at = 0").
 		Where("algorithm_instances.enabled = ?", true).
 		Order("algorithm_instances.id ASC").
@@ -530,9 +533,10 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 	for _, row := range taskRows {
 		enabledCameras[row.CameraID] = struct{}{}
 		state.Tasks = append(state.Tasks, &argusv1.CameraTaskConfig{
-			CameraId: row.CameraID,
-			RtspUrl:  row.RtspURL,
-			Enabled:  true,
+			CameraId:   row.CameraID,
+			CameraName: row.Name,
+			RtspUrl:    row.RtspURL,
+			Enabled:    true,
 		})
 	}
 	for _, row := range instanceRows {
@@ -559,6 +563,22 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 				}
 			}
 		}
+		var frCfg *argusv1.FaceRecognitionConfig
+		if len(row.FaceRecognitionJSON) > 0 {
+			var values map[string]json.RawMessage
+			if err := json.Unmarshal(row.FaceRecognitionJSON, &values); err != nil {
+				return nil, fmt.Errorf("parse face_recognition_json of instance %s: %w", row.InstanceID, err)
+			}
+			if rawThreshold, ok := values["similarityThreshold"]; ok {
+				var threshold float32
+				if err := json.Unmarshal(rawThreshold, &threshold); err != nil ||
+					math.IsNaN(float64(threshold)) || math.IsInf(float64(threshold), 0) ||
+					threshold < 0 || threshold > 1 {
+					return nil, fmt.Errorf("face similarity threshold of instance %s is invalid", row.InstanceID)
+				}
+				frCfg = &argusv1.FaceRecognitionConfig{SimilarityThreshold: threshold}
+			}
+		}
 		state.Instances = append(state.Instances, &argusv1.AlgorithmInstanceConfig{
 			InstanceId:       row.InstanceID,
 			CameraId:         row.CameraID,
@@ -569,6 +589,7 @@ func (r *taskRepository) loadDesiredSnapshot(ctx context.Context) (*argusv1.Desi
 			Enabled:          true,
 			Rules:            rules,
 			MotionGate:       mgCfg,
+			FaceRecognition:  frCfg,
 		})
 	}
 	for _, row := range versionRows {

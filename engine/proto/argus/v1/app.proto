@@ -72,6 +72,38 @@ message ReportPlateObservationResponse {
   string error_message = 2; // 诊断信息，客户端不得解析其文本
 }
 
+// 人脸识别通行观测事件上报
+message FaceObservation {
+  // 目标级全局事件 ID = "<instance_run_id>/<track_id>"，track 稳定，覆盖上报时不变
+  string event_id = 1;
+  string instance_id = 2;
+  string camera_id = 3;
+  string algorithm_id = 4;
+  string algorithm_version = 5;
+  int64 wall_time_ns = 6;
+  bool time_synced = 7;
+  int64 track_id = 8;
+  string face_id = 9;          // 命中的底库条目
+  string person_id = 10;
+  string person_name = 11;     // 底库快照，Go 侧直接落库不再回查
+  float similarity = 12;       // 归一化 [0,1]
+  BoundingBox face_bbox = 13;
+  string image_id = 14;        // 全景图
+  string image_rel_path = 15;
+  string face_image_id = 16;   // 人脸特写图
+  string face_image_rel_path = 17;
+  string camera_name = 18;      // 摄像头名称快照，可为空
+}
+
+message ReportFaceObservationRequest {
+  FaceObservation observation = 1;
+}
+
+message ReportFaceObservationResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
 // 任务运行状态
 enum TaskStatusCode {
   TASK_STATUS_UNSPECIFIED = 0;
@@ -166,15 +198,37 @@ message GetDesiredStateResponse {
   string error_message = 3; // 诊断信息，客户端不得解析其文本
 }
 
+// 单条人脸底库条目
+message FaceGalleryEntry {
+  string face_id = 1;
+  string person_id = 2;
+  string person_name = 3;      // 冗余，供 Engine 上报时携带历史快照
+  bytes embedding = 4;         // 512 维 L2 归一化 float32 小端字节流（精确 2048 字节）
+}
+
+message GetFaceGalleryRequest {
+  uint64 current_gallery_revision = 1;
+}
+
+message GetFaceGalleryResponse {
+  uint64 gallery_revision = 1;
+  bool changed = 2;                        // false 时 entries 必为空
+  repeated FaceGalleryEntry entries = 3;   // changed=true 时为全量快照
+  string code = 4;
+  string error_message = 5;
+}
+
 // ControlPlaneService: 运行在 Go 服务（绑定 app.sock），供 C++ 引擎拉取期望状态
 service ControlPlaneService {
   rpc GetDesiredState(GetDesiredStateRequest) returns (GetDesiredStateResponse);
+  rpc GetFaceGallery(GetFaceGalleryRequest) returns (GetFaceGalleryResponse);
 }
 
 // ReportService: 运行在 Go 服务（绑定 app.sock），供 C++ 引擎异步上报事件与指标
 service ReportService {
   rpc ReportAlarm(ReportAlarmRequest) returns (ReportAlarmResponse);
   rpc ReportPlateObservation(ReportPlateObservationRequest) returns (ReportPlateObservationResponse);
+  rpc ReportFaceObservation(ReportFaceObservationRequest) returns (ReportFaceObservationResponse);
   rpc ReportTaskState(ReportTaskStateRequest) returns (ReportTaskStateResponse);
   rpc ReportInstanceState(ReportInstanceStateRequest) returns (ReportInstanceStateResponse);
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsResponse);

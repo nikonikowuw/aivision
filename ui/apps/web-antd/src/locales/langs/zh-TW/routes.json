@@ -10,6 +10,7 @@
   "ops": {
     "network": "網路配置",
     "ops": "維運管理",
+    "storage": "存儲管理",
     "time": "時間管理"
   },
   "record": {

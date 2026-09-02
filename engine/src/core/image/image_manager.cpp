@@ -231,7 +231,7 @@ av_status ImageManager::save_detection_image(
 
     // 1.1 并行利用硬件图像处理器编码生成低带宽轻量缩略图（宽度 360px，Q=70）
     std::vector<uint8_t> thumb_jpeg_data;
-    const av_status thumb_status = processor_->encode_thumbnail_jpeg(frame, 360, 70, thumb_jpeg_data);
+    const av_status thumb_status = processor_->encode_thumbnail_jpeg(frame, crop_roi, 360, 70, thumb_jpeg_data);
     if (thumb_status != AV_OK || thumb_jpeg_data.empty()) {
         return thumb_status == AV_OK ? AV_ERR_INTERNAL : thumb_status;
     }

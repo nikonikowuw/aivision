@@ -10,6 +10,7 @@
   "ops": {
     "network": "Network Config",
     "ops": "Operations",
+    "storage": "Storage Management",
     "time": "Time Sync"
   },
   "record": {

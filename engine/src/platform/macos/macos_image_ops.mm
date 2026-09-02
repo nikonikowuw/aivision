@@ -317,9 +317,11 @@ public:
             if (crop_roi) {
                 float x, y, width, height;
                 if (!normalized_roi(crop_roi, x, y, width, height)) return AV_ERR_INVALID_ARG;
-                rect = CGRectMake(input.extent.origin.x + x * input.extent.size.width,
-                                  input.extent.origin.y + (1.0 - y - height) * input.extent.size.height,
-                                  width * input.extent.size.width, height * input.extent.size.height);
+                const CGFloat origin_x = std::round(input.extent.origin.x + static_cast<double>(x) * input.extent.size.width);
+                const CGFloat origin_y = std::round(input.extent.origin.y + (1.0 - static_cast<double>(y) - static_cast<double>(height)) * input.extent.size.height);
+                const CGFloat crop_w = std::round(static_cast<double>(width) * input.extent.size.width);
+                const CGFloat crop_h = std::round(static_cast<double>(height) * input.extent.size.height);
+                rect = CGRectMake(origin_x, origin_y, crop_w, crop_h);
             }
             CIContext* context = [CIContext contextWithOptions:nil];
             CGImageRef image = [context createCGImage:input fromRect:rect];
@@ -352,7 +354,7 @@ public:
             return finalized ? AV_OK : AV_ERR_INTERNAL;
         }
     }
-    av_status encode_thumbnail_jpeg(const av_frame_desc* src, int max_width, int quality,
+    av_status encode_thumbnail_jpeg(const av_frame_desc* src, const av_rect* crop_roi, int max_width, int quality,
                                     std::vector<uint8_t>& out_jpeg) override {
         if (!src || !src->opaque || src->opaque_kind != AV_OPAQUE_CVPIXELBUFFER) return AV_ERR_INVALID_ARG;
         @autoreleasepool {
@@ -360,18 +362,26 @@ public:
             CIImage* input = [CIImage imageWithCVPixelBuffer:buffer];
             if (!input) return AV_ERR_INTERNAL;
 
+            // 如果指定了 crop_roi，先裁剪出目标区域
+            CGRect crop_rect = input.extent;
+            if (crop_roi) {
+                float x, y, width, height;
+                if (!normalized_roi(crop_roi, x, y, width, height)) return AV_ERR_INVALID_ARG;
+                const CGFloat origin_x = std::round(input.extent.origin.x + static_cast<double>(x) * input.extent.size.width);
+                const CGFloat origin_y = std::round(input.extent.origin.y + (1.0 - static_cast<double>(y) - static_cast<double>(height)) * input.extent.size.height);
+                const CGFloat crop_w = std::round(static_cast<double>(width) * input.extent.size.width);
+                const CGFloat crop_h = std::round(static_cast<double>(height) * input.extent.size.height);
+                crop_rect = CGRectMake(origin_x, origin_y, crop_w, crop_h);
+                input = [input imageByCroppingToRect:crop_rect];
+            }
+
             // 依据指定最大宽度（默认 360px）使用 CoreImage / GPU 进行高保真等比降采样
-            const float orig_w = static_cast<float>(input.extent.size.width);
+            const float orig_w = static_cast<float>(crop_rect.size.width);
             if (orig_w > static_cast<float>(max_width) && max_width > 0) {
                 const float scale = static_cast<float>(max_width) / orig_w;
-                CIFilter* resize_filter = [CIFilter filterWithName:@"CILanczosScaleTransform"];
-                [resize_filter setValue:input forKey:kCIInputImageKey];
-                [resize_filter setValue:@(scale) forKey:kCIInputScaleKey];
-                [resize_filter setValue:@(1.0) forKey:kCIInputAspectRatioKey];
-                CIImage* scaled = [resize_filter outputImage];
-                if (scaled) {
-                    input = scaled;
-                }
+                CGAffineTransform transform = CGAffineTransformMakeTranslation(-crop_rect.origin.x, -crop_rect.origin.y);
+                transform = CGAffineTransformScale(transform, scale, scale);
+                input = [input imageByApplyingTransform:transform];
             }
 
             CIContext* context = [CIContext contextWithOptions:nil];

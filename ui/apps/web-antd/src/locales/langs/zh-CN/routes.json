@@ -10,6 +10,7 @@
   "ops": {
     "network": "网络配置",
     "ops": "运维管理",
+    "storage": "存储管理",
     "time": "时间管理"
   },
   "record": {

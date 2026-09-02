@@ -119,11 +119,11 @@ public:
     virtual av_status encode_jpeg(const av_frame_desc* src, const av_rect* crop_roi, int quality, std::vector<uint8_t>& out_jpeg) = 0;
 
     /**
-     * @brief 抓拍帧编码为指定目标最大宽度的缩略图 JPEG 二进制字节流
+     * @brief 抓拍帧或 ROI 区域编码为指定目标最大宽度的缩略图 JPEG 二进制字节流
      */
-    virtual av_status encode_thumbnail_jpeg(const av_frame_desc* src, int /*max_width*/, int quality, std::vector<uint8_t>& out_jpeg) {
-        // 默认回退实现：直接使用原图编码
-        return encode_jpeg(src, nullptr, quality, out_jpeg);
+    virtual av_status encode_thumbnail_jpeg(const av_frame_desc* src, const av_rect* crop_roi, int /*max_width*/, int quality, std::vector<uint8_t>& out_jpeg) {
+        // 默认回退实现：直接使用原图或 ROI 区域编码
+        return encode_jpeg(src, crop_roi, quality, out_jpeg);
     }
 };
 

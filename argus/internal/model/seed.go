@@ -134,6 +134,14 @@ var seedMenuTree = []seedMenuItem{
 				},
 			},
 			{
+				Type: MenuTypeMenu, Name: "Storage", Title: "routes.ops.storage", Path: "/ops/storage", Component: "/ops/storage/index",
+				Icon: "ant-design:hdd-outlined", Permission: "ops:storage",
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "ops.storage.read", Permission: "ops:storage:read"},
+					{Type: MenuTypeButton, Name: "ops.storage.edit", Permission: "ops:storage:edit"},
+				},
+			},
+			{
 				Type: MenuTypeMenu, Name: "Network", Title: "routes.ops.network", Path: "/ops/network", Component: "/ops/network/index",
 				Icon: "ant-design:global-outlined", Permission: "ops:network",
 				Children: []seedMenuItem{

@@ -13,5 +13,6 @@ export * from './ntp';
 export * from './person';
 export * from './plate';
 export * from './role';
+export * from './storage';
 export * from './task';
 export * from './user';

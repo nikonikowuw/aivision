@@ -49,7 +49,12 @@ const gridOptions: VxeTableGridOptions<PlateObservationApi.PlateObservationItem>
       isHover: true,
     },
     columns: [
-      { field: 'id', title: $t('record.plate.columns.id'), width: 70 },
+      {
+        type: 'seq',
+        title: $t('system.common.index'),
+        width: 60,
+        align: 'center',
+      },
       {
         field: 'plateCrop',
         title: $t('record.plate.columns.plateCrop'),

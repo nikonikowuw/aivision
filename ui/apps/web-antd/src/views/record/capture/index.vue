@@ -60,7 +60,12 @@ const gridOptions: VxeTableGridOptions<CaptureApi.CaptureItem> = {
     isHover: true,
   },
   columns: [
-    { field: 'id', title: $t('record.capture.columns.id'), width: 72 },
+    {
+      type: 'seq',
+      title: $t('system.common.index'),
+      width: 60,
+      align: 'center',
+    },
     {
       field: 'targetType',
       title: $t('record.capture.columns.targetType'),

@@ -52,7 +52,12 @@ const gridOptions: VxeTableGridOptions<AlarmRecordApi.AlarmRecordItem> = {
     isHover: true,
   },
   columns: [
-    { field: 'id', title: $t('record.alarm.columns.id'), width: 70 },
+    {
+      type: 'seq',
+      title: $t('system.common.index'),
+      width: 60,
+      align: 'center',
+    },
     {
       field: 'targetCrop',
       title: $t('record.alarm.columns.targetCrop'),

@@ -47,7 +47,12 @@ const gridOptions: VxeTableGridOptions<FaceObservationApi.FaceObservationItem> =
       isHover: true,
     },
     columns: [
-      { field: 'id', title: $t('record.face.columns.id'), width: 70 },
+      {
+        type: 'seq',
+        title: $t('system.common.index'),
+        width: 60,
+        align: 'center',
+      },
       {
         field: 'faceCrop',
         title: $t('record.face.columns.faceCrop'),

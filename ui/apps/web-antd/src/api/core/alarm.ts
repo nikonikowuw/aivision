@@ -45,6 +45,7 @@ export namespace AlarmRecordApi {
     cameraId?: string;
     algorithmId?: string;
     alarmTypeId?: string;
+    targetLabel?: string;
     minConfidence?: number;
     maxConfidence?: number;
   }

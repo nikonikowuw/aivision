@@ -24,6 +24,8 @@ import {
 } from 'ant-design-vue';
 
 import { createPersonApi, registerPersonFaceApi } from '#/api';
+import { copyToClipboard } from '#/utils/clipboard';
+import { getConfidenceTagColor } from '#/utils/format';
 
 import CaptureThumbnail from './CaptureThumbnail.vue';
 
@@ -142,47 +144,6 @@ function formatAttributeValue(val: unknown): string {
 
 function formatRatio(value?: number): string {
   return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '-';
-}
-
-function getConfidenceTagColor(confidence?: number): string {
-  if (typeof confidence !== 'number') return 'default';
-  if (confidence >= 0.9) return 'green';
-  if (confidence >= 0.75) return 'blue';
-  if (confidence >= 0.6) return 'orange';
-  return 'red';
-}
-
-function fallbackCopy(text: string) {
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    const successful = document.execCommand('copy');
-    if (successful) {
-      message.success($t('record.face.detail.copySuccess') || '复制成功');
-      return;
-    }
-  } catch (e) {
-    console.error('Fallback copy failed:', e);
-  } finally {
-    document.body.removeChild(textarea);
-  }
-  message.info(text);
-}
-
-function copyEventId(eventId?: string) {
-  if (!eventId) return;
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard
-      .writeText(eventId)
-      .then(() => message.success($t('record.face.detail.copySuccess') || '复制成功'))
-      .catch(() => fallbackCopy(eventId));
-  } else {
-    fallbackCopy(eventId);
-  }
 }
 
 function closeDrawer() {
@@ -447,7 +408,7 @@ async function handleConfirmRegister() {
                   type="text"
                   size="small"
                   class="shrink-0 p-0.5 h-6 w-6 flex items-center justify-center text-muted-foreground hover:text-primary"
-                  @click="copyEventId(capture.eventId)"
+                  @click="copyToClipboard(capture.eventId, $t('record.face.detail.copySuccess') || '复制成功')"
                 >
                   <IconifyIcon icon="lucide:copy" class="size-3.5" />
                 </Button>

@@ -24,6 +24,7 @@ import {
   getPlateObservationListApi,
 } from '#/api';
 import { getTodayRange } from '#/utils/date';
+import { getConfidenceTagColor } from '#/utils/format';
 
 import PlateTag from './components/PlateTag.vue';
 import PlateThumbnail from './components/PlateThumbnail.vue';
@@ -305,14 +306,6 @@ function getPlateColorLabel(color?: string): string {
     yellow: $t('record.plate.colors.yellow'),
   };
   return map[color] || color;
-}
-
-function getConfidenceTagColor(confidence?: number): string {
-  if (typeof confidence !== 'number') return 'default';
-  if (confidence >= 0.9) return 'green';
-  if (confidence >= 0.75) return 'blue';
-  if (confidence >= 0.6) return 'orange';
-  return 'red';
 }
 </script>
 

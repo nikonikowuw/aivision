@@ -1253,7 +1253,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "支持按发生时间区间、摄像头、算法、告警类型、置信度区间组合分页查询",
+                "description": "支持按发生时间区间、摄像头、算法、告警类型、目标类型、置信度区间组合分页查询",
                 "produces": [
                     "application/json"
                 ],
@@ -1304,6 +1304,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "告警类型ID",
                         "name": "alarmTypeId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "目标类型标签",
+                        "name": "targetLabel",
                         "in": "query"
                     },
                     {

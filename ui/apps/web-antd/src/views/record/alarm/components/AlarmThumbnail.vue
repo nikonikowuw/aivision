@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { useAccessStore } from '@vben/stores';
 
@@ -15,7 +15,20 @@ const props = defineProps<{
 }>();
 
 const accessStore = useAccessStore();
+const containerRef = ref<HTMLDivElement | null>(null);
+const imgRef = ref<HTMLImageElement | null>(null);
+
 const hdPreviewDataUrl = ref<string>('');
+const isError = ref<boolean>(false);
+const previewVisible = ref<boolean>(false);
+const previewImageSrc = ref<string>('');
+
+const overlayStyle = ref<Record<string, string>>({
+  left: '0px',
+  top: '0px',
+  width: '100%',
+  height: '100%',
+});
 
 // 使用原生全景缩略图直链（带 Token 鉴权，由浏览器 C++ 内核多线程流式懒加载）
 const thumbnailUrl = computed(() => {
@@ -24,19 +37,6 @@ const thumbnailUrl = computed(() => {
   const baseUrl = `/api/record/images/${encodeURIComponent(props.imageId)}?type=thumb`;
   return token ? `${baseUrl}&token=${encodeURIComponent(token)}` : baseUrl;
 });
-
-watch(
-  () => props.imageId,
-  () => {
-    isError.value = false;
-    hdPreviewDataUrl.value = '';
-    previewImageSrc.value = '';
-  },
-);
-
-const isError = ref<boolean>(false);
-const previewVisible = ref<boolean>(false);
-const previewImageSrc = ref<string>('');
 
 const containerStyle = computed(() => {
   const style: Record<string, string> = {};
@@ -77,8 +77,8 @@ const cornerBracketPath = computed(() => {
   const by = minY * 100;
   const bw = (maxX - minX) * 100;
   const bh = (maxY - minY) * 100;
-  const lenX = Math.min(bw * 0.22, 10);
-  const lenY = Math.min(bh * 0.22, 10);
+  const lenX = Math.min(bw * 0.2, 8);
+  const lenY = Math.min(bh * 0.2, 8);
 
   return [
     `M ${bx} ${by + lenY} L ${bx} ${by} L ${bx + lenX} ${by}`,
@@ -87,6 +87,83 @@ const cornerBracketPath = computed(() => {
     `M ${bx + bw - lenX} ${by + bh} L ${bx + bw} ${by + bh} L ${bx + bw} ${by + bh - lenY}`,
   ].join(' ');
 });
+
+function updateOverlayGeometry() {
+  if (!imgRef.value || !containerRef.value) return;
+  const img = imgRef.value;
+  const container = containerRef.value;
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+  if (!nw || !nh) return;
+
+  const cw = container.clientWidth;
+  const ch = container.clientHeight;
+  if (!cw || !ch) return;
+
+  // 默认 object-contain 模式下的等比定位计算
+  const imgRatio = nw / nh;
+  const containerRatio = cw / ch;
+  if (imgRatio > containerRatio) {
+    // 黑边在上下
+    const renderW = cw;
+    const renderH = cw / imgRatio;
+    const renderTop = (ch - renderH) / 2;
+    overlayStyle.value = {
+      left: '0px',
+      top: `${renderTop}px`,
+      width: `${renderW}px`,
+      height: `${renderH}px`,
+    };
+  } else {
+    // 黑边在左右
+    const renderH = ch;
+    const renderW = ch * imgRatio;
+    const renderLeft = (cw - renderW) / 2;
+    overlayStyle.value = {
+      left: `${renderLeft}px`,
+      top: '0px',
+      width: `${renderW}px`,
+      height: `${renderH}px`,
+    };
+  }
+}
+
+function onImageLoad() {
+  isError.value = false;
+  nextTick(() => {
+    updateOverlayGeometry();
+  });
+}
+
+let resizeObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+  if (containerRef.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      updateOverlayGeometry();
+    });
+    resizeObserver.observe(containerRef.value);
+  }
+});
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+});
+
+watch(
+  () => [props.imageId, props.width, props.height],
+  () => {
+    isError.value = false;
+    hdPreviewDataUrl.value = '';
+    previewImageSrc.value = '';
+    nextTick(() => {
+      updateOverlayGeometry();
+    });
+  },
+);
 
 /**
  * 用户点击列表缩略图放大查看全景时，按需从 1080P/4K 高清原图无损生成带红框全景超清图
@@ -133,16 +210,18 @@ async function getHdPanoramaPreview(): Promise<string> {
       const boxH = Math.abs(y2 - y1) * hdH;
 
       offscreenCtx.save();
-      offscreenCtx.lineWidth = Math.max(2, Math.round(hdW / 600));
+      offscreenCtx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      offscreenCtx.shadowBlur = 4;
+      offscreenCtx.lineWidth = Math.max(2, Math.round(hdW / 700));
       offscreenCtx.strokeStyle = '#ef4444';
-      offscreenCtx.fillStyle = 'rgba(239, 68, 68, 0.18)';
+      offscreenCtx.fillStyle = 'rgba(239, 68, 68, 0.12)';
       offscreenCtx.fillRect(minX, minY, boxW, boxH);
       offscreenCtx.strokeRect(minX, minY, boxW, boxH);
 
-      // 四角直角包角
-      const cornerLen = Math.min(boxW, boxH) * 0.22;
-      offscreenCtx.lineWidth = Math.max(3, Math.round(hdW / 400));
-      offscreenCtx.strokeStyle = '#ef4444';
+      // 四角同色系高亮包角
+      const cornerLen = Math.min(boxW, boxH) * 0.18;
+      offscreenCtx.lineWidth = Math.max(3, Math.round(hdW / 450));
+      offscreenCtx.strokeStyle = '#f87171';
       offscreenCtx.lineCap = 'square';
 
       // 左上
@@ -194,6 +273,7 @@ async function handlePreviewClick() {
 <template>
   <div
     :key="props.imageId"
+    ref="containerRef"
     class="relative flex mx-auto cursor-pointer items-center justify-center overflow-hidden rounded border border-border bg-muted/40 transition hover:opacity-90"
     :style="containerStyle"
     @click="handlePreviewClick"
@@ -204,34 +284,38 @@ async function handlePreviewClick() {
     <!-- 列表展示图：直接使用原生 <img> + loading="lazy"，由浏览器底层 C++ 线程并行解码与渲染 -->
     <template v-else>
       <img
+        ref="imgRef"
         :src="thumbnailUrl"
         loading="lazy"
         class="h-full w-full object-contain"
         alt="alarm panorama"
+        @load="onImageLoad"
         @error="() => (isError = true)"
       />
 
-      <!-- 缩略图上的矢量目标红框指示 (纯 SVG 矢量层覆盖，0 JS CPU 消耗) -->
+      <!-- 紧贴图片实际渲染区域的 SVG 目标红框指示 (纯矢量层覆盖，0 坐标偏移) -->
       <svg
         v-if="normalizedBbox"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        class="pointer-events-none absolute inset-0 h-full w-full"
+        class="pointer-events-none absolute"
+        :style="overlayStyle"
       >
         <rect
           :x="normalizedBbox[0] * 100"
           :y="normalizedBbox[1] * 100"
           :width="(normalizedBbox[2] - normalizedBbox[0]) * 100"
           :height="(normalizedBbox[3] - normalizedBbox[1]) * 100"
-          fill="rgba(239, 68, 68, 0.18)"
+          fill="rgba(239, 68, 68, 0.12)"
           stroke="#ef4444"
           stroke-width="1.5"
           vector-effect="non-scaling-stroke"
+          style="filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.7));"
         />
         <path
           :d="cornerBracketPath"
           fill="none"
-          stroke="#ef4444"
+          stroke="#f87171"
           stroke-width="2.5"
           stroke-linecap="square"
           vector-effect="non-scaling-stroke"
@@ -239,8 +323,8 @@ async function handlePreviewClick() {
       </svg>
     </template>
 
-    <!-- 点击放大预览弹窗（无损从高清原图 1080P/4K 生成） -->
-    <div style="display: none">
+    <!-- 点击放大预览大图 -->
+    <div v-if="thumbnailUrl && !isError" style="display: none">
       <AntImage
         :preview="{
           visible: previewVisible,
@@ -251,4 +335,3 @@ async function handlePreviewClick() {
     </div>
   </div>
 </template>
-

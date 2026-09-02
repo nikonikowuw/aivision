@@ -20,10 +20,10 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   getAlarmRecordDetailApi,
   getAlarmRecordListApi,
-  getAlgorithmList,
   getCameraPageApi,
 } from '#/api';
 import { getTodayRange } from '#/utils/date';
+import { getConfidenceTagColor } from '#/utils/format';
 import {
   formatAlarmTypeName,
   formatAlgorithmName,
@@ -55,66 +55,63 @@ const gridOptions: VxeTableGridOptions<AlarmRecordApi.AlarmRecordItem> = {
     {
       type: 'seq',
       title: $t('system.common.index'),
-      width: 60,
+      width: 64,
       align: 'center',
     },
     {
       field: 'targetCrop',
       title: $t('record.alarm.columns.targetCrop'),
-      width: 90,
+      width: 96,
       align: 'center',
       slots: { default: 'targetCrop' },
     },
     {
       field: 'panorama',
       title: $t('record.alarm.columns.panorama'),
-      width: 100,
+      width: 112,
       align: 'center',
       slots: { default: 'panorama' },
     },
     {
-      field: 'occurredAt',
-      formatter: 'formatDateTime',
-      title: $t('record.alarm.columns.occurredAt'),
-      width: 170,
+      field: 'confidence',
+      title: $t('record.alarm.columns.confidence'),
+      width: 112,
+      align: 'center',
+      slots: { default: 'confidence' },
     },
     {
       field: 'cameraName',
       title: $t('record.alarm.columns.cameraName'),
-      minWidth: 130,
+      minWidth: 150,
       slots: { default: 'cameraName' },
-    },
-    {
-      field: 'algorithmName',
-      title: $t('record.alarm.columns.algorithmName'),
-      minWidth: 130,
-      slots: { default: 'algorithmName' },
     },
     {
       field: 'alarmTypeId',
       title: $t('record.alarm.columns.alarmTypeId'),
-      minWidth: 130,
+      minWidth: 160,
+      align: 'center',
       slots: { default: 'alarmTypeId' },
     },
     {
       field: 'targetLabel',
       title: $t('record.alarm.columns.targetLabel'),
-      width: 100,
+      minWidth: 150,
+      align: 'center',
       slots: { default: 'targetLabel' },
     },
     {
       field: 'trackId',
       title: $t('record.alarm.columns.trackId'),
-      width: 90,
+      width: 100,
       align: 'center',
       formatter: ({ cellValue }) => (cellValue ? `#${cellValue}` : '-'),
     },
     {
-      field: 'confidence',
-      title: $t('record.alarm.columns.confidence'),
-      width: 110,
+      field: 'occurredAt',
+      formatter: 'formatDateTime',
+      title: $t('record.alarm.columns.occurredAt'),
+      width: 180,
       align: 'center',
-      slots: { default: 'confidence' },
     },
     {
       field: 'actions',
@@ -122,7 +119,8 @@ const gridOptions: VxeTableGridOptions<AlarmRecordApi.AlarmRecordItem> = {
       showOverflow: false,
       slots: { default: 'actions' },
       title: $t('system.common.action'),
-      width: 90,
+      width: 96,
+      align: 'center',
     },
   ],
   pagerConfig: {
@@ -131,8 +129,13 @@ const gridOptions: VxeTableGridOptions<AlarmRecordApi.AlarmRecordItem> = {
   proxyConfig: {
     ajax: {
       query: async ({ page }, formValues) => {
-        const { timeRange, minConfidence, maxConfidence, ...rest } =
-          formValues || {};
+        const {
+          timeRange,
+          targetLabel,
+          minConfidence,
+          maxConfidence,
+          ...rest
+        } = formValues || {};
         let startTime: string | undefined;
         let endTime: string | undefined;
         if (timeRange && Array.isArray(timeRange) && timeRange.length === 2) {
@@ -153,6 +156,10 @@ const gridOptions: VxeTableGridOptions<AlarmRecordApi.AlarmRecordItem> = {
           page: page.currentPage,
           pageSize: page.pageSize,
           startTime,
+          targetLabel:
+            typeof targetLabel === 'string' && targetLabel.trim()
+              ? targetLabel.trim()
+              : undefined,
           ...rest,
         });
       },
@@ -183,25 +190,18 @@ const [Grid] = useVbenVxeGrid({
         label: $t('record.alarm.filter.camera'),
       },
       {
-        component: 'ApiSelect',
-        componentProps: {
-          allowClear: true,
-          api: async () => {
-            const res = await getAlgorithmList({ page: 1, pageSize: 100 });
-            return res.items.map((a) => ({
-              label: a.name,
-              value: a.algorithmId,
-            }));
-          },
-          placeholder: $t('record.alarm.filter.algorithmPlaceholder'),
-        },
-        fieldName: 'algorithmId',
-        label: $t('record.alarm.filter.algorithm'),
-      },
-      {
         component: 'Input',
         fieldName: 'alarmTypeId',
         label: $t('record.alarm.filter.alarmType'),
+      },
+      {
+        component: 'Input',
+        componentProps: {
+          allowClear: true,
+          placeholder: $t('record.alarm.filter.targetTypePlaceholder'),
+        },
+        fieldName: 'targetLabel',
+        label: $t('record.alarm.filter.targetType'),
       },
       {
         component: 'RangePicker',
@@ -248,14 +248,6 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
     console.error(error);
   }
 }
-
-function getConfidenceTagColor(confidence?: number): string {
-  if (typeof confidence !== 'number') return 'default';
-  if (confidence >= 0.9) return 'green';
-  if (confidence >= 0.75) return 'blue';
-  if (confidence >= 0.6) return 'orange';
-  return 'red';
-}
 </script>
 
 <template>
@@ -287,14 +279,14 @@ function getConfidenceTagColor(confidence?: number): string {
         <span v-else class="text-xs text-muted-foreground">-</span>
       </template>
 
-      <template #cameraName="{ row }">
-        <span>{{ row.cameraName || row.cameraId }}</span>
+      <template #confidence="{ row }">
+        <Tag :color="getConfidenceTagColor(row.confidence)">
+          {{ (row.confidence * 100).toFixed(1) }}%
+        </Tag>
       </template>
 
-      <template #algorithmName="{ row }">
-        <span>{{
-          formatAlgorithmName(row.algorithmId, row.algorithmName)
-        }}</span>
+      <template #cameraName="{ row }">
+        <span>{{ row.cameraName || row.cameraId }}</span>
       </template>
 
       <template #alarmTypeId="{ row }">
@@ -302,13 +294,8 @@ function getConfidenceTagColor(confidence?: number): string {
       </template>
 
       <template #targetLabel="{ row }">
-        <span>{{ formatTargetClass(row.targetLabel) }}</span>
-      </template>
-
-      <template #confidence="{ row }">
-        <Tag :color="getConfidenceTagColor(row.confidence)">
-          {{ (row.confidence * 100).toFixed(1) }}%
-        </Tag>
+        <Tag v-if="row.targetLabel">{{ formatTargetClass(row.targetLabel) }}</Tag>
+        <span v-else class="text-xs text-muted-foreground">-</span>
       </template>
 
       <template #actions="{ row }">

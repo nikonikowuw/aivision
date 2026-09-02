@@ -379,6 +379,86 @@ async function fetchStatusSilently() {
 
 ---
 
+## 卡片式目录与网格布局规范 (Card Catalog & Grid Layout Guidelines)
+
+### 1. 范围 / 触发
+
+- **触发场景**：开发或重构 AI 算法包管理、模型资产卡片、任务实例卡片、边缘节点卡片等网格/卡片式资源目录。
+- **核心目标**：确保卡片排列符合直观的从左至右（Left-to-Right）水平阅读顺序，杜绝纵向瀑布流造成的错行误解；规范整卡可点击时的微动效与内部交互事件阻断。
+
+### 2. 契约与规范细节
+
+#### A. 网格布局与排列顺序契约
+
+1. **禁止使用 CSS Multi-column (`columns-*`) 作为有序卡片容器**：
+   - CSS `columns` 遵循从上到下的纵向列分流（Column-first）。在元素较少（如 3~4 个）时，第 2 或第 3 项会被排在第一列的下方（第二行），严重破坏从左到右阅读习惯。
+2. **强制使用 Responsive CSS Grid (`grid grid-cols-*` 或 `auto-fill`)**：
+   - 优先采用自适应填满网格：`grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4`，或者分断点响应式 `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`。
+   - `auto-fill + minmax` 能在折叠侧边栏、改变窗口大小、不同屏幕宽度下平滑动态计算最佳列数，保证每张卡片不会被无限挤压变窄或过度拉宽，保持从左到右水平排满。
+3. **同行动高与对齐契约**：
+   - 卡片容器根元素统一使用 `h-full flex flex-col justify-between`，使同行动高卡片的底部元信息与操作栏自然吸底对齐。
+
+#### B. 整卡点击与事件冒泡契约 (Clickable Card & Event Bubbling)
+
+1. **主交互与悬浮动效**：
+   - 整卡支持点击打开版本/详情抽屉（`@click="handleOpenDrawer(item)"`）；
+   - 卡片容器添加 `cursor-pointer hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] transition-all duration-200`，右上角可配合 `arrow-up-right` 提示可点击性。
+2. **内嵌操作显式阻止冒泡 (Mandatory `.stop`)**：
+   - 卡片内部的所有独立微交互（如：一键复制 ID、参数规范按钮、操作列按钮、Popover 触发器）**必须使用 `@click.stop`**，防止触发外层卡片的抽屉打开动作。
+
+#### C. 工具栏与筛选交互极简契约
+
+1. **避免重置与刷新图标并排混淆**：
+   - 搜索框统一配置 `allow-clear` 自带清空；
+   - 工具栏右侧仅保留功能明确的「刷新」按钮（保留当前筛选条件重新拉取远端最新状态），避免放置无文字提示的逆时针重置图标与顺时针刷新图标引起语义混淆；
+   - 在搜索结果为空（Empty State）的中心提示卡片中提供「重置筛选条件」显式大按钮承接清空需求。
+
+### 3. 正反示例对比（Wrong vs Correct）
+
+#### 错误做法（Wrong）
+
+```vue
+<!-- 错误：使用 columns 导致从上到下错位排版；内嵌按钮未阻止冒泡导致点击按钮同时触发卡片点击 -->
+<div class="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
+  <div v-for="item in list" :key="item.id" class="break-inside-avoid" @click="openDrawer(item)">
+    <div class="card">
+      <button @click="copyId(item.id)">Copy</button>
+      <button @click="openSchema(item)">Schema</button>
+    </div>
+  </div>
+</div>
+```
+
+#### 正确做法（Correct）
+
+```vue
+<!-- 正确：使用 CSS Grid auto-fill 保障平滑自适应，内部微操作全部使用 @click.stop 阻止冒泡 -->
+<div class="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4">
+  <div
+    v-for="item in list"
+    :key="item.id"
+    class="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-5 h-full cursor-pointer hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] transition-all"
+    @click="openDrawer(item)"
+  >
+    <!-- 头部信息与可点击指示 -->
+    <div class="flex items-start justify-between">
+      <span class="font-bold">{{ item.name }}</span>
+      <button type="button" @click.stop="copyId(item.id)">
+        <IconifyIcon icon="lucide:copy" class="size-3" />
+      </button>
+    </div>
+
+    <!-- 底部操作栏吸底并阻止冒泡 -->
+    <div class="mt-4 border-t border-border pt-3 flex justify-between items-center">
+      <span class="text-xs text-muted-foreground">{{ item.createdAt }}</span>
+      <button type="button" @click.stop="openSchema(item)">参数规范</button>
+    </div>
+  </div>
+</div>
+```
+
+---
+
 ## 常见错误
 
 - **VxeTable 配置了 `type: 'expand'` 列却遗漏 `expandConfig`**，导致展开箭头不显示或行展开控制器无法被激活。

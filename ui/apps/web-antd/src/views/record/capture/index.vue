@@ -16,6 +16,10 @@ import {
   getCaptureListApi,
 } from '#/api';
 import { getTodayRange } from '#/utils/date';
+import {
+  getConfidenceTagColor,
+  getTargetTypeTagColor,
+} from '#/utils/format';
 
 import CaptureDetailDrawer from './components/CaptureDetailDrawer.vue';
 import CaptureThumbnail from './components/CaptureThumbnail.vue';
@@ -263,28 +267,6 @@ async function handleViewCapture(row: CaptureApi.CaptureItem) {
 
 function formatRatio(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
-}
-
-function getConfidenceTagColor(confidence: number): string {
-  if (confidence >= 0.9) return 'green';
-  if (confidence >= 0.75) return 'blue';
-  if (confidence >= 0.6) return 'orange';
-  return 'red';
-}
-
-function getTargetTypeTagColor(targetType?: string): string {
-  switch (targetType) {
-    case 'face':
-      return 'cyan';
-    case 'person':
-      return 'blue';
-    case 'vehicle':
-      return 'orange';
-    case 'non_motor':
-      return 'green';
-    default:
-      return 'default';
-  }
 }
 </script>
 

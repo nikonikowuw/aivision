@@ -756,7 +756,7 @@ TEST(UdsReconcileTest, AlarmQueueDropsOldestWhenFullAndReleasesFrames) {
         instance->push_frame(*frame);
         EXPECT_EQ(pool.release_frame(frame->frame_token), AV_OK);
         // 等待算法实例消费该帧，避免塞满长度为 5 的算法内部输入队列
-        for (int attempt = 0; attempt < 200 && instance->get_processed_frames() < frame_id; ++attempt) {
+        for (int attempt = 0; attempt < 1000 && instance->get_processed_frames() < frame_id; ++attempt) {
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
     }

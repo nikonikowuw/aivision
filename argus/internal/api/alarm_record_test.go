@@ -133,6 +133,57 @@ func TestAlarmRecordAPI_ListPageAndDetail(t *testing.T) {
 	}
 }
 
+func TestAlarmRecordAPI_ListPageTargetLabelFilter(t *testing.T) {
+	engine, _, repo, _ := setupAlarmRecordAPIEngine(t)
+	ctx := context.Background()
+
+	for _, record := range []*model.AlarmRecord{
+		{
+			EventID:     "run-1/evt-person",
+			InstanceID:  "inst-1",
+			CameraID:    "cam-1",
+			AlarmTypeID: "person_invade",
+			TargetLabel: "person",
+			OccurredAt:  time.Now(),
+			ImageID:     "img-person",
+		},
+		{
+			EventID:     "run-1/evt-car",
+			InstanceID:  "inst-1",
+			CameraID:    "cam-1",
+			AlarmTypeID: "vehicle_invade",
+			TargetLabel: "car",
+			OccurredAt:  time.Now().Add(-time.Minute),
+			ImageID:     "img-car",
+		},
+	} {
+		if err := repo.Create(ctx, record); err != nil {
+			t.Fatalf("create fixture %s: %v", record.EventID, err)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/record/alarms?page=1&pageSize=10&targetLabel=person", nil)
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", rec.Code)
+	}
+	var listResp struct {
+		Code int                           `json:"code"`
+		Data service.AlarmRecordPageResult `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal list resp: %v", err)
+	}
+	if listResp.Code != 0 || listResp.Data.Total != 1 || len(listResp.Data.Items) != 1 {
+		t.Fatalf("unexpected filtered list response: %+v", listResp)
+	}
+	if listResp.Data.Items[0].TargetLabel != "person" {
+		t.Errorf("target label = %q, want person", listResp.Data.Items[0].TargetLabel)
+	}
+}
+
 func TestAlarmRecordAPI_ReadImageStream(t *testing.T) {
 	engine, _, repo, tmpDir := setupAlarmRecordAPIEngine(t)
 	ctx := context.Background()

@@ -9,11 +9,7 @@ import { IconifyIcon } from '@vben/icons';
 import { $t } from '@vben/locales';
 import { formatDateTime } from '@vben/utils';
 
-import {
-  Button,
-  message,
-  Tag,
-} from 'ant-design-vue';
+import { Button, Tag } from 'ant-design-vue';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
@@ -22,7 +18,9 @@ import {
   getFaceObservationListApi,
   getPersonFaceImageUrl,
 } from '#/api';
+import { copyToClipboard } from '#/utils/clipboard';
 import { getTodayRange } from '#/utils/date';
+import { getConfidenceTagColor } from '#/utils/format';
 
 import CaptureThumbnail from '../capture/components/CaptureThumbnail.vue';
 import FaceCandidatesTable from '../capture/components/FaceCandidatesTable.vue';
@@ -236,49 +234,8 @@ async function handleViewDetail(row: FaceObservationApi.FaceObservationItem) {
   }
 }
 
-function fallbackCopy(text: string) {
-  try {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.opacity = '0';
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    const successful = document.execCommand('copy');
-    document.body.removeChild(textArea);
-    if (successful) {
-      message.success($t('record.face.detail.copySuccess'));
-      return;
-    }
-  } catch (e) {
-    console.error('Fallback copy failed:', e);
-  }
-  message.info(text);
-}
-
-function copyEventId(eventId?: string) {
-  if (!eventId) return;
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard
-      .writeText(eventId)
-      .then(() => message.success($t('record.face.detail.copySuccess')))
-      .catch(() => fallbackCopy(eventId));
-  } else {
-    fallbackCopy(eventId);
-  }
-}
-
 function formatSimilarity(value?: number): string {
   return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '-';
-}
-
-function getSimilarityTagColor(similarity?: number): string {
-  if (typeof similarity !== 'number') return 'default';
-  if (similarity >= 0.9) return 'green';
-  if (similarity >= 0.75) return 'blue';
-  if (similarity >= 0.6) return 'orange';
-  return 'red';
 }
 </script>
 
@@ -336,7 +293,7 @@ function getSimilarityTagColor(similarity?: number): string {
       </template>
 
       <template #similarity="{ row }">
-        <Tag :color="getSimilarityTagColor(row.similarity)">
+        <Tag :color="getConfidenceTagColor(row.similarity)">
           {{ formatSimilarity(row.similarity) }}
         </Tag>
       </template>
@@ -558,7 +515,7 @@ function getSimilarityTagColor(similarity?: number): string {
                 </div>
                 <div class="flex-1 flex items-center justify-center text-center">
                   <Tag
-                    :color="getSimilarityTagColor(currentDetail.similarity)"
+                    :color="getConfidenceTagColor(currentDetail.similarity)"
                     class="font-mono font-semibold px-2.5 py-0.5 text-xs rounded-md m-0"
                   >
                     {{ (currentDetail.similarity * 100).toFixed(1) }}%
@@ -646,7 +603,7 @@ function getSimilarityTagColor(similarity?: number): string {
                       type="text"
                       size="small"
                       class="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-primary transition-colors flex items-center justify-center"
-                      @click="copyEventId(currentDetail.eventId)"
+                      @click="copyToClipboard(currentDetail.eventId, $t('record.face.detail.copySuccess'))"
                     >
                       <IconifyIcon icon="lucide:copy" class="size-3.5" />
                     </Button>

@@ -24,7 +24,8 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "detail": "Detail",
-    "view": "View"
+    "view": "View",
+    "copy": "Copy"
   },
   "user": {
     "title": "User Management",

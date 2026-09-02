@@ -2116,7 +2116,7 @@ paths:
       - 操作日志模块
   /api/record/alarms:
     get:
-      description: 支持按发生时间区间、摄像头、算法、告警类型、置信度区间组合分页查询
+      description: 支持按发生时间区间、摄像头、算法、告警类型、目标类型、置信度区间组合分页查询
       parameters:
       - default: 1
         description: 页码
@@ -2147,6 +2147,10 @@ paths:
       - description: 告警类型ID
         in: query
         name: alarmTypeId
+        type: string
+      - description: 目标类型标签
+        in: query
+        name: targetLabel
         type: string
       - description: 最低置信度
         in: query

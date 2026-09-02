@@ -92,6 +92,7 @@ type Deps struct {
 	PlateObservationHandler *api.PlateObservationHandler
 	FaceObservationHandler  *api.FaceObservationHandler
 	FaceCaptureHandler      *api.FaceCaptureHandler
+	StorageHandler          *api.StorageHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -278,6 +279,18 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/transactions/:transactionId/confirm", "ops:network:confirm")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/transactions/:transactionId/cancel", "ops:network:cancel")
 		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/network/interfaces/:interfaceId/factory-reset", "ops:network:reset")
+
+		storageGroup := apiGroup.Group("/storage")
+		{
+			storageGroup.GET(statusRoutePath, deps.StorageHandler.GetStorageStatus)
+			storageGroup.GET(configRoutePath, deps.StorageHandler.GetStorageConfig)
+			storageGroup.PUT(configRoutePath, deps.StorageHandler.UpdateStorageConfig)
+			storageGroup.POST("/cleanup", deps.StorageHandler.TriggerCleanup)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/storage"+statusRoutePath, "ops:storage:read")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/storage"+configRoutePath, "ops:storage:read")
+		deps.PermMiddleware.Register(http.MethodPut, apiRoutePath+"/storage"+configRoutePath, "ops:storage:edit")
+		deps.PermMiddleware.Register(http.MethodPost, apiRoutePath+"/storage/cleanup", "ops:storage:edit")
 
 		cameraGroup := apiGroup.Group(cameraRoutePath)
 		{

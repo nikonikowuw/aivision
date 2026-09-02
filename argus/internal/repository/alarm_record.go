@@ -37,6 +37,14 @@ type AlarmRecordRepository interface {
 	ListPage(ctx context.Context, filter *AlarmRecordFilter) ([]model.AlarmRecord, int64, error)
 	// FindExistingImageIDs 批量查询已落库的 image_id 集合（供孤儿图片对账）。
 	FindExistingImageIDs(ctx context.Context, imageIDs []string) ([]string, error)
+	// FindExpired 查询早于指定时间的过期告警记录（按 occurred_at 升序，包含已软删除记录）。
+	FindExpired(ctx context.Context, before time.Time, limit int) ([]model.AlarmRecord, error)
+	// FindOldest 查询时间最早的告警记录（按 occurred_at 升序，包含已软删除记录）。
+	FindOldest(ctx context.Context, limit int) ([]model.AlarmRecord, error)
+	// HardDeleteBatch 物理硬删除指定 ID 列表的告警记录。
+	HardDeleteBatch(ctx context.Context, ids []uint64) error
+	// CountTotal 统计有效告警记录总数。
+	CountTotal(ctx context.Context) (int64, error)
 }
 
 type alarmRecordRepository struct {
@@ -156,4 +164,58 @@ func (r *alarmRecordRepository) FindExistingImageIDs(ctx context.Context, imageI
 		return nil, err
 	}
 	return foundIDs, nil
+}
+
+func (r *alarmRecordRepository) FindExpired(ctx context.Context, before time.Time, limit int) ([]model.AlarmRecord, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var records []model.AlarmRecord
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("occurred_at < ?", before).
+		Order("occurred_at ASC").
+		Limit(limit).
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func (r *alarmRecordRepository) FindOldest(ctx context.Context, limit int) ([]model.AlarmRecord, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var records []model.AlarmRecord
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Order("occurred_at ASC").
+		Limit(limit).
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func (r *alarmRecordRepository) HardDeleteBatch(ctx context.Context, ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Unscoped().
+		Where("id IN ?", ids).
+		Delete(&model.AlarmRecord{}).Error
+}
+
+func (r *alarmRecordRepository) CountTotal(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.AlarmRecord{}).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }

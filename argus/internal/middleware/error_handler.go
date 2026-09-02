@@ -32,7 +32,7 @@ func ErrorHandler() gin.HandlerFunc {
 				status = http.StatusUnauthorized
 			case errno.CodeForbidden:
 				status = http.StatusForbidden
-			case errno.CodeInvalidParam, errno.CodeFileTooLarge, errno.CodeFileTypeNotAllowed, errno.CodeNetworkInvalidConfig, errno.CodeNetworkGatewayPoolInvalid:
+			case errno.CodeInvalidParam, errno.CodeFileTooLarge, errno.CodeFileTypeNotAllowed, errno.CodeNetworkInvalidConfig, errno.CodeNetworkGatewayPoolInvalid, errno.CodeStorageInvalidConfig:
 				status = http.StatusBadRequest
 			case errno.CodeNotFound, errno.CodeNetworkTransactionNotFound, errno.CodeTaskNotFound, errno.CodeInstanceNotFound:
 				status = http.StatusNotFound

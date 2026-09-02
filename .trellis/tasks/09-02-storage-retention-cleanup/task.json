@@ -3,7 +3,7 @@
   "name": "storage-retention-cleanup",
   "title": "Edge Storage Retention and Cleanup Strategy",
   "description": "Edge storage retention policy, high/low watermark cleanup, and circuit breaker degradation",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

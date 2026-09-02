@@ -37,7 +37,7 @@ func TestReportAdapter_AcceptFaceObservationMonotonic(t *testing.T) {
 	db := newTestFaceDB(t)
 	faceRepo := repository.NewFaceObservationRepository(db)
 	adapter := service.NewReportAdapterWithAlarm(
-		repository.NewTaskRepository(db), nil, nil, faceRepo, nil, zap.NewNop(),
+		repository.NewTaskRepository(db), nil, nil, faceRepo, nil, nil, zap.NewNop(),
 	)
 	ctx := context.Background()
 

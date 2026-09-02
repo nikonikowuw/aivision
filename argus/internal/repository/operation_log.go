@@ -26,6 +26,10 @@ type OperationLogRepository interface {
 	Create(ctx context.Context, log *model.OperationLog) error
 	GetByID(ctx context.Context, id uint64) (*model.OperationLog, error)
 	ListPage(ctx context.Context, filter *OperationLogFilter) ([]model.OperationLog, int64, error)
+	// DeleteExpired 物理删除早于指定时间的操作日志（分批限额）。
+	DeleteExpired(ctx context.Context, before time.Time, limit int) (int64, error)
+	// CountTotal 统计操作日志总数。
+	CountTotal(ctx context.Context) (int64, error)
 }
 
 type operationLogRepository struct {
@@ -85,4 +89,41 @@ func (r *operationLogRepository) ListPage(ctx context.Context, filter *Operation
 	}
 
 	return items, total, nil
+}
+
+func (r *operationLogRepository) DeleteExpired(ctx context.Context, before time.Time, limit int) (int64, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var ids []uint64
+	err := r.db.WithContext(ctx).
+		Model(&model.OperationLog{}).
+		Where("created_at < ?", before).
+		Order("created_at ASC").
+		Limit(limit).
+		Pluck("id", &ids).Error
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	res := r.db.WithContext(ctx).
+		Where("id IN ?", ids).
+		Delete(&model.OperationLog{})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+func (r *operationLogRepository) CountTotal(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.OperationLog{}).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }

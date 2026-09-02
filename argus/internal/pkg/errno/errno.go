@@ -107,6 +107,10 @@ const (
 	// 人脸底库下发与管理业务错误码 1410
 	CodeFaceGalleryFull = 1410 // 系统人脸底库容量已达上限（最多 5000 张）
 
+	// 存储保留与清理业务错误码 1420 ~ 1421
+	CodeStorageInvalidConfig = 1420 // 存储清理策略配置参数非法
+	CodeStorageCleanupFailed = 1421 // 存储清理执行失败
+
 	// CodeInternal 服务器内部错误（非业务失败，仅作统一响应码）。
 	CodeInternal = 1500
 )
@@ -186,6 +190,8 @@ var messages = map[string]map[int]string{
 		CodeTaskAlreadyExists:             "该摄像头已关联分析任务",
 		CodeInstanceNotFound:              "算法实例不存在",
 		CodeFaceGalleryFull:               "系统人脸底库容量已达上限（最多 5000 张）",
+		CodeStorageInvalidConfig:          "存储清理策略配置参数非法",
+		CodeStorageCleanupFailed:          "存储清理执行失败",
 		CodeInternal:                      "服务器内部错误",
 	},
 	"en-US": {
@@ -258,6 +264,8 @@ var messages = map[string]map[int]string{
 		CodeTaskAlreadyExists:             "An analysis task already exists for this camera",
 		CodeInstanceNotFound:              "Algorithm instance not found",
 		CodeFaceGalleryFull:               "Face gallery capacity limit reached (up to 5000 faces)",
+		CodeStorageInvalidConfig:          "Invalid storage retention policy configuration",
+		CodeStorageCleanupFailed:          "Failed to execute storage cleanup",
 		CodeInternal:                      "Internal server error",
 	},
 	"zh-TW": {
@@ -330,6 +338,8 @@ var messages = map[string]map[int]string{
 		CodeTaskAlreadyExists:             "該攝影機已關聯分析任務",
 		CodeInstanceNotFound:              "演算法實例不存在",
 		CodeFaceGalleryFull:               "系統人臉底庫容量已達上限（最多 5000 張）",
+		CodeStorageInvalidConfig:          "儲存清理策略設定參數非法",
+		CodeStorageCleanupFailed:          "儲存清理執行失敗",
 		CodeInternal:                      "伺服器內部錯誤",
 	},
 }

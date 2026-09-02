@@ -39,6 +39,11 @@ type InstanceRuntimeState struct {
 	ReportedAt time.Time
 }
 
+// StorageCircuitBreakerChecker 熔断器状态检测接口。
+type StorageCircuitBreakerChecker interface {
+	IsCircuitBreakerActive() bool
+}
+
 // ReportAdapter 实现 engineipc.ReportAdapter：
 //   - AcceptTaskState / AcceptInstanceState 更新内存缓存，仅状态码变化时落库（D6）；
 //   - AcceptAlarm 幂等持久化单目标告警到 alarm_records 表；
@@ -47,12 +52,13 @@ type InstanceRuntimeState struct {
 //   - ReconcileOrphanImages 针对已落库图片保留（retain），超期未落库图片删除（delete）；
 //   - AcceptMetrics 保持 fail-closed。
 type ReportAdapter struct {
-	repo        repository.TaskRepository
-	alarmRepo   repository.AlarmRecordRepository
-	plateRepo   repository.PlateObservationRepository
-	faceRepo    repository.FaceObservationRepository
-	captureRepo repository.FaceCaptureRepository
-	log         *zap.Logger
+	repo           repository.TaskRepository
+	alarmRepo      repository.AlarmRecordRepository
+	plateRepo      repository.PlateObservationRepository
+	faceRepo       repository.FaceObservationRepository
+	captureRepo    repository.FaceCaptureRepository
+	circuitBreaker StorageCircuitBreakerChecker
+	log            *zap.Logger
 
 	mu    sync.RWMutex
 	tasks map[string]TaskRuntimeState     // camera_id → 实时状态
@@ -67,7 +73,7 @@ type ReportAdapter struct {
 
 // NewReportAdapter 创建 ReportAdapter（保持原有两参数构造函数签名，兼容既有单测与调用者）。
 func NewReportAdapter(repo repository.TaskRepository, log *zap.Logger) *ReportAdapter {
-	return NewReportAdapterWithAlarm(repo, nil, nil, nil, nil, log)
+	return NewReportAdapterWithAlarm(repo, nil, nil, nil, nil, nil, log)
 }
 
 // NewReportAdapterWithAlarm 具备告警落库、车牌观测与人脸识别记录落库能力的完整构造函数。
@@ -77,21 +83,36 @@ func NewReportAdapterWithAlarm(
 	plateRepo repository.PlateObservationRepository,
 	faceRepo repository.FaceObservationRepository,
 	captureRepo repository.FaceCaptureRepository,
+	circuitBreaker StorageCleanupService,
 	log *zap.Logger,
 ) *ReportAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &ReportAdapter{
-		repo:        repo,
-		alarmRepo:   alarmRepo,
-		plateRepo:   plateRepo,
-		faceRepo:    faceRepo,
-		captureRepo: captureRepo,
-		log:         log,
-		tasks:       make(map[string]TaskRuntimeState),
-		insts:       make(map[string]InstanceRuntimeState),
+		repo:           repo,
+		alarmRepo:      alarmRepo,
+		plateRepo:      plateRepo,
+		faceRepo:       faceRepo,
+		captureRepo:    captureRepo,
+		circuitBreaker: circuitBreaker,
+		log:            log,
+		tasks:          make(map[string]TaskRuntimeState),
+		insts:          make(map[string]InstanceRuntimeState),
 	}
+}
+
+// SetCircuitBreakerChecker 设置熔断状态检测器（供单测与动态依赖注入）。
+func (a *ReportAdapter) SetCircuitBreakerChecker(checker StorageCircuitBreakerChecker) {
+	a.circuitBreaker = checker
+}
+
+func isPathSafe(p string) bool {
+	if p == "" {
+		return true
+	}
+	clean := filepath.Clean(p)
+	return !strings.HasPrefix(clean, "..") && !filepath.IsAbs(clean)
 }
 
 // AcceptTaskState 缓存任务实时状态；仅状态码或状态消息变化时写库（D6：16 路 × 每 2 秒全量
@@ -208,13 +229,16 @@ func (a *ReportAdapter) AcceptAlarm(ctx context.Context, event *argusv1.AlarmEve
 		return errors.New("alarm event_id is empty")
 	}
 
-	// 检查图片相对路径安全性（防止极端注入）
+	// 检查图片相对路径安全性（防止极端注入）及 95% 极危防爆盘熔断处理
+	imgID := event.GetImageId()
 	imgRelPath := event.GetImageRelPath()
-	if imgRelPath != "" {
-		cleanPath := filepath.Clean(imgRelPath)
-		if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
-			return errors.New("alarm image_rel_path is invalid")
-		}
+	if a.circuitBreaker != nil && a.circuitBreaker.IsCircuitBreakerActive() {
+		a.log.Warn("storage circuit breaker active (disk usage >= 95%): dropping alarm image persistence",
+			zap.String("event_id", eventID),
+			zap.String("dropped_image", imgRelPath))
+		imgID, imgRelPath = "", ""
+	} else if !isPathSafe(imgRelPath) {
+		return errors.New("alarm image_rel_path is invalid")
 	}
 
 	// 告警事件已经由 Engine fan-out 为单目标事件；Go 端拒绝多目标载荷，避免静默丢弃后续目标。
@@ -260,7 +284,7 @@ func (a *ReportAdapter) AcceptAlarm(ctx context.Context, event *argusv1.AlarmEve
 		Confidence:       confidence,
 		TrackID:          trackID,
 		BBoxJSON:         bboxJSON,
-		ImageID:          event.GetImageId(),
+		ImageID:          imgID,
 		ImageRelPath:     imgRelPath,
 	}
 
@@ -290,14 +314,21 @@ func (a *ReportAdapter) AcceptPlateObservation(ctx context.Context, obs *argusv1
 		return errors.New("plate observation event_id is empty")
 	}
 
-	// 校验图片路径安全性
-	for _, p := range []string{obs.GetImageRelPath(), obs.GetPlateImageRelPath()} {
-		if p != "" {
-			cleanPath := filepath.Clean(p)
-			if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
-				return errors.New("plate observation image path is invalid")
-			}
-		}
+	// 校验图片路径安全性及 95% 极危防爆盘熔断处理
+	imgID := obs.GetImageId()
+	imgRelPath := obs.GetImageRelPath()
+	plateImgID := obs.GetPlateImageId()
+	plateImgRelPath := obs.GetPlateImageRelPath()
+
+	if a.circuitBreaker != nil && a.circuitBreaker.IsCircuitBreakerActive() {
+		a.log.Warn("storage circuit breaker active (disk usage >= 95%): dropping plate observation image persistence",
+			zap.String("event_id", eventID),
+			zap.String("dropped_image", imgRelPath),
+			zap.String("dropped_plate_image", plateImgRelPath))
+		imgID, imgRelPath = "", ""
+		plateImgID, plateImgRelPath = "", ""
+	} else if !isPathSafe(imgRelPath) || !isPathSafe(plateImgRelPath) {
+		return errors.New("plate observation image path is invalid")
 	}
 
 	var bbox []float32
@@ -339,12 +370,12 @@ func (a *ReportAdapter) AcceptPlateObservation(ctx context.Context, obs *argusv1
 		TrackID:           obs.GetTrackId(),
 		BBoxJSON:          bboxJSON,
 		VehicleBBoxJSON:   vehicleBBoxJSON,
-		PanoramaImage:     obs.GetImageRelPath(),
-		PlateImage:        obs.GetPlateImageRelPath(),
-		ImageID:           obs.GetImageId(),
-		ImageRelPath:      obs.GetImageRelPath(),
-		PlateImageID:      obs.GetPlateImageId(),
-		PlateImageRelPath: obs.GetPlateImageRelPath(),
+		PanoramaImage:     imgRelPath,
+		PlateImage:        plateImgRelPath,
+		ImageID:           imgID,
+		ImageRelPath:      imgRelPath,
+		PlateImageID:      plateImgID,
+		PlateImageRelPath: plateImgRelPath,
 		ObservedAt:        observedAt,
 	}
 
@@ -373,14 +404,21 @@ func (a *ReportAdapter) AcceptFaceObservation(ctx context.Context, obs *argusv1.
 		return errors.New("face observation event_id is empty")
 	}
 
-	// 校验图片路径安全性
-	for _, p := range []string{obs.GetImageRelPath(), obs.GetFaceImageRelPath()} {
-		if p != "" {
-			cleanPath := filepath.Clean(p)
-			if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
-				return errors.New("face observation image path is invalid")
-			}
-		}
+	// 校验图片路径安全性及 95% 极危防爆盘熔断处理
+	imgID := obs.GetImageId()
+	imgRelPath := obs.GetImageRelPath()
+	faceImgID := obs.GetFaceImageId()
+	faceImgRelPath := obs.GetFaceImageRelPath()
+
+	if a.circuitBreaker != nil && a.circuitBreaker.IsCircuitBreakerActive() {
+		a.log.Warn("storage circuit breaker active (disk usage >= 95%): dropping face observation image persistence",
+			zap.String("event_id", eventID),
+			zap.String("dropped_image", imgRelPath),
+			zap.String("dropped_face_image", faceImgRelPath))
+		imgID, imgRelPath = "", ""
+		faceImgID, faceImgRelPath = "", ""
+	} else if !isPathSafe(imgRelPath) || !isPathSafe(faceImgRelPath) {
+		return errors.New("face observation image path is invalid")
 	}
 
 	var bbox []float32
@@ -411,10 +449,10 @@ func (a *ReportAdapter) AcceptFaceObservation(ctx context.Context, obs *argusv1.
 		Similarity:       obs.GetSimilarity(),
 		BBoxJSON:         bboxJSON,
 		TimeSynced:       obs.GetTimeSynced(),
-		ImageID:          obs.GetImageId(),
-		ImageRelPath:     obs.GetImageRelPath(),
-		FaceImageID:      obs.GetFaceImageId(),
-		FaceImageRelPath: obs.GetFaceImageRelPath(),
+		ImageID:          imgID,
+		ImageRelPath:     imgRelPath,
+		FaceImageID:      faceImgID,
+		FaceImageRelPath: faceImgRelPath,
 		ObservedAt:       observedAt,
 	}
 
@@ -444,14 +482,21 @@ func (a *ReportAdapter) AcceptFaceCapture(ctx context.Context, capture *argusv1.
 		return errors.New("face capture snapshot is nil")
 	}
 
-	// 校验图片路径安全性
-	for _, p := range []string{snap.GetImageRelPath(), snap.GetFaceImageRelPath()} {
-		if p != "" {
-			cleanPath := filepath.Clean(p)
-			if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
-				return errors.New("face capture image path is invalid")
-			}
-		}
+	// 校验图片路径安全性及 95% 极危防爆盘熔断处理
+	snapImgID := snap.GetImageId()
+	snapImgRelPath := snap.GetImageRelPath()
+	snapFaceImgID := snap.GetFaceImageId()
+	snapFaceImgRelPath := snap.GetFaceImageRelPath()
+
+	if a.circuitBreaker != nil && a.circuitBreaker.IsCircuitBreakerActive() {
+		a.log.Warn("storage circuit breaker active (disk usage >= 95%): dropping face capture image persistence",
+			zap.String("event_id", eventID),
+			zap.String("dropped_image", snapImgRelPath),
+			zap.String("dropped_face_image", snapFaceImgRelPath))
+		snapImgID, snapImgRelPath = "", ""
+		snapFaceImgID, snapFaceImgRelPath = "", ""
+	} else if !isPathSafe(snapImgRelPath) || !isPathSafe(snapFaceImgRelPath) {
+		return errors.New("face capture image path is invalid")
 	}
 
 	var bboxMap map[string]float32
@@ -488,10 +533,10 @@ func (a *ReportAdapter) AcceptFaceCapture(ctx context.Context, capture *argusv1.
 		WallTimeNs:       snap.GetWallTimeNs(),
 		TimeSynced:       snap.GetTimeSynced(),
 		ObservedAt:       observedAt,
-		ImageID:          snap.GetImageId(),
-		ImageRelPath:     snap.GetImageRelPath(),
-		FaceImageID:      snap.GetFaceImageId(),
-		FaceImageRelPath: snap.GetFaceImageRelPath(),
+		ImageID:          snapImgID,
+		ImageRelPath:     snapImgRelPath,
+		FaceImageID:      snapFaceImgID,
+		FaceImageRelPath: snapFaceImgRelPath,
 		BBoxJSON:         bboxJSON,
 		QualityScore:     snap.GetQualityScore(),
 		Similarity:       snap.GetSimilarity(),

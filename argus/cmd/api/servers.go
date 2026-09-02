@@ -133,6 +133,9 @@ func (l *serverLifecycle) closeDependencies(ctx context.Context) {
 			l.app.Logger.Error("network service close failed", zap.Error(err))
 		}
 	}
+	if l.app.StorageService != nil {
+		l.app.StorageService.Stop()
+	}
 }
 
 // shutdown 在同一个 context 内并发停止 HTTP 与 gRPC admission，随后关闭

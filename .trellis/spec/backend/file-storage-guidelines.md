@@ -114,3 +114,94 @@ store.Put(ctx, storage.PutInput{
 ```
 
 Service 先按扩展名和文件头校验，存储层只接受安全 key；local 实现使用临时文件和原子 rename，MinIO 实现只通过 `FileStorage` 暴露给上层。
+
+---
+
+## Scenario: 边缘存储生命周期保留、高低水位削峰与极危熔断
+
+### 1. Scope / Trigger
+
+- Trigger：边缘设备（eMMC/SSD）存储空间有限，高并发抓拍和告警引发磁盘满盘、写崩溃或丢帧。
+- Scope：Go 后端单点自治的三级防御机制（日常 TTL + 高低水位 85%/70% FIFO 削峰 + 95% 极危抓拍熔断）；`alarm_records`, `plate_observations`, `face_observations`, `face_captures`, `operation_logs` 物理硬清理；底库资产绝对白名单保护；`/api/storage/status`, `/api/storage/config`, `/api/storage/cleanup` API。
+- Out of scope：全量 SQLite VACUUM（依赖 Freelist 空闲页复用）、图片二次压缩转码。
+
+### 2. Signatures
+
+```go
+type DiskUsageSampler interface {
+    GetDiskUsage(path string) (DiskUsage, error)
+}
+
+type StorageCleanupService interface {
+    GetStatus(ctx context.Context) (*StorageStatusDTO, error)
+    GetConfig(ctx context.Context) (*model.StorageRetentionConfigValue, error)
+    UpdateConfig(ctx context.Context, input *model.StorageRetentionConfigValue) error
+    TriggerCleanup(ctx context.Context) error
+    IsCircuitBreakerActive() bool
+    Start(ctx context.Context)
+    Stop()
+}
+```
+
+HTTP Endpoints：
+- `GET /api/storage/status` (权限：`ops:storage:read`)
+- `GET /api/storage/config` (权限：`ops:storage:read`)
+- `PUT /api/storage/config` (权限：`ops:storage:edit`)
+- `POST /api/storage/cleanup` (权限：`ops:storage:edit`)
+
+### 3. Contracts
+
+- **防孤儿时序**：必须先物理删除磁盘上的图片文件（`storage.Delete`），后物理删除 SQLite 记录（`Unscoped().Delete()`）。即使文件已不存在（`os.IsNotExist`）也视为成功并继续清理 DB，确保断电重启自愈。
+- **白名单保护**：`persons` 和 `person_faces` 及其底库图片路径（`raw_image_key`, `aligned_face_key`）严禁被清理 Worker 查询或删除。
+- **让步步进流控 (Chunked Pacing)**：每批最多处理 200 条记录；批次之间必须 `time.Sleep(50ms)` 让出磁盘 I/O，杜绝打满 IOPS 阻塞视频流硬解码和 AI 推理。
+- **三级防御状态机**：
+  - 常规模式：当磁盘使用率 $< 85\%$ 时，按配置 `RetentionDays` 执行 TTL 周期巡检；
+  - 紧急削峰模式：当磁盘使用率 $\ge 85\%$ 时，按 FIFO 淘汰最早记录直至使用率降至 $\le 70\%$ 或无更多业务数据（Early Exit）；
+  - 极危熔断保护：当磁盘使用率 $\ge 95\%$ 时，激活熔断器（`circuitBreakerActive = true`），系统状态变为 `"degraded"`，Engine / App 丢弃 JPEG 存盘仅保留轻量文本告警；降回 $< 85\%$ 后自动复位。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 错误码 | HTTP 状态 |
+| --- | --- | --- |
+| `retentionDays < 1` 或 `> 365` | `CodeStorageInvalidConfig` (1420) | 400 |
+| `highWatermarkPercent < 50` 或 `> 95` | `CodeStorageInvalidConfig` (1420) | 400 |
+| `lowWatermarkPercent < 30` 或 `> 90` | `CodeStorageInvalidConfig` (1420) | 400 |
+| `lowWatermarkPercent >= highWatermarkPercent` | `CodeStorageInvalidConfig` (1420) | 400 |
+| `checkIntervalSeconds < 30` 或 `> 86400` | `CodeStorageInvalidConfig` (1420) | 400 |
+| 磁盘采样或数据库统计内部故障 | `CodeInternal` (1500) | 500 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：高水位突发告警时，Worker 分批并发让步削峰，降至 70% 立即 Early Exit，未造成硬解丢帧。
+- Good：图片已被外部手动删除时，清理 Worker 幂等处理，顺畅清除 DB 悬空元数据。
+- Bad：先执行 `DELETE FROM alarm_records` 再尝试删除磁盘图片（导致断电后遗留无主孤儿图片）。
+- Bad：在快满盘时调用 `VACUUM` 导致 2 倍临时空间写入暴击和全库锁死。
+
+### 6. Tests Required
+
+- Sampler 测试：跨平台 `statfs` 采样、0%/100% 边界、不存在路径容错。
+- Repo 测试：5 张业务表的 `FindExpired`, `FindOldest`, `HardDeleteBatch`, `CountTotal`。
+- Service 测试：TTL 到期删除、高水位 90% $\to$ 70% 削峰 Early Exit、95% 熔断器置位与复位、底库资产免死白名单。
+- API 测试：`/status`, `/config`, `/config` 边界校验、`/cleanup`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```go
+// 错误：先删数据库后删文件；全量一次性删除
+db.Where("occurred_at < ?", cutoff).Delete(&model.AlarmRecord{})
+for _, path := range imagePaths { os.Remove(path) }
+```
+
+#### Correct
+
+```go
+// 正确：分批 (200 条) + 先物理删图片 + 后物理硬删 DB + 50ms I/O 让步
+for _, rec := range records {
+    if rec.ImageRelPath != "" { _ = fileStorage.Delete(ctx, rec.ImageRelPath) }
+}
+alarmRepo.HardDeleteBatch(ctx, ids)
+time.Sleep(50 * time.Millisecond)
+```
+

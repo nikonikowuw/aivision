@@ -39,7 +39,7 @@ func TestReportAdapter_AcceptFaceCapture(t *testing.T) {
 	db := newTestFaceCaptureDB(t)
 	captureRepo := repository.NewFaceCaptureRepository(db)
 	adapter := service.NewReportAdapterWithAlarm(
-		repository.NewTaskRepository(db), nil, nil, nil, captureRepo, zap.NewNop(),
+		repository.NewTaskRepository(db), nil, nil, nil, captureRepo, nil, zap.NewNop(),
 	)
 	ctx := context.Background()
 

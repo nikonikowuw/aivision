@@ -89,7 +89,9 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	plateObservationRepository := repository.NewPlateObservationRepository(gormDB)
 	faceObservationRepository := repository.NewFaceObservationRepository(gormDB)
 	faceCaptureRepository := repository.NewFaceCaptureRepository(gormDB)
-	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, zapLogger)
+	diskUsageSampler := storage.NewDiskUsageSampler()
+	storageCleanupService := service.NewStorageCleanupService(cfg, systemConfigRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, operationLogRepository, fileStorage, diskUsageSampler, zapLogger)
+	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, storageCleanupService, zapLogger)
 	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
 	taskHandler := api.NewTaskHandler(taskService)
 	alarmRecordService := service.NewAlarmRecordService(alarmRecordRepository, cameraRepository, algorithmRepository, taskRepository, cfg)
@@ -100,6 +102,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	faceObservationHandler := api.NewFaceObservationHandler(faceObservationService)
 	faceCaptureService := service.NewFaceCaptureService(faceCaptureRepository, cameraRepository, cfg)
 	faceCaptureHandler := api.NewFaceCaptureHandler(faceCaptureService)
+	storageHandler := api.NewStorageHandler(storageCleanupService, zapLogger)
 	deps := router.Deps{
 		ErrorHandler:            handlerFunc,
 		AuthMiddleware:          authMiddleware,
@@ -123,19 +126,21 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		PlateObservationHandler: plateObservationHandler,
 		FaceObservationHandler:  faceObservationHandler,
 		FaceCaptureHandler:      faceCaptureHandler,
+		StorageHandler:          storageHandler,
 	}
 	engine := router.New(cfg, deps)
 	desiredStateAdapter := service.NewDesiredStateAdapter(taskRepository, personFaceRepository, zapLogger)
 	runtime := engineipc.NewRuntime(zapLogger, desiredStateAdapter, reportAdapter)
 	app := &App{
-		DB:           gormDB,
-		Logger:       zapLogger,
-		Engine:       engine,
-		NTPService:   ntpService,
-		Network:      networkService,
-		IPCRuntime:   runtime,
-		EngineClient: engineClient,
-		TaskService:  taskService,
+		DB:             gormDB,
+		Logger:         zapLogger,
+		Engine:         engine,
+		NTPService:     ntpService,
+		Network:        networkService,
+		IPCRuntime:     runtime,
+		EngineClient:   engineClient,
+		TaskService:    taskService,
+		StorageService: storageCleanupService,
 	}
 	return app, nil
 }

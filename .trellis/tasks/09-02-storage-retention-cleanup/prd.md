@@ -29,7 +29,7 @@
   *As an* 运维工程师，*I want* 系统在每天低峰期自动清理超出保留天数（如 30 天前）的过期数据，*so that* 数据库和磁盘保持健康紧凑，不堆积陈旧数据。
 - **Acceptance Criteria**:
   - [ ] 后台定时巡检任务按配置周期（默认 `600s`）运行，在达到保留期限时触发。
-  - [ ] 检索所有 `occurred_at < (Now - RetentionDays)` 的告警记录（`alarm_records`）、抓拍过车（`plate_observations`）、抓拍人脸（`face_observations`）以及操作审计日志（`operation_logs`）。
+  - [ ] 检索所有 `occurred_at < (Now - RetentionDays)` 的告警记录（`alarm_records`）、抓拍过车（`plate_observations`）、抓拍人脸（`face_observations`）、人脸抓拍事件与时序快照（`face_captures`）以及操作审计日志（`operation_logs`）。
   - [ ] 严格按照“**先删除磁盘图片文件 $\to$ 后删除 SQLite 记录**”的防孤儿顺序执行。
   - [ ] 无论软删除标记如何，清理均执行真实物理 Hard Delete（`Unscoped().Delete()`），确切释放磁盘空间。
 
@@ -170,7 +170,7 @@
 | 风险项 | 严重级 | 影响描述 | 缓解与防范措施 |
 | :--- | :--- | :--- | :--- |
 | **I/O 突发阻塞视频流** | **High** | 大量文件并发删除导致磁盘 IOPS 打满，视频硬解码掉帧 | 采用 `BatchSize=200` + `50ms` 休眠限速；单协程串行删除，杜绝瞬时高并发 I/O 尖刺。 |
-| **误删底库资产** | **Critical** | 误把注册人员人脸图片当成抓拍图片删除 | 设立硬性白名单，Worker 作用域严格限定在 `alarm_records`, `plate_observations`, `face_observations`, `operation_logs`。 |
+| **误删底库资产** | **Critical** | 误把注册人员人脸图片当成抓拍图片删除 | 设立硬性白名单，Worker 作用域严格限定在 `alarm_records`, `plate_observations`, `face_observations`, `face_captures`, `operation_logs`。 |
 | **断电导致数据不一致** | **Medium** | 删除文件过程中设备突然拔电重启 | 采用“先文件、后 DB”策略，文件删除具备幂等性，系统重启后自动对账并恢复。 |
 | **SQLite 磁盘不缩小** | **Low** | 物理删除 DB 记录后 `.db` 文件体积未减小 | 依赖 SQLite Freelist 空闲页池自动复用新数据，避免执行高危的 `VACUUM` 重写。 |
 
@@ -181,7 +181,7 @@
 - **Phase 1: 核心引擎与后台 Worker (MVP)**
   - 实现 `StorageMonitor` 磁盘状态采样器（支持 macOS 与 Linux `statfs` 跨平台适配）。
   - 实现 `StorageCleanupWorker`：支持 TTL 清理、高低水位分批削峰、`50ms` I/O 让步、防孤儿删除逻辑。
-  - 支持 `alarm_records`、`plate_observations`、`face_observations`、`operation_logs` 物理清理与底库白名单保护。
+  - 支持 `alarm_records`、`plate_observations`、`face_observations`、`face_captures`、`operation_logs` 物理清理与底库白名单保护。
   - 单元测试与端到端模拟测试（覆盖 TTL、高水位削峰、Early Exit、幂等性）。
 - **Phase 2: 动态配置与管理 API**
   - 实现 `SystemConfig` 存储配置持久化与热加载。

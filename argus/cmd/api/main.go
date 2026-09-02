@@ -30,14 +30,15 @@ import (
 
 // App 是 wire 装配产物：main 启动所需的全部依赖。
 type App struct {
-	DB           *gorm.DB
-	Logger       *zap.Logger
-	Engine       *gin.Engine
-	NTPService   service.NTPService
-	Network      service.NetworkService
-	IPCRuntime   ipcRuntime
-	EngineClient *engineipc.EngineClient
-	TaskService  service.TaskService
+	DB             *gorm.DB
+	Logger         *zap.Logger
+	Engine         *gin.Engine
+	NTPService     service.NTPService
+	Network        service.NetworkService
+	IPCRuntime     ipcRuntime
+	EngineClient   *engineipc.EngineClient
+	TaskService    service.TaskService
+	StorageService service.StorageCleanupService
 }
 
 // ipcRuntime 是 gRPC UDS 入站 runtime 的窄接口（serverLifecycle 只依赖这三个方法，
@@ -71,6 +72,9 @@ func (a *App) CleanupStartupResources(timeout time.Duration) {
 		if err := a.Network.Close(ctx); err != nil && a.Logger != nil {
 			a.Logger.Error("network service close failed", zap.Error(err))
 		}
+	}
+	if a.StorageService != nil {
+		a.StorageService.Stop()
 	}
 }
 
@@ -127,6 +131,11 @@ func main() {
 			app.CleanupStartupResources(shutdownTimeout)
 			os.Exit(1)
 		}
+	}
+
+	// 启动存储自动清理与防爆盘守护任务
+	if app.StorageService != nil {
+		app.StorageService.Start(context.Background())
 	}
 
 	// HTTP + gRPC 联合生命周期：预绑定 HTTP TCP，再绑定 app.sock，统一等待

@@ -37,6 +37,14 @@ type PlateObservationRepository interface {
 	ListPage(ctx context.Context, filter *PlateObservationFilter) ([]model.PlateObservation, int64, error)
 	// FindExistingImageIDs 批量查询已落库的全景图和车牌特写 image_id 集合（供孤儿图片对账）。
 	FindExistingImageIDs(ctx context.Context, imageIDs []string) ([]string, error)
+	// FindExpired 查询早于指定时间的过期过车记录（按 observed_at 升序，包含已软删除记录）。
+	FindExpired(ctx context.Context, before time.Time, limit int) ([]model.PlateObservation, error)
+	// FindOldest 查询时间最早的过车记录（按 observed_at 升序，包含已软删除记录）。
+	FindOldest(ctx context.Context, limit int) ([]model.PlateObservation, error)
+	// HardDeleteBatch 物理硬删除指定 ID 列表的过车记录。
+	HardDeleteBatch(ctx context.Context, ids []uint64) error
+	// CountTotal 统计有效过车记录总数。
+	CountTotal(ctx context.Context) (int64, error)
 }
 type plateObservationRepository struct {
 	db *gorm.DB
@@ -168,4 +176,58 @@ func (r *plateObservationRepository) FindExistingImageIDs(ctx context.Context, i
 		foundIDs = append(foundIDs, imageID)
 	}
 	return foundIDs, nil
+}
+
+func (r *plateObservationRepository) FindExpired(ctx context.Context, before time.Time, limit int) ([]model.PlateObservation, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var records []model.PlateObservation
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("observed_at < ?", before).
+		Order("observed_at ASC").
+		Limit(limit).
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func (r *plateObservationRepository) FindOldest(ctx context.Context, limit int) ([]model.PlateObservation, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var records []model.PlateObservation
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Order("observed_at ASC").
+		Limit(limit).
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func (r *plateObservationRepository) HardDeleteBatch(ctx context.Context, ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Unscoped().
+		Where("id IN ?", ids).
+		Delete(&model.PlateObservation{}).Error
+}
+
+func (r *plateObservationRepository) CountTotal(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.PlateObservation{}).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }

@@ -1603,6 +1603,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "图片类型: thumb 缩略图, 默认原图",
+                        "name": "type",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1654,6 +1660,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "图片类型: thumb 缩略图, 默认原图",
+                        "name": "type",
+                        "in": "query"
                     }
                 ],
                 "responses": {

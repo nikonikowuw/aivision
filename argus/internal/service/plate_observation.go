@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -282,39 +281,6 @@ func (s *plateObservationService) ReadImageStream(ctx context.Context, id uint64
 		relPath = record.PanoramaImage
 	}
 
-	if strings.TrimSpace(relPath) == "" {
-		return nil, 0, "", errno.NewError(errno.CodeNotFound)
-	}
-
-	// 路径安全校验
-	cleanRel := filepath.Clean(relPath)
-	if strings.HasPrefix(cleanRel, "..") || filepath.IsAbs(cleanRel) {
-		return nil, 0, "", errno.NewError(errno.CodeNotFound)
-	}
-
-	absBase, err := filepath.Abs(s.imageDir)
-	if err != nil {
-		return nil, 0, "", fmt.Errorf("resolve image dir: %w", err)
-	}
-
-	targetPath := filepath.Join(absBase, cleanRel)
-	cleanTarget := filepath.Clean(targetPath)
-	if !strings.HasPrefix(cleanTarget, absBase+string(filepath.Separator)) && cleanTarget != absBase {
-		return nil, 0, "", errno.NewError(errno.CodeNotFound)
-	}
-
-	fi, err := os.Stat(cleanTarget)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, 0, "", errno.NewError(errno.CodeNotFound)
-		}
-		return nil, 0, "", err
-	}
-
-	f, err := os.Open(cleanTarget)
-	if err != nil {
-		return nil, 0, "", err
-	}
-
-	return f, fi.Size(), "image/jpeg", nil
+	candidates := []string{s.imageDir, "var/images", "engine/var/images", "../engine/var/images"}
+	return openImageFileWithFallback(candidates, relPath, false)
 }

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -285,52 +284,6 @@ func (s *alarmRecordService) ReadImageStream(ctx context.Context, imageID string
 		return nil, 0, "", errno.NewError(errno.CodeNotFound)
 	}
 
-	targetRel := rec.ImageRelPath
-	if isThumbnail {
-		// 尝试读取引擎硬件生成的缩略图文件 (如 2026-03-31/img-xxx_thumb.jpg)
-		ext := filepath.Ext(rec.ImageRelPath)
-		base := strings.TrimSuffix(rec.ImageRelPath, ext)
-		thumbRel := base + "_thumb" + ext
-		cleanThumb := filepath.Clean(thumbRel)
-		if !strings.HasPrefix(cleanThumb, "..") && !filepath.IsAbs(cleanThumb) {
-			fullThumbPath := filepath.Join(s.imageDir, cleanThumb)
-			if file, err := os.Open(fullThumbPath); err == nil {
-				if stat, err := file.Stat(); err == nil {
-					contentType := "image/jpeg"
-					if strings.HasSuffix(strings.ToLower(cleanThumb), ".png") {
-						contentType = "image/png"
-					}
-					return file, stat.Size(), contentType, nil
-				}
-				_ = file.Close()
-			}
-		}
-	}
-
-	cleanRel := filepath.Clean(targetRel)
-	if strings.HasPrefix(cleanRel, "..") || filepath.IsAbs(cleanRel) {
-		return nil, 0, "", errno.NewError(errno.CodeInvalidParam)
-	}
-
-	fullPath := filepath.Join(s.imageDir, cleanRel)
-	file, err := os.Open(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, 0, "", errno.NewError(errno.CodeNotFound)
-		}
-		return nil, 0, "", err
-	}
-
-	stat, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		return nil, 0, "", err
-	}
-
-	contentType := "image/jpeg"
-	if strings.HasSuffix(strings.ToLower(cleanRel), ".png") {
-		contentType = "image/png"
-	}
-
-	return file, stat.Size(), contentType, nil
+	candidates := []string{s.imageDir, "var/images", "engine/var/images", "../engine/var/images"}
+	return openImageFileWithFallback(candidates, rec.ImageRelPath, isThumbnail)
 }

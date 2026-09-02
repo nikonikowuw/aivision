@@ -94,7 +94,7 @@ type FaceCapturePageResult struct {
 type FaceCaptureService interface {
 	ListPage(ctx context.Context, q *FaceCaptureQuery) (*FaceCapturePageResult, error)
 	GetDetail(ctx context.Context, id uint64) (*FaceCaptureItem, error)
-	ReadImageStream(ctx context.Context, id uint64, kind string, snapshotIndex int) (io.ReadCloser, int64, string, error)
+	ReadImageStream(ctx context.Context, id uint64, kind string, snapshotIndex int, isThumbnail bool) (io.ReadCloser, int64, string, error)
 }
 
 type faceCaptureService struct {
@@ -177,6 +177,7 @@ func (s *faceCaptureService) ReadImageStream(
 	id uint64,
 	kind string,
 	snapshotIndex int,
+	isThumbnail bool,
 ) (io.ReadCloser, int64, string, error) {
 	record, err := s.captureRepo.GetByID(ctx, id)
 	if err != nil {
@@ -227,37 +228,7 @@ func (s *faceCaptureService) ReadImageStream(
 
 	// 候选基础目录：优先使用配置路径，其次检查各工作目录下的图片存储路径
 	candidates := []string{s.imageDir, "var/images", "engine/var/images", "../engine/var/images"}
-	var cleanTarget string
-	var fi os.FileInfo
-	for _, base := range candidates {
-		if strings.TrimSpace(base) == "" {
-			continue
-		}
-		absBase, err := filepath.Abs(base)
-		if err != nil {
-			continue
-		}
-		targetPath := filepath.Join(absBase, cleanRel)
-		currClean := filepath.Clean(targetPath)
-		if !strings.HasPrefix(currClean, absBase+string(filepath.Separator)) && currClean != absBase {
-			continue
-		}
-		if info, err := os.Stat(currClean); err == nil && !info.IsDir() {
-			cleanTarget = currClean
-			fi = info
-			break
-		}
-	}
-
-	if cleanTarget == "" || fi == nil {
-		return nil, 0, "", errno.NewError(errno.CodeNotFound)
-	}
-
-	file, err := os.Open(cleanTarget)
-	if err != nil {
-		return nil, 0, "", err
-	}
-	return file, fi.Size(), "image/jpeg", nil
+	return openImageFileWithFallback(candidates, relPath, isThumbnail)
 }
 
 func parseBBoxFromJSON(data []byte) []float32 {

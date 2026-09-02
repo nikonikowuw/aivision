@@ -328,6 +328,7 @@ async function handleConfirmRegister() {
               :url="activeSnapshot.faceImageUrl"
               :width="128"
               :height="128"
+              :original="true"
               fit="contain"
               class="border-2 border-primary/40 rounded-lg shadow-sm"
             />
@@ -466,6 +467,7 @@ async function handleConfirmRegister() {
             :url="activeSnapshot.faceImageUrl"
             :width="64"
             :height="64"
+            :original="true"
             fit="cover"
             :preview="false"
             class="rounded border"

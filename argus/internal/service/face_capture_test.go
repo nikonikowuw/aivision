@@ -142,10 +142,12 @@ func TestFaceCaptureService_ReadImageStream(t *testing.T) {
 
 	tempDir := t.TempDir()
 	panoRelPath := "captures/test_pano.jpg"
+	panoThumbRelPath := "captures/test_pano_thumb.jpg"
 	faceRelPath := "captures/test_face.jpg"
 
 	_ = os.MkdirAll(filepath.Join(tempDir, "captures"), 0755)
 	_ = os.WriteFile(filepath.Join(tempDir, panoRelPath), []byte("fake-pano-data"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, panoThumbRelPath), []byte("fake-pano-thumb"), 0644)
 	_ = os.WriteFile(filepath.Join(tempDir, faceRelPath), []byte("fake-face-data"), 0644)
 
 	t.Setenv("AIVISION_IMAGE_DIR", tempDir)
@@ -171,8 +173,8 @@ func TestFaceCaptureService_ReadImageStream(t *testing.T) {
 		t.Fatalf("upsert capture: %v", err)
 	}
 
-	// 1. 读取最佳全景大图
-	rc, size, mime, err := svc.ReadImageStream(ctx, 1, "panorama", 0)
+	// 1. 读取最佳全景原图 (isThumbnail = false)
+	rc, size, mime, err := svc.ReadImageStream(ctx, 1, "panorama", 0, false)
 	if err != nil {
 		t.Fatalf("read pano image: %v", err)
 	}
@@ -181,8 +183,18 @@ func TestFaceCaptureService_ReadImageStream(t *testing.T) {
 		t.Errorf("pano size=%d, mime=%s", size, mime)
 	}
 
-	// 2. 读取第 1 帧特写小图
-	rcFace, sizeFace, mimeFace, err := svc.ReadImageStream(ctx, 1, "face", 1)
+	// 2. 读取最佳全景缩略图 (isThumbnail = true)
+	rcThumb, sizeThumb, mimeThumb, err := svc.ReadImageStream(ctx, 1, "panorama", 0, true)
+	if err != nil {
+		t.Fatalf("read pano thumb image: %v", err)
+	}
+	defer rcThumb.Close()
+	if sizeThumb != int64(len("fake-pano-thumb")) || mimeThumb != "image/jpeg" {
+		t.Errorf("pano thumb size=%d, mime=%s", sizeThumb, mimeThumb)
+	}
+
+	// 3. 读取第 1 帧特写小图 (无缩略图时回退原图)
+	rcFace, sizeFace, mimeFace, err := svc.ReadImageStream(ctx, 1, "face", 1, true)
 	if err != nil {
 		t.Fatalf("read snapshot face image: %v", err)
 	}

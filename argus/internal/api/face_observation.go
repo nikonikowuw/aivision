@@ -88,6 +88,7 @@ func (h *FaceObservationHandler) GetDetail(c *gin.Context) {
 // @Security BearerAuth
 // @Produce image/jpeg
 // @Param id path int true "人脸识别记录ID"
+// @Param type query string false "图片类型: thumb 缩略图, 默认原图"
 // @Success 200 {file} binary "全景图片文件流"
 // @Failure 400 {object} response.Result "参数错误"
 // @Failure 401 {object} response.Result "未授权"
@@ -103,6 +104,7 @@ func (h *FaceObservationHandler) ReadPanoramaImage(c *gin.Context) {
 // @Security BearerAuth
 // @Produce image/jpeg
 // @Param id path int true "人脸识别记录ID"
+// @Param type query string false "图片类型: thumb 缩略图, 默认原图"
 // @Success 200 {file} binary "人脸特写图片文件流"
 // @Failure 400 {object} response.Result "参数错误"
 // @Failure 401 {object} response.Result "未授权"
@@ -126,7 +128,8 @@ func (h *FaceObservationHandler) readImage(c *gin.Context, kind string) {
 		c.Error(errno.NewError(errno.CodeInvalidParam)) //nolint:errcheck
 		return
 	}
-	stream, size, contentType, err := h.svc.ReadImageStream(c.Request.Context(), id, kind)
+	isThumbnail := c.Query("type") == "thumb" || c.Query("type") == "thumbnail"
+	stream, size, contentType, err := h.svc.ReadImageStream(c.Request.Context(), id, kind, isThumbnail)
 	if err != nil {
 		c.Error(err) //nolint:errcheck
 		return
@@ -134,8 +137,11 @@ func (h *FaceObservationHandler) readImage(c *gin.Context, kind string) {
 	defer stream.Close()
 
 	c.Header("Content-Type", contentType)
-	c.Header("Content-Length", strconv.FormatInt(size, 10))
-	c.Header("Cache-Control", "private, max-age=86400")
+	if size > 0 {
+		c.Header("Content-Length", strconv.FormatInt(size, 10))
+	}
+	// 增加 HTTP 静态资源不可变缓存（7 天，private 避免共享代理缓存生物隐私图片），提升表格滚动与反复查看时的加载速度
+	c.Header("Cache-Control", "private, max-age=604800, immutable")
 	c.Status(http.StatusOK)
 	if _, err := io.Copy(c.Writer, stream); err != nil {
 		_ = c.Error(fmt.Errorf("stream face observation image: %w", err))

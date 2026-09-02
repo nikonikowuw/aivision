@@ -23,6 +23,7 @@ import {
   getPlateObservationDetailApi,
   getPlateObservationListApi,
 } from '#/api';
+import { getTodayRange } from '#/utils/date';
 
 import PlateTag from './components/PlateTag.vue';
 import PlateThumbnail from './components/PlateThumbnail.vue';
@@ -229,6 +230,7 @@ const [Grid] = useVbenVxeGrid({
           showTime: true,
           valueFormat: 'YYYY-MM-DDTHH:mm:ssZ',
         },
+        defaultValue: getTodayRange(),
         fieldName: 'timeRange',
         label: $t('record.plate.filter.timeRange'),
       },

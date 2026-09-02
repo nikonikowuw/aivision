@@ -23,6 +23,7 @@ import {
   getAlgorithmList,
   getCameraPageApi,
 } from '#/api';
+import { getTodayRange } from '#/utils/date';
 import {
   formatAlarmTypeName,
   formatAlgorithmName,
@@ -200,6 +201,7 @@ const [Grid] = useVbenVxeGrid({
           showTime: true,
           valueFormat: 'YYYY-MM-DDTHH:mm:ssZ',
         },
+        defaultValue: getTodayRange(),
         fieldName: 'timeRange',
         label: $t('record.alarm.filter.timeRange'),
       },

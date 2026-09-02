@@ -23,6 +23,7 @@ import {
   getFaceObservationDetailApi,
   getFaceObservationListApi,
 } from '#/api';
+import { getTodayRange } from '#/utils/date';
 
 import CaptureThumbnail from '../capture/components/CaptureThumbnail.vue';
 
@@ -176,6 +177,7 @@ const [Grid] = useVbenVxeGrid({
           showTime: true,
           valueFormat: 'YYYY-MM-DDTHH:mm:ssZ',
         },
+        defaultValue: getTodayRange(),
         fieldName: 'timeRange',
         label: $t('record.face.filter.timeRange'),
       },
@@ -344,6 +346,7 @@ function formatSimilarity(value?: number): string {
               <CaptureThumbnail
                 fit="contain"
                 :height="200"
+                :original="true"
                 :url="currentDetail.faceImageUrl"
                 :width="200"
                 :alt="$t('record.face.detail.faceCrop')"
@@ -362,6 +365,7 @@ function formatSimilarity(value?: number): string {
               <CaptureThumbnail
                 fit="contain"
                 :height="220"
+                :original="true"
                 :url="currentDetail.panoramaImageUrl"
                 :bbox="currentDetail.bbox"
                 :width="440"

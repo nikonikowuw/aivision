@@ -67,7 +67,7 @@ type FaceObservationPageResult struct {
 type FaceObservationService interface {
 	ListPage(ctx context.Context, q *FaceObservationQuery) (*FaceObservationPageResult, error)
 	GetDetail(ctx context.Context, id uint64) (*FaceObservationItem, error)
-	ReadImageStream(ctx context.Context, id uint64, kind string) (io.ReadCloser, int64, string, error)
+	ReadImageStream(ctx context.Context, id uint64, kind string, isThumbnail bool) (io.ReadCloser, int64, string, error)
 }
 
 type faceObservationService struct {
@@ -199,7 +199,7 @@ func (s *faceObservationService) toItem(record model.FaceObservation, currentCam
 	}
 }
 
-func (s *faceObservationService) ReadImageStream(ctx context.Context, id uint64, kind string) (io.ReadCloser, int64, string, error) {
+func (s *faceObservationService) ReadImageStream(ctx context.Context, id uint64, kind string, isThumbnail bool) (io.ReadCloser, int64, string, error) {
 	record, err := s.faceRepo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -225,26 +225,7 @@ func (s *faceObservationService) ReadImageStream(ctx context.Context, id uint64,
 	if strings.HasPrefix(cleanRel, "..") || filepath.IsAbs(cleanRel) {
 		return nil, 0, "", errno.NewError(errno.CodeNotFound)
 	}
-	absBase, err := filepath.Abs(s.imageDir)
-	if err != nil {
-		return nil, 0, "", fmt.Errorf("resolve image dir: %w", err)
-	}
-	targetPath := filepath.Join(absBase, cleanRel)
-	cleanTarget := filepath.Clean(targetPath)
-	if !strings.HasPrefix(cleanTarget, absBase+string(filepath.Separator)) && cleanTarget != absBase {
-		return nil, 0, "", errno.NewError(errno.CodeNotFound)
-	}
 
-	fi, err := os.Stat(cleanTarget)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, 0, "", errno.NewError(errno.CodeNotFound)
-		}
-		return nil, 0, "", err
-	}
-	file, err := os.Open(cleanTarget)
-	if err != nil {
-		return nil, 0, "", err
-	}
-	return file, fi.Size(), "image/jpeg", nil
+	candidates := []string{s.imageDir, "var/images", "engine/var/images", "../engine/var/images"}
+	return openImageFileWithFallback(candidates, cleanRel, isThumbnail)
 }

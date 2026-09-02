@@ -106,7 +106,8 @@ func (h *FaceCaptureHandler) readImage(c *gin.Context, kind string, snapshotInde
 		return
 	}
 
-	reader, size, contentType, err := h.svc.ReadImageStream(c.Request.Context(), id, kind, snapshotIndex)
+	isThumbnail := c.Query("type") == "thumb" || c.Query("type") == "thumbnail"
+	reader, size, contentType, err := h.svc.ReadImageStream(c.Request.Context(), id, kind, snapshotIndex, isThumbnail)
 	if err != nil {
 		c.Error(err) //nolint:errcheck
 		return
@@ -117,7 +118,8 @@ func (h *FaceCaptureHandler) readImage(c *gin.Context, kind string, snapshotInde
 	if size > 0 {
 		c.Header("Content-Length", strconv.FormatInt(size, 10))
 	}
-	c.Header("Cache-Control", "private, max-age=86400")
+	// 增加 HTTP 静态资源不可变缓存（7 天，private 避免共享代理缓存生物隐私图片），提升表格滚动与反复查看时的加载速度
+	c.Header("Cache-Control", "private, max-age=604800, immutable")
 	c.Status(http.StatusOK)
 	if _, err := io.Copy(c.Writer, reader); err != nil {
 		_ = c.Error(fmt.Errorf("stream face capture image: %w", err))

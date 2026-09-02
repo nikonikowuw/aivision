@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { $t } from '@vben/locales';
 import { useAccessStore } from '@vben/stores';
@@ -12,7 +12,8 @@ const props = withDefaults(
     bbox?: [number, number, number, number] | number[];
     fit?: 'contain' | 'cover' | 'fill';
     height?: number;
-    preview?: boolean;
+    original?: boolean; // 是否直接使用原图（例如详情卡片中展示高清原图）
+    preview?: boolean; // 是否允许点击放大预览
     url?: string;
     width?: number;
   }>(),
@@ -21,6 +22,7 @@ const props = withDefaults(
     bbox: undefined,
     fit: 'cover',
     height: 48,
+    original: false,
     preview: true,
     url: '',
     width: 96,
@@ -28,12 +30,29 @@ const props = withDefaults(
 );
 
 const accessStore = useAccessStore();
-const imageSrc = ref<string>('');
-const previewSrc = ref<string>('');
-const loading = ref<boolean>(false);
-let objectUrlToRevoke = '';
+const isError = ref<boolean>(false);
+const previewVisible = ref<boolean>(false);
+const previewImageSrc = ref<string>('');
+const previewLoading = ref<boolean>(false);
+const hdPreviewDataUrl = ref<string>('');
 
-const authUrl = computed(() => {
+// 原生缩略图直链（带 Token 鉴权，默认 type=thumb 由浏览器 C++ 内核多线程流式懒加载）
+const thumbnailUrl = computed(() => {
+  if (!props.url) return '';
+  const token = accessStore.accessToken;
+  let base = props.url;
+  if (!props.original) {
+    const delimiter = base.includes('?') ? '&' : '?';
+    base = `${base}${delimiter}type=thumb`;
+  }
+  const tokenDelimiter = base.includes('?') ? '&' : '?';
+  return token
+    ? `${base}${tokenDelimiter}token=${encodeURIComponent(token)}`
+    : base;
+});
+
+// 高清原图直链（用于按需大图预览与 Canvas 无损绘制）
+const authOriginalUrl = computed(() => {
   if (!props.url) return '';
   const token = accessStore.accessToken;
   const delimiter = props.url.includes('?') ? '&' : '?';
@@ -63,156 +82,169 @@ const normalizedBbox = computed<[number, number, number, number] | null>(() => {
   return [minX, minY, maxX, maxY];
 });
 
-function cleanupObjectUrl() {
-  if (objectUrlToRevoke) {
-    URL.revokeObjectURL(objectUrlToRevoke);
-    objectUrlToRevoke = '';
+watch(
+  () => props.url,
+  () => {
+    isError.value = false;
+    hdPreviewDataUrl.value = '';
+    previewImageSrc.value = '';
+  },
+);
+
+/**
+ * 仅当用户主动点击图片查看大图预览时，按需从 1080P/4K 高清原图无损生成带目标框全景图
+ */
+async function getHdPanoramaPreview(): Promise<string> {
+  if (hdPreviewDataUrl.value) return hdPreviewDataUrl.value;
+  if (!authOriginalUrl.value) return thumbnailUrl.value;
+
+  // 如果没有目标框，直接返回高清原图直链
+  if (!normalizedBbox.value) {
+    return authOriginalUrl.value;
   }
-}
 
-onBeforeUnmount(() => {
-  cleanupObjectUrl();
-});
-
-async function generateBboxPreview(
-  src: string,
-  box: [number, number, number, number],
-): Promise<string> {
+  let fullBlobUrl = '';
   try {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
+    const resp = await fetch(authOriginalUrl.value, {
+      headers: {
+        Authorization: `Bearer ${accessStore.accessToken || ''}`,
+      },
+    });
+    if (!resp.ok) return authOriginalUrl.value;
+
+    const blob = await resp.blob();
+    fullBlobUrl = URL.createObjectURL(blob);
+
+    const hdImg = new Image();
     await new Promise((resolve, reject) => {
-      img.addEventListener('load', resolve, { once: true });
-      img.addEventListener('error', reject, { once: true });
-      img.src = src;
+      hdImg.addEventListener('load', resolve, { once: true });
+      hdImg.addEventListener('error', reject, { once: true });
+      hdImg.src = fullBlobUrl;
     });
 
-    const w = img.naturalWidth || img.width;
-    const h = img.naturalHeight || img.height;
-    if (!w || !h) return src;
+    const hdW = hdImg.naturalWidth || hdImg.width;
+    const hdH = hdImg.naturalHeight || hdImg.height;
+    if (!hdW || !hdH || !normalizedBbox.value) {
+      return authOriginalUrl.value;
+    }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return src;
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = hdW;
+    offscreenCanvas.height = hdH;
+    const offscreenCtx = offscreenCanvas.getContext('2d');
+    if (!offscreenCtx) {
+      URL.revokeObjectURL(fullBlobUrl);
+      return authOriginalUrl.value;
+    }
 
-    ctx.drawImage(img, 0, 0, w, h);
+    offscreenCtx.drawImage(hdImg, 0, 0, hdW, hdH);
 
-    const [minX, minY, maxX, maxY] = box;
-    const px = minX * w;
-    const py = minY * h;
-    const pw = (maxX - minX) * w;
-    const ph = (maxY - minY) * h;
+    const [minX, minY, maxX, maxY] = normalizedBbox.value;
+    const px = minX * hdW;
+    const py = minY * hdH;
+    const pw = (maxX - minX) * hdW;
+    const ph = (maxY - minY) * hdH;
 
-    ctx.save();
-    ctx.lineWidth = Math.max(3, Math.round(w / 400));
-    ctx.strokeStyle = '#1890ff';
-    ctx.fillStyle = 'rgba(24, 144, 255, 0.18)';
-    ctx.fillRect(px, py, pw, ph);
-    ctx.strokeRect(px, py, pw, ph);
+    offscreenCtx.save();
+    offscreenCtx.lineWidth = Math.max(3, Math.round(hdW / 400));
+    offscreenCtx.strokeStyle = '#1890ff';
+    offscreenCtx.fillStyle = 'rgba(24, 144, 255, 0.18)';
+    offscreenCtx.fillRect(px, py, pw, ph);
+    offscreenCtx.strokeRect(px, py, pw, ph);
 
     // 绘制微型科技感四角包角高亮
     const cornerLen = Math.min(pw, ph) * 0.2;
-    ctx.lineWidth = Math.max(4, Math.round(w / 300));
-    ctx.strokeStyle = '#52c41a';
+    offscreenCtx.lineWidth = Math.max(4, Math.round(hdW / 300));
+    offscreenCtx.strokeStyle = '#52c41a';
 
     // 左上
-    ctx.beginPath();
-    ctx.moveTo(px, py + cornerLen);
-    ctx.lineTo(px, py);
-    ctx.lineTo(px + cornerLen, py);
-    ctx.stroke();
+    offscreenCtx.beginPath();
+    offscreenCtx.moveTo(px, py + cornerLen);
+    offscreenCtx.lineTo(px, py);
+    offscreenCtx.lineTo(px + cornerLen, py);
+    offscreenCtx.stroke();
 
     // 右上
-    ctx.beginPath();
-    ctx.moveTo(px + pw - cornerLen, py);
-    ctx.lineTo(px + pw, py);
-    ctx.lineTo(px + pw, py + cornerLen);
-    ctx.stroke();
+    offscreenCtx.beginPath();
+    offscreenCtx.moveTo(px + pw - cornerLen, py);
+    offscreenCtx.lineTo(px + pw, py);
+    offscreenCtx.lineTo(px + pw, py + cornerLen);
+    offscreenCtx.stroke();
 
     // 左下
-    ctx.beginPath();
-    ctx.moveTo(px, py + ph - cornerLen);
-    ctx.lineTo(px, py + ph);
-    ctx.lineTo(px + cornerLen, py + ph);
-    ctx.stroke();
+    offscreenCtx.beginPath();
+    offscreenCtx.moveTo(px, py + ph - cornerLen);
+    offscreenCtx.lineTo(px, py + ph);
+    offscreenCtx.lineTo(px + cornerLen, py + ph);
+    offscreenCtx.stroke();
 
     // 右下
-    ctx.beginPath();
-    ctx.moveTo(px + pw - cornerLen, py + ph);
-    ctx.lineTo(px + pw, py + ph);
-    ctx.lineTo(px + pw, py + ph - cornerLen);
-    ctx.stroke();
+    offscreenCtx.beginPath();
+    offscreenCtx.moveTo(px + pw - cornerLen, py + ph);
+    offscreenCtx.lineTo(px + pw, py + ph);
+    offscreenCtx.lineTo(px + pw, py + ph - cornerLen);
+    offscreenCtx.stroke();
 
-    ctx.restore();
+    offscreenCtx.restore();
 
-    return canvas.toDataURL('image/jpeg', 0.95);
-  } catch {
-    return src;
+    hdPreviewDataUrl.value = offscreenCanvas.toDataURL('image/jpeg', 0.95);
+    return hdPreviewDataUrl.value;
+  } catch (error) {
+    console.error('Failed to render HD panorama preview:', error);
+    return authOriginalUrl.value;
+  } finally {
+    if (fullBlobUrl) {
+      URL.revokeObjectURL(fullBlobUrl);
+    }
   }
 }
 
-watch(
-  [() => props.url, normalizedBbox],
-  async ([newUrl, box]) => {
-    cleanupObjectUrl();
-    if (!newUrl) {
-      imageSrc.value = '';
-      previewSrc.value = '';
-      return;
-    }
-    loading.value = true;
+async function handlePreviewClick() {
+  if (!props.preview || !props.url) return;
+  previewVisible.value = true;
+  if (!previewImageSrc.value) {
+    previewLoading.value = true;
     try {
-      const resp = await fetch(newUrl, {
-        headers: {
-          Authorization: `Bearer ${accessStore.accessToken || ''}`,
-        },
-      });
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
-      }
-      const blob = await resp.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      objectUrlToRevoke = objectUrl;
-      imageSrc.value = objectUrl;
-
-      previewSrc.value = box
-        ? await generateBboxPreview(objectUrl, box)
-        : objectUrl;
-    } catch {
-      imageSrc.value = authUrl.value;
-      previewSrc.value = authUrl.value;
+      previewImageSrc.value = await getHdPanoramaPreview();
     } finally {
-      loading.value = false;
+      previewLoading.value = false;
     }
-  },
-  { immediate: true },
-);
+  }
+}
 </script>
 
 <template>
   <div
     class="relative flex items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
+    :class="{
+      'cursor-pointer transition hover:opacity-90':
+        preview && thumbnailUrl && !isError,
+    }"
     :style="{ width: `${width}px`, height: `${height}px` }"
+    @click="handlePreviewClick"
   >
-    <Spin v-if="loading" size="small" />
-    <template v-else-if="imageSrc">
-      <AntImage
+    <!-- 无图或加载失败 -->
+    <div
+      v-if="!thumbnailUrl || isError"
+      class="select-none text-xs text-neutral-400"
+    >
+      {{ alt || $t('record.capture.drawer.noImage') }}
+    </div>
+
+    <!-- 列表展示图：直接使用原生 <img> + loading="lazy"，由浏览器底层多线程并行流式加载 -->
+    <template v-else>
+      <img
         :alt="alt || $t('record.capture.drawer.noImage')"
         :height="height"
-        :preview="
-          preview
-            ? {
-                src: previewSrc || imageSrc,
-              }
-            : false
-        "
-        :src="imageSrc"
+        :src="thumbnailUrl"
         :style="{ objectFit: fit }"
         :width="width"
+        loading="lazy"
+        class="h-full w-full select-none"
+        @error="() => (isError = true)"
       />
-      <!-- 缩略图上的微型目标框指示 (仅当有 bbox 且非全屏预览时覆盖) -->
+
+      <!-- 缩略图上的微型矢量目标框指示 (纯 SVG 矢量层覆盖，0 JS CPU 消耗) -->
       <svg
         v-if="normalizedBbox"
         viewBox="0 0 100 100"
@@ -224,14 +256,30 @@ watch(
           :y="normalizedBbox[1] * 100"
           :width="(normalizedBbox[2] - normalizedBbox[0]) * 100"
           :height="(normalizedBbox[3] - normalizedBbox[1]) * 100"
-          fill="rgba(24, 144, 255, 0.25)"
+          fill="rgba(24, 144, 255, 0.22)"
           stroke="#1890ff"
           stroke-width="2"
         />
       </svg>
+
+      <!-- 预览加载中的遮罩与微型 Spin 提示 -->
+      <div
+        v-if="previewLoading"
+        class="absolute inset-0 z-10 flex items-center justify-center bg-black/20"
+      >
+        <Spin size="small" />
+      </div>
     </template>
-    <div v-else class="select-none text-xs text-neutral-400">
-      {{ $t('record.capture.drawer.noImage') }}
+
+    <!-- 点击放大预览大图（仅在用户点击时按需从高清原图 1080P/4K 生成） -->
+    <div v-if="preview && thumbnailUrl && !isError" style="display: none">
+      <AntImage
+        :preview="{
+          visible: previewVisible,
+          src: previewImageSrc || authOriginalUrl || thumbnailUrl,
+          onVisibleChange: (val: boolean) => (previewVisible = val),
+        }"
+      />
     </div>
   </div>
 </template>

@@ -3,6 +3,8 @@ package service_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -152,5 +154,56 @@ func TestFaceObservationServiceUsesSnapshotAndBuildsImageURLs(t *testing.T) {
 	}
 	if len(item.BBox) != 4 || item.BBox[0] != 0.2 || item.BBox[3] != 0.5 {
 		t.Fatalf("unexpected face bbox: %v", item.BBox)
+	}
+}
+
+func TestFaceObservationService_ReadImageStream(t *testing.T) {
+	db := newTestFaceDB(t)
+	faceRepo := repository.NewFaceObservationRepository(db)
+	camRepo := repository.NewCameraRepository(db)
+
+	tempDir := t.TempDir()
+	panoRelPath := "2026-09-02/test_pano.jpg"
+	panoThumbRelPath := "2026-09-02/test_pano_thumb.jpg"
+	faceRelPath := "2026-09-02/test_face.jpg"
+
+	_ = os.MkdirAll(filepath.Join(tempDir, "2026-09-02"), 0755)
+	_ = os.WriteFile(filepath.Join(tempDir, panoRelPath), []byte("fake-pano-data"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, panoThumbRelPath), []byte("fake-pano-thumb"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, faceRelPath), []byte("fake-face-data"), 0644)
+
+	t.Setenv("AIVISION_IMAGE_DIR", tempDir)
+	svc := service.NewFaceObservationService(faceRepo, camRepo, nil)
+	ctx := context.Background()
+
+	obs := &model.FaceObservation{
+		EventID:          "run-1/42",
+		CameraID:         "camera-1",
+		ImageRelPath:     panoRelPath,
+		FaceImageRelPath: faceRelPath,
+		ObservedAt:       time.Now(),
+	}
+	if err := faceRepo.Create(ctx, obs); err != nil {
+		t.Fatalf("create face observation: %v", err)
+	}
+
+	// 1. 读取原图 (isThumbnail = false)
+	rc, size, mime, err := svc.ReadImageStream(ctx, obs.ID, "panorama", false)
+	if err != nil {
+		t.Fatalf("read pano image: %v", err)
+	}
+	defer rc.Close()
+	if size != int64(len("fake-pano-data")) || mime != "image/jpeg" {
+		t.Errorf("pano size=%d, mime=%s", size, mime)
+	}
+
+	// 2. 读取缩略图 (isThumbnail = true)
+	rcThumb, sizeThumb, mimeThumb, err := svc.ReadImageStream(ctx, obs.ID, "panorama", true)
+	if err != nil {
+		t.Fatalf("read pano thumb: %v", err)
+	}
+	defer rcThumb.Close()
+	if sizeThumb != int64(len("fake-pano-thumb")) || mimeThumb != "image/jpeg" {
+		t.Errorf("pano thumb size=%d, mime=%s", sizeThumb, mimeThumb)
 	}
 }

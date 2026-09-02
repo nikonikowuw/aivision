@@ -9,17 +9,11 @@ import { $t } from '@vben/locales';
 import { formatDateTime } from '@vben/utils';
 
 import { Button, Descriptions, Tag } from 'ant-design-vue';
-import dayjs from 'dayjs';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { getLogDetailApi, getLogPageApi } from '#/api';
+import { getTodayRange } from '#/utils/date';
 import { translateI18nKey } from '#/utils/i18n';
-
-function getTodayRange(): [string, string] {
-  const startOfDay = dayjs().startOf('day').format('YYYY-MM-DDTHH:mm:ssZ');
-  const endOfDay = dayjs().endOf('day').format('YYYY-MM-DDTHH:mm:ssZ');
-  return [startOfDay, endOfDay];
-}
 
 const currentDetail = ref<LogApi.LogItem | null>(null);
 

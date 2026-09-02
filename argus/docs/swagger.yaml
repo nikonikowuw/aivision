@@ -2240,6 +2240,10 @@ paths:
         name: id
         required: true
         type: integer
+      - description: '图片类型: thumb 缩略图, 默认原图'
+        in: query
+        name: type
+        type: string
       produces:
       - image/jpeg
       responses:
@@ -2272,6 +2276,10 @@ paths:
         name: id
         required: true
         type: integer
+      - description: '图片类型: thumb 缩略图, 默认原图'
+        in: query
+        name: type
+        type: string
       produces:
       - image/jpeg
       responses:

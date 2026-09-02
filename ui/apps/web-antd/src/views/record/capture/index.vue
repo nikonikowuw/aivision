@@ -15,6 +15,7 @@ import {
   getFaceCaptureDetailApi,
   getFaceCaptureListApi,
 } from '#/api';
+import { getTodayRange } from '#/utils/date';
 
 import CaptureFilmstripDrawer from './components/CaptureFilmstripDrawer.vue';
 import CaptureThumbnail from './components/CaptureThumbnail.vue';
@@ -193,6 +194,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
           showTime: true,
           valueFormat: 'YYYY-MM-DDTHH:mm:ssZ',
         },
+        defaultValue: getTodayRange(),
         fieldName: 'timeRange',
         label: $t('record.capture.filter.timeRange'),
       },

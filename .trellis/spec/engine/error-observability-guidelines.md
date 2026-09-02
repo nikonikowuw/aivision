@@ -98,6 +98,7 @@ public:
 全局统一以下稳定机器码（一经发布不得修改语义）：
 ```text
 CONFIG_INVALID / CONFIG_SCHEMA_INVALID / STALE_REVISION
+FACE_GALLERY_SYNC_FAILED / FACE_GALLERY_RESPONSE_INVALID
 MEDIA_CONNECT_FAILED / MEDIA_INGEST_TIMEOUT
 DECODER_STALLED / DECODER_RECREATE_FAILED
 FRAME_CAPS_INCOMPATIBLE / FRAME_TOKEN_INVALID
@@ -192,6 +193,8 @@ VALIDATOR_ARGS_INVALID / VALIDATOR_INTERNAL_ERROR
 | 场景 | 机器码 / 状态 | retryable | 行为与日志规范 |
 | --- | --- | --- | --- |
 | RTSP 临时断开 | `MEDIA_CONNECT_FAILED` | true | 记录 WARN 日志，按退避策略重连 |
+| 底库拉取或完整快照校验失败 | `FACE_GALLERY_SYNC_FAILED` | true | 记录 revision/entry_count 等受控字段，保留旧底库 |
+| 底库响应 revision/entries 组合非法 | `FACE_GALLERY_RESPONSE_INVALID` | true | 记录当前与响应 revision，拒绝响应并重试 |
 | 逐帧送算单帧失败 | `ALGO_PROCESS_FAILED` | false | 记录 ERROR 日志（含实例上下文），递增指标，丢弃当帧不卡死链路 |
 | 逐帧正常推理 | `AV_OK` | - | **禁止打 INFO 日志**（避免刷屏），仅递增 FPS / 处理耗时指标 |
 | 算法包校验失败 | `PACKAGE_VALIDATION_FAILED` | false | validator `stdout` 输出 JSON 错误对象，`stderr` 记录详细报错 |

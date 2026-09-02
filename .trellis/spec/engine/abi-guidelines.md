@@ -138,6 +138,13 @@ typedef struct av_frame_ops {
 4. `retain/release` 接收到空、过期或非本实例 token 时返回 `AV_ERR_INVALID_ARG`；调试构建同时记录结构化错误。
 5. 引用归零前帧池不得复用底层 slot；归零后调试构建 poison 可写内存并增加 generation，用于检测 UAF/ABA。
 
+### 4.1 同步结果回调与实例停止顺序
+
+- `instance_process` / `instance_flush` 期间触发的结果回调属于同步 ABI 调用链；宿主只有在该调用返回后，才能认为本次回调已结束。
+- Engine 若在结果回调中异步排队，必须复制结果字段，并为需要跨调用访问的帧在返回前成功 `retain`；回调本身不得把算法栈地址或未持有的 `frame_token` 交给 worker。
+- 移除实例时必须先从实例管理器移出并 `stop()`，等待 worker join 及 `instance_flush` 返回，再清理该实例的 track 状态、图片任务和配置。否则同步回调可能在状态清理后重新登记数据。
+- 符合本 ABI 的算法包不得在 `instance_process` / `instance_flush` 返回后异步调用宿主结果回调；发现此类实现时按 ABI 违规处理，不通过增加悬空指针容忍逻辑来掩盖问题。
+
 ## 5. 固定枚举值
 
 v1 的数值一经发布不得复用：

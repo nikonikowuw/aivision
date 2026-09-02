@@ -211,3 +211,70 @@ write_fsync_close(temp_path, jpeg);
 rename(temp_path.c_str(), final_path.c_str());
 fsync_parent(final_path);
 ```
+
+## 11. 人脸底库与识别观察契约
+
+### 11.1 Scope / Trigger
+
+涉及注册人脸、删除人脸、Engine 全局底库、`AV_RESULT_RECOGNITION`、抓拍或 `ReportFaceObservation` 时适用。本节约束 Go 数据库、Engine 内存索引、图片 catalog 和 UDS 上报之间的边界。
+
+### 11.2 Signatures
+
+- Go `BumpFaceGalleryRevisionTx(ctx, tx)`：在人脸样本或人员级联删除事务内递增独立的 `face_gallery_revision`。
+- Go `GetFaceGallery(GetFaceGalleryRequest{current_gallery_revision})`：返回全量 `FaceGalleryEntry` 快照或 unchanged 响应。
+- Engine `FaceGallery::load_from(response)` / `replace(revision, embeddings, metadata)`：校验后原子替换；`match(query_512)` 返回最高归一化相似度。
+- Go `ReportAdapter.AcceptFaceObservation(ctx, observation)`：按 `event_id` 执行相似度单调 upsert。
+
+### 11.3 Contracts
+
+- `face_gallery_revision` 与 `desired_state_revision` 相互独立；人脸注册、单样本删除和人员级联删除必须与 revision 递增在同一个数据库事务内提交。
+- 请求 revision 与当前 revision 相同时，响应必须是 `changed=false`、相同 revision 且 `entries` 为空。发生变更时，响应必须是非零且严格大于 Engine 已应用 revision 的全量快照；不得用 `Limit(5000)` 静默截断异常超限数据。
+- Engine 只在完整快照通过身份、重复 `face_id`、条目数、2048 字节 embedding、有限值和 L2 范数校验后换库。RPC 失败、业务错误、响应 revision 非法或快照校验失败时保留旧底库。
+- embedding 是 512 个 little-endian `float32`，原始大小为 2048 字节；Engine 内部把点积归一化为 `[0,1]`，Go 数据库、API 和前端只传递该归一化值。embedding 不得进入管理端响应或日志。
+- 识别事件 ID 固定为 `instance_run_id/track_id`。实例阈值省略时为 `0.7`，显式值必须是有限浮点数且属于 `[0,1]`；命中分数必须满足阈值。
+- 每个 track 首次命中或相似度至少提升 `0.03` 才创建一次待上报观察。track 状态表容量为 4096；队列丢弃、抓拍失败、异常、重试耗尽和实例停止时必须清理相应状态。
+- 只有确定需要上报后才抓拍。一次成功处理先保存共享全景图和各自的人脸特写图，最多重试报告 3 次；重试只复用已落盘图片的 ID/相对路径，不再次访问已释放的帧。报告成功后再标记所引用图片；失败图片保留为 `unreported` orphan candidate。
+- `FaceObservation` 的 Go upsert 以唯一 `event_id` 为边界，只允许更高 `similarity` 覆盖旧记录；迟到的低分上报视为幂等成功，不得覆盖人员、摄像头名称快照或图片引用。
+
+### 11.4 Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| changed 响应 revision 为 0、重复或回退 | 记录 `FACE_GALLERY_RESPONSE_INVALID`，保留旧库并重试 |
+| unchanged 响应 revision 不等于当前值或带 entries | 记录 `FACE_GALLERY_RESPONSE_INVALID`，保留旧库 |
+| 快照超 5000 条、重复 ID 或 embedding 非法 | `FACE_GALLERY_SYNC_FAILED`，整批拒绝并保留旧库 |
+| Go/UDS 拉取失败 | `FACE_GALLERY_SYNC_FAILED`，不清空可用底库 |
+| track 低于阈值或提升不足 0.03 | 不抓拍、不上报 |
+| 报告相同 event_id 的较低相似度 | 数据库写入视为幂等成功，旧高分记录不变 |
+| 图片或报告失败 | 不登记半成功观察；按上限重试，最终清理 track 状态并保留未确认图片 |
+
+### 11.5 Good / Base / Bad Cases
+
+- Good：Go 在事务内写入人脸并 bump gallery revision；Engine 校验完整快照后一次性替换；报告重试复用同一组图片引用。
+- Base：Engine 重启时 revision 为 0，拉取全量底库；同 revision unchanged 响应不携带任何 embedding。
+- Bad：复用 desired-state revision 触发全量媒体重配，或在低分迟到上报时覆盖已经落库的高分识别记录。
+
+### 11.6 Tests Required
+
+- Go：事务回滚与 revision 递增、超 5000 条显式拒绝、全量快照不截断、同 `event_id` 高分覆盖/低分不覆盖，以及图片路径不越界。
+- Engine：changed/unchanged revision 单调性、重复 ID、非法 embedding 的整批拒绝、fail-static、阈值边界、track 状态容量/清理、队列丢弃和实例移除停止顺序。
+- 集成：真实动态 C ABI 结果、真实 UDS `ReportFaceObservation`、共享全景图、多 face 特写、抓拍失败、首次报告失败、重试耗尽和后续同 track 恢复上报。
+- 质量门禁：普通测试、ASan 默认泄漏检测、TSan、lint 和跨层边界检查均需在最终生命周期代码上复核。
+
+### 11.7 Wrong vs Correct
+
+```cpp
+// Wrong: report 失败后再次使用已经释放的平台帧。
+retry.face_frame = pending.frame;
+
+// Correct: 首次抓拍完成后释放帧，重试只复制 protobuf 中的图片引用。
+retry.faces.push_back(face_with_image_ids);
+```
+
+```go
+// Wrong: 低分迟到数据覆盖高分记录。
+db.Where("event_id = ?", eventID).Updates(record)
+
+// Correct: 只有更高相似度才更新；RowsAffected == 0 视为幂等成功。
+db.Where("event_id = ? AND similarity < ?", eventID, record.Similarity).Updates(record)
+```

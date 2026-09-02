@@ -225,6 +225,18 @@ marketplace 还是直接下载）：
 JSON 被截断、解析静默失败，首次会话注入没有显示更新提示。修复：解析前读取
 完整响应，并添加一个 `version` 后跟 8 KB 元数据尾的回归。
 
+## 人脸底库与识别记录跨层检查
+
+当功能贯通注册、Engine、数据库、API 和前端时，逐层核对以下事实：
+
+- [ ] gallery revision 是独立于 desired-state revision 的持久计数器；样本变更和 revision bump 在同一事务内提交。
+- [ ] Engine 的 `changed=false` 响应 revision 与当前值一致且不带 entries；`changed=true` 是完整、单调、未截断的快照。
+- [ ] Engine 校验并原子替换底库；任何拉取/校验失败都保留旧库，不能把异常数据部分发布给匹配线程。
+- [ ] embedding 只在 Engine 内参与 1:N 比对，跨层传输使用明确的 512 维 little-endian float32 契约；API、UI、日志不泄露原始特征。
+- [ ] `event_id` 从 `instance_run_id/track_id` 一致传递到图片 catalog、UDS 上报和 `face_observations`；相似度始终是 `[0,1]`。
+- [ ] track 状态、队列、帧 token 和图片引用具有同一套失败/停止清理语义；报告重试复用图片引用，不访问已释放帧。
+- [ ] Go 端单调 upsert 对迟到低分返回幂等成功，不能覆盖高分记录；前端展示字段来自不含 embedding 的 API DTO。
+
 ---
 
 ## 跨平台模板一致性

@@ -258,6 +258,83 @@ ORDER BY created_at ASC;
 
 ---
 
+## 人脸底库 revision 与识别记录持久化契约
+
+### 1. 适用范围
+
+涉及 `person_faces` 写入/删除、`face_gallery_revision`、`face_observations`、Engine 人脸观察上报或管理端查询时适用。
+
+### 2. Repository 与数据库签名
+
+```go
+// 人脸样本变更必须使用传入事务 bump 独立底库 revision。
+BumpFaceGalleryRevisionTx(ctx context.Context, tx *gorm.DB) error
+CurrentGalleryRevision(ctx context.Context) (uint64, error)
+LoadFaceGallery(ctx context.Context, request *GetFaceGalleryRequest) (*GetFaceGalleryResponse, error)
+
+// 观察记录按 event_id 单调 upsert。
+UpsertMonotonic(ctx context.Context, record *model.FaceObservation) error
+```
+
+数据库约束：
+
+- `face_gallery_revision` 是 `id=1` 的单行计数器；它不替代 `desired_state_revision`。
+- `face_observations.event_id` 为活跃记录唯一键；`similarity` 为 `[0,1]` 的归一化值；embedding 不进入该表和管理端 DTO。
+- `FaceObservation` 同时保存 Engine 上报的 `camera_name` 快照、`image_id`/相对路径和人脸特写引用，便于摄像头改名后历史记录仍可解释。
+
+### 3. 事务与查询契约
+
+- 人脸样本创建、单样本删除、人员删除级联必须在同一 `db.Transaction` 内完成数据变更和 `BumpFaceGalleryRevisionTx`；任一失败都回滚数据和 revision。
+- `GetFaceGallery` 必须在同一只读事务内读取 revision 和全部活跃样本。revision 相同返回 `changed=false` 且 entries 为空；变更时返回完整快照。
+- 全局底库上限为 5000 条。读取快照前必须显式统计活动样本，超过上限返回 `ErrFaceGalleryFull` 或等价稳定错误，禁止通过 ORM `Limit(5000)` 静默截断。
+- `UpsertMonotonic` 先尝试唯一插入；冲突更新必须带 `event_id = ? AND similarity < ?` 条件。低分迟到请求影响行数为 0 时返回成功，不能触发 Engine 无限重试。
+
+### 4. 校验与错误矩阵
+
+| 条件 | 结果 |
+| --- | --- |
+| 人脸底库超过 5000 条 | 返回 `CodeFaceGalleryFull = 1410`，不写入样本或 revision |
+| revision 与样本写入不在同一事务 | 禁止上线；必须修正为事务内操作 |
+| 快照查询超限 | 返回明确错误并保留旧快照，不返回截断数据 |
+| 空 `event_id` 或无效观察 | 返回参数错误，不写库 |
+| 同 event_id 的更低 similarity | 幂等成功，旧记录及其高分字段保持不变 |
+| 图片相对路径不是记录中的受控路径 | 拒绝读取，不能拼接或清理任意文件路径 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：事务提交后 revision 与样本集合对应；Engine 拉取的全量快照与该 revision 来自同一数据库视图。
+- Base：revision 相同的轮询不传 embedding；观察重复上报只保留最高相似度。
+- Bad：先提交样本再单独 bump revision，或用当前摄像头名称覆盖历史 observation 的名称快照。
+
+### 6. Tests Required
+
+- SQLite 测试：创建/删除/人员级联删除的事务与 revision 断言、5000 条边界和超限不截断、changed/unchanged 快照响应。
+- Repository 测试：同 event_id 高分覆盖、低分乱序不覆盖、`person_id`/图片引用随高分更新、空 event_id 拒绝。
+- Service/API 测试：分页筛选、详情、图片流的相对路径穿越拒绝，以及响应不包含 embedding。
+
+### 7. Wrong vs Correct
+
+```go
+// Wrong: 两次独立提交，Engine 可能永远看不到人脸集合变化。
+db.Create(&face)
+db.Model(&revision).Update("revision", gorm.Expr("revision + 1"))
+
+// Correct: 样本和独立 revision 在同一事务内提交。
+db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&face).Error; err != nil {
+        return err
+    }
+    return bumpFaceGalleryRevisionTx(ctx, tx)
+})
+```
+
+```go
+// Wrong: 迟到低分覆盖已确认的高分。
+tx.Where("event_id = ?", id).Updates(record)
+
+// Correct: 只有更高 similarity 才更新，0 行也表示幂等成功。
+tx.Where("event_id = ? AND similarity < ?", id, record.Similarity).Updates(record)
+```
 ## 资源删除与引用保护契约 (Reference Protect vs Cascade Soft-Delete)
 
 ### 1. 语义边界区分

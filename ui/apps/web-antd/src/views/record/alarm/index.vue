@@ -248,6 +248,14 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
     console.error(error);
   }
 }
+
+function getConfidenceTagColor(confidence?: number): string {
+  if (typeof confidence !== 'number') return 'default';
+  if (confidence >= 0.9) return 'green';
+  if (confidence >= 0.75) return 'blue';
+  if (confidence >= 0.6) return 'orange';
+  return 'red';
+}
 </script>
 
 <template>
@@ -298,9 +306,9 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
       </template>
 
       <template #confidence="{ row }">
-        <span class="font-semibold text-red-500">
+        <Tag :color="getConfidenceTagColor(row.confidence)">
           {{ (row.confidence * 100).toFixed(1) }}%
-        </span>
+        </Tag>
       </template>
 
       <template #actions="{ row }">
@@ -368,13 +376,13 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
                   </Tag>
                 </div>
 
-                <div class="flex items-baseline gap-1.5">
+                <div class="flex items-center gap-1.5">
                   <span class="text-xs text-muted-foreground">
                     {{ $t('record.alarm.detail.confidence') }}:
                   </span>
-                  <span class="text-base font-bold text-red-500">
+                  <Tag :color="getConfidenceTagColor(currentDetail.confidence)">
                     {{ (currentDetail.confidence * 100).toFixed(1) }}%
-                  </span>
+                  </Tag>
                 </div>
               </div>
             </div>

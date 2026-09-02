@@ -272,6 +272,14 @@ function copyEventId(eventId?: string) {
 function formatSimilarity(value?: number): string {
   return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '-';
 }
+
+function getSimilarityTagColor(similarity?: number): string {
+  if (typeof similarity !== 'number') return 'default';
+  if (similarity >= 0.9) return 'green';
+  if (similarity >= 0.75) return 'blue';
+  if (similarity >= 0.6) return 'orange';
+  return 'red';
+}
 </script>
 
 <template>
@@ -328,7 +336,7 @@ function formatSimilarity(value?: number): string {
       </template>
 
       <template #similarity="{ row }">
-        <Tag :color="row.similarity >= 0.85 ? 'green' : 'blue'">
+        <Tag :color="getSimilarityTagColor(row.similarity)">
           {{ formatSimilarity(row.similarity) }}
         </Tag>
       </template>
@@ -550,7 +558,7 @@ function formatSimilarity(value?: number): string {
                 </div>
                 <div class="flex-1 flex items-center justify-center text-center">
                   <Tag
-                    :color="currentDetail.similarity >= 0.85 ? 'green' : 'blue'"
+                    :color="getSimilarityTagColor(currentDetail.similarity)"
                     class="font-mono font-semibold px-2.5 py-0.5 text-xs rounded-md m-0"
                   >
                     {{ (currentDetail.similarity * 100).toFixed(1) }}%

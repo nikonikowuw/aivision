@@ -306,6 +306,14 @@ function getPlateColorLabel(color?: string): string {
   };
   return map[color] || color;
 }
+
+function getConfidenceTagColor(confidence?: number): string {
+  if (typeof confidence !== 'number') return 'default';
+  if (confidence >= 0.9) return 'green';
+  if (confidence >= 0.75) return 'blue';
+  if (confidence >= 0.6) return 'orange';
+  return 'red';
+}
 </script>
 
 <template>
@@ -359,13 +367,13 @@ function getPlateColorLabel(color?: string): string {
       </template>
 
       <template #confidence="{ row }">
-        <Tag :color="row.confidence >= 0.8 ? 'green' : 'orange'">
+        <Tag :color="getConfidenceTagColor(row.confidence)">
           {{ (row.confidence * 100).toFixed(1) }}%
         </Tag>
       </template>
 
       <template #ocrConfidence="{ row }">
-        <Tag :color="row.ocrConfidence >= 0.8 ? 'green' : 'orange'">
+        <Tag :color="getConfidenceTagColor(row.ocrConfidence)">
           {{ (row.ocrConfidence * 100).toFixed(1) }}%
         </Tag>
       </template>
@@ -403,12 +411,12 @@ function getPlateColorLabel(color?: string): string {
             {{ getPlateTypeLabel(currentDetail.plateType) }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.confidence')">
-            <Tag color="green">
+            <Tag :color="getConfidenceTagColor(currentDetail.confidence)">
               {{ (currentDetail.confidence * 100).toFixed(1) }}%
             </Tag>
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.ocrConfidence')">
-            <Tag color="cyan">
+            <Tag :color="getConfidenceTagColor(currentDetail.ocrConfidence)">
               {{ (currentDetail.ocrConfidence * 100).toFixed(1) }}%
             </Tag>
           </DescriptionsItem>

@@ -1187,3 +1187,25 @@ Completed and archived 08-23-lacp-aggregation and parent task 08-23-advanced-net
 ### Status
 
 [OK] **Completed**
+
+
+## Session 33: 人脸特征下发与识别记录闭环
+
+**Date**: 2026-09-02
+**Task**: 人脸特征下发与识别记录闭环
+**Branch**: `dev`
+
+### Summary
+
+完成全局人脸底库 revision 对账、Engine 1:N 比对、track 级更优识别、抓拍与报告重试、Go 单调落库、管理端查询和三语前端；补充真实动态 C ABI/UDS 集成测试、FaceGallery 与图片原子性回归，以及实例移除时同步 ABI 回调生命周期修正。最终通过 Go test/vet、前端 pnpm check、Engine 93/93 普通测试、ASan、TSan、lint、边界检查和 face_recognition 算法包 3/3 测试，并沉淀跨层契约规范。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e546a9b` | (see git log) |
+| `3829a42` | (see git log) |
+
+### Status
+
+[OK] **Completed**

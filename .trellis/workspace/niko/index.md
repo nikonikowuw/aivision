@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 32
+- **Total Sessions**: 33
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1189 | Active |
+| `journal-1.md` | ~1211 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 33 | 2026-09-02 | 人脸特征下发与识别记录闭环 | `e546a9b`, `3829a42` | `dev` |
 | 32 | 2026-09-02 | 人员人脸注册与多脸管理及首选人脸优化 | `dc25073`, `8e521ee`, `9582ddb` | `dev` |
 | 31 | 2026-09-01 | CameraTask 按需降频解码与边缘算力优化 | `c2d7377` | `dev` |
 | 30 | 2026-09-01 | Archive advanced network modes and LACP aggregation | - | `dev` |

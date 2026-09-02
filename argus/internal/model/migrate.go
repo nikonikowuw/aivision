@@ -25,6 +25,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&AlarmRecord{},
 		&PlateObservation{},
 		&FaceObservation{},
+		&FaceCapture{},
 		&FaceGalleryRevision{},
 	)
 }

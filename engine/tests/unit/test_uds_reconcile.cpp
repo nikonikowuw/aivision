@@ -121,6 +121,24 @@ public:
         plate_cv_.notify_all();
         return grpc::Status::OK; // code 留空 = 接受
     }
+    grpc::Status ReportFaceCapture(grpc::ServerContext*,
+                                   const argus::v1::ReportFaceCaptureRequest* request,
+                                   argus::v1::ReportFaceCaptureResponse* response) override {
+        if (!request || !request->has_capture()) {
+            response->set_code("INVALID_ARG");
+            return grpc::Status::OK;
+        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        ++face_capture_report_count_;
+        if (fail_all_face_ || fail_next_face_capture_) {
+            fail_next_face_capture_ = false;
+            response->set_code("TEMPORARY_FAILURE");
+            return grpc::Status::OK;
+        }
+        face_captures_.push_back(request->capture());
+        face_capture_cv_.notify_all();
+        return grpc::Status::OK; // code 留空 = 接受
+    }
     grpc::Status ReportFaceObservation(grpc::ServerContext*,
                                        const argus::v1::ReportFaceObservationRequest* request,
                                        argus::v1::ReportFaceObservationResponse* response) override {
@@ -240,6 +258,16 @@ public:
         return face_cv_.wait_for(lock, timeout, [this] { return !face_observations_.empty(); });
     }
 
+    std::vector<argus::v1::FaceCapture> face_captures() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return face_captures_;
+    }
+
+    size_t face_capture_report_count() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return face_capture_report_count_;
+    }
+
     std::vector<argus::v1::FaceObservation> face_observations() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return face_observations_;
@@ -259,10 +287,14 @@ private:
     std::vector<argus::v1::AlarmEvent> alarms_;
     std::vector<argus::v1::PlateObservation> observations_;
     std::vector<argus::v1::FaceObservation> face_observations_;
+    std::vector<argus::v1::FaceCapture> face_captures_;
     size_t plate_report_count_ = 0;
     size_t face_report_count_ = 0;
+    size_t face_capture_report_count_ = 0;
+    std::condition_variable face_capture_cv_;
     bool fail_next_plate_ = false;
     bool fail_next_face_ = false;
+    bool fail_next_face_capture_ = false;
     bool fail_all_face_ = false;
     bool block_face_ = false;
     bool release_face_ = false;
@@ -1410,6 +1442,56 @@ TEST(UdsReconcileTest, PlateObservationReportAndClient) {
     EXPECT_FLOAT_EQ(observations[0].ocr_confidence(), 0.94f);
     EXPECT_EQ(observations[0].image_id(), "img_pano_1001");
     EXPECT_EQ(observations[0].plate_image_id(), "img_plate_1001");
+
+    app_server.stop();
+}
+
+TEST(UdsReconcileTest, FaceCaptureReportAndClient) {
+    const std::string app_sock = "/tmp/argus-test-face-capture-client-app.sock";
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start(app_sock));
+
+    argus::core::UdsClient client(app_sock);
+
+    argus::v1::FaceCapture capture;
+    capture.set_event_id("face-inst-run-1/2001");
+    capture.set_instance_id("face-inst-1");
+    capture.set_camera_id("cam-1");
+    capture.set_camera_name("Main Gate");
+    capture.set_algorithm_id("face_recognition");
+    capture.set_algorithm_version("1.0.0");
+    capture.set_track_id(2001);
+
+    auto* snap = capture.mutable_snapshot();
+    snap->set_snapshot_index(1);
+    snap->set_wall_time_ns(1788185888187000000LL);
+    snap->set_time_synced(true);
+    snap->set_quality_score(0.88f);
+    snap->set_similarity(0.92f);
+    snap->set_face_id("face-001");
+    snap->set_person_id("person-001");
+    snap->set_person_name("Alice");
+    snap->mutable_face_bbox()->set_x_min(0.2f);
+    snap->mutable_face_bbox()->set_y_min(0.3f);
+    snap->mutable_face_bbox()->set_x_max(0.4f);
+    snap->mutable_face_bbox()->set_y_max(0.5f);
+    snap->set_image_id("img_pano_2001");
+    snap->set_image_rel_path("2026-09-02/img_pano_2001.jpg");
+    snap->set_face_image_id("img_face_2001");
+    snap->set_face_image_rel_path("2026-09-02/img_face_2001.jpg");
+
+    EXPECT_TRUE(client.report_face_capture(capture));
+
+    const auto captures = app_server.service().face_captures();
+    ASSERT_EQ(captures.size(), 1U);
+    EXPECT_EQ(captures[0].event_id(), "face-inst-run-1/2001");
+    EXPECT_EQ(captures[0].track_id(), 2001);
+    EXPECT_EQ(captures[0].snapshot().snapshot_index(), 1);
+    EXPECT_FLOAT_EQ(captures[0].snapshot().quality_score(), 0.88f);
+    EXPECT_FLOAT_EQ(captures[0].snapshot().similarity(), 0.92f);
+    EXPECT_EQ(captures[0].snapshot().person_name(), "Alice");
+    EXPECT_EQ(captures[0].snapshot().image_id(), "img_pano_2001");
+    EXPECT_EQ(captures[0].snapshot().face_image_id(), "img_face_2001");
 
     app_server.stop();
 }

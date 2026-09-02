@@ -949,6 +949,8 @@ private:
         std::vector<argus::v1::AlarmEvent> alarms;
         std::vector<argus::v1::PlateObservation> plates;
         std::vector<argus::v1::FaceObservation> faces;
+        std::vector<argus::v1::FaceCapture> captures;
+        std::vector<size_t> face_observation_crop_indices;
         std::vector<av_rect> plate_crop_rois;
         std::vector<av_rect> face_crop_rois;
         std::string capture_id;
@@ -966,7 +968,9 @@ private:
 
         PendingCapture(PendingCapture&& other) noexcept
             : kind(other.kind), alarms(std::move(other.alarms)), plates(std::move(other.plates)),
-              faces(std::move(other.faces)), plate_crop_rois(std::move(other.plate_crop_rois)),
+              faces(std::move(other.faces)), captures(std::move(other.captures)),
+              face_observation_crop_indices(std::move(other.face_observation_crop_indices)),
+              plate_crop_rois(std::move(other.plate_crop_rois)),
               face_crop_rois(std::move(other.face_crop_rois)), capture_id(std::move(other.capture_id)),
               frame(other.frame), image_roi(other.image_roi), frame_ops(other.frame_ops),
               has_image(other.has_image), images_ready(other.images_ready),
@@ -982,6 +986,8 @@ private:
             alarms = std::move(other.alarms);
             plates = std::move(other.plates);
             faces = std::move(other.faces);
+            captures = std::move(other.captures);
+            face_observation_crop_indices = std::move(other.face_observation_crop_indices);
             plate_crop_rois = std::move(other.plate_crop_rois);
             face_crop_rois = std::move(other.face_crop_rois);
             capture_id = std::move(other.capture_id);
@@ -1022,6 +1028,9 @@ private:
 
     struct FaceTrackReportState {
         float reported_similarity = 0.0f;
+        float reported_quality = 0.0f;
+        int32_t snapshot_count = 0;
+        int64_t last_snapshot_wall_time_ns = 0;
     };
 
     bool remember_event_id(const std::string& event_id) {
@@ -1043,9 +1052,18 @@ private:
         }
     }
 
+    void forget_face_capture_state_locked(const argus::v1::FaceCapture& capture) {
+        const auto it = face_track_states_.find(capture.event_id());
+        if (it == face_track_states_.end()) return;
+        if (it->second.reported_similarity <= capture.snapshot().similarity() + 1e-6f) {
+            face_track_states_.erase(it);
+        }
+    }
+
     void forget_pending_face_states_locked(const PendingCapture& pending) {
         if (pending.kind != PendingCapture::Kind::FaceObservation) return;
         for (const auto& face : pending.faces) forget_face_track_state_locked(face);
+        for (const auto& capture : pending.captures) forget_face_capture_state_locked(capture);
     }
 
     void forget_face_track_states_for_run_id(const std::string& run_id) {
@@ -1135,7 +1153,7 @@ private:
             } else if (pending.kind == PendingCapture::Kind::FaceObservation) {
                 // 人脸同一 track 的相似度提升必须复用 event_id，由 track 状态负责去重。
                 // reported_events_ 只服务于告警/车牌事件，不能阻断更优人脸结果。
-                accepted = !pending.faces.empty();
+                accepted = !pending.faces.empty() || !pending.captures.empty();
             }
             if (accepted) {
                 if (capture_queue_.size() >= kMaxPendingAlarmQueueSize) {
@@ -1297,22 +1315,18 @@ private:
                     }
 
                     if (capture_succeeded) {
-                        if (pending.face_crop_rois.size() != pending.faces.size()) {
-                            capture_succeeded = false;
-                            capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
-                        } else {
-                            face_images.resize(pending.faces.size());
-                            for (size_t i = 0; i < pending.faces.size(); ++i) {
-                                ImageRecord face_record;
-                                const av_status face_status = ImageManager::instance().save_detection_image(
-                                    &pending.frame, &pending.face_crop_rois[i],
-                                    pending.capture_id + "-face-" + std::to_string(i + 1), &face_record);
-                                if (face_status == AV_OK) {
-                                    face_images[i] = {face_record.image_id, face_record.rel_path};
-                                } else {
-                                    capture_succeeded = false;
-                                    capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
-                                }
+                        const size_t target_count = pending.face_crop_rois.size();
+                        face_images.resize(target_count);
+                        for (size_t i = 0; i < target_count; ++i) {
+                            ImageRecord face_record;
+                            const av_status face_status = ImageManager::instance().save_detection_image(
+                                &pending.frame, &pending.face_crop_rois[i],
+                                pending.capture_id + "-face-" + std::to_string(i + 1), &face_record);
+                            if (face_status == AV_OK) {
+                                face_images[i] = {face_record.image_id, face_record.rel_path};
+                            } else {
+                                capture_succeeded = false;
+                                capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
                             }
                         }
                     }
@@ -1320,11 +1334,25 @@ private:
                     pending.release_frame();
 
                     if (capture_succeeded) {
+                        for (size_t i = 0; i < pending.captures.size(); ++i) {
+                            auto* snap = pending.captures[i].mutable_snapshot();
+                            snap->set_image_id(pano_image_id);
+                            snap->set_image_rel_path(pano_image_rel_path);
+                            if (i < face_images.size()) {
+                                snap->set_face_image_id(face_images[i].first);
+                                snap->set_face_image_rel_path(face_images[i].second);
+                            }
+                        }
                         for (size_t i = 0; i < pending.faces.size(); ++i) {
                             pending.faces[i].set_image_id(pano_image_id);
                             pending.faces[i].set_image_rel_path(pano_image_rel_path);
-                            pending.faces[i].set_face_image_id(face_images[i].first);
-                            pending.faces[i].set_face_image_rel_path(face_images[i].second);
+                            const size_t crop_idx = i < pending.face_observation_crop_indices.size()
+                                                        ? pending.face_observation_crop_indices[i]
+                                                        : i;
+                            if (crop_idx < face_images.size()) {
+                                pending.faces[i].set_face_image_id(face_images[crop_idx].first);
+                                pending.faces[i].set_face_image_rel_path(face_images[crop_idx].second);
+                            }
                         }
                     }
                 } else if (!pending.has_image) {
@@ -1346,6 +1374,26 @@ private:
                 retry.has_image = true;
                 retry.images_ready = true;
                 retry.retry_count = pending.retry_count + 1;
+                for (const auto& capture : pending.captures) {
+                    if (!app_client_ || !app_client_->report_face_capture(capture)) {
+                        capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
+                        if (retry.retry_count <= kMaxFaceReportRetries) {
+                            retry.captures.push_back(capture);
+                        } else {
+                            std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+                            forget_face_capture_state_locked(capture);
+                        }
+                    } else {
+                        if (!capture.snapshot().image_id().empty() &&
+                            ImageManager::instance().mark_reported(capture.snapshot().image_id()) != AV_OK) {
+                            capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                        if (!capture.snapshot().face_image_id().empty() &&
+                            ImageManager::instance().mark_reported(capture.snapshot().face_image_id()) != AV_OK) {
+                            capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
+                }
                 for (const auto& face : pending.faces) {
                     if (!app_client_ || !app_client_->report_face_observation(face)) {
                         capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
@@ -1366,7 +1414,7 @@ private:
                         }
                     }
                 }
-                if (!retry.faces.empty()) {
+                if (!retry.captures.empty() || !retry.faces.empty()) {
                     // 图片已落盘，重试只复用 protobuf 中的图片引用，不再次访问已释放的帧。
                     enqueue_pending_capture(std::move(retry), true);
                 }
@@ -2419,6 +2467,7 @@ private:
             struct ParsedFace {
                 int64_t track_id = 0;
                 std::array<double, 4> bbox{};
+                double quality_score = 0.0;
                 size_t image_request_index = 0;
                 std::vector<float> embedding;
                 FaceMatch match;
@@ -2543,6 +2592,7 @@ private:
                 faces_with_embedding.push_back(ParsedFace{
                     .track_id = track_id,
                     .bbox = face_bbox,
+                    .quality_score = face_confidence,
                     .image_request_index = faces_with_embedding.size(),
                     .embedding = std::move(query),
                     .match = *match,
@@ -2600,7 +2650,7 @@ private:
             }
             pending.frame_retained = true;
 
-            std::vector<std::pair<std::string, float>> state_updates;
+            std::vector<std::tuple<std::string, float, float, int32_t, int64_t>> state_updates;
             PendingCapture dropped;
             bool accepted = false;
             {
@@ -2609,32 +2659,84 @@ private:
                     const std::string event_id = instance->get_run_id() + "/" +
                                                  std::to_string(parsed.track_id);
                     const auto state = face_track_states_.find(event_id);
-                    if (parsed.match.similarity < similarity_threshold ||
-                        (state != face_track_states_.end() &&
-                         parsed.match.similarity < state->second.reported_similarity +
-                                                        kFaceReportImprovementMargin)) {
+
+                    bool should_capture_snapshot = false;
+                    int32_t next_snapshot_index = 1;
+                    if (state == face_track_states_.end()) {
+                        should_capture_snapshot = true;
+                        next_snapshot_index = 1;
+                    } else if (state->second.snapshot_count < 5) {
+                        const bool interval_passed = (frame.wall_time_ns - state->second.last_snapshot_wall_time_ns) >= 800000000LL;
+                        const bool quality_jump = (parsed.quality_score >= state->second.reported_quality + 0.15f);
+                        const bool sim_jump = (parsed.match.similarity >= state->second.reported_similarity + 0.05f);
+                        if (interval_passed || quality_jump || sim_jump) {
+                            should_capture_snapshot = true;
+                            next_snapshot_index = state->second.snapshot_count + 1;
+                        }
+                    }
+
+                    bool should_report_observation = false;
+                    if (parsed.match.similarity >= similarity_threshold) {
+                        if (state == face_track_states_.end() ||
+                            state->second.reported_similarity < similarity_threshold ||
+                            parsed.match.similarity >= state->second.reported_similarity + kFaceReportImprovementMargin) {
+                            should_report_observation = true;
+                        }
+                    }
+
+                    if (!should_capture_snapshot && !should_report_observation) {
                         continue;
                     }
 
-                    argus::v1::FaceObservation observation;
-                    observation.set_event_id(event_id);
-                    observation.set_instance_id(instance->get_instance_id());
-                    observation.set_camera_id(instance->get_camera_id());
-                    observation.set_camera_name(camera_name_for(instance->get_camera_id()));
-                    observation.set_algorithm_id(instance->get_algorithm_id());
-                    observation.set_algorithm_version(instance->get_version());
-                    observation.set_wall_time_ns(frame.wall_time_ns);
-                    observation.set_time_synced(frame.time_synced != 0);
-                    observation.set_track_id(parsed.track_id);
-                    observation.set_face_id(parsed.match.entry.face_id);
-                    observation.set_person_id(parsed.match.entry.person_id);
-                    observation.set_person_name(parsed.match.entry.person_name);
-                    observation.set_similarity(std::clamp(parsed.match.similarity, 0.0f, 1.0f));
-                    observation.mutable_face_bbox()->set_x_min(static_cast<float>(parsed.bbox[0]));
-                    observation.mutable_face_bbox()->set_y_min(static_cast<float>(parsed.bbox[1]));
-                    observation.mutable_face_bbox()->set_x_max(static_cast<float>(parsed.bbox[0] + parsed.bbox[2]));
-                    observation.mutable_face_bbox()->set_y_max(static_cast<float>(parsed.bbox[1] + parsed.bbox[3]));
-                    pending.faces.push_back(std::move(observation));
+                    argus::v1::FaceCapture capture;
+                    capture.set_event_id(event_id);
+                    capture.set_instance_id(instance->get_instance_id());
+                    capture.set_camera_id(instance->get_camera_id());
+                    capture.set_camera_name(camera_name_for(instance->get_camera_id()));
+                    capture.set_algorithm_id(instance->get_algorithm_id());
+                    capture.set_algorithm_version(instance->get_version());
+                    capture.set_track_id(parsed.track_id);
+
+                    auto* snap = capture.mutable_snapshot();
+                    snap->set_snapshot_index(next_snapshot_index);
+                    snap->set_wall_time_ns(frame.wall_time_ns);
+                    snap->set_time_synced(frame.time_synced != 0);
+                    snap->set_quality_score(static_cast<float>(parsed.quality_score));
+                    snap->set_similarity(std::clamp(parsed.match.similarity, 0.0f, 1.0f));
+                    if (parsed.match.similarity >= similarity_threshold) {
+                        snap->set_face_id(parsed.match.entry.face_id);
+                        snap->set_person_id(parsed.match.entry.person_id);
+                        snap->set_person_name(parsed.match.entry.person_name);
+                    }
+                    snap->mutable_face_bbox()->set_x_min(static_cast<float>(parsed.bbox[0]));
+                    snap->mutable_face_bbox()->set_y_min(static_cast<float>(parsed.bbox[1]));
+                    snap->mutable_face_bbox()->set_x_max(static_cast<float>(parsed.bbox[0] + parsed.bbox[2]));
+                    snap->mutable_face_bbox()->set_y_max(static_cast<float>(parsed.bbox[1] + parsed.bbox[3]));
+                    const size_t crop_index = pending.face_crop_rois.size();
+                    pending.captures.push_back(std::move(capture));
+
+                    if (should_report_observation) {
+                        argus::v1::FaceObservation observation;
+                        observation.set_event_id(event_id);
+                        observation.set_instance_id(instance->get_instance_id());
+                        observation.set_camera_id(instance->get_camera_id());
+                        observation.set_camera_name(camera_name_for(instance->get_camera_id()));
+                        observation.set_algorithm_id(instance->get_algorithm_id());
+                        observation.set_algorithm_version(instance->get_version());
+                        observation.set_wall_time_ns(frame.wall_time_ns);
+                        observation.set_time_synced(frame.time_synced != 0);
+                        observation.set_track_id(parsed.track_id);
+                        observation.set_face_id(parsed.match.entry.face_id);
+                        observation.set_person_id(parsed.match.entry.person_id);
+                        observation.set_person_name(parsed.match.entry.person_name);
+                        observation.set_similarity(std::clamp(parsed.match.similarity, 0.0f, 1.0f));
+                        observation.mutable_face_bbox()->set_x_min(static_cast<float>(parsed.bbox[0]));
+                        observation.mutable_face_bbox()->set_y_min(static_cast<float>(parsed.bbox[1]));
+                        observation.mutable_face_bbox()->set_x_max(static_cast<float>(parsed.bbox[0] + parsed.bbox[2]));
+                        observation.mutable_face_bbox()->set_y_max(static_cast<float>(parsed.bbox[1] + parsed.bbox[3]));
+                        pending.faces.push_back(std::move(observation));
+                        pending.face_observation_crop_indices.push_back(crop_index);
+                    }
 
                     av_rect crop_roi{};
                     crop_roi.size = sizeof(av_rect);
@@ -2644,23 +2746,41 @@ private:
                     crop_roi.width = static_cast<float>(parsed.bbox[2]);
                     crop_roi.height = static_cast<float>(parsed.bbox[3]);
                     pending.face_crop_rois.push_back(crop_roi);
-                    state_updates.emplace_back(event_id, parsed.match.similarity);
+
+                    float updated_sim = parsed.match.similarity;
+                    float updated_qual = static_cast<float>(parsed.quality_score);
+                    int32_t updated_count = next_snapshot_index;
+                    int64_t updated_time = frame.wall_time_ns;
+                    if (state != face_track_states_.end()) {
+                        updated_sim = std::max(state->second.reported_similarity, parsed.match.similarity);
+                        updated_qual = std::max(state->second.reported_quality, static_cast<float>(parsed.quality_score));
+                        if (!should_capture_snapshot) {
+                            updated_count = state->second.snapshot_count;
+                            updated_time = state->second.last_snapshot_wall_time_ns;
+                        }
+                    }
+                    state_updates.emplace_back(event_id, updated_sim, updated_qual, updated_count, updated_time);
                 }
 
                 size_t new_state_count = 0;
-                for (const auto& [event_id, ignored_similarity] : state_updates) {
-                    (void)ignored_similarity;
+                for (const auto& [event_id, _s, _q, _c, _t] : state_updates) {
+                    (void)_s; (void)_q; (void)_c; (void)_t;
                     if (!face_track_states_.contains(event_id)) ++new_state_count;
                 }
                 if (face_track_states_.size() + new_state_count > kMaxFaceTrackStates) {
                     // 异常 track_id 分配不能让进程级服务持续积累状态；当前批次重新建立状态。
                     face_track_states_.clear();
                 }
-                if (!pending.faces.empty()) {
+                if (!pending.captures.empty() || !pending.faces.empty()) {
                     accepted = enqueue_pending_capture_locked(pending, false, dropped);
                     if (accepted) {
-                        for (const auto& [event_id, similarity] : state_updates) {
-                            face_track_states_[event_id] = FaceTrackReportState{similarity};
+                        for (const auto& [event_id, sim, qual, count, wall_time] : state_updates) {
+                            face_track_states_[event_id] = FaceTrackReportState{
+                                .reported_similarity = sim,
+                                .reported_quality = qual,
+                                .snapshot_count = count,
+                                .last_snapshot_wall_time_ns = wall_time,
+                            };
                         }
                     }
                 }

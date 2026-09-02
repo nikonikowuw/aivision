@@ -47,11 +47,12 @@ type InstanceRuntimeState struct {
 //   - ReconcileOrphanImages 针对已落库图片保留（retain），超期未落库图片删除（delete）；
 //   - AcceptMetrics 保持 fail-closed。
 type ReportAdapter struct {
-	repo      repository.TaskRepository
-	alarmRepo repository.AlarmRecordRepository
-	plateRepo repository.PlateObservationRepository
-	faceRepo  repository.FaceObservationRepository
-	log       *zap.Logger
+	repo        repository.TaskRepository
+	alarmRepo   repository.AlarmRecordRepository
+	plateRepo   repository.PlateObservationRepository
+	faceRepo    repository.FaceObservationRepository
+	captureRepo repository.FaceCaptureRepository
+	log         *zap.Logger
 
 	mu    sync.RWMutex
 	tasks map[string]TaskRuntimeState     // camera_id → 实时状态
@@ -66,7 +67,7 @@ type ReportAdapter struct {
 
 // NewReportAdapter 创建 ReportAdapter（保持原有两参数构造函数签名，兼容既有单测与调用者）。
 func NewReportAdapter(repo repository.TaskRepository, log *zap.Logger) *ReportAdapter {
-	return NewReportAdapterWithAlarm(repo, nil, nil, nil, log)
+	return NewReportAdapterWithAlarm(repo, nil, nil, nil, nil, log)
 }
 
 // NewReportAdapterWithAlarm 具备告警落库、车牌观测与人脸识别记录落库能力的完整构造函数。
@@ -75,19 +76,21 @@ func NewReportAdapterWithAlarm(
 	alarmRepo repository.AlarmRecordRepository,
 	plateRepo repository.PlateObservationRepository,
 	faceRepo repository.FaceObservationRepository,
+	captureRepo repository.FaceCaptureRepository,
 	log *zap.Logger,
 ) *ReportAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &ReportAdapter{
-		repo:      repo,
-		alarmRepo: alarmRepo,
-		plateRepo: plateRepo,
-		faceRepo:  faceRepo,
-		log:       log,
-		tasks:     make(map[string]TaskRuntimeState),
-		insts:     make(map[string]InstanceRuntimeState),
+		repo:        repo,
+		alarmRepo:   alarmRepo,
+		plateRepo:   plateRepo,
+		faceRepo:    faceRepo,
+		captureRepo: captureRepo,
+		log:         log,
+		tasks:       make(map[string]TaskRuntimeState),
+		insts:       make(map[string]InstanceRuntimeState),
 	}
 }
 
@@ -423,6 +426,88 @@ func (a *ReportAdapter) AcceptFaceObservation(ctx context.Context, obs *argusv1.
 	return nil
 }
 
+// AcceptFaceCapture 人脸抓拍全量事件记录持久化：增量追加快照至 face_captures 表。
+func (a *ReportAdapter) AcceptFaceCapture(ctx context.Context, capture *argusv1.FaceCapture) error {
+	if a.captureRepo == nil {
+		return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "face capture report service unavailable")
+	}
+	if capture == nil {
+		return errors.New("face capture is nil")
+	}
+	eventID := strings.TrimSpace(capture.GetEventId())
+	if eventID == "" {
+		return errors.New("face capture event_id is empty")
+	}
+
+	snap := capture.GetSnapshot()
+	if snap == nil {
+		return errors.New("face capture snapshot is nil")
+	}
+
+	// 校验图片路径安全性
+	for _, p := range []string{snap.GetImageRelPath(), snap.GetFaceImageRelPath()} {
+		if p != "" {
+			cleanPath := filepath.Clean(p)
+			if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+				return errors.New("face capture image path is invalid")
+			}
+		}
+	}
+
+	var bboxMap map[string]float32
+	if pbBBox := snap.GetFaceBbox(); pbBBox != nil {
+		bboxMap = map[string]float32{
+			"x_min": pbBBox.GetXMin(),
+			"y_min": pbBBox.GetYMin(),
+			"x_max": pbBBox.GetXMax(),
+			"y_max": pbBBox.GetYMax(),
+		}
+	}
+	bboxJSON, err := json.Marshal(bboxMap)
+	if err != nil {
+		return fmt.Errorf("marshal face capture bbox: %w", err)
+	}
+
+	observedAt := time.Now()
+	if snap.GetWallTimeNs() > 0 {
+		observedAt = time.Unix(0, snap.GetWallTimeNs())
+	}
+
+	modelCapture := &model.FaceCapture{
+		EventID:          eventID,
+		InstanceID:       capture.GetInstanceId(),
+		CameraID:         capture.GetCameraId(),
+		CameraName:       capture.GetCameraName(),
+		AlgorithmID:      capture.GetAlgorithmId(),
+		AlgorithmVersion: capture.GetAlgorithmVersion(),
+		TrackID:          capture.GetTrackId(),
+	}
+
+	snapshotItem := &model.SnapshotItem{
+		SnapshotIndex:    snap.GetSnapshotIndex(),
+		WallTimeNs:       snap.GetWallTimeNs(),
+		TimeSynced:       snap.GetTimeSynced(),
+		ObservedAt:       observedAt,
+		ImageID:          snap.GetImageId(),
+		ImageRelPath:     snap.GetImageRelPath(),
+		FaceImageID:      snap.GetFaceImageId(),
+		FaceImageRelPath: snap.GetFaceImageRelPath(),
+		BBoxJSON:         bboxJSON,
+		QualityScore:     snap.GetQualityScore(),
+		Similarity:       snap.GetSimilarity(),
+		FaceID:           snap.GetFaceId(),
+		PersonID:         snap.GetPersonId(),
+		PersonName:       snap.GetPersonName(),
+	}
+
+	if err := a.captureRepo.UpsertIncremental(ctx, modelCapture, snapshotItem); err != nil {
+		a.log.Error("persist face capture failed", zap.String("event_id", eventID), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // AcceptMetrics 设备遥测时序落库属后续任务，语义保持 fail-closed。
 func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry) error {
 	return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "metrics report service unavailable")
@@ -434,7 +519,7 @@ func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry)
 // 3. 未命中且生成时间超过保护期（5分钟）放入 DeleteImageIDs；
 // 4. 未命中但在保护期内的图片不做处理（等待下轮对账或落库）。
 func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*argusv1.OrphanImageEntry) (engineipc.OrphanDisposition, error) {
-	if a.alarmRepo == nil && a.plateRepo == nil && a.faceRepo == nil {
+	if a.alarmRepo == nil && a.plateRepo == nil && a.faceRepo == nil && a.captureRepo == nil {
 		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "image reference repositories unavailable")
 	}
 
@@ -456,30 +541,25 @@ func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*ar
 	}
 
 	existingMap := make(map[string]struct{}, len(allImageIDs))
-	if a.alarmRepo != nil {
-		existingIDs, err := a.alarmRepo.FindExistingImageIDs(ctx, allImageIDs)
-		if err != nil {
-			a.log.Error("find alarm image ids failed during orphan reconciliation", zap.Error(err))
-			return engineipc.OrphanDisposition{}, err
-		}
-		for _, id := range existingIDs {
-			existingMap[id] = struct{}{}
-		}
+	type imageIDFinder interface {
+		FindExistingImageIDs(ctx context.Context, imageIDs []string) ([]string, error)
 	}
-	if a.plateRepo != nil {
-		existingIDs, err := a.plateRepo.FindExistingImageIDs(ctx, allImageIDs)
-		if err != nil {
-			a.log.Error("find plate image ids failed during orphan reconciliation", zap.Error(err))
-			return engineipc.OrphanDisposition{}, err
-		}
-		for _, id := range existingIDs {
-			existingMap[id] = struct{}{}
-		}
+	finders := []struct {
+		name   string
+		finder imageIDFinder
+	}{
+		{"alarm", a.alarmRepo},
+		{"plate", a.plateRepo},
+		{"face", a.faceRepo},
+		{"face_capture", a.captureRepo},
 	}
-	if a.faceRepo != nil {
-		existingIDs, err := a.faceRepo.FindExistingImageIDs(ctx, allImageIDs)
+	for _, f := range finders {
+		if f.finder == nil {
+			continue
+		}
+		existingIDs, err := f.finder.FindExistingImageIDs(ctx, allImageIDs)
 		if err != nil {
-			a.log.Error("find face image ids failed during orphan reconciliation", zap.Error(err))
+			a.log.Error(fmt.Sprintf("find %s image ids failed during orphan reconciliation", f.name), zap.Error(err))
 			return engineipc.OrphanDisposition{}, err
 		}
 		for _, id := range existingIDs {

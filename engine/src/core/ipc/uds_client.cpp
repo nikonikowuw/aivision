@@ -57,6 +57,17 @@ bool UdsClient::report_face_observation(const argus::v1::FaceObservation& observ
     return status.ok() && response.code().empty();
 }
 
+bool UdsClient::report_face_capture(const argus::v1::FaceCapture& capture) {
+    if (!report_stub_) return false;
+    argus::v1::ReportFaceCaptureRequest request;
+    *request.mutable_capture() = capture;
+    argus::v1::ReportFaceCaptureResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
+    const grpc::Status status = report_stub_->ReportFaceCapture(&context, request, &response);
+    return status.ok() && response.code().empty();
+}
+
 bool UdsClient::report_telemetry(const argus::v1::DeviceTelemetry& telemetry) {
     if (!report_stub_) return false;
     argus::v1::ReportMetricsRequest req;

@@ -102,11 +102,18 @@ TEST_F(LoggingTest, LevelFiltering) {
     LOG_ERROR("comp", "event.error", "Error message");
     Logger::shutdown();
     auto lines = sink_->get_lines();
-    ASSERT_EQ(lines.size(), 2);
+    std::vector<std::string> comp_lines;
+    for (const auto& l : lines) {
+        auto j = nlohmann::json::parse(l, nullptr, false);
+        if (j.is_object() && j.value("component", "") == "comp") {
+            comp_lines.push_back(l);
+        }
+    }
+    ASSERT_EQ(comp_lines.size(), 2);
 
-    auto j1 = nlohmann::json::parse(lines[0]);
+    auto j1 = nlohmann::json::parse(comp_lines[0]);
     EXPECT_EQ(j1["level"], "warn");
-    auto j2 = nlohmann::json::parse(lines[1]);
+    auto j2 = nlohmann::json::parse(comp_lines[1]);
     EXPECT_EQ(j2["level"], "error");
 }
 

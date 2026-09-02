@@ -1,0 +1,6 @@
+{"phase": 1, "title": "通信契约与 Protobuf 扩展", "status": "completed"}
+{"phase": 2, "title": "数据库迁移与模型定义", "status": "completed"}
+{"phase": 3, "title": "Go 存储层、业务服务与 HTTP/gRPC 端点", "status": "completed"}
+{"phase": 4, "title": "C++ 媒体推理引擎抓拍与上报流水线", "status": "pending"}
+{"phase": 5, "title": "前端抓拍记录与时序胶卷抽屉", "status": "pending"}
+{"phase": 6, "title": "全链路测试与质量门禁", "status": "pending"}

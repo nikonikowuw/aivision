@@ -2,6 +2,7 @@ export * from './alarm';
 export * from './algorithm';
 export * from './auth';
 export * from './camera';
+export * from './capture';
 export * from './dept';
 export * from './face';
 export * from './file';

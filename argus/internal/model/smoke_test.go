@@ -83,8 +83,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 64 {
-		t.Errorf("menu rows = %d, want 64", menuCount)
+	if menuCount != 67 {
+		t.Errorf("menu rows = %d, want 67", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -146,6 +146,7 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"record:alarm", "record:alarm:query", "record:alarm:export",
 		"record:plate", "record:plate:query", "record:plate:export",
 		"record:face", "record:face:query", "record:face:export",
+		"record:capture", "record:capture:query", "record:capture:export",
 		"live:preview", "live:preview:stream",
 	}
 	sort.Strings(got)
@@ -160,11 +161,11 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		}
 	}
 
-	// super 角色绑定全部 64 条菜单
+	// super 角色绑定全部 67 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 64 {
-		t.Errorf("role_menus for super = %d, want 64", rmCount)
+	if rmCount != 67 {
+		t.Errorf("role_menus for super = %d, want 67", rmCount)
 	}
 
 	// 初始系统配置与 desired_state_revision

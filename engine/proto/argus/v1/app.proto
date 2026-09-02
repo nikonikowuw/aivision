@@ -104,6 +104,46 @@ message ReportFaceObservationResponse {
   string error_message = 2; // 诊断信息，客户端不得解析其文本
 }
 
+// 单张时序人脸抓拍快照
+message FaceCaptureSnapshot {
+  int32 snapshot_index = 1;
+  int64 wall_time_ns = 2;
+  bool time_synced = 3;
+  BoundingBox face_bbox = 4;
+  float quality_score = 5;
+  float similarity = 6;
+  string face_id = 7;
+  string person_id = 8;
+  string person_name = 9;
+  string image_id = 10;
+  string image_rel_path = 11;
+  string face_image_id = 12;
+  string face_image_rel_path = 13;
+}
+
+// 人脸抓拍全量事件上报（包含陌生人与已知人，单 Track 支持 1~5 组增量上报）
+message FaceCapture {
+  // 目标级全局事件 ID = "<instance_run_id>/<track_id>"
+  string event_id = 1;
+  string instance_id = 2;
+  string camera_id = 3;
+  string camera_name = 4;
+  string algorithm_id = 5;
+  string algorithm_version = 6;
+  int64 track_id = 7;
+  FaceCaptureSnapshot snapshot = 8;
+}
+
+message ReportFaceCaptureRequest {
+  FaceCapture capture = 1;
+}
+
+message ReportFaceCaptureResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
+
 // 任务运行状态
 enum TaskStatusCode {
   TASK_STATUS_UNSPECIFIED = 0;
@@ -229,6 +269,7 @@ service ReportService {
   rpc ReportAlarm(ReportAlarmRequest) returns (ReportAlarmResponse);
   rpc ReportPlateObservation(ReportPlateObservationRequest) returns (ReportPlateObservationResponse);
   rpc ReportFaceObservation(ReportFaceObservationRequest) returns (ReportFaceObservationResponse);
+  rpc ReportFaceCapture(ReportFaceCaptureRequest) returns (ReportFaceCaptureResponse);
   rpc ReportTaskState(ReportTaskStateRequest) returns (ReportTaskStateResponse);
   rpc ReportInstanceState(ReportInstanceStateRequest) returns (ReportInstanceStateResponse);
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsResponse);

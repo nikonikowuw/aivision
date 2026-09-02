@@ -54,6 +54,14 @@ var seedMenuTree = []seedMenuItem{
 				},
 			},
 			{
+				Type: MenuTypeMenu, Name: "RecordCapture", Title: "routes.record.capture", Path: "/record/capture", Component: "/record/capture/index",
+				Icon: "ant-design:camera-outlined", Permission: "record:capture", KeepAlive: true,
+				Children: []seedMenuItem{
+					{Type: MenuTypeButton, Name: "record.capture.query", Permission: "record:capture:query"},
+					{Type: MenuTypeButton, Name: "record.capture.export", Permission: "record:capture:export"},
+				},
+			},
+			{
 				Type: MenuTypeMenu, Name: "RecordFace", Title: "routes.record.face", Path: "/record/face", Component: "/record/face/index",
 				Icon: "ant-design:user-outlined", Permission: "record:face", KeepAlive: true,
 				Children: []seedMenuItem{

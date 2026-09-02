@@ -62,6 +62,7 @@ type recordingReportAdapter struct {
 	alarms           []*argusv1.AlarmEvent
 	observations     []*argusv1.PlateObservation
 	faceObservations []*argusv1.FaceObservation
+	faceCaptures     []*argusv1.FaceCapture
 	taskStates       []*argusv1.TaskState
 	instStates       []*argusv1.InstanceState
 	metrics          []*argusv1.DeviceTelemetry
@@ -107,6 +108,19 @@ func (a *recordingReportAdapter) AcceptFaceObservation(_ context.Context, obs *a
 		return a.err
 	}
 	a.faceObservations = append(a.faceObservations, obs)
+	return nil
+}
+
+func (a *recordingReportAdapter) AcceptFaceCapture(_ context.Context, cap *argusv1.FaceCapture) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.panic {
+		panic("boom")
+	}
+	if a.err != nil {
+		return a.err
+	}
+	a.faceCaptures = append(a.faceCaptures, cap)
 	return nil
 }
 

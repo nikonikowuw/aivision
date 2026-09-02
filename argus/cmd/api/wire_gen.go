@@ -88,7 +88,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	alarmRecordRepository := repository.NewAlarmRecordRepository(gormDB)
 	plateObservationRepository := repository.NewPlateObservationRepository(gormDB)
 	faceObservationRepository := repository.NewFaceObservationRepository(gormDB)
-	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, zapLogger)
+	faceCaptureRepository := repository.NewFaceCaptureRepository(gormDB)
+	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, zapLogger)
 	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
 	taskHandler := api.NewTaskHandler(taskService)
 	alarmRecordService := service.NewAlarmRecordService(alarmRecordRepository, cameraRepository, algorithmRepository, taskRepository, cfg)
@@ -97,6 +98,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	plateObservationHandler := api.NewPlateObservationHandler(plateObservationService)
 	faceObservationService := service.NewFaceObservationService(faceObservationRepository, cameraRepository, cfg)
 	faceObservationHandler := api.NewFaceObservationHandler(faceObservationService)
+	faceCaptureService := service.NewFaceCaptureService(faceCaptureRepository, cameraRepository, cfg)
+	faceCaptureHandler := api.NewFaceCaptureHandler(faceCaptureService)
 	deps := router.Deps{
 		ErrorHandler:            handlerFunc,
 		AuthMiddleware:          authMiddleware,
@@ -119,6 +122,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		AlarmRecordHandler:      alarmRecordHandler,
 		PlateObservationHandler: plateObservationHandler,
 		FaceObservationHandler:  faceObservationHandler,
+		FaceCaptureHandler:      faceCaptureHandler,
 	}
 	engine := router.New(cfg, deps)
 	desiredStateAdapter := service.NewDesiredStateAdapter(taskRepository, personFaceRepository, zapLogger)

@@ -91,6 +91,7 @@ type Deps struct {
 	AlarmRecordHandler      *api.AlarmRecordHandler
 	PlateObservationHandler *api.PlateObservationHandler
 	FaceObservationHandler  *api.FaceObservationHandler
+	FaceCaptureHandler      *api.FaceCaptureHandler
 }
 
 // New 创建 gin engine 并注册路由。
@@ -383,6 +384,12 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			recordGroup.GET("/faces"+idRoutePath, deps.FaceObservationHandler.GetDetail)
 			recordGroup.GET("/faces"+idRoutePath+"/panorama", deps.FaceObservationHandler.ReadPanoramaImage)
 			recordGroup.GET("/faces"+idRoutePath+"/face", deps.FaceObservationHandler.ReadFaceImage)
+			recordGroup.GET("/captures", deps.FaceCaptureHandler.ListPage)
+			recordGroup.GET("/captures"+idRoutePath, deps.FaceCaptureHandler.GetDetail)
+			recordGroup.GET("/captures"+idRoutePath+"/panorama", deps.FaceCaptureHandler.ReadPanoramaImage)
+			recordGroup.GET("/captures"+idRoutePath+"/face", deps.FaceCaptureHandler.ReadFaceImage)
+			recordGroup.GET("/captures"+idRoutePath+"/snapshots/:index/panorama", deps.FaceCaptureHandler.ReadSnapshotPanoramaImage)
+			recordGroup.GET("/captures"+idRoutePath+"/snapshots/:index/face", deps.FaceCaptureHandler.ReadSnapshotFaceImage)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath, "record:alarm")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath+idRoutePath, "record:alarm")
@@ -395,6 +402,12 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces"+idRoutePath, "record:face")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces"+idRoutePath+"/face", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures", "record:capture")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath, "record:capture")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/face", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/snapshots/:index/panorama", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/snapshots/:index/face", middleware.PermCodeAuthenticated)
 
 		plateObsGroup := apiGroup.Group("/v1/plate-observations")
 		{
@@ -407,6 +420,22 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/plate-observations"+idRoutePath, "record:plate")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/plate-observations"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/plate-observations"+idRoutePath+"/plate", middleware.PermCodeAuthenticated)
+
+		capturesV1Group := apiGroup.Group("/v1/record/captures")
+		{
+			capturesV1Group.GET("", deps.FaceCaptureHandler.ListPage)
+			capturesV1Group.GET(idRoutePath, deps.FaceCaptureHandler.GetDetail)
+			capturesV1Group.GET(idRoutePath+"/panorama", deps.FaceCaptureHandler.ReadPanoramaImage)
+			capturesV1Group.GET(idRoutePath+"/face", deps.FaceCaptureHandler.ReadFaceImage)
+			capturesV1Group.GET(idRoutePath+"/snapshots/:index/panorama", deps.FaceCaptureHandler.ReadSnapshotPanoramaImage)
+			capturesV1Group.GET(idRoutePath+"/snapshots/:index/face", deps.FaceCaptureHandler.ReadSnapshotFaceImage)
+		}
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/record/captures", "record:capture")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/record/captures"+idRoutePath, "record:capture")
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/record/captures"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/record/captures"+idRoutePath+"/face", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/record/captures"+idRoutePath+"/snapshots/:index/panorama", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+"/v1/record/captures"+idRoutePath+"/snapshots/:index/face", middleware.PermCodeAuthenticated)
 	}
 
 	// 外部开放同步 API：位于认证与权限中间件之外，使用受控 IP 白名单保护

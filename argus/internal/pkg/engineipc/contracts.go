@@ -64,6 +64,7 @@ type ReportAdapter interface {
 	AcceptAlarm(ctx context.Context, alarm *argusv1.AlarmEvent) error
 	AcceptPlateObservation(ctx context.Context, obs *argusv1.PlateObservation) error
 	AcceptFaceObservation(ctx context.Context, obs *argusv1.FaceObservation) error
+	AcceptFaceCapture(ctx context.Context, capture *argusv1.FaceCapture) error
 	AcceptTaskState(ctx context.Context, state *argusv1.TaskState) error
 	AcceptInstanceState(ctx context.Context, state *argusv1.InstanceState) error
 	AcceptMetrics(ctx context.Context, telemetry *argusv1.DeviceTelemetry) error
@@ -126,6 +127,10 @@ func (unavailableReportAdapter) AcceptPlateObservation(context.Context, *argusv1
 }
 
 func (unavailableReportAdapter) AcceptFaceObservation(context.Context, *argusv1.FaceObservation) error {
+	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
+}
+
+func (unavailableReportAdapter) AcceptFaceCapture(context.Context, *argusv1.FaceCapture) error {
 	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
 }
 

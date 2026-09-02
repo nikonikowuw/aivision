@@ -8,7 +8,7 @@ proto:
 proto-check:
 	@tmp=$$(mktemp -d); \
 	bash scripts/generate-proto.sh "$$tmp" && \
-	diff -r --exclude='*_test.go' "$$tmp/internal/proto/aivision/v1" internal/proto/aivision/v1 && \
+	diff -r --exclude='*_test.go' "$$tmp/internal/proto/argus/v1" internal/proto/argus/v1 && \
 	echo "proto-check: no drift" && \
 	rm -rf "$$tmp"
 

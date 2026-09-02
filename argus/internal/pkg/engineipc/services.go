@@ -159,6 +159,19 @@ func (s *reportService) ReportFaceObservation(ctx context.Context, req *argusv1.
 	return &argusv1.ReportFaceObservationResponse{Code: code, ErrorMessage: msg}, nil
 }
 
+// ReportFaceCapture 接收人脸抓拍全量事件（含时序多快照增量）上报。
+func (s *reportService) ReportFaceCapture(ctx context.Context, req *argusv1.ReportFaceCaptureRequest) (*argusv1.ReportFaceCaptureResponse, error) {
+	const method = "/argus.v1.ReportService/ReportFaceCapture"
+	if req == nil || req.Capture == nil {
+		return nil, invalidArgument(method)
+	}
+	code, msg, transportErr := s.adapterResult(method, s.adapter.AcceptFaceCapture(ctx, req.Capture))
+	if transportErr != nil {
+		return nil, transportErr
+	}
+	return &argusv1.ReportFaceCaptureResponse{Code: code, ErrorMessage: msg}, nil
+}
+
 // ReportTaskState 接收任务状态上报；只有 adapter 成功接受后才返回空 code。
 func (s *reportService) ReportTaskState(ctx context.Context, req *argusv1.ReportTaskStateRequest) (*argusv1.ReportTaskStateResponse, error) {
 	const method = "/argus.v1.ReportService/ReportTaskState"

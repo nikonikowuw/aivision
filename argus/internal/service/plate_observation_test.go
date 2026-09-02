@@ -40,7 +40,7 @@ func TestReportAdapter_AcceptPlateObservationAndIdempotency(t *testing.T) {
 	taskRepo := repository.NewTaskRepository(db)
 	alarmRepo := repository.NewAlarmRecordRepository(db)
 	plateRepo := repository.NewPlateObservationRepository(db)
-	adapter := service.NewReportAdapterWithAlarm(taskRepo, alarmRepo, plateRepo, nil, zap.NewNop())
+	adapter := service.NewReportAdapterWithAlarm(taskRepo, alarmRepo, plateRepo, nil, nil, zap.NewNop())
 	ctx := context.Background()
 
 	obs := &argusv1.PlateObservation{
@@ -98,7 +98,7 @@ func TestReportAdapter_ReconcileOrphanImagesIncludesPlateReferences(t *testing.T
 	db := newTestPlateDB(t)
 	taskRepo := repository.NewTaskRepository(db)
 	plateRepo := repository.NewPlateObservationRepository(db)
-	adapter := service.NewReportAdapterWithAlarm(taskRepo, nil, plateRepo, nil, zap.NewNop())
+	adapter := service.NewReportAdapterWithAlarm(taskRepo, nil, plateRepo, nil, nil, zap.NewNop())
 	ctx := context.Background()
 
 	if err := plateRepo.Create(ctx, &model.PlateObservation{

@@ -162,6 +162,9 @@ const gridOptions: VxeTableGridOptions<AlarmRecordApi.AlarmRecordItem> = {
 
 const [Grid] = useVbenVxeGrid({
   formOptions: {
+    commonConfig: {
+      labelWidth: 80,
+    },
     schema: [
       {
         component: 'ApiSelect',
@@ -269,8 +272,9 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
           v-if="row.imageId"
           :image-id="row.imageId"
           :bbox="row.bbox"
-          :width="64"
-          :height="48"
+          :width="72"
+          :height="41"
+          class="mx-auto aspect-video"
         />
         <span v-else class="text-xs text-muted-foreground">-</span>
       </template>
@@ -449,6 +453,18 @@ async function handleViewDetail(row: AlarmRecordApi.AlarmRecordItem) {
 </template>
 
 <style scoped>
+:deep([data-slot="form-label"]) {
+  display: inline-block !important;
+  text-align: justify !important;
+  text-align-last: justify !important;
+  width: 76px !important;
+  min-width: 76px !important;
+  padding-right: 0 !important;
+  margin-right: 8px !important;
+  line-height: 32px !important;
+  font-weight: 500;
+}
+
 :deep(.alarm-detail-desc .ant-descriptions-item-label) {
   padding-bottom: 6px;
   font-size: 12px;

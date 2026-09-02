@@ -162,6 +162,9 @@ const gridOptions: VxeTableGridOptions<CaptureApi.CaptureItem> = {
 
 const [Grid, gridApi] = useVbenVxeGrid({
   formOptions: {
+    commonConfig: {
+      labelWidth: 80,
+    },
     schema: [
       {
         component: 'ApiSelect',
@@ -283,11 +286,12 @@ function formatRatio(value: number): string {
       <template #panorama="{ row }">
         <CaptureThumbnail
           :alt="$t('record.capture.columns.panorama')"
-          fit="cover"
-          :height="58"
+          fit="contain"
+          :height="48"
           :url="row.imageUrl"
           :bbox="row.bbox"
-          :width="84"
+          :width="85"
+          class="mx-auto aspect-video"
         />
       </template>
 
@@ -386,6 +390,18 @@ function formatRatio(value: number): string {
 </template>
 
 <style scoped>
+:deep([data-slot="form-label"]) {
+  display: inline-block !important;
+  text-align: justify !important;
+  text-align-last: justify !important;
+  width: 76px !important;
+  min-width: 76px !important;
+  padding-right: 0 !important;
+  margin-right: 8px !important;
+  line-height: 32px !important;
+  font-weight: 500;
+}
+
 .capture-keyword {
   width: min(360px, 100%);
 }

@@ -21,11 +21,11 @@ const props = withDefaults(
     alt: '',
     bbox: undefined,
     fit: 'cover',
-    height: 48,
+    height: undefined,
     original: false,
     preview: true,
     url: '',
-    width: 96,
+    width: undefined,
   },
 );
 
@@ -35,6 +35,17 @@ const previewVisible = ref<boolean>(false);
 const previewImageSrc = ref<string>('');
 const previewLoading = ref<boolean>(false);
 const hdPreviewDataUrl = ref<string>('');
+
+const containerStyle = computed(() => {
+  const style: Record<string, string> = {};
+  if (typeof props.width === 'number' && props.width > 0) {
+    style.width = `${props.width}px`;
+  }
+  if (typeof props.height === 'number' && props.height > 0) {
+    style.height = `${props.height}px`;
+  }
+  return style;
+});
 
 // 原生缩略图直链（带 Token 鉴权，默认 type=thumb 由浏览器 C++ 内核多线程流式懒加载）
 const thumbnailUrl = computed(() => {
@@ -80,6 +91,24 @@ const normalizedBbox = computed<[number, number, number, number] | null>(() => {
   const maxY = Math.max(y1, y2);
   if (maxX <= minX || maxY <= minY) return null;
   return [minX, minY, maxX, maxY];
+});
+
+const cornerBracketPath = computed(() => {
+  if (!normalizedBbox.value) return '';
+  const [minX, minY, maxX, maxY] = normalizedBbox.value;
+  const bx = minX * 100;
+  const by = minY * 100;
+  const bw = (maxX - minX) * 100;
+  const bh = (maxY - minY) * 100;
+  const lenX = Math.min(bw * 0.22, 10);
+  const lenY = Math.min(bh * 0.22, 10);
+
+  return [
+    `M ${bx} ${by + lenY} L ${bx} ${by} L ${bx + lenX} ${by}`,
+    `M ${bx + bw - lenX} ${by} L ${bx + bw} ${by} L ${bx + bw} ${by + lenY}`,
+    `M ${bx} ${by + bh - lenY} L ${bx} ${by + bh} L ${bx + lenX} ${by + bh}`,
+    `M ${bx + bw - lenX} ${by + bh} L ${bx + bw} ${by + bh} L ${bx + bw} ${by + bh - lenY}`,
+  ].join(' ');
 });
 
 watch(
@@ -146,16 +175,17 @@ async function getHdPanoramaPreview(): Promise<string> {
     const ph = (maxY - minY) * hdH;
 
     offscreenCtx.save();
-    offscreenCtx.lineWidth = Math.max(3, Math.round(hdW / 400));
-    offscreenCtx.strokeStyle = '#1890ff';
-    offscreenCtx.fillStyle = 'rgba(24, 144, 255, 0.18)';
+    offscreenCtx.lineWidth = Math.max(2, Math.round(hdW / 600));
+    offscreenCtx.strokeStyle = '#3b82f6';
+    offscreenCtx.fillStyle = 'rgba(59, 130, 246, 0.18)';
     offscreenCtx.fillRect(px, py, pw, ph);
     offscreenCtx.strokeRect(px, py, pw, ph);
 
     // 绘制微型科技感四角包角高亮
-    const cornerLen = Math.min(pw, ph) * 0.2;
-    offscreenCtx.lineWidth = Math.max(4, Math.round(hdW / 300));
-    offscreenCtx.strokeStyle = '#52c41a';
+    const cornerLen = Math.min(pw, ph) * 0.22;
+    offscreenCtx.lineWidth = Math.max(3, Math.round(hdW / 400));
+    offscreenCtx.strokeStyle = '#10b981';
+    offscreenCtx.lineCap = 'square';
 
     // 左上
     offscreenCtx.beginPath();
@@ -215,12 +245,12 @@ async function handlePreviewClick() {
 
 <template>
   <div
-    class="relative flex items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
+    class="relative flex mx-auto items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
     :class="{
       'cursor-pointer transition hover:opacity-90':
         preview && thumbnailUrl && !isError,
     }"
-    :style="{ width: `${width}px`, height: `${height}px` }"
+    :style="containerStyle"
     @click="handlePreviewClick"
   >
     <!-- 无图或加载失败 -->
@@ -244,21 +274,33 @@ async function handlePreviewClick() {
         @error="() => (isError = true)"
       />
 
-      <!-- 缩略图上的微型矢量目标框指示 (纯 SVG 矢量层覆盖，0 JS CPU 消耗) -->
+      <!-- 缩略图/详情卡片上的矢量目标框指示 (纯 SVG 矢量层覆盖，0 JS CPU 消耗，与全屏大图预览 100% 视觉对齐) -->
       <svg
         v-if="normalizedBbox"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
         class="pointer-events-none absolute inset-0 h-full w-full"
       >
+        <!-- 主体矩形 -->
         <rect
           :x="normalizedBbox[0] * 100"
           :y="normalizedBbox[1] * 100"
           :width="(normalizedBbox[2] - normalizedBbox[0]) * 100"
           :height="(normalizedBbox[3] - normalizedBbox[1]) * 100"
-          fill="rgba(24, 144, 255, 0.22)"
-          stroke="#1890ff"
-          stroke-width="2"
+          fill="rgba(59, 130, 246, 0.18)"
+          stroke="#3b82f6"
+          stroke-width="1.5"
+          vector-effect="non-scaling-stroke"
+        />
+
+        <!-- 四角科技感直角包角 -->
+        <path
+          :d="cornerBracketPath"
+          fill="none"
+          stroke="#10b981"
+          stroke-width="2.5"
+          stroke-linecap="square"
+          vector-effect="non-scaling-stroke"
         />
       </svg>
 

@@ -166,6 +166,9 @@ const gridOptions: VxeTableGridOptions<PlateObservationApi.PlateObservationItem>
 
 const [Grid] = useVbenVxeGrid({
   formOptions: {
+    commonConfig: {
+      labelWidth: 80,
+    },
     schema: [
       {
         component: 'ApiSelect',
@@ -319,10 +322,11 @@ function getPlateColorLabel(color?: string): string {
 
       <template #panorama="{ row }">
         <PlateThumbnail
-          fit="cover"
-          :height="48"
+          fit="contain"
+          :height="41"
           :url="row.panoramaImageUrl"
           :width="72"
+          class="mx-auto aspect-video"
         />
       </template>
 
@@ -474,3 +478,17 @@ function getPlateColorLabel(color?: string): string {
     </DetailModal>
   </Page>
 </template>
+
+<style scoped>
+:deep([data-slot="form-label"]) {
+  display: inline-block !important;
+  text-align: justify !important;
+  text-align-last: justify !important;
+  width: 76px !important;
+  min-width: 76px !important;
+  padding-right: 0 !important;
+  margin-right: 8px !important;
+  line-height: 32px !important;
+  font-weight: 500;
+}
+</style>

@@ -174,7 +174,7 @@ async function handlePreviewClick() {
   <div
     ref="containerRef"
     :key="props.imageId"
-    class="relative flex cursor-pointer items-center justify-center overflow-hidden rounded border border-border bg-muted/40 transition hover:opacity-90"
+    class="relative flex mx-auto cursor-pointer items-center justify-center overflow-hidden rounded border border-border bg-muted/40 transition hover:opacity-90"
     :style="{
       width: (props.width || 64) + 'px',
       height: (props.height || 64) + 'px',

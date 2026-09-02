@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { useAccessStore } from '@vben/stores';
 
@@ -26,6 +26,15 @@ const imageSrc = ref<string>('');
 const loading = ref<boolean>(false);
 const isError = ref<boolean>(false);
 
+let currentBlobUrl = '';
+
+function cleanup() {
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = '';
+  }
+}
+
 const authUrl = computed(() => {
   if (!props.url) return '';
   const token = accessStore.accessToken;
@@ -36,6 +45,7 @@ const authUrl = computed(() => {
 watch(
   () => props.url,
   async (newUrl) => {
+    cleanup();
     if (!newUrl) {
       imageSrc.value = '';
       return;
@@ -52,7 +62,8 @@ watch(
         throw new Error(`HTTP ${resp.status}`);
       }
       const blob = await resp.blob();
-      imageSrc.value = URL.createObjectURL(blob);
+      currentBlobUrl = URL.createObjectURL(blob);
+      imageSrc.value = currentBlobUrl;
     } catch {
       isError.value = true;
       imageSrc.value = authUrl.value;
@@ -62,11 +73,15 @@ watch(
   },
   { immediate: true },
 );
+
+onBeforeUnmount(() => {
+  cleanup();
+});
 </script>
 
 <template>
   <div
-    class="flex items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
+    class="flex mx-auto items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
     :style="{ width: `${width}px`, height: `${height}px` }"
   >
     <Spin v-if="loading" size="small" />

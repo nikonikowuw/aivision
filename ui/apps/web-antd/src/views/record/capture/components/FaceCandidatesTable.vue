@@ -59,30 +59,30 @@ function getSimilarityColor(sim: number): string {
 
 <template>
   <div v-if="effectiveCandidates.length > 0" class="overflow-x-auto">
-    <table class="w-full text-xs text-left border-collapse">
+    <table class="candidate-table w-full text-xs text-center border-collapse">
       <thead>
         <tr
-          class="border-b border-neutral-200 dark:border-neutral-700 text-neutral-500 bg-neutral-50/50 dark:bg-neutral-800/50"
+          class="border-b border-neutral-200 dark:border-neutral-700 text-neutral-500 bg-neutral-50/50 dark:bg-neutral-800/50 whitespace-nowrap"
         >
-          <th class="py-2 px-3 w-16 text-center">
+          <th class="py-2.5 px-3 w-14 text-center whitespace-nowrap">
             {{ $t('record.capture.drawer.candidatesRank') }}
           </th>
-          <th class="py-2 px-3 w-16 text-center">
+          <th class="py-2.5 px-3 w-16 text-center whitespace-nowrap">
             {{ $t('record.capture.drawer.candidatesPhoto') }}
           </th>
-          <th class="py-2 px-3">
+          <th class="py-2.5 px-3 min-w-[100px] text-center whitespace-nowrap">
             {{ $t('record.capture.drawer.candidatesPerson') }}
           </th>
-          <th class="py-2 px-3">
+          <th class="py-2.5 px-3 min-w-[120px] text-center whitespace-nowrap">
             {{ $t('record.capture.drawer.candidatesPersonId') }}
           </th>
-          <th class="py-2 px-3 min-w-[180px]">
+          <th class="py-2.5 px-3 min-w-[180px] text-center whitespace-nowrap">
             {{ $t('record.capture.drawer.candidatesSimilarity') }}
           </th>
-          <th class="py-2 px-3 text-center w-24">
+          <th class="py-2.5 px-3 min-w-[110px] text-center whitespace-nowrap">
             {{ $t('record.capture.drawer.candidatesDiff') }}
           </th>
-          <th class="py-2 px-3">
+          <th class="py-2.5 px-3 min-w-[140px] text-center whitespace-nowrap">
             {{ $t('record.capture.drawer.candidatesFaceId') }}
           </th>
         </tr>
@@ -131,30 +131,30 @@ function getSimilarityColor(sim: number): string {
               <IconifyIcon icon="lucide:user" class="size-5" />
             </div>
           </td>
-          <td class="py-2 px-3">
-            <span :class="[idx === 0 ? 'font-semibold text-primary' : '']">
-              {{ cand.personName || '-' }}
-            </span>
-            <Tag
-              v-if="
-                idx === 0 && showMatchBadge && cand.similarity >= matchThreshold
-              "
-              color="green"
-              class="ml-2 scale-90"
-            >
-              {{ $t('record.capture.drawer.matched') }}
-            </Tag>
+          <td class="py-2 px-3 text-center">
+            <div class="flex items-center justify-center gap-1.5">
+              <span :class="[idx === 0 ? 'font-semibold text-primary' : '']">
+                {{ cand.personName || '-' }}
+              </span>
+              <Tag
+                v-if="
+                  idx === 0 && showMatchBadge && cand.similarity >= matchThreshold
+                "
+                color="green"
+                class="m-0 scale-90"
+              >
+                {{ $t('record.capture.drawer.matched') }}
+              </Tag>
+            </div>
           </td>
-          <td class="py-2 px-3 font-mono text-neutral-500">
-            <Tooltip v-if="cand.personId" :title="cand.personId">
-              <span class="max-w-[120px] truncate block">{{
-                cand.personId
-              }}</span>
-            </Tooltip>
+          <td class="py-2 px-3 text-center font-mono text-neutral-600 dark:text-neutral-400">
+            <span v-if="cand.personId" class="inline-block whitespace-nowrap">
+              {{ cand.personId }}
+            </span>
             <span v-else>-</span>
           </td>
-          <td class="py-2 px-3">
-            <div class="flex items-center gap-2">
+          <td class="py-2 px-3 text-center">
+            <div class="mx-auto flex max-w-[160px] items-center justify-center gap-2">
               <Progress
                 :percent="Number((cand.similarity * 100).toFixed(1))"
                 :stroke-color="getSimilarityColor(cand.similarity)"
@@ -170,14 +170,14 @@ function getSimilarityColor(sim: number): string {
               </span>
             </div>
           </td>
-          <td class="py-2 px-3 text-center font-mono text-neutral-400">
+          <td class="py-2 px-3 text-center font-mono text-neutral-500 dark:text-neutral-400">
             {{ idx === 0 ? '0.0%' : getCandidateDiff(cand.similarity) }}
           </td>
-          <td class="py-2 px-3 font-mono text-neutral-400 text-[11px]">
+          <td class="py-2 px-3 text-center font-mono text-neutral-400 text-xs">
             <Tooltip v-if="cand.faceId" :title="cand.faceId">
-              <span class="max-w-[140px] truncate block">{{
-                cand.faceId
-              }}</span>
+              <span class="inline-block max-w-[140px] truncate text-center">
+                {{ cand.faceId }}
+              </span>
             </Tooltip>
             <span v-else>-</span>
           </td>
@@ -191,3 +191,11 @@ function getSimilarityColor(sim: number): string {
     :image="Empty.PRESENTED_IMAGE_SIMPLE"
   />
 </template>
+
+<style scoped>
+.candidate-table th,
+.candidate-table td {
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+</style>

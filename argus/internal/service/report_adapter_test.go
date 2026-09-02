@@ -389,6 +389,35 @@ func isAdapterUnavailable(err error) bool {
 	return errors.As(err, &ae) && ae != nil && ae.Code == engineipc.CodeIPCUNAVAILABLE
 }
 
+type captureImageFinderStub struct {
+	repository.CaptureRepository
+	imageIDs []string
+}
+
+func (s *captureImageFinderStub) FindExistingImageIDs(context.Context, []string) ([]string, error) {
+	return append([]string(nil), s.imageIDs...), nil
+}
+
+func TestReportAdapterReconcilesGenericCaptureImageReferences(t *testing.T) {
+	finder := &captureImageFinderStub{imageIDs: []string{"capture-image"}}
+	adapter := NewReportAdapterWithCaptures(nil, nil, nil, nil, nil, finder, nil, zap.NewNop())
+	createdAtNs := time.Now().Add(-orphanRetentionGracePeriod - time.Second).UnixNano()
+
+	disposition, err := adapter.ReconcileOrphanImages(context.Background(), []*argusv1.OrphanImageEntry{
+		{ImageId: "capture-image", CreatedAtNs: createdAtNs},
+		{ImageId: "orphan-image", CreatedAtNs: createdAtNs},
+	})
+	if err != nil {
+		t.Fatalf("ReconcileOrphanImages: %v", err)
+	}
+	if len(disposition.RetainImageIDs) != 1 || disposition.RetainImageIDs[0] != "capture-image" {
+		t.Fatalf("retained image IDs = %v, want [capture-image]", disposition.RetainImageIDs)
+	}
+	if len(disposition.DeleteImageIDs) != 1 || disposition.DeleteImageIDs[0] != "orphan-image" {
+		t.Fatalf("deleted image IDs = %v, want [orphan-image]", disposition.DeleteImageIDs)
+	}
+}
+
 // TestReportAdapterRejectsEmptyIDs 空标识的状态上报按内部错误处理，不得返回成功 ACK。
 func TestReportAdapterRejectsEmptyIDs(t *testing.T) {
 	db := newDesiredStateTestDB(t)

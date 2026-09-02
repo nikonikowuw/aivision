@@ -89,9 +89,10 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	plateObservationRepository := repository.NewPlateObservationRepository(gormDB)
 	faceObservationRepository := repository.NewFaceObservationRepository(gormDB)
 	faceCaptureRepository := repository.NewFaceCaptureRepository(gormDB)
+	captureRepository := repository.NewCaptureRepository(gormDB)
 	diskUsageSampler := storage.NewDiskUsageSampler()
-	storageCleanupService := service.NewStorageCleanupService(cfg, systemConfigRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, operationLogRepository, fileStorage, diskUsageSampler, zapLogger)
-	reportAdapter := service.NewReportAdapterWithAlarm(taskRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, storageCleanupService, zapLogger)
+	storageCleanupService := service.NewStorageCleanupServiceWithCaptures(cfg, systemConfigRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, captureRepository, operationLogRepository, fileStorage, diskUsageSampler, zapLogger)
+	reportAdapter := service.NewReportAdapterWithCaptures(taskRepository, alarmRecordRepository, plateObservationRepository, faceObservationRepository, faceCaptureRepository, captureRepository, storageCleanupService, zapLogger)
 	taskService := service.NewTaskService(taskRepository, cameraRepository, algorithmRepository, reportAdapter, engineClient, zapLogger)
 	taskHandler := api.NewTaskHandler(taskService)
 	alarmRecordService := service.NewAlarmRecordService(alarmRecordRepository, cameraRepository, algorithmRepository, taskRepository, cfg)
@@ -102,6 +103,8 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	faceObservationHandler := api.NewFaceObservationHandler(faceObservationService)
 	faceCaptureService := service.NewFaceCaptureService(faceCaptureRepository, cameraRepository, cfg)
 	faceCaptureHandler := api.NewFaceCaptureHandler(faceCaptureService)
+	captureService := service.NewCaptureService(captureRepository, cfg)
+	captureHandler := api.NewCaptureHandler(captureService)
 	storageHandler := api.NewStorageHandler(storageCleanupService, zapLogger)
 	deps := router.Deps{
 		ErrorHandler:            handlerFunc,
@@ -126,6 +129,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		PlateObservationHandler: plateObservationHandler,
 		FaceObservationHandler:  faceObservationHandler,
 		FaceCaptureHandler:      faceCaptureHandler,
+		CaptureHandler:          captureHandler,
 		StorageHandler:          storageHandler,
 	}
 	engine := router.New(cfg, deps)

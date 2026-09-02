@@ -92,6 +92,7 @@ type Deps struct {
 	PlateObservationHandler *api.PlateObservationHandler
 	FaceObservationHandler  *api.FaceObservationHandler
 	FaceCaptureHandler      *api.FaceCaptureHandler
+	CaptureHandler          *api.CaptureHandler
 	StorageHandler          *api.StorageHandler
 }
 
@@ -397,12 +398,9 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 			recordGroup.GET("/faces"+idRoutePath, deps.FaceObservationHandler.GetDetail)
 			recordGroup.GET("/faces"+idRoutePath+"/panorama", deps.FaceObservationHandler.ReadPanoramaImage)
 			recordGroup.GET("/faces"+idRoutePath+"/face", deps.FaceObservationHandler.ReadFaceImage)
-			recordGroup.GET("/captures", deps.FaceCaptureHandler.ListPage)
-			recordGroup.GET("/captures"+idRoutePath, deps.FaceCaptureHandler.GetDetail)
-			recordGroup.GET("/captures"+idRoutePath+"/panorama", deps.FaceCaptureHandler.ReadPanoramaImage)
-			recordGroup.GET("/captures"+idRoutePath+"/face", deps.FaceCaptureHandler.ReadFaceImage)
-			recordGroup.GET("/captures"+idRoutePath+"/snapshots/:index/panorama", deps.FaceCaptureHandler.ReadSnapshotPanoramaImage)
-			recordGroup.GET("/captures"+idRoutePath+"/snapshots/:index/face", deps.FaceCaptureHandler.ReadSnapshotFaceImage)
+			recordGroup.GET("/captures", deps.CaptureHandler.ListPage)
+			recordGroup.GET("/captures"+idRoutePath, deps.CaptureHandler.GetDetail)
+			recordGroup.GET("/captures"+idRoutePath+"/image", deps.CaptureHandler.ReadImage)
 		}
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath, "record:alarm")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+alarmsRoutePath+idRoutePath, "record:alarm")
@@ -417,10 +415,7 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/faces"+idRoutePath+"/face", middleware.PermCodeAuthenticated)
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures", "record:capture")
 		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath, "record:capture")
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/panorama", middleware.PermCodeAuthenticated)
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/face", middleware.PermCodeAuthenticated)
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/snapshots/:index/panorama", middleware.PermCodeAuthenticated)
-		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/snapshots/:index/face", middleware.PermCodeAuthenticated)
+		deps.PermMiddleware.Register(http.MethodGet, apiRoutePath+recordRoutePath+"/captures"+idRoutePath+"/image", middleware.PermCodeAuthenticated)
 
 		plateObsGroup := apiGroup.Group("/v1/plate-observations")
 		{

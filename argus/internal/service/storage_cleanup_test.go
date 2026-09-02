@@ -41,6 +41,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 		&model.PlateObservation{},
 		&model.FaceObservation{},
 		&model.FaceCapture{},
+		&model.CaptureRecord{},
 		&model.OperationLog{},
 		&model.Person{},
 		&model.PersonFace{},
@@ -478,6 +479,89 @@ func TestStorageCleanupService_WhitelistAssetProtection(t *testing.T) {
 	var fCount int64
 	require.NoError(t, db.Model(&model.PersonFace{}).Count(&fCount).Error)
 	assert.Equal(t, int64(1), fCount, "PersonFace whitelist asset must NEVER be deleted")
+}
+
+type sequenceSampler struct {
+	usages []storage.DiskUsage
+	index  int
+}
+
+func (s *sequenceSampler) GetDiskUsage(string) (storage.DiskUsage, error) {
+	if s.index >= len(s.usages) {
+		return s.usages[len(s.usages)-1], nil
+	}
+	usage := s.usages[s.index]
+	s.index++
+	return usage, nil
+}
+
+func TestStorageCleanupService_PrioritizesUnrecognizedCaptures(t *testing.T) {
+	db := newTestDB(t)
+	sysRepo := repository.NewSystemConfigRepository(db)
+	alarmRepo := repository.NewAlarmRecordRepository(db)
+	plateRepo := repository.NewPlateObservationRepository(db)
+	faceRepo := repository.NewFaceObservationRepository(db)
+	faceCaptureRepo := repository.NewFaceCaptureRepository(db)
+	captureRepo := repository.NewCaptureRepository(db)
+	opLogRepo := repository.NewOperationLogRepository(db)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Millisecond)
+
+	tempDir := t.TempDir()
+	fileStorage, err := storage.NewLocalStorage(tempDir, "/uploads")
+	require.NoError(t, err)
+	unrecognizedPath := filepath.Join(tempDir, "unrecognized.jpg")
+	recognizedPath := filepath.Join(tempDir, "recognized.jpg")
+	require.NoError(t, os.WriteFile(unrecognizedPath, []byte("unrecognized"), 0o600))
+	require.NoError(t, os.WriteFile(recognizedPath, []byte("recognized"), 0o600))
+
+	unrecognized := &model.CaptureRecord{
+		EventID:      "capture-unrecognized",
+		TargetType:   model.CaptureTargetPerson,
+		CameraID:     "cam-1",
+		ImageID:      "image-unrecognized",
+		ImageRelPath: "unrecognized.jpg",
+		CapturedAt:   now.Add(-2 * time.Hour),
+	}
+	recognized := &model.CaptureRecord{
+		EventID:      "capture-recognized",
+		TargetType:   model.CaptureTargetPerson,
+		CameraID:     "cam-1",
+		ImageID:      "image-recognized",
+		ImageRelPath: "recognized.jpg",
+		IsRecognized: true,
+		CapturedAt:   now.Add(-time.Hour),
+	}
+	require.NoError(t, captureRepo.Create(ctx, unrecognized))
+	require.NoError(t, captureRepo.Create(ctx, recognized))
+
+	sampler := &sequenceSampler{usages: []storage.DiskUsage{
+		{TotalBytes: 1000, UsedBytes: 900, FreeBytes: 100, UsagePercent: 90},
+		{TotalBytes: 1000, UsedBytes: 900, FreeBytes: 100, UsagePercent: 90},
+		{TotalBytes: 1000, UsedBytes: 600, FreeBytes: 400, UsagePercent: 60},
+	}}
+	cfg := &config.Config{Storage: config.Storage{Local: config.Local{Root: tempDir}}}
+	svc := service.NewStorageCleanupServiceWithCaptures(
+		cfg, sysRepo, alarmRepo, plateRepo, faceRepo, faceCaptureRepo, captureRepo, opLogRepo,
+		fileStorage, sampler, zap.NewNop(),
+	)
+
+	svc.Start(ctx)
+	defer svc.Stop()
+	require.Eventually(t, func() bool {
+		count, countErr := captureRepo.CountTotal(ctx)
+		return countErr == nil && count == 1
+	}, time.Second, 10*time.Millisecond)
+
+	if _, err := os.Stat(unrecognizedPath); !os.IsNotExist(err) {
+		t.Fatalf("unrecognized capture image still exists, stat error = %v", err)
+	}
+	if _, err := os.Stat(recognizedPath); err != nil {
+		t.Fatalf("recognized capture image was removed: %v", err)
+	}
+	remaining, err := captureRepo.GetByEventID(ctx, recognized.EventID)
+	require.NoError(t, err)
+	assert.True(t, remaining.IsRecognized)
 }
 
 type fixedBreakerChecker struct {

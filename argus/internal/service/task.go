@@ -243,32 +243,32 @@ type AvailableCameraItem struct {
 
 // InstanceItem 实例列表项（状态合并同 TaskItem）。
 type InstanceItem struct {
-	InstanceID    string                  `json:"instanceId"`
-	CameraID      string                  `json:"cameraId"`
-	AlgorithmID   string                  `json:"algorithmId"`
-	AnalysisFPS   int32                   `json:"analysisFps"`
-	ParamsJSON    json.RawMessage         `json:"paramsJson"`
-	Rules         []model.DetectionRule   `json:"rules"`
+	InstanceID          string                  `json:"instanceId"`
+	CameraID            string                  `json:"cameraId"`
+	AlgorithmID         string                  `json:"algorithmId"`
+	AnalysisFPS         int32                   `json:"analysisFps"`
+	ParamsJSON          json.RawMessage         `json:"paramsJson"`
+	Rules               []model.DetectionRule   `json:"rules"`
 	MotionGate          *model.MotionGateConfig `json:"motionGate,omitempty"`
-	SimilarityThreshold *float32               `json:"similarityThreshold,omitempty"`
-	Enabled             bool                   `json:"enabled"`
-	ActualStatus  int8                    `json:"actualStatus"`
-	StatusMessage string                  `json:"statusMessage"`
-	CurrentFps    *float32                `json:"currentFps"` // 实时字段：无上报时为 null
-	ReportedAt    *time.Time              `json:"reportedAt"` // 实时字段：无上报时为 null
+	SimilarityThreshold *float32                `json:"similarityThreshold,omitempty"`
+	Enabled             bool                    `json:"enabled"`
+	ActualStatus        int8                    `json:"actualStatus"`
+	StatusMessage       string                  `json:"statusMessage"`
+	CurrentFps          *float32                `json:"currentFps"` // 实时字段：无上报时为 null
+	ReportedAt          *time.Time              `json:"reportedAt"` // 实时字段：无上报时为 null
 }
 
 // CreateInstanceInput 创建实例入参。AnalysisFPS<=0 按默认 25 处理（D12）；
 // ParamsJSON 缺省为 {}；Rules 缺省为空；Enabled=true 时创建即启用。
 type CreateInstanceInput struct {
-	CameraID    string                  `json:"cameraId" binding:"required"`
-	AlgorithmID string                  `json:"algorithmId" binding:"required"`
-	AnalysisFPS int32                   `json:"analysisFps"`
-	ParamsJSON  json.RawMessage         `json:"paramsJson"`
-	Rules       []model.DetectionRule   `json:"rules"`
-	MotionGate  *model.MotionGateConfig `json:"motionGate"`
-	SimilarityThreshold *float32        `json:"similarityThreshold"`
-	Enabled     bool                    `json:"enabled"`
+	CameraID            string                  `json:"cameraId" binding:"required"`
+	AlgorithmID         string                  `json:"algorithmId" binding:"required"`
+	AnalysisFPS         int32                   `json:"analysisFps"`
+	ParamsJSON          json.RawMessage         `json:"paramsJson"`
+	Rules               []model.DetectionRule   `json:"rules"`
+	MotionGate          *model.MotionGateConfig `json:"motionGate"`
+	SimilarityThreshold *float32                `json:"similarityThreshold"`
+	Enabled             bool                    `json:"enabled"`
 }
 
 // UpdateInstanceInput 整份提交实例配置（analysisFps + paramsJson + rules，design §4.2）。
@@ -276,11 +276,11 @@ type CreateInstanceInput struct {
 // 注意 required 对切片只要求非 nil：rules 必须显式传（可为空数组 []），
 // 省略该字段会被视为缺失而 400。
 type UpdateInstanceInput struct {
-	AnalysisFPS *int32                  `json:"analysisFps" binding:"required"`
-	ParamsJSON  json.RawMessage         `json:"paramsJson" binding:"required"`
-	Rules       []model.DetectionRule   `json:"rules" binding:"required"`
-	MotionGate  *model.MotionGateConfig `json:"motionGate"`
-	SimilarityThreshold *float32        `json:"similarityThreshold"`
+	AnalysisFPS         *int32                  `json:"analysisFps" binding:"required"`
+	ParamsJSON          json.RawMessage         `json:"paramsJson" binding:"required"`
+	Rules               []model.DetectionRule   `json:"rules" binding:"required"`
+	MotionGate          *model.MotionGateConfig `json:"motionGate"`
+	SimilarityThreshold *float32                `json:"similarityThreshold"`
 }
 
 // ── TaskService ─────────────────────────────────────────────────────────
@@ -895,9 +895,9 @@ func (s *taskService) CreateInstance(ctx context.Context, input *CreateInstanceI
 		return nil, err
 	}
 	inst := &model.AlgorithmInstance{
-		InstanceID:     uuid.NewString(),
-		CameraID:       cameraID,
-		AlgorithmID:    algorithmID,
+		InstanceID:          uuid.NewString(),
+		CameraID:            cameraID,
+		AlgorithmID:         algorithmID,
 		AnalysisFPS:         input.AnalysisFPS,
 		ParamsJSON:          model.JSONRaw(paramsJSON),
 		RulesJSON:           model.JSONRaw(rulesJSON),

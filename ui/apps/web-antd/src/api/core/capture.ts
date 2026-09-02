@@ -1,5 +1,79 @@
 import { requestClient } from '#/api/request';
 
+export namespace CaptureApi {
+  export type TargetType =
+    | 'all'
+    | 'face'
+    | 'generic'
+    | 'non_motor'
+    | 'person'
+    | 'vehicle';
+
+  export interface CaptureItem {
+    id: number;
+    eventId: string;
+    instanceId: string;
+    targetType: Exclude<TargetType, 'all'>;
+    cameraId: string;
+    cameraName: string;
+    taskId: number;
+    algorithmId: string;
+    algorithmVersion: string;
+    trackId: number;
+    confidence: number;
+    qualityScore: number;
+    bbox?: [number, number, number, number];
+    subBbox?: [number, number, number, number];
+    imageId: string;
+    imageRelPath: string;
+    cropImageId: string;
+    cropImageRelPath: string;
+    subCropImageId: string;
+    subCropImageRelPath: string;
+    imageUrl?: string;
+    cropImageUrl?: string;
+    subCropImageUrl?: string;
+    isRecognized: boolean;
+    attributes: Record<string, unknown>;
+    capturedAt: string;
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  export interface CaptureListQuery {
+    page?: number;
+    pageSize?: number;
+    startTime?: string;
+    endTime?: string;
+    targetType?: TargetType;
+    cameraId?: string;
+    trackId?: number;
+    keyword?: string;
+    isRecognized?: boolean;
+    minQuality?: number;
+    maxQuality?: number;
+    minConfidence?: number;
+    maxConfidence?: number;
+  }
+
+  export interface CapturePageResult {
+    items: CaptureItem[];
+    total: number;
+  }
+}
+
+/** 分页获取通用抓拍事件记录。 */
+export async function getCaptureListApi(params?: CaptureApi.CaptureListQuery) {
+  return requestClient.get<CaptureApi.CapturePageResult>('/record/captures', {
+    params,
+  });
+}
+
+/** 获取单条通用抓拍事件详情。 */
+export async function getCaptureDetailApi(id: number) {
+  return requestClient.get<CaptureApi.CaptureItem>(`/record/captures/${id}`);
+}
+
 export namespace FaceCaptureApi {
   export interface FaceCandidate {
     faceId: string;
@@ -98,7 +172,7 @@ export async function getFaceCaptureListApi(
     }
   }
   return requestClient.get<FaceCaptureApi.FaceCapturePageResult>(
-    '/record/captures',
+    '/v1/record/captures',
     { params: queryParams },
   );
 }
@@ -108,6 +182,6 @@ export async function getFaceCaptureListApi(
  */
 export async function getFaceCaptureDetailApi(id: number) {
   return requestClient.get<FaceCaptureApi.FaceCaptureItem>(
-    `/record/captures/${id}`,
+    `/v1/record/captures/${id}`,
   );
 }

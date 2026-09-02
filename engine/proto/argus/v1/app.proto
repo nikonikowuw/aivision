@@ -113,6 +113,45 @@ message ReportFaceObservationResponse {
   string error_message = 2; // 诊断信息，客户端不得解析其文本
 }
 
+// 通用抓拍事件上报（统一承载人脸、人体、机动车/车牌等多态目标，支持自适应人脸-人体联合抓拍）
+message CaptureEvent {
+  // 目标级全局事件 ID = "<instance_run_id>/<track_id>" 或 "<instance_run_id>/<batch_event_id>-<target_seq>"
+  string event_id = 1;
+  string instance_id = 2;
+  string camera_id = 3;
+  string camera_name = 4;
+  string algorithm_id = 5;
+  string algorithm_version = 6;
+  string target_type = 7;       // 目标类型: "face" | "person" | "vehicle" | "non_motor" | "generic"
+  int64 track_id = 8;
+  int64 wall_time_ns = 9;
+  bool time_synced = 10;
+
+  BoundingBox bbox = 11;        // 主目标归一化坐标框（如人脸框或人体框）
+  BoundingBox sub_bbox = 12;    // 附属目标归一化坐标框（如联合抓拍中的人脸框）
+  float confidence = 13;        // 检测置信度 [0, 1]
+  float quality_score = 14;     // 综合质量分 [0, 1]
+
+  string image_id = 15;         // 全景大图 ID
+  string image_rel_path = 16;   // 全景大图相对路径
+  string crop_image_id = 17;    // 主特写切图 ID
+  string crop_image_rel_path = 18; // 主特写切图相对路径
+  string sub_crop_image_id = 19;   // 附属特写切图 ID (如人脸特写)
+  string sub_crop_image_rel_path = 20; // 附属特写切图相对路径
+
+  bool is_recognized = 21;      // 是否同时比中底库（用于存储优先级削峰）
+  string attributes_json = 22;  // 异构目标特征属性 JSON
+}
+
+message ReportCaptureRequest {
+  CaptureEvent capture = 1;
+}
+
+message ReportCaptureResponse {
+  string code = 1;          // 空串表示接受
+  string error_message = 2; // 诊断信息，客户端不得解析其文本
+}
+
 // 单张时序人脸抓拍快照
 message FaceCaptureSnapshot {
   int32 snapshot_index = 1;
@@ -280,6 +319,7 @@ service ReportService {
   rpc ReportPlateObservation(ReportPlateObservationRequest) returns (ReportPlateObservationResponse);
   rpc ReportFaceObservation(ReportFaceObservationRequest) returns (ReportFaceObservationResponse);
   rpc ReportFaceCapture(ReportFaceCaptureRequest) returns (ReportFaceCaptureResponse);
+  rpc ReportCapture(ReportCaptureRequest) returns (ReportCaptureResponse);
   rpc ReportTaskState(ReportTaskStateRequest) returns (ReportTaskStateResponse);
   rpc ReportInstanceState(ReportInstanceStateRequest) returns (ReportInstanceStateResponse);
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsResponse);

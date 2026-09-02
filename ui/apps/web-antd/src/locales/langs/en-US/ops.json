@@ -217,7 +217,7 @@
     "description": "Monitor physical disk usage on the edge device and configure storage retention policies based on TTL and watermark thresholds.",
     "edit": "Edit Configuration / Trigger Cleanup",
     "faceCaptureCount": "Face Snapshots",
-    "faceObservationCount": "Face Recognition Records",
+    "faceObservationCount": "Recognition Records",
     "freeBytes": "Available Capacity",
     "guide1": "1. Three-tier defense: Routine TTL cleanup + 85%/70% high/low watermark FIFO shedding + 95% extreme snapshot circuit breaker.",
     "guide2": "2. Atomic deletion: Physical JPEG image files are deleted before SQLite records to prevent orphaned files on power loss.",

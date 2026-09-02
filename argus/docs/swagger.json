@@ -1405,6 +1405,229 @@
                 }
             }
         },
+        "/api/record/captures": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "支持按目标类型、摄像头、时间、关键词和识别状态组合查询",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "抓拍记录"
+                ],
+                "summary": "分页查询通用抓拍记录",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "目标类型: all|face|person|vehicle|non_motor|generic",
+                        "name": "targetType",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "摄像头ID",
+                        "name": "cameraId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "事件ID、摄像头名称或目标属性关键词",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否已识别",
+                        "name": "isRecognized",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "最低质量分",
+                        "name": "minQuality",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "最高质量分",
+                        "name": "maxQuality",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/argus_app_internal_service.CapturePageResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/captures/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "抓拍记录"
+                ],
+                "summary": "查询通用抓拍记录详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "抓拍记录ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/argus_app_internal_service.CaptureItem"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/record/captures/{id}/image": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "kind 支持 panorama、crop、sub_crop，type=thumb 时优先读取缩略图",
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "抓拍记录"
+                ],
+                "summary": "读取通用抓拍图片",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "抓拍记录ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "图片类型",
+                        "name": "kind",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "图片类型: thumb 缩略图",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/argus_app_internal_pkg_response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/record/faces": {
             "get": {
                 "security": [
@@ -3866,6 +4089,116 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/argus_app_internal_model.Camera"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "argus_app_internal_service.CaptureItem": {
+            "type": "object",
+            "properties": {
+                "algorithmId": {
+                    "type": "string"
+                },
+                "algorithmVersion": {
+                    "type": "string"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "bbox": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "cameraId": {
+                    "type": "string"
+                },
+                "cameraName": {
+                    "type": "string"
+                },
+                "capturedAt": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "cropImageId": {
+                    "type": "string"
+                },
+                "cropImageRelPath": {
+                    "type": "string"
+                },
+                "cropImageUrl": {
+                    "type": "string"
+                },
+                "eventId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "imageId": {
+                    "type": "string"
+                },
+                "imageRelPath": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "instanceId": {
+                    "type": "string"
+                },
+                "isRecognized": {
+                    "type": "boolean"
+                },
+                "qualityScore": {
+                    "type": "number"
+                },
+                "subBbox": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "subCropImageId": {
+                    "type": "string"
+                },
+                "subCropImageRelPath": {
+                    "type": "string"
+                },
+                "subCropImageUrl": {
+                    "type": "string"
+                },
+                "targetType": {
+                    "type": "string"
+                },
+                "taskId": {
+                    "type": "integer"
+                },
+                "trackId": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "argus_app_internal_service.CapturePageResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/argus_app_internal_service.CaptureItem"
                     }
                 },
                 "total": {

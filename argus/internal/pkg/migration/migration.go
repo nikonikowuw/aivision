@@ -38,4 +38,3 @@ func (r *Runner) AutoMigrate() error {
 func (r *Runner) CheckSchemaReady() error {
 	return r.AutoMigrate()
 }
-

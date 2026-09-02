@@ -1,56 +1,41 @@
-# 数据库迁移说明 (PostgreSQL)
+# 数据库迁移说明（SQLite）
 
-本项目使用 `golang-migrate` 管理 PostgreSQL 数据库迁移。
+当前 `app/` 的运行时数据库是 SQLite，数据库初始化和升级由 GORM 负责：
 
-## 迁移文件
+```text
+cmd/migrate up/version
+        -> internal/pkg/migration.Runner
+        -> model.AutoMigrate
+        -> model.Seed
+```
 
-迁移文件统一存放在 `app/migrations/`，并通过 `embed.FS` 嵌入二进制，不再依赖运行时宿主机目录：
-
-- `000001_init_schema`: 初始 8 表 baseline。
-- `000002_add_menu_parent_index`: 菜单父节点索引。
-- `000003_add_department_parent_index_and_fix_status_default`: 部门父节点索引并移除 status 默认值。
-- `000004_use_unix_millisecond_soft_delete`: 软删除毫秒时间戳与高并发复合唯一索引。
-- `000005_seed_system_rbac`: 系统角色、初始菜单树与超级管理员绑定（数据迁移，不创建管理员用户）。
-- `000006_menu_button_name_i18n`: 按钮级菜单 `name` 由中文展示名迁移为标准 i18n key（数据迁移）。
+API 启动时也会执行同一套 `CheckSchemaReady`。因此 SQLite 数据库不存在独立的 migration version 表，`make migrate-up` 不会读取或执行 `migrations/*.sql`，也不支持 `down` 和 `force` 命令。
 
 ## 常用命令
 
-在 `app/` 目录下：
+在 `app/` 目录下执行：
 
 ```bash
-# 执行全部待迁移版本
-make migrate-up
-# 或：go run ./cmd/migrate up
-
-# 回滚最近 1 个版本（谨慎使用）
-make migrate-down
-# 或：go run ./cmd/migrate down
-
-# 查看当前迁移版本与 dirty 状态
-make migrate-version
-# 或：go run ./cmd/migrate version
-
-# 仅在 dirty 修复或对已有数据库做 baseline 标记时使用
-go run ./cmd/migrate force 5
+# 自动建表/补列并播种幂等初始数据
+go run ./cmd/migrate up
+# 检查并补齐 schema 与 seed
+go run ./cmd/migrate version
 ```
 
-## 已有数据库接入指南 (Baseline)
+对应的 Make 目标为 `make migrate-up` 和 `make migrate-version`。
 
-如果你的数据库此前已由 GORM AutoMigrate + 旧版 SQL 初始化，直接执行 `migrate up` 会因为表已存在而报错。请按以下流程完成接入：
+## 已有 SQLite 数据库升级
 
-1. 确认数据库结构已与当前代码一致（特别是 `users` / `roles` 的 `deleted_at` 复合唯一索引已建立）。
-2. 执行 baseline 命令，将版本号标记为 `4`：
-   ```bash
-   go run ./cmd/migrate force 4
-   ```
-3. 执行后续数据迁移：
-   ```bash
-   go run ./cmd/migrate up
-   ```
-4. 执行完成后，使用 `go run ./cmd/migrate version` 确认版本已更新到最新版本。
+直接再次执行 `make migrate-up` 即可。GORM `AutoMigrate` 会补齐新增表、字段和索引，`Seed` 会增量补齐菜单，并清理已经废弃的 `RecordPlate` 菜单及其角色关联。SQLite 生产数据不应通过删除数据库文件或手工重建表升级。
 
-## 生产发布规范
+## SQL 迁移文件
 
-1. 生产 API 启动时**不会自动修改数据库结构**，只会检查当前数据库版本是否达到最新版本要求。
-2. 发布流程必须在部署 API 容器之前先执行 `migrate up`。
-3. 默认管理员请通过 `cmd/bootstrap` 或 `make bootstrap-admin` 独立创建，不要在启动流程中隐式创建弱密码账号。
+`migrations/*.sql` 是按版本保存的 PostgreSQL 发布脚本，使用 `embed.FS` 保存在 Go 代码中，供未来或独立的 PostgreSQL 发布工具使用；它们不是当前 SQLite CLI 的执行来源。修改已经发布的 SQL 文件不能替代前向迁移：例如 `000040_add_capture_joint_fields` 用于补齐已由 `000038` 创建的 `captures` 表字段，`000041_remove_legacy_record_plate_menu` 用于清理旧菜单。
+
+PostgreSQL 部署必须使用支持这些脚本的外部 migration runner，并在 API 启动前完成全部待执行版本。SQLite 与 PostgreSQL 的 schema 变更应保持模型和脚本语义一致，并分别在对应运行时验证。
+
+## 生产注意事项
+
+- 默认管理员通过 `cmd/bootstrap` 或 `make bootstrap-admin` 独立创建，不依赖迁移隐式创建弱密码账号。
+- 生产环境通过 `APP_DB_PATH`、`APP_JWT_SECRET` 等环境变量覆盖配置。
+- 迁移完成后应执行后端测试和 `go vet`，并确认 `captures`、菜单以及角色权限均符合当前模型。

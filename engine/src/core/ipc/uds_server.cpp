@@ -971,15 +971,18 @@ public:
 private:
     // 一个异步 pending 对应一个检测或识别批次：多个目标事件共享同一帧引用和抓拍图片。
     struct PendingCapture {
-        enum class Kind { Alarm, PlateObservation, FaceObservation };
+        enum class Kind { Alarm, PlateObservation, FaceObservation, Capture };
         Kind kind = Kind::Alarm;
         std::vector<argus::v1::AlarmEvent> alarms;
         std::vector<argus::v1::PlateObservation> plates;
         std::vector<argus::v1::FaceObservation> faces;
         std::vector<argus::v1::FaceCapture> captures;
+        std::vector<argus::v1::CaptureEvent> generic_captures;
         std::vector<size_t> face_observation_crop_indices;
         std::vector<av_rect> plate_crop_rois;
         std::vector<av_rect> face_crop_rois;
+        std::vector<av_rect> capture_crop_rois;
+        std::vector<av_rect> capture_sub_crop_rois;
         std::string capture_id;
         av_frame_desc frame{};
         av_rect image_roi{};
@@ -996,9 +999,12 @@ private:
         PendingCapture(PendingCapture&& other) noexcept
             : kind(other.kind), alarms(std::move(other.alarms)), plates(std::move(other.plates)),
               faces(std::move(other.faces)), captures(std::move(other.captures)),
+              generic_captures(std::move(other.generic_captures)),
               face_observation_crop_indices(std::move(other.face_observation_crop_indices)),
               plate_crop_rois(std::move(other.plate_crop_rois)),
-              face_crop_rois(std::move(other.face_crop_rois)), capture_id(std::move(other.capture_id)),
+              face_crop_rois(std::move(other.face_crop_rois)),
+              capture_crop_rois(std::move(other.capture_crop_rois)),
+              capture_sub_crop_rois(std::move(other.capture_sub_crop_rois)), capture_id(std::move(other.capture_id)),
               frame(other.frame), image_roi(other.image_roi), frame_ops(other.frame_ops),
               has_image(other.has_image), images_ready(other.images_ready),
               frame_retained(other.frame_retained), retry_count(other.retry_count) {
@@ -1014,9 +1020,12 @@ private:
             plates = std::move(other.plates);
             faces = std::move(other.faces);
             captures = std::move(other.captures);
+            generic_captures = std::move(other.generic_captures);
             face_observation_crop_indices = std::move(other.face_observation_crop_indices);
             plate_crop_rois = std::move(other.plate_crop_rois);
             face_crop_rois = std::move(other.face_crop_rois);
+            capture_crop_rois = std::move(other.capture_crop_rois);
+            capture_sub_crop_rois = std::move(other.capture_sub_crop_rois);
             capture_id = std::move(other.capture_id);
             frame = other.frame;
             image_roi = other.image_roi;
@@ -1051,6 +1060,7 @@ private:
     static constexpr uint32_t kMaxPlateReportRetries = 3;
     static constexpr uint32_t kMaxFaceReportRetries = 3;
     static constexpr size_t kMaxFaceTrackStates = 4096;
+    static constexpr size_t kMaxGenericTrackStates = 4096;
     static constexpr float kFaceReportImprovementMargin = 0.03f;
 
     struct FaceTrackReportState {
@@ -1058,6 +1068,11 @@ private:
         float reported_quality = 0.0f;
         int32_t snapshot_count = 0;
         int64_t last_snapshot_wall_time_ns = 0;
+    };
+
+    struct GenericTrackReportState {
+        float last_quality = 0.0f;
+        std::chrono::steady_clock::time_point last_report_at{};
     };
 
     bool remember_event_id(const std::string& event_id) {
@@ -1103,6 +1118,13 @@ private:
                 ++it;
             }
         }
+        for (auto it = generic_track_states_.begin(); it != generic_track_states_.end();) {
+            if (it->first.starts_with(prefix)) {
+                it = generic_track_states_.erase(it);
+            } else {
+                ++it;
+            }
+        }
     }
 
     void forget_pending_event_ids_locked(const PendingCapture& pending) {
@@ -1117,6 +1139,8 @@ private:
             for (const auto& plate : pending.plates) forget(plate.event_id());
         } else if (pending.kind == PendingCapture::Kind::FaceObservation) {
             for (const auto& face : pending.faces) forget(face.event_id());
+        } else if (pending.kind == PendingCapture::Kind::Capture) {
+            for (const auto& capture : pending.generic_captures) forget(capture.event_id());
         }
     }
 
@@ -1181,6 +1205,18 @@ private:
                 // 人脸同一 track 的相似度提升必须复用 event_id，由 track 状态负责去重。
                 // reported_events_ 只服务于告警/车牌事件，不能阻断更优人脸结果。
                 accepted = !pending.faces.empty() || !pending.captures.empty();
+            } else if (pending.kind == PendingCapture::Kind::Capture) {
+                std::vector<argus::v1::CaptureEvent> new_captures;
+                new_captures.reserve(pending.generic_captures.size());
+                for (auto& capture : pending.generic_captures) {
+                    if (bypass_event_dedup || remember_event_id(capture.event_id())) {
+                        new_captures.push_back(std::move(capture));
+                    }
+                }
+                if (!new_captures.empty()) {
+                    pending.generic_captures = std::move(new_captures);
+                    accepted = true;
+                }
             }
             if (accepted) {
                 if (capture_queue_.size() >= kMaxPendingAlarmQueueSize) {
@@ -1445,6 +1481,124 @@ private:
                     // 图片已落盘，重试只复用 protobuf 中的图片引用，不再次访问已释放的帧。
                     enqueue_pending_capture(std::move(retry), true);
                 }
+            } else if (pending.kind == PendingCapture::Kind::Capture) {
+                std::string pano_image_id;
+                std::string pano_image_rel_path;
+                std::vector<std::pair<std::string, std::string>> crop_images;
+                std::vector<std::pair<std::string, std::string>> sub_crop_images;
+                bool capture_succeeded = pending.has_image;
+                if (pending.has_image && !pending.images_ready) {
+                    ImageRecord pano_record;
+                    const av_status pano_status = ImageManager::instance().save_detection_image(
+                        &pending.frame, nullptr, pending.capture_id + "-pano", &pano_record);
+                    if (pano_status == AV_OK) {
+                        pano_image_id = pano_record.image_id;
+                        pano_image_rel_path = pano_record.rel_path;
+                    } else {
+                        capture_succeeded = false;
+                        capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                    }
+
+                    const size_t target_count = pending.generic_captures.size();
+                    if (!pending.capture_crop_rois.empty() &&
+                        pending.capture_crop_rois.size() != target_count) {
+                        capture_succeeded = false;
+                        capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                    }
+                    if (!pending.capture_sub_crop_rois.empty() &&
+                        pending.capture_sub_crop_rois.size() != target_count) {
+                        capture_succeeded = false;
+                        capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                    }
+                    crop_images.resize(target_count);
+                    sub_crop_images.resize(target_count);
+                    for (size_t i = 0; capture_succeeded && i < target_count; ++i) {
+                        if (i < pending.capture_crop_rois.size() && pending.capture_crop_rois[i].width > 0.0f &&
+                            pending.capture_crop_rois[i].height > 0.0f) {
+                            ImageRecord crop_record;
+                            const av_status crop_status = ImageManager::instance().save_detection_image(
+                                &pending.frame, &pending.capture_crop_rois[i],
+                                pending.capture_id + "-crop-" + std::to_string(i + 1), &crop_record);
+                            if (crop_status == AV_OK) {
+                                crop_images[i] = {crop_record.image_id, crop_record.rel_path};
+                            } else {
+                                capture_succeeded = false;
+                                capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                            }
+                        }
+                        if (i < pending.capture_sub_crop_rois.size() &&
+                            pending.capture_sub_crop_rois[i].width > 0.0f &&
+                            pending.capture_sub_crop_rois[i].height > 0.0f) {
+                            ImageRecord sub_crop_record;
+                            const av_status sub_crop_status = ImageManager::instance().save_detection_image(
+                                &pending.frame, &pending.capture_sub_crop_rois[i],
+                                pending.capture_id + "-sub-crop-" + std::to_string(i + 1), &sub_crop_record);
+                            if (sub_crop_status == AV_OK) {
+                                sub_crop_images[i] = {sub_crop_record.image_id, sub_crop_record.rel_path};
+                            } else {
+                                capture_succeeded = false;
+                                capture_image_failures_.fetch_add(1, std::memory_order_relaxed);
+                            }
+                        }
+                    }
+                    // JPEG 编码完成后立即归还帧引用；后续 protobuf/IPC 不再依赖平台帧。
+                    pending.release_frame();
+
+                    if (capture_succeeded) {
+                        for (size_t i = 0; i < target_count; ++i) {
+                            pending.generic_captures[i].set_image_id(pano_image_id);
+                            pending.generic_captures[i].set_image_rel_path(pano_image_rel_path);
+                            if (!crop_images[i].first.empty()) {
+                                pending.generic_captures[i].set_crop_image_id(crop_images[i].first);
+                                pending.generic_captures[i].set_crop_image_rel_path(crop_images[i].second);
+                            }
+                            if (!sub_crop_images[i].first.empty()) {
+                                pending.generic_captures[i].set_sub_crop_image_id(sub_crop_images[i].first);
+                                pending.generic_captures[i].set_sub_crop_image_rel_path(sub_crop_images[i].second);
+                            }
+                        }
+                    }
+                } else if (!pending.has_image) {
+                    pending.release_frame();
+                }
+
+                if (!capture_succeeded) {
+                    forget_pending_event_ids(pending);
+                    capture_processed_.fetch_add(1, std::memory_order_relaxed);
+                    return;
+                }
+
+                PendingCapture retry;
+                retry.kind = PendingCapture::Kind::Capture;
+                retry.capture_id = pending.capture_id;
+                retry.has_image = true;
+                retry.images_ready = true;
+                retry.retry_count = pending.retry_count + 1;
+                for (const auto& capture : pending.generic_captures) {
+                    if (!app_client_ || !app_client_->report_capture(capture)) {
+                        capture_report_failures_.fetch_add(1, std::memory_order_relaxed);
+                        if (retry.retry_count <= kMaxFaceReportRetries) {
+                            retry.generic_captures.push_back(capture);
+                        }
+                    } else {
+                        if (!capture.image_id().empty() &&
+                            ImageManager::instance().mark_reported(capture.image_id()) != AV_OK) {
+                            capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                        if (!capture.crop_image_id().empty() &&
+                            ImageManager::instance().mark_reported(capture.crop_image_id()) != AV_OK) {
+                            capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                        if (!capture.sub_crop_image_id().empty() &&
+                            ImageManager::instance().mark_reported(capture.sub_crop_image_id()) != AV_OK) {
+                            capture_mark_failures_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
+                }
+                if (!retry.generic_captures.empty()) {
+                    // 图片已落盘，重试只复用 protobuf 中的图片引用，不再次访问已释放的帧。
+                    enqueue_pending_capture(std::move(retry), true);
+                }
             }
         } catch (...) {
             capture_processing_failures_.fetch_add(1, std::memory_order_relaxed);
@@ -1452,6 +1606,9 @@ private:
                 // 处理过程中发生异常时不能遗留“已上报”状态，否则同一 track 将永久无法重试。
                 std::lock_guard<std::mutex> queue_lock(capture_mutex_);
                 forget_pending_face_states_locked(pending);
+            } else if (pending.kind == PendingCapture::Kind::Capture) {
+                // 通用抓拍使用事件 ID 去重；异常时释放已登记的 ID，允许后续重新入队。
+                forget_pending_event_ids(pending);
             }
         }
         pending.release_frame();
@@ -2378,6 +2535,207 @@ private:
         }
     }
 
+    void enqueue_generic_capture_events(const std::shared_ptr<AlgorithmInstance>& instance,
+                                         const nlohmann::json& value,
+                                         const av_frame_desc& frame,
+                                         const std::unordered_set<int64_t>& recognized_track_ids) {
+        if (!instance || !value.contains("persons") || !value["persons"].is_array() ||
+            !frame.frame_token || !frame.opaque || frame.size < sizeof(av_frame_desc) ||
+            !safe_package_component(instance->get_run_id())) {
+            return;
+        }
+
+        struct Candidate {
+            int64_t track_id = 0;
+            std::string target_type;
+            std::array<double, 4> bbox{};
+            std::array<double, 4> face_bbox{};
+            bool has_face = false;
+            double person_confidence = 0.0;
+            double face_confidence = 0.0;
+            std::string attributes_json;
+        };
+        const auto valid_bbox = [](const nlohmann::json& json, std::array<double, 4>& bbox) {
+            if (!json.is_array() || json.size() != bbox.size()) return false;
+            for (size_t index = 0; index < bbox.size(); ++index) {
+                if (!json[index].is_number()) return false;
+                bbox[index] = json[index].get<double>();
+                if (!std::isfinite(bbox[index]) || bbox[index] < 0.0 || bbox[index] > 1.0) return false;
+            }
+            return bbox[2] > 0.0 && bbox[3] > 0.0 &&
+                   bbox[0] + bbox[2] <= 1.0 && bbox[1] + bbox[3] <= 1.0;
+        };
+        const auto read_track_id = [](const nlohmann::json& json, int64_t& value_out) {
+            if (json.is_number_integer()) {
+                value_out = json.get<int64_t>();
+                return value_out >= 0;
+            }
+            if (!json.is_number_unsigned()) return false;
+            const uint64_t value = json.get<uint64_t>();
+            if (value > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) return false;
+            value_out = static_cast<int64_t>(value);
+            return true;
+        };
+
+        std::vector<Candidate> candidates;
+        candidates.reserve(value["persons"].size());
+        for (const auto& person : value["persons"]) {
+            if (!person.is_object() || !person.contains("track_id") || !person.contains("bbox") ||
+                !person.contains("confidence")) {
+                return;
+            }
+            Candidate candidate;
+            if (!read_track_id(person["track_id"], candidate.track_id) ||
+                !valid_bbox(person["bbox"], candidate.bbox) || !person["confidence"].is_number()) {
+                return;
+            }
+            candidate.person_confidence = person["confidence"].get<double>();
+            if (!std::isfinite(candidate.person_confidence) || candidate.person_confidence < 0.0 ||
+                candidate.person_confidence > 1.0) {
+                return;
+            }
+
+            const bool has_face_field = person.contains("face") && !person["face"].is_null();
+            if (has_face_field) {
+                const auto& face = person["face"];
+                if (!face.is_object() || !face.contains("bbox") || !face.contains("confidence") ||
+                    !face["confidence"].is_number() || !valid_bbox(face["bbox"], candidate.face_bbox)) {
+                    return;
+                }
+                candidate.face_confidence = face["confidence"].get<double>();
+                if (!std::isfinite(candidate.face_confidence) || candidate.face_confidence < 0.0 ||
+                    candidate.face_confidence > 1.0) {
+                    return;
+                }
+                candidate.has_face = true;
+            }
+
+            if (person.contains("target_type")) {
+                if (!person["target_type"].is_string()) return;
+                candidate.target_type = person["target_type"].get<std::string>();
+            } else {
+                // 兼容尚未增加 target_type 字段的旧算法包：有 face 子对象时按 face，否则按 person。
+                candidate.target_type = candidate.has_face ? "face" : "person";
+            }
+            if (candidate.target_type != "face" && candidate.target_type != "person") return;
+            if (candidate.target_type == "face" && !candidate.has_face) return;
+
+            nlohmann::json attributes = nlohmann::json::object();
+            attributes["has_face"] = candidate.has_face;
+            attributes["person_confidence"] = candidate.person_confidence;
+            if (candidate.has_face) {
+                attributes["face_confidence"] = candidate.face_confidence;
+                attributes["face_bbox"] = {candidate.face_bbox[0], candidate.face_bbox[1],
+                                             candidate.face_bbox[2], candidate.face_bbox[3]};
+            }
+            candidate.attributes_json = attributes.dump();
+            candidates.push_back(std::move(candidate));
+        }
+        if (candidates.empty()) return;
+
+        const auto now = std::chrono::steady_clock::now();
+        PendingCapture pending;
+        pending.kind = PendingCapture::Kind::Capture;
+        pending.capture_id = instance->get_run_id() + "/" + std::to_string(frame.frame_id);
+        pending.has_image = true;
+        pending.frame = frame;
+        pending.image_roi.size = sizeof(av_rect);
+        pending.image_roi.api_version = AV_ALGO_API_VERSION;
+        pending.image_roi.x = 0.0f;
+        pending.image_roi.y = 0.0f;
+        pending.image_roi.width = 1.0f;
+        pending.image_roi.height = 1.0f;
+        pending.capture_crop_rois.reserve(candidates.size());
+        pending.capture_sub_crop_rois.reserve(candidates.size());
+        pending.generic_captures.reserve(candidates.size());
+
+        PendingCapture dropped;
+        std::vector<std::pair<std::string, GenericTrackReportState>> state_updates;
+        bool accepted = false;
+        {
+            std::lock_guard<std::mutex> queue_lock(capture_mutex_);
+            size_t target_sequence = 0;
+            for (const auto& candidate : candidates) {
+                const std::string state_key = instance->get_run_id() + "/" + std::to_string(candidate.track_id);
+                const auto state = generic_track_states_.find(state_key);
+                const float quality = static_cast<float>(candidate.has_face ? candidate.face_confidence
+                                                                            : candidate.person_confidence);
+                const bool due = state == generic_track_states_.end() ||
+                                 now - state->second.last_report_at >= std::chrono::milliseconds(800) ||
+                                 quality >= state->second.last_quality + 0.15f;
+                if (!due) continue;
+
+                argus::v1::CaptureEvent event;
+                event.set_event_id(instance->get_run_id() + "/" + std::to_string(frame.frame_id) + "-" +
+                                   std::to_string(candidate.track_id) + "-" + std::to_string(target_sequence++));
+                event.set_instance_id(instance->get_instance_id());
+                event.set_camera_id(instance->get_camera_id());
+                event.set_camera_name(camera_name_for(instance->get_camera_id()));
+                event.set_algorithm_id(instance->get_algorithm_id());
+                event.set_algorithm_version(instance->get_version());
+                event.set_target_type(candidate.target_type);
+                event.set_track_id(candidate.track_id);
+                event.set_wall_time_ns(frame.wall_time_ns);
+                event.set_time_synced(frame.time_synced != 0);
+                event.mutable_bbox()->set_x_min(static_cast<float>(candidate.bbox[0]));
+                event.mutable_bbox()->set_y_min(static_cast<float>(candidate.bbox[1]));
+                event.mutable_bbox()->set_x_max(static_cast<float>(candidate.bbox[0] + candidate.bbox[2]));
+                event.mutable_bbox()->set_y_max(static_cast<float>(candidate.bbox[1] + candidate.bbox[3]));
+                if (candidate.target_type == "person" && candidate.has_face) {
+                    event.mutable_sub_bbox()->set_x_min(static_cast<float>(candidate.face_bbox[0]));
+                    event.mutable_sub_bbox()->set_y_min(static_cast<float>(candidate.face_bbox[1]));
+                    event.mutable_sub_bbox()->set_x_max(static_cast<float>(candidate.face_bbox[0] + candidate.face_bbox[2]));
+                    event.mutable_sub_bbox()->set_y_max(static_cast<float>(candidate.face_bbox[1] + candidate.face_bbox[3]));
+                }
+                event.set_confidence(static_cast<float>(candidate.person_confidence));
+                event.set_quality_score(quality);
+                event.set_is_recognized(recognized_track_ids.contains(candidate.track_id));
+                event.set_attributes_json(candidate.attributes_json);
+                pending.generic_captures.push_back(std::move(event));
+
+                av_rect crop_roi{};
+                crop_roi.size = sizeof(av_rect);
+                crop_roi.api_version = AV_ALGO_API_VERSION;
+                crop_roi.x = static_cast<float>(candidate.bbox[0]);
+                crop_roi.y = static_cast<float>(candidate.bbox[1]);
+                crop_roi.width = static_cast<float>(candidate.bbox[2]);
+                crop_roi.height = static_cast<float>(candidate.bbox[3]);
+                pending.capture_crop_rois.push_back(crop_roi);
+
+                av_rect sub_crop_roi{};
+                sub_crop_roi.size = sizeof(av_rect);
+                sub_crop_roi.api_version = AV_ALGO_API_VERSION;
+                if (candidate.target_type == "person" && candidate.has_face) {
+                    sub_crop_roi.x = static_cast<float>(candidate.face_bbox[0]);
+                    sub_crop_roi.y = static_cast<float>(candidate.face_bbox[1]);
+                    sub_crop_roi.width = static_cast<float>(candidate.face_bbox[2]);
+                    sub_crop_roi.height = static_cast<float>(candidate.face_bbox[3]);
+                }
+                pending.capture_sub_crop_rois.push_back(sub_crop_roi);
+                state_updates.push_back({state_key, GenericTrackReportState{quality, now}});
+            }
+            if (!pending.generic_captures.empty()) {
+                if (generic_track_states_.size() + state_updates.size() > kMaxGenericTrackStates) {
+                    generic_track_states_.clear();
+                }
+                pending.frame_ops = FramePool::instance().get_frame_ops();
+                if (pending.frame_ops && pending.frame_ops->retain && pending.frame_ops->release &&
+                    pending.frame_ops->retain(pending.frame_ops->ctx, pending.frame.frame_token) == AV_OK) {
+                    pending.frame_retained = true;
+                    accepted = enqueue_pending_capture_locked(pending, false, dropped);
+                    if (accepted) {
+                        for (const auto& [state_key, state] : state_updates) {
+                            generic_track_states_[state_key] = state;
+                        }
+                    }
+                }
+            }
+        }
+        dropped.release_frame();
+        if (!accepted) pending.release_frame();
+        if (accepted) capture_cv_.notify_one();
+    }
+
     void handle_face_recognition_result(const std::shared_ptr<AlgorithmInstance>& instance,
                                         const av_algo_result& result, const av_frame_desc& frame) {
         const auto reject = [this, &instance, &result, &frame](std::string_view reason) {
@@ -2489,7 +2847,19 @@ private:
                 return;
             }
 
-            if (!FaceGallery::instance().ready()) return;
+            // 通用抓拍独立于人脸底库状态；底库未就绪时仍记录人体/人脸事件，但无法标记识别命中。
+            if (!FaceGallery::instance().ready()) {
+                const std::unordered_set<int64_t> no_recognized_tracks;
+                enqueue_generic_capture_events(instance, value, frame, no_recognized_tracks);
+                return;
+            }
+
+            const float similarity_threshold = instance->get_face_similarity_threshold();
+            if (!std::isfinite(similarity_threshold) || similarity_threshold < 0.0f ||
+                similarity_threshold > 1.0f) {
+                reject("face similarity threshold is invalid");
+                return;
+            }
 
             struct ParsedFace {
                 int64_t track_id = 0;
@@ -2503,13 +2873,14 @@ private:
             std::vector<ParsedFace> faces_with_embedding;
             faces_with_embedding.reserve(value["persons"].size());
             std::unordered_set<int64_t> track_ids;
+            std::unordered_set<int64_t> recognized_track_ids;
             bool has_previous_track_id = false;
             int64_t previous_track_id = 0;
 
             for (const auto& person : value["persons"]) {
                 int64_t track_id = 0;
                 if (!person.is_object() || !field_allowed(person, {
-                        "track_id", "bbox", "confidence", "face"}) ||
+                        "track_id", "target_type", "bbox", "confidence", "face"}) ||
                     !person.contains("track_id") || !read_nonnegative_i64(person["track_id"], track_id) ||
                     !person.contains("bbox") || !person.contains("confidence") ||
                     !person["confidence"].is_number()) {
@@ -2618,6 +2989,9 @@ private:
                     return;
                 }
                 const auto match = candidates.front();
+                if (match.similarity >= similarity_threshold) {
+                    recognized_track_ids.insert(track_id);
+                }
                 faces_with_embedding.push_back(ParsedFace{
                     .track_id = track_id,
                     .bbox = face_bbox,
@@ -2643,6 +3017,8 @@ private:
                     return;
                 }
             }
+
+            enqueue_generic_capture_events(instance, value, frame, recognized_track_ids);
             if (faces_with_embedding.empty()) return;
 
             if (!frame.frame_token || !frame.opaque || frame.size < sizeof(av_frame_desc)) {
@@ -2653,13 +3029,6 @@ private:
                 reject("face run_id is invalid");
                 return;
             }
-            const float similarity_threshold = instance->get_face_similarity_threshold();
-            if (!std::isfinite(similarity_threshold) || similarity_threshold < 0.0f ||
-                similarity_threshold > 1.0f) {
-                reject("face similarity threshold is invalid");
-                return;
-            }
-
             PendingCapture pending;
             pending.kind = PendingCapture::Kind::FaceObservation;
             pending.capture_id = instance->get_run_id() + "/" + std::to_string(frame.frame_id);
@@ -3160,6 +3529,7 @@ private:
     std::unordered_set<std::string> reported_events_;
     std::deque<std::string> reported_event_order_;
     std::unordered_map<std::string, FaceTrackReportState> face_track_states_;
+    std::unordered_map<std::string, GenericTrackReportState> generic_track_states_;
     std::mutex reconcile_mutex_;
     std::atomic<uint64_t> applied_revision_{0};
     argus::v1::DesiredState applied_desired_state_;

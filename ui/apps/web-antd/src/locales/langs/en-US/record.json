@@ -133,9 +133,9 @@
     }
   },
   "face": {
-    "title": "Face Recognition Records",
-    "query": "Query Face Records",
-    "export": "Export Face Records",
+    "title": "Recognition Records",
+    "query": "Query Recognition",
+    "export": "Export Recognition",
     "filter": {
       "camera": "Camera",
       "cameraPlaceholder": "Select camera",
@@ -162,7 +162,7 @@
       "action": "Action"
     },
     "detail": {
-      "title": "Face Recognition Details",
+      "title": "Recognition Details",
       "eventInfo": "Recognition Information",
       "eventId": "Event ID",
       "camera": "Camera",
@@ -192,29 +192,26 @@
     }
   },
   "capture": {
-    "title": "Face Capture Records",
+    "title": "Capture Records",
     "query": "Query Captures",
     "export": "Export Captures",
     "filter": {
       "camera": "Camera",
       "cameraPlaceholder": "Select camera",
-      "strangerOnly": "Stranger Only",
-      "stranger": "Identity Type",
-      "strangerAll": "All Records",
-      "strangerTrue": "Stranger Only",
-      "strangerFalse": "Recognized Only",
       "timeRange": "Capture Time",
-      "trackId": "Track ID",
-      "trackIdPlaceholder": "Input Track ID",
-      "personName": "Matched Person",
-      "personNamePlaceholder": "Input person name",
       "minSimilarity": "Min Similarity",
       "maxSimilarity": "Max Similarity",
+      "keywordPlaceholder": "Event ID, camera, or target attributes",
       "search": "Search",
       "reset": "Reset"
     },
     "columns": {
       "id": "ID",
+      "targetType": "Target Type",
+      "crop": "Target Crop",
+      "panorama": "Panorama",
+      "confidence": "Confidence",
+      "quality": "Quality",
       "bestFaceCrop": "Best Face Crop",
       "bestPanorama": "Best Panorama",
       "snapshotCount": "Snapshots",
@@ -228,12 +225,46 @@
       "action": "Action"
     },
     "actions": {
+      "advancedFilter": "Advanced Filters",
+      "clearFilter": "Clear Filters",
+      "apply": "Apply",
+      "reset": "Reset",
       "viewFilmstrip": "Temporal Evolution",
       "register": "Quick Register",
       "viewDetail": "Detail"
     },
+    "targets": {
+      "all": "All",
+      "face": "Face",
+      "person": "Person",
+      "vehicle": "Vehicle",
+      "non_motor": "Non-motor Vehicle",
+      "generic": "Other"
+    },
+    "advanced": {
+      "title": "Advanced Filters",
+      "recognized": "Recognition Status",
+      "recognizedPlaceholder": "Select status",
+      "recognizedYes": "Recognized",
+      "recognizedNo": "Not Recognized",
+      "quality": "Quality Score",
+      "confidence": "Confidence",
+      "min": "Minimum",
+      "max": "Maximum"
+    },
     "drawer": {
-      "title": "Face Capture Temporal Evolution",
+      "title": "Capture Detail",
+      "targetType": "Target Type",
+      "eventId": "Event ID",
+      "capturedAt": "Captured At",
+      "recognized": "Recognition Status",
+      "confidence": "Confidence",
+      "quality": "Quality Score",
+      "panorama": "Panorama",
+      "primaryCrop": "Primary Crop",
+      "subCrop": "Related Face Crop",
+      "attributes": "Target Attributes",
+      "imageCleaned": "Image has been cleaned",
       "trackInfo": "Target Track Info",
       "trackId": "Track ID",
       "camera": "Camera",

@@ -30,4 +30,3 @@ func TestRunnerAutoMigrateAndCheckSchemaReady(t *testing.T) {
 		t.Fatalf("second CheckSchemaReady: %v", err)
 	}
 }
-

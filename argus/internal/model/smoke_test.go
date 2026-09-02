@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestAutoMigrateCreatesAllTables(t *testing.T) {
 		"users", "roles", "menus", "departments", "user_roles", "role_menus",
 		"refresh_tokens", "operation_logs", "system_configs", "cameras", "persons",
 		"algorithms", "algorithm_versions", "analysis_tasks", "algorithm_instances",
-		"desired_state_revision", "face_gallery_revision", "alarm_records", "plate_observations", "face_observations",
+		"desired_state_revision", "face_gallery_revision", "alarm_records", "plate_observations", "face_observations", "captures",
 	}
 	for _, name := range want {
 		if !gdb.Migrator().HasTable(name) {
@@ -55,6 +56,70 @@ func TestAutoMigrateCreatesAllTables(t *testing.T) {
 	}
 	if !gdb.Migrator().HasColumn(&AlgorithmVersion{}, "is_builtin") {
 		t.Errorf("algorithm_versions column is_builtin missing")
+	}
+}
+
+func TestCaptureRecordSQLiteSchemaAndSoftDelete(t *testing.T) {
+	gdb := newSmokeDB(t)
+
+	for _, column := range []string{
+		"event_id", "target_type", "bbox_json", "sub_bbox_json", "time_synced",
+		"image_id", "crop_image_id", "sub_crop_image_id", "attributes_json", "captured_at",
+	} {
+		if !gdb.Migrator().HasColumn(&CaptureRecord{}, column) {
+			t.Errorf("captures column %s missing", column)
+		}
+	}
+
+	var indexSQL string
+	if err := gdb.Raw("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?", "uk_captures_event_id").Scan(&indexSQL).Error; err != nil {
+		t.Fatalf("read captures unique index: %v", err)
+	}
+	indexSQL = strings.ToLower(indexSQL)
+	if !strings.Contains(indexSQL, "event_id") || !strings.Contains(indexSQL, "deleted_at") {
+		t.Fatalf("captures unique index SQL = %q, want event_id and deleted_at", indexSQL)
+	}
+
+	first := &CaptureRecord{
+		EventID:        "capture-event-1",
+		TargetType:     CaptureTargetPerson,
+		CameraID:       "camera-1",
+		BBoxJSON:       JSONRaw(`{"x_min":0.1,"y_min":0.1,"x_max":0.4,"y_max":0.8}`),
+		AttributesJSON: JSONRaw(`{"hasFace":false}`),
+		CapturedAt:     time.Now(),
+	}
+	if err := gdb.Create(first).Error; err != nil {
+		t.Fatalf("create first capture: %v", err)
+	}
+	if first.CreatedAt.IsZero() || first.UpdatedAt.IsZero() {
+		t.Fatal("GORM timestamps were not populated for capture")
+	}
+	if err := gdb.Delete(first).Error; err != nil {
+		t.Fatalf("soft delete first capture: %v", err)
+	}
+	if first.DeletedAt == 0 {
+		t.Fatal("capture deleted_at was not set by soft delete")
+	}
+
+	second := &CaptureRecord{
+		EventID:    first.EventID,
+		TargetType: CaptureTargetPerson,
+		CameraID:   first.CameraID,
+		CapturedAt: time.Now(),
+	}
+	if err := gdb.Create(second).Error; err != nil {
+		t.Fatalf("recreate event after soft delete: %v", err)
+	}
+
+	var activeCount, allCount int64
+	if err := gdb.Model(&CaptureRecord{}).Where("event_id = ?", first.EventID).Count(&activeCount).Error; err != nil {
+		t.Fatalf("count active captures: %v", err)
+	}
+	if err := gdb.Unscoped().Model(&CaptureRecord{}).Where("event_id = ?", first.EventID).Count(&allCount).Error; err != nil {
+		t.Fatalf("count all captures: %v", err)
+	}
+	if activeCount != 1 || allCount != 2 {
+		t.Fatalf("capture counts active=%d all=%d, want 1/2", activeCount, allCount)
 	}
 }
 
@@ -83,8 +148,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	gdb.Model(&Menu{}).Count(&menuCount)
 	gdb.Model(&User{}).Count(&userCount)
 	gdb.Model(&Role{}).Count(&roleCount)
-	if menuCount != 70 {
-		t.Errorf("menu rows = %d, want 70", menuCount)
+	if menuCount != 67 {
+		t.Errorf("menu rows = %d, want 67", menuCount)
 	}
 	if userCount != 1 || roleCount != 1 {
 		t.Errorf("users=%d roles=%d, want 1/1", userCount, roleCount)
@@ -145,7 +210,6 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 		"resource:task", "resource:task:add", "resource:task:edit", "resource:task:delete",
 		"ai:algorithm", "ai:algorithm:upload", "ai:algorithm:activate", "ai:algorithm:uninstall",
 		"record:alarm", "record:alarm:query", "record:alarm:export",
-		"record:plate", "record:plate:query", "record:plate:export",
 		"record:face", "record:face:query", "record:face:export",
 		"record:capture", "record:capture:query", "record:capture:export",
 		"live:preview", "live:preview:stream",
@@ -165,8 +229,8 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	// super 角色绑定全部 70 条菜单
 	var rmCount int64
 	gdb.Model(&RoleMenu{}).Where("role_id = ?", super.ID).Count(&rmCount)
-	if rmCount != 70 {
-		t.Errorf("role_menus for super = %d, want 70", rmCount)
+	if rmCount != 67 {
+		t.Errorf("role_menus for super = %d, want 67", rmCount)
 	}
 
 	// 初始系统配置与 desired_state_revision
@@ -193,6 +257,68 @@ func TestSeedIdempotentAndStructure(t *testing.T) {
 	}
 	if !lprVer.IsBuiltin {
 		t.Errorf("license_plate_recognition version 1.0.0 is_builtin = false, want true")
+	}
+}
+
+func TestSeedCleansLegacyRecordPlateMenu(t *testing.T) {
+	gdb := newSmokeDB(t)
+	if _, err := Seed(gdb); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	var record Menu
+	if err := gdb.Where("name = ? AND parent_id = 0", "Record").First(&record).Error; err != nil {
+		t.Fatalf("find record menu: %v", err)
+	}
+	var super Role
+	if err := gdb.Where("code = ?", RoleSuperCode).First(&super).Error; err != nil {
+		t.Fatalf("find super role: %v", err)
+	}
+
+	legacy := Menu{
+		ParentID: record.ID,
+		Type:     MenuTypeMenu,
+		Name:     "RecordPlate",
+		Title:    "routes.record.plate",
+		Path:     "/record/plate",
+		Status:   StatusEnabled,
+	}
+	if err := gdb.Create(&legacy).Error; err != nil {
+		t.Fatalf("create legacy menu: %v", err)
+	}
+	legacyButton := Menu{
+		ParentID:   legacy.ID,
+		Type:       MenuTypeButton,
+		Name:       "record.plate.query",
+		Permission: "record:plate:query",
+		Status:     StatusEnabled,
+	}
+	if err := gdb.Create(&legacyButton).Error; err != nil {
+		t.Fatalf("create legacy button: %v", err)
+	}
+	for _, menu := range []*Menu{&legacy, &legacyButton} {
+		if err := gdb.Create(&RoleMenu{RoleID: super.ID, MenuID: menu.ID}).Error; err != nil {
+			t.Fatalf("create legacy role binding: %v", err)
+		}
+	}
+
+	if _, err := Seed(gdb); err != nil {
+		t.Fatalf("seed with legacy menu: %v", err)
+	}
+
+	var activeCount int64
+	if err := gdb.Model(&Menu{}).Where("name IN ?", []string{"RecordPlate", "record.plate.query"}).Count(&activeCount).Error; err != nil {
+		t.Fatalf("count active legacy menus: %v", err)
+	}
+	if activeCount != 0 {
+		t.Fatalf("active legacy menus = %d, want 0", activeCount)
+	}
+	var bindingCount int64
+	if err := gdb.Model(&RoleMenu{}).Where("role_id = ? AND menu_id IN ?", super.ID, []uint64{legacy.ID, legacyButton.ID}).Count(&bindingCount).Error; err != nil {
+		t.Fatalf("count legacy role bindings: %v", err)
+	}
+	if bindingCount != 0 {
+		t.Fatalf("legacy role bindings = %d, want 0", bindingCount)
 	}
 }
 

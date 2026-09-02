@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -52,13 +53,14 @@ type StorageCircuitBreakerChecker interface {
 //   - ReconcileOrphanImages 针对已落库图片保留（retain），超期未落库图片删除（delete）；
 //   - AcceptMetrics 保持 fail-closed。
 type ReportAdapter struct {
-	repo           repository.TaskRepository
-	alarmRepo      repository.AlarmRecordRepository
-	plateRepo      repository.PlateObservationRepository
-	faceRepo       repository.FaceObservationRepository
-	captureRepo    repository.FaceCaptureRepository
-	circuitBreaker StorageCircuitBreakerChecker
-	log            *zap.Logger
+	repo               repository.TaskRepository
+	alarmRepo          repository.AlarmRecordRepository
+	plateRepo          repository.PlateObservationRepository
+	faceRepo           repository.FaceObservationRepository
+	captureRepo        repository.FaceCaptureRepository
+	genericCaptureRepo repository.CaptureRepository
+	circuitBreaker     StorageCircuitBreakerChecker
+	log                *zap.Logger
 
 	mu    sync.RWMutex
 	tasks map[string]TaskRuntimeState     // camera_id → 实时状态
@@ -71,12 +73,12 @@ type ReportAdapter struct {
 	instanceUpdateMu sync.Mutex
 }
 
-// NewReportAdapter 创建 ReportAdapter（保持原有两参数构造函数签名，兼容既有单测与调用者）。
 func NewReportAdapter(repo repository.TaskRepository, log *zap.Logger) *ReportAdapter {
 	return NewReportAdapterWithAlarm(repo, nil, nil, nil, nil, nil, log)
 }
 
-// NewReportAdapterWithAlarm 具备告警落库、车牌观测与人脸识别记录落库能力的完整构造函数。
+// NewReportAdapterWithAlarm 具备告警、车牌、人脸识别和旧版人脸抓拍落库能力。
+// 保留该构造函数签名以兼容既有调用方；通用抓拍由 NewReportAdapterWithCaptures 装配。
 func NewReportAdapterWithAlarm(
 	repo repository.TaskRepository,
 	alarmRepo repository.AlarmRecordRepository,
@@ -86,19 +88,47 @@ func NewReportAdapterWithAlarm(
 	circuitBreaker StorageCleanupService,
 	log *zap.Logger,
 ) *ReportAdapter {
+	return newReportAdapter(repo, alarmRepo, plateRepo, faceRepo, captureRepo, nil, circuitBreaker, log)
+}
+
+// NewReportAdapterWithCaptures 创建包含通用抓拍与旧版人脸抓拍兼容能力的上报适配器。
+func NewReportAdapterWithCaptures(
+	repo repository.TaskRepository,
+	alarmRepo repository.AlarmRecordRepository,
+	plateRepo repository.PlateObservationRepository,
+	faceRepo repository.FaceObservationRepository,
+	captureRepo repository.FaceCaptureRepository,
+	genericCaptureRepo repository.CaptureRepository,
+	circuitBreaker StorageCleanupService,
+	log *zap.Logger,
+) *ReportAdapter {
+	return newReportAdapter(repo, alarmRepo, plateRepo, faceRepo, captureRepo, genericCaptureRepo, circuitBreaker, log)
+}
+
+func newReportAdapter(
+	repo repository.TaskRepository,
+	alarmRepo repository.AlarmRecordRepository,
+	plateRepo repository.PlateObservationRepository,
+	faceRepo repository.FaceObservationRepository,
+	captureRepo repository.FaceCaptureRepository,
+	genericCaptureRepo repository.CaptureRepository,
+	circuitBreaker StorageCleanupService,
+	log *zap.Logger,
+) *ReportAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &ReportAdapter{
-		repo:           repo,
-		alarmRepo:      alarmRepo,
-		plateRepo:      plateRepo,
-		faceRepo:       faceRepo,
-		captureRepo:    captureRepo,
-		circuitBreaker: circuitBreaker,
-		log:            log,
-		tasks:          make(map[string]TaskRuntimeState),
-		insts:          make(map[string]InstanceRuntimeState),
+		repo:               repo,
+		alarmRepo:          alarmRepo,
+		plateRepo:          plateRepo,
+		faceRepo:           faceRepo,
+		captureRepo:        captureRepo,
+		genericCaptureRepo: genericCaptureRepo,
+		circuitBreaker:     circuitBreaker,
+		log:                log,
+		tasks:              make(map[string]TaskRuntimeState),
+		insts:              make(map[string]InstanceRuntimeState),
 	}
 }
 
@@ -481,6 +511,136 @@ func (a *ReportAdapter) AcceptFaceObservation(ctx context.Context, obs *argusv1.
 	return nil
 }
 
+// AcceptCapture 通用抓拍事件流持久化：每个唯一 event_id 只插入一条记录。
+func (a *ReportAdapter) AcceptCapture(ctx context.Context, event *argusv1.CaptureEvent) error {
+	if a.genericCaptureRepo == nil {
+		return engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "capture report service unavailable")
+	}
+	if event == nil {
+		return errors.New("capture event is nil")
+	}
+	eventID := strings.TrimSpace(event.GetEventId())
+	if eventID == "" {
+		return errors.New("capture event_id is empty")
+	}
+	if strings.TrimSpace(event.GetCameraId()) == "" {
+		return errors.New("capture camera_id is empty")
+	}
+
+	targetType := strings.TrimSpace(event.GetTargetType())
+	if targetType == "" {
+		targetType = model.CaptureTargetGeneric
+	}
+	switch targetType {
+	case model.CaptureTargetFace, model.CaptureTargetPerson, model.CaptureTargetVehicle,
+		model.CaptureTargetNonMotor, model.CaptureTargetGeneric:
+	default:
+		return errors.New("capture target_type is invalid")
+	}
+
+	if event.GetBbox() == nil {
+		return errors.New("capture bbox is required")
+	}
+	bboxJSON, err := captureBBoxJSON(event.GetBbox())
+	if err != nil {
+		return err
+	}
+	var subBBoxJSON []byte
+	if event.GetSubBbox() != nil {
+		subBBoxJSON, err = captureBBoxJSON(event.GetSubBbox())
+		if err != nil {
+			return err
+		}
+	} else {
+		subBBoxJSON = []byte("{}")
+	}
+
+	if !finiteRatio(event.GetConfidence()) || !finiteRatio(event.GetQualityScore()) {
+		return errors.New("capture confidence or quality_score is invalid")
+	}
+	attributesJSON := []byte(strings.TrimSpace(event.GetAttributesJson()))
+	if len(attributesJSON) == 0 {
+		attributesJSON = []byte("{}")
+	}
+	var attributes map[string]any
+	if !json.Valid(attributesJSON) || json.Unmarshal(attributesJSON, &attributes) != nil || attributes == nil {
+		return errors.New("capture attributes_json must be a JSON object")
+	}
+
+	imageID := event.GetImageId()
+	imageRelPath := event.GetImageRelPath()
+	cropImageID := event.GetCropImageId()
+	cropImageRelPath := event.GetCropImageRelPath()
+	subCropImageID := event.GetSubCropImageId()
+	subCropImageRelPath := event.GetSubCropImageRelPath()
+	if a.circuitBreaker != nil && a.circuitBreaker.IsCircuitBreakerActive() {
+		a.log.Warn("storage circuit breaker active: dropping capture image persistence",
+			zap.String("event_id", eventID), zap.String("target_type", targetType))
+		imageID, imageRelPath = "", ""
+		cropImageID, cropImageRelPath = "", ""
+		subCropImageID, subCropImageRelPath = "", ""
+	} else if !isPathSafe(imageRelPath) || !isPathSafe(cropImageRelPath) || !isPathSafe(subCropImageRelPath) {
+		return errors.New("capture image path is invalid")
+	}
+
+	capturedAt := time.Now()
+	if event.GetWallTimeNs() > 0 {
+		capturedAt = time.Unix(0, event.GetWallTimeNs())
+	}
+	record := &model.CaptureRecord{
+		EventID:             eventID,
+		InstanceID:          event.GetInstanceId(),
+		TargetType:          targetType,
+		CameraID:            event.GetCameraId(),
+		CameraName:          event.GetCameraName(),
+		AlgorithmID:         event.GetAlgorithmId(),
+		AlgorithmVersion:    event.GetAlgorithmVersion(),
+		TrackID:             event.GetTrackId(),
+		Confidence:          event.GetConfidence(),
+		QualityScore:        event.GetQualityScore(),
+		BBoxJSON:            model.JSONRaw(bboxJSON),
+		SubBBoxJSON:         model.JSONRaw(subBBoxJSON),
+		TimeSynced:          event.GetTimeSynced(),
+		ImageID:             imageID,
+		ImageRelPath:        imageRelPath,
+		CropImageID:         cropImageID,
+		CropImageRelPath:    cropImageRelPath,
+		SubCropImageID:      subCropImageID,
+		SubCropImageRelPath: subCropImageRelPath,
+		IsRecognized:        event.GetIsRecognized(),
+		AttributesJSON:      model.JSONRaw(attributesJSON),
+		CapturedAt:          capturedAt,
+	}
+	if err := a.genericCaptureRepo.Create(ctx, record); err != nil {
+		if errors.Is(err, repository.ErrDuplicateKey) {
+			a.log.Info("duplicate capture event received, treated as idempotent success", zap.String("event_id", eventID))
+			return nil
+		}
+		a.log.Error("persist capture event failed", zap.String("event_id", eventID), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+func finiteRatio(value float32) bool {
+	return !math.IsNaN(float64(value)) && !math.IsInf(float64(value), 0) && value >= 0 && value <= 1
+}
+
+func captureBBoxJSON(bbox *argusv1.BoundingBox) ([]byte, error) {
+	values := []float32{bbox.GetXMin(), bbox.GetYMin(), bbox.GetXMax(), bbox.GetYMax()}
+	for _, value := range values {
+		if !finiteRatio(value) {
+			return nil, errors.New("capture bbox contains invalid coordinate")
+		}
+	}
+	if values[2] <= values[0] || values[3] <= values[1] {
+		return nil, errors.New("capture bbox has invalid bounds")
+	}
+	return json.Marshal(map[string]float32{
+		"x_min": values[0], "y_min": values[1], "x_max": values[2], "y_max": values[3],
+	})
+}
+
 // AcceptFaceCapture 人脸抓拍全量事件记录持久化：增量追加快照至 face_captures 表。
 func (a *ReportAdapter) AcceptFaceCapture(ctx context.Context, capture *argusv1.FaceCapture) error {
 	if a.captureRepo == nil {
@@ -594,7 +754,7 @@ func (a *ReportAdapter) AcceptMetrics(context.Context, *argusv1.DeviceTelemetry)
 // 3. 未命中且生成时间超过保护期（5分钟）放入 DeleteImageIDs；
 // 4. 未命中但在保护期内的图片不做处理（等待下轮对账或落库）。
 func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*argusv1.OrphanImageEntry) (engineipc.OrphanDisposition, error) {
-	if a.alarmRepo == nil && a.plateRepo == nil && a.faceRepo == nil && a.captureRepo == nil {
+	if a.alarmRepo == nil && a.plateRepo == nil && a.faceRepo == nil && a.captureRepo == nil && a.genericCaptureRepo == nil {
 		return engineipc.OrphanDisposition{}, engineipc.NewAdapterError(engineipc.CodeIPCUNAVAILABLE, "image reference repositories unavailable")
 	}
 
@@ -627,6 +787,7 @@ func (a *ReportAdapter) ReconcileOrphanImages(ctx context.Context, entries []*ar
 		{"plate", a.plateRepo},
 		{"face", a.faceRepo},
 		{"face_capture", a.captureRepo},
+		{"capture", a.genericCaptureRepo},
 	}
 	for _, f := range finders {
 		if f.finder == nil {

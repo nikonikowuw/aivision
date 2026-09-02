@@ -157,8 +157,11 @@ public:
         unmatched_cols.clear();
 
         const size_t n_rows = cost_matrix.size();
-        if (n_rows == 0) return;
-        const size_t n_cols = cost_matrix[0].size();
+        const size_t n_cols = n_rows == 0 ? 0 : cost_matrix[0].size();
+        if (n_rows == 0) {
+            for (size_t c = 0; c < n_cols; ++c) unmatched_cols.push_back(static_cast<int>(c));
+            return;
+        }
         if (n_cols == 0) {
             for (size_t r = 0; r < n_rows; ++r) unmatched_rows.push_back(static_cast<int>(r));
             return;
@@ -312,7 +315,14 @@ public:
         std::vector<std::pair<int, int>> matches_1;
         std::vector<int> u_tracks_1;
         std::vector<int> u_dets_1;
-        HungarianMatcher::solve(cost_matrix_1, 1.0f - match_thresh_, matches_1, u_tracks_1, u_dets_1);
+        if (tracked_stracks_.empty()) {
+            u_dets_1.reserve(dets_high.size());
+            for (size_t d = 0; d < dets_high.size(); ++d) {
+                u_dets_1.push_back(static_cast<int>(d));
+            }
+        } else {
+            HungarianMatcher::solve(cost_matrix_1, 1.0f - match_thresh_, matches_1, u_tracks_1, u_dets_1);
+        }
 
         // 更新第一轮匹配成功的轨迹
         for (const auto& [t_idx, d_idx] : matches_1) {
@@ -391,7 +401,14 @@ public:
         std::vector<std::pair<int, int>> matches_3;
         std::vector<int> u_lost_3;
         std::vector<int> u_dets_3;
-        HungarianMatcher::solve(cost_matrix_3, 1.0f - match_thresh_, matches_3, u_lost_3, u_dets_3);
+        if (lost_stracks_.empty()) {
+            u_dets_3.reserve(remain_dets_high.size());
+            for (size_t d = 0; d < remain_dets_high.size(); ++d) {
+                u_dets_3.push_back(static_cast<int>(d));
+            }
+        } else {
+            HungarianMatcher::solve(cost_matrix_3, 1.0f - match_thresh_, matches_3, u_lost_3, u_dets_3);
+        }
 
         for (const auto& [t_idx, d_idx] : matches_3) {
             auto& track = lost_stracks_[t_idx];

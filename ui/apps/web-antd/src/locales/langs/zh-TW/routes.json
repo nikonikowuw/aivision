@@ -15,9 +15,8 @@
   },
   "record": {
     "alarm": "告警記錄",
-    "capture": "人臉抓拍記錄",
-    "face": "人臉識別記錄",
-    "plate": "車牌記錄",
+    "capture": "抓拍記錄",
+    "face": "識別記錄",
     "record": "智能記錄"
   },
   "resource": {

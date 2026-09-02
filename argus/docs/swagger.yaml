@@ -464,6 +464,79 @@ definitions:
       total:
         type: integer
     type: object
+  argus_app_internal_service.CaptureItem:
+    properties:
+      algorithmId:
+        type: string
+      algorithmVersion:
+        type: string
+      attributes:
+        additionalProperties: {}
+        type: object
+      bbox:
+        items:
+          type: number
+        type: array
+      cameraId:
+        type: string
+      cameraName:
+        type: string
+      capturedAt:
+        type: string
+      confidence:
+        type: number
+      createdAt:
+        type: string
+      cropImageId:
+        type: string
+      cropImageRelPath:
+        type: string
+      cropImageUrl:
+        type: string
+      eventId:
+        type: string
+      id:
+        type: integer
+      imageId:
+        type: string
+      imageRelPath:
+        type: string
+      imageUrl:
+        type: string
+      instanceId:
+        type: string
+      isRecognized:
+        type: boolean
+      qualityScore:
+        type: number
+      subBbox:
+        items:
+          type: number
+        type: array
+      subCropImageId:
+        type: string
+      subCropImageRelPath:
+        type: string
+      subCropImageUrl:
+        type: string
+      targetType:
+        type: string
+      taskId:
+        type: integer
+      trackId:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  argus_app_internal_service.CapturePageResult:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/argus_app_internal_service.CaptureItem'
+        type: array
+      total:
+        type: integer
+    type: object
   argus_app_internal_service.ChangeCurrentPasswordInput:
     properties:
       newPassword:
@@ -2142,6 +2215,144 @@ paths:
       summary: 查询告警记录详情
       tags:
       - 告警记录
+  /api/record/captures:
+    get:
+      description: 支持按目标类型、摄像头、时间、关键词和识别状态组合查询
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数
+        in: query
+        name: pageSize
+        type: integer
+      - description: '目标类型: all|face|person|vehicle|non_motor|generic'
+        in: query
+        name: targetType
+        type: string
+      - description: 摄像头ID
+        in: query
+        name: cameraId
+        type: string
+      - description: 事件ID、摄像头名称或目标属性关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 是否已识别
+        in: query
+        name: isRecognized
+        type: boolean
+      - description: 最低质量分
+        in: query
+        name: minQuality
+        type: number
+      - description: 最高质量分
+        in: query
+        name: maxQuality
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/argus_app_internal_service.CapturePageResult'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 分页查询通用抓拍记录
+      tags:
+      - 抓拍记录
+  /api/record/captures/{id}:
+    get:
+      parameters:
+      - description: 抓拍记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/argus_app_internal_service.CaptureItem'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 查询通用抓拍记录详情
+      tags:
+      - 抓拍记录
+  /api/record/captures/{id}/image:
+    get:
+      description: kind 支持 panorama、crop、sub_crop，type=thumb 时优先读取缩略图
+      parameters:
+      - description: 抓拍记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 图片类型
+        in: query
+        name: kind
+        required: true
+        type: string
+      - description: '图片类型: thumb 缩略图'
+        in: query
+        name: type
+        type: string
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/argus_app_internal_pkg_response.Result'
+      security:
+      - BearerAuth: []
+      summary: 读取通用抓拍图片
+      tags:
+      - 抓拍记录
   /api/record/faces:
     get:
       description: 支持按人员、摄像头、时间区间和相似度组合分页查询

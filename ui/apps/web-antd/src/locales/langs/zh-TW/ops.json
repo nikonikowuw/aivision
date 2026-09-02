@@ -217,7 +217,7 @@
     "description": "監控邊緣設備物理磁碟容量，配置基於 TTL 保留天数、高低水位削峰與極危熔斷的存儲自愈策略。",
     "edit": "修改配置/觸發清理",
     "faceCaptureCount": "人臉抓拍快照",
-    "faceObservationCount": "人臉識別記錄",
+    "faceObservationCount": "識別記錄",
     "freeBytes": "剩餘可用容量",
     "guide1": "1. 三級防禦體系：日常 TTL 週期巡檢 + 85%/70% 高低水位 FIFO 削峰 + 95% 極危抓拍存盤熔斷，嚴防邊緣設備爆盤變磚。",
     "guide2": "2. 原子圖文清理：先物理刪除磁碟 JPEG 圖片、後刪除 SQLite 資料庫記錄，防止斷電導致孤兒檔案產生。",

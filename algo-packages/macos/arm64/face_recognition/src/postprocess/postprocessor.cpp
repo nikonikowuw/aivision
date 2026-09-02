@@ -281,6 +281,7 @@ std::string Postprocessor::serialize_recognition_json(
         const auto& p = persons[i];
         ss << "    {\n";
         ss << "      \"track_id\": " << p.track_id << ",\n";
+        ss << "      \"target_type\": \"" << p.target_type << "\",\n";
         ss << "      \"bbox\": [" << p.person_bbox[0] << ", " << p.person_bbox[1] << ", "
            << p.person_bbox[2] << ", " << p.person_bbox[3] << "],\n";
         ss << "      \"confidence\": " << p.person_confidence << ",\n";

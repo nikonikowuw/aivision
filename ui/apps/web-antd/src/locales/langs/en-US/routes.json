@@ -15,9 +15,8 @@
   },
   "record": {
     "alarm": "Alarm Records",
-    "capture": "Face Captures",
-    "face": "Face Recognition",
-    "plate": "License Plate",
+    "capture": "Capture Records",
+    "face": "Recognition Records",
     "record": "AI Records"
   },
   "resource": {

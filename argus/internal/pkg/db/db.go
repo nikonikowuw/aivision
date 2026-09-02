@@ -36,7 +36,7 @@ func New(cfg *config.Config, log *zap.Logger) (*gorm.DB, error) {
 	// 供 repository 层统一映射为领域哨兵错误。
 	// DisableForeignKeyConstraintWhenMigrating 遵循项目规范：逻辑关联、不建数据库物理外键约束。
 	gdb, err := gorm.Open(dialector, &gorm.Config{
-		TranslateError:                          true,
+		TranslateError:                           true,
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
@@ -81,4 +81,3 @@ func sqliteDSN(d config.DB) (string, error) {
 
 	return fmt.Sprintf("file:%s?%s", d.Path, q.Encode()), nil
 }
-

@@ -33,6 +33,7 @@ type StorageStatusDTO struct {
 	PlateObservationCount int64      `json:"plateObservationCount"`
 	FaceObservationCount  int64      `json:"faceObservationCount"`
 	FaceCaptureCount      int64      `json:"faceCaptureCount"`
+	CaptureCount          int64      `json:"captureCount"`
 	OperationLogCount     int64      `json:"operationLogCount"`
 	Status                string     `json:"status"` // "normal" | "cleaning" | "degraded"
 	CircuitBreakerActive  bool       `json:"circuitBreakerActive"`
@@ -58,6 +59,7 @@ type storageCleanupService struct {
 	plateRepo        repository.PlateObservationRepository
 	faceRepo         repository.FaceObservationRepository
 	faceCaptureRepo  repository.FaceCaptureRepository
+	captureRepo      repository.CaptureRepository
 	opLogRepo        repository.OperationLogRepository
 	fileStorage      storage.FileStorage
 	sampler          storage.DiskUsageSampler
@@ -74,7 +76,7 @@ type storageCleanupService struct {
 	triggerChan chan struct{}
 }
 
-// NewStorageCleanupService 构造存储管理服务实例
+// NewStorageCleanupService 构造存储管理服务实例，保留旧构造函数兼容现有调用方。
 func NewStorageCleanupService(
 	cfg *config.Config,
 	systemConfigRepo repository.SystemConfigRepository,
@@ -82,6 +84,39 @@ func NewStorageCleanupService(
 	plateRepo repository.PlateObservationRepository,
 	faceRepo repository.FaceObservationRepository,
 	faceCaptureRepo repository.FaceCaptureRepository,
+	opLogRepo repository.OperationLogRepository,
+	fileStorage storage.FileStorage,
+	sampler storage.DiskUsageSampler,
+	logger *zap.Logger,
+) StorageCleanupService {
+	return newStorageCleanupService(cfg, systemConfigRepo, alarmRepo, plateRepo, faceRepo, faceCaptureRepo, nil, opLogRepo, fileStorage, sampler, logger)
+}
+
+// NewStorageCleanupServiceWithCaptures 构造包含通用抓拍记录清理能力的服务。
+func NewStorageCleanupServiceWithCaptures(
+	cfg *config.Config,
+	systemConfigRepo repository.SystemConfigRepository,
+	alarmRepo repository.AlarmRecordRepository,
+	plateRepo repository.PlateObservationRepository,
+	faceRepo repository.FaceObservationRepository,
+	faceCaptureRepo repository.FaceCaptureRepository,
+	captureRepo repository.CaptureRepository,
+	opLogRepo repository.OperationLogRepository,
+	fileStorage storage.FileStorage,
+	sampler storage.DiskUsageSampler,
+	logger *zap.Logger,
+) StorageCleanupService {
+	return newStorageCleanupService(cfg, systemConfigRepo, alarmRepo, plateRepo, faceRepo, faceCaptureRepo, captureRepo, opLogRepo, fileStorage, sampler, logger)
+}
+
+func newStorageCleanupService(
+	cfg *config.Config,
+	systemConfigRepo repository.SystemConfigRepository,
+	alarmRepo repository.AlarmRecordRepository,
+	plateRepo repository.PlateObservationRepository,
+	faceRepo repository.FaceObservationRepository,
+	faceCaptureRepo repository.FaceCaptureRepository,
+	captureRepo repository.CaptureRepository,
 	opLogRepo repository.OperationLogRepository,
 	fileStorage storage.FileStorage,
 	sampler storage.DiskUsageSampler,
@@ -106,6 +141,7 @@ func NewStorageCleanupService(
 		plateRepo:        plateRepo,
 		faceRepo:         faceRepo,
 		faceCaptureRepo:  faceCaptureRepo,
+		captureRepo:      captureRepo,
 		opLogRepo:        opLogRepo,
 		fileStorage:      fileStorage,
 		sampler:          sampler,
@@ -231,6 +267,15 @@ func (s *storageCleanupService) GetStatus(ctx context.Context) (*StorageStatusDT
 		return nil, errno.NewError(errno.CodeInternal)
 	}
 
+	captureCount := int64(0)
+	if s.captureRepo != nil {
+		captureCount, err = s.captureRepo.CountTotal(ctx)
+		if err != nil {
+			s.log.Error("failed to count captures", zap.Error(err))
+			return nil, errno.NewError(errno.CodeInternal)
+		}
+	}
+
 	opLogCount, err := s.opLogRepo.CountTotal(ctx)
 	if err != nil {
 		s.log.Error("failed to count operation logs", zap.Error(err))
@@ -262,6 +307,7 @@ func (s *storageCleanupService) GetStatus(ctx context.Context) (*StorageStatusDT
 		PlateObservationCount: plateCount,
 		FaceObservationCount:  faceCount,
 		FaceCaptureCount:      faceCaptureCount,
+		CaptureCount:          captureCount,
 		OperationLogCount:     opLogCount,
 		Status:                status,
 		CircuitBreakerActive:  circuitBreakerActive,
@@ -433,6 +479,12 @@ func (s *storageCleanupService) cleanAllMediaBatches(ctx context.Context, isOlde
 
 	if n, err := s.cleanFaceCaptureBatch(ctx, isOldest, cutoff); err != nil {
 		s.log.Error("error cleaning face capture batch", zap.Error(err))
+	} else {
+		batchCleaned += n
+	}
+
+	if n, err := s.cleanCaptureBatch(ctx, isOldest, cutoff); err != nil {
+		s.log.Error("error cleaning capture batch", zap.Error(err))
 	} else {
 		batchCleaned += n
 	}
@@ -644,5 +696,37 @@ func (s *storageCleanupService) cleanFaceCaptureBatch(ctx context.Context, isOld
 		return 0, fmt.Errorf("hard delete face captures batch: %w", err)
 	}
 
+	return len(records), nil
+}
+
+// cleanCaptureBatch 执行单批通用抓拍记录清理，先删除图片，再删除数据库记录。
+func (s *storageCleanupService) cleanCaptureBatch(ctx context.Context, isOldest bool, cutoff time.Time) (int, error) {
+	if s.captureRepo == nil {
+		return 0, nil
+	}
+
+	var records []model.CaptureRecord
+	var err error
+	if isOldest {
+		// 高水位削峰优先移除未识别抓拍，识别记录对应的业务数据得以保留。
+		records, err = s.captureRepo.FindOldestUnrecognized(ctx, defaultBatchSize)
+		if err == nil && len(records) == 0 {
+			records, err = s.captureRepo.FindOldest(ctx, defaultBatchSize)
+		}
+	} else {
+		records, err = s.captureRepo.FindExpired(ctx, cutoff, defaultBatchSize)
+	}
+	if err != nil || len(records) == 0 {
+		return 0, err
+	}
+
+	ids := make([]uint64, 0, len(records))
+	for _, rec := range records {
+		s.deleteImages(ctx, rec.ImageRelPath, rec.CropImageRelPath, rec.SubCropImageRelPath)
+		ids = append(ids, rec.ID)
+	}
+	if err := s.captureRepo.HardDeleteBatch(ctx, ids); err != nil {
+		return 0, fmt.Errorf("hard delete captures batch: %w", err)
+	}
 	return len(records), nil
 }

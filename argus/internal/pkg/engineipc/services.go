@@ -172,6 +172,23 @@ func (s *reportService) ReportFaceCapture(ctx context.Context, req *argusv1.Repo
 	return &argusv1.ReportFaceCaptureResponse{Code: code, ErrorMessage: msg}, nil
 }
 
+// ReportCapture 接收通用抓拍事件流上报。
+func (s *reportService) ReportCapture(ctx context.Context, req *argusv1.ReportCaptureRequest) (*argusv1.ReportCaptureResponse, error) {
+	const method = "/argus.v1.ReportService/ReportCapture"
+	if req == nil || req.Capture == nil {
+		return nil, invalidArgument(method)
+	}
+	adapter, ok := s.adapter.(CaptureReportAdapter)
+	if !ok {
+		return &argusv1.ReportCaptureResponse{Code: CodeIPCUNAVAILABLE, ErrorMessage: "capture report service unavailable"}, nil
+	}
+	code, msg, transportErr := s.adapterResult(method, adapter.AcceptCapture(ctx, req.Capture))
+	if transportErr != nil {
+		return nil, transportErr
+	}
+	return &argusv1.ReportCaptureResponse{Code: code, ErrorMessage: msg}, nil
+}
+
 // ReportTaskState 接收任务状态上报；只有 adapter 成功接受后才返回空 code。
 func (s *reportService) ReportTaskState(ctx context.Context, req *argusv1.ReportTaskStateRequest) (*argusv1.ReportTaskStateResponse, error) {
 	const method = "/argus.v1.ReportService/ReportTaskState"

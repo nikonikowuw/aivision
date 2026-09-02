@@ -133,9 +133,9 @@
     }
   },
   "face": {
-    "title": "人臉識別記錄",
-    "query": "查詢人臉記錄",
-    "export": "匯出人臉記錄",
+    "title": "識別記錄",
+    "query": "查詢識別記錄",
+    "export": "匯出識別記錄",
     "filter": {
       "camera": "攝影機",
       "cameraPlaceholder": "請選擇攝影機",
@@ -162,7 +162,7 @@
       "action": "操作"
     },
     "detail": {
-      "title": "人臉識別詳情",
+      "title": "識別詳情",
       "eventInfo": "識別資訊",
       "eventId": "事件標識",
       "camera": "識別攝影機",
@@ -192,29 +192,26 @@
     }
   },
   "capture": {
-    "title": "人臉抓拍記錄",
+    "title": "抓拍記錄",
     "query": "查詢人臉抓拍",
     "export": "匯出抓拍記錄",
     "filter": {
       "camera": "攝影機",
       "cameraPlaceholder": "請選擇攝影機",
-      "strangerOnly": "僅看陌生人",
-      "stranger": "身份類型",
-      "strangerAll": "全部記錄",
-      "strangerTrue": "僅陌生人",
-      "strangerFalse": "僅已識別",
       "timeRange": "抓拍時間",
-      "trackId": "Track ID",
-      "trackIdPlaceholder": "輸入 Track ID",
-      "personName": "識別人員",
-      "personNamePlaceholder": "輸入人員姓名",
       "minSimilarity": "最低相似度",
       "maxSimilarity": "最高相似度",
+      "keywordPlaceholder": "輸入事件 ID、攝像頭或目標屬性",
       "search": "查詢",
       "reset": "重設"
     },
     "columns": {
       "id": "ID",
+      "targetType": "目標類型",
+      "crop": "目標特寫",
+      "panorama": "全景圖",
+      "confidence": "置信度",
+      "quality": "品質",
       "bestFaceCrop": "最佳特寫",
       "bestPanorama": "最佳全景",
       "snapshotCount": "時序幀數",
@@ -228,12 +225,46 @@
       "action": "操作"
     },
     "actions": {
+      "advancedFilter": "高級篩選",
+      "clearFilter": "清除篩選",
+      "apply": "套用",
+      "reset": "重設",
       "viewFilmstrip": "時序演進",
       "register": "快速註冊",
       "viewDetail": "詳情"
     },
+    "targets": {
+      "all": "全部",
+      "face": "人臉",
+      "person": "人體",
+      "vehicle": "機動車",
+      "non_motor": "非機動車",
+      "generic": "其他目標"
+    },
+    "advanced": {
+      "title": "高級篩選",
+      "recognized": "識別狀態",
+      "recognizedPlaceholder": "請選擇識別狀態",
+      "recognizedYes": "已識別",
+      "recognizedNo": "未識別",
+      "quality": "品質得分",
+      "confidence": "置信度",
+      "min": "最低",
+      "max": "最高"
+    },
     "drawer": {
-      "title": "人臉抓拍時序演進",
+      "title": "抓拍詳情",
+      "targetType": "目標類型",
+      "eventId": "事件標識",
+      "capturedAt": "抓拍時間",
+      "recognized": "識別狀態",
+      "confidence": "置信度",
+      "quality": "品質得分",
+      "panorama": "全景圖",
+      "primaryCrop": "主體特寫",
+      "subCrop": "附屬特寫",
+      "attributes": "目標屬性",
+      "imageCleaned": "圖片已清理",
       "trackInfo": "目標軌跡資訊",
       "trackId": "Track ID",
       "camera": "抓拍攝影機",

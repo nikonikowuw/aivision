@@ -217,7 +217,7 @@
     "description": "监控边缘设备物理磁盘容量，配置基于 TTL 保留天数、高低水位削峰与极危熔断的存储自愈策略。",
     "edit": "修改配置/触发清理",
     "faceCaptureCount": "人脸抓拍快照",
-    "faceObservationCount": "人脸识别记录",
+    "faceObservationCount": "识别记录",
     "freeBytes": "剩余可用容量",
     "guide1": "1. 三级防御体系：日常 TTL 周期巡检 + 85%/70% 高低水位 FIFO 削峰 + 95% 极危抓拍存盘熔断，严防边缘设备爆盘变砖。",
     "guide2": "2. 原子图文清理：先物理删除磁盘 JPEG 图片、后删除 SQLite 数据库记录，防止断电导致孤儿文件产生。",

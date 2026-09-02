@@ -167,6 +167,7 @@ const (
 	ReportService_ReportPlateObservation_FullMethodName = "/argus.v1.ReportService/ReportPlateObservation"
 	ReportService_ReportFaceObservation_FullMethodName  = "/argus.v1.ReportService/ReportFaceObservation"
 	ReportService_ReportFaceCapture_FullMethodName      = "/argus.v1.ReportService/ReportFaceCapture"
+	ReportService_ReportCapture_FullMethodName          = "/argus.v1.ReportService/ReportCapture"
 	ReportService_ReportTaskState_FullMethodName        = "/argus.v1.ReportService/ReportTaskState"
 	ReportService_ReportInstanceState_FullMethodName    = "/argus.v1.ReportService/ReportInstanceState"
 	ReportService_ReportMetrics_FullMethodName          = "/argus.v1.ReportService/ReportMetrics"
@@ -183,6 +184,7 @@ type ReportServiceClient interface {
 	ReportPlateObservation(ctx context.Context, in *ReportPlateObservationRequest, opts ...grpc.CallOption) (*ReportPlateObservationResponse, error)
 	ReportFaceObservation(ctx context.Context, in *ReportFaceObservationRequest, opts ...grpc.CallOption) (*ReportFaceObservationResponse, error)
 	ReportFaceCapture(ctx context.Context, in *ReportFaceCaptureRequest, opts ...grpc.CallOption) (*ReportFaceCaptureResponse, error)
+	ReportCapture(ctx context.Context, in *ReportCaptureRequest, opts ...grpc.CallOption) (*ReportCaptureResponse, error)
 	ReportTaskState(ctx context.Context, in *ReportTaskStateRequest, opts ...grpc.CallOption) (*ReportTaskStateResponse, error)
 	ReportInstanceState(ctx context.Context, in *ReportInstanceStateRequest, opts ...grpc.CallOption) (*ReportInstanceStateResponse, error)
 	ReportMetrics(ctx context.Context, in *ReportMetricsRequest, opts ...grpc.CallOption) (*ReportMetricsResponse, error)
@@ -231,6 +233,16 @@ func (c *reportServiceClient) ReportFaceCapture(ctx context.Context, in *ReportF
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReportFaceCaptureResponse)
 	err := c.cc.Invoke(ctx, ReportService_ReportFaceCapture_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *reportServiceClient) ReportCapture(ctx context.Context, in *ReportCaptureRequest, opts ...grpc.CallOption) (*ReportCaptureResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportCaptureResponse)
+	err := c.cc.Invoke(ctx, ReportService_ReportCapture_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +299,7 @@ type ReportServiceServer interface {
 	ReportPlateObservation(context.Context, *ReportPlateObservationRequest) (*ReportPlateObservationResponse, error)
 	ReportFaceObservation(context.Context, *ReportFaceObservationRequest) (*ReportFaceObservationResponse, error)
 	ReportFaceCapture(context.Context, *ReportFaceCaptureRequest) (*ReportFaceCaptureResponse, error)
+	ReportCapture(context.Context, *ReportCaptureRequest) (*ReportCaptureResponse, error)
 	ReportTaskState(context.Context, *ReportTaskStateRequest) (*ReportTaskStateResponse, error)
 	ReportInstanceState(context.Context, *ReportInstanceStateRequest) (*ReportInstanceStateResponse, error)
 	ReportMetrics(context.Context, *ReportMetricsRequest) (*ReportMetricsResponse, error)
@@ -312,6 +325,9 @@ func (UnimplementedReportServiceServer) ReportFaceObservation(context.Context, *
 }
 func (UnimplementedReportServiceServer) ReportFaceCapture(context.Context, *ReportFaceCaptureRequest) (*ReportFaceCaptureResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReportFaceCapture not implemented")
+}
+func (UnimplementedReportServiceServer) ReportCapture(context.Context, *ReportCaptureRequest) (*ReportCaptureResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportCapture not implemented")
 }
 func (UnimplementedReportServiceServer) ReportTaskState(context.Context, *ReportTaskStateRequest) (*ReportTaskStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReportTaskState not implemented")
@@ -418,6 +434,24 @@ func _ReportService_ReportFaceCapture_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ReportService_ReportCapture_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportCaptureRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReportServiceServer).ReportCapture(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReportService_ReportCapture_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReportServiceServer).ReportCapture(ctx, req.(*ReportCaptureRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ReportService_ReportTaskState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReportTaskStateRequest)
 	if err := dec(in); err != nil {
@@ -512,6 +546,10 @@ var ReportService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReportFaceCapture",
 			Handler:    _ReportService_ReportFaceCapture_Handler,
+		},
+		{
+			MethodName: "ReportCapture",
+			Handler:    _ReportService_ReportCapture_Handler,
 		},
 		{
 			MethodName: "ReportTaskState",

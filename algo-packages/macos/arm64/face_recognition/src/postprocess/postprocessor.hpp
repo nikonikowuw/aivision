@@ -24,6 +24,7 @@ struct FaceDetection {
  */
 struct RecognizedPerson {
     int64_t track_id = 0;
+    std::string target_type = "face";
     float person_bbox[4] = {0};   // 原图归一化坐标 [x, y, w, h]
     float person_confidence = 0.0f;
 

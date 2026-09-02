@@ -55,6 +55,11 @@ public:
     bool report_face_capture(const argus::v1::FaceCapture& capture);
 
     /**
+     * @brief 上报通用抓拍事件
+     */
+    bool report_capture(const argus::v1::CaptureEvent& capture);
+
+    /**
      * @brief 上报设备性能与健康遥测数据
      */
     bool report_telemetry(const argus::v1::DeviceTelemetry& telemetry);

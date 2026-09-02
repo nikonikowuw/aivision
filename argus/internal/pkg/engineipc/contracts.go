@@ -71,6 +71,12 @@ type ReportAdapter interface {
 	ReconcileOrphanImages(ctx context.Context, orphans []*argusv1.OrphanImageEntry) (OrphanDisposition, error)
 }
 
+// CaptureReportAdapter 是通用抓拍上报的可选扩展接口。
+// 单独定义以保持旧 ReportAdapter 实现的源代码兼容性；未实现时 ReportCapture fail closed。
+type CaptureReportAdapter interface {
+	AcceptCapture(ctx context.Context, capture *argusv1.CaptureEvent) error
+}
+
 // isTransportError 判断 adapter 返回的错误是否必须继续作为 gRPC transport status 传播。
 // context 取消/超时和显式 status.Error 都不能降级为响应体中的业务错误。
 func isTransportError(err error) bool {
@@ -131,6 +137,10 @@ func (unavailableReportAdapter) AcceptFaceObservation(context.Context, *argusv1.
 }
 
 func (unavailableReportAdapter) AcceptFaceCapture(context.Context, *argusv1.FaceCapture) error {
+	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
+}
+
+func (unavailableReportAdapter) AcceptCapture(context.Context, *argusv1.CaptureEvent) error {
 	return NewAdapterError(CodeIPCUNAVAILABLE, "report service unavailable")
 }
 

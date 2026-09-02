@@ -121,6 +121,17 @@ public:
         plate_cv_.notify_all();
         return grpc::Status::OK; // code 留空 = 接受
     }
+    grpc::Status ReportCapture(grpc::ServerContext*, const argus::v1::ReportCaptureRequest* request,
+                               argus::v1::ReportCaptureResponse* response) override {
+        if (!request || !request->has_capture()) {
+            response->set_code("INVALID_ARG");
+            return grpc::Status::OK;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        captures_.push_back(request->capture());
+        return grpc::Status::OK; // code 留空 = 接受
+    }
+
     grpc::Status ReportFaceCapture(grpc::ServerContext*,
                                    const argus::v1::ReportFaceCaptureRequest* request,
                                    argus::v1::ReportFaceCaptureResponse* response) override {
@@ -258,6 +269,11 @@ public:
         return face_cv_.wait_for(lock, timeout, [this] { return !face_observations_.empty(); });
     }
 
+    std::vector<argus::v1::CaptureEvent> captures() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return captures_;
+    }
+
     std::vector<argus::v1::FaceCapture> face_captures() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return face_captures_;
@@ -286,6 +302,7 @@ private:
     std::vector<argus::v1::InstanceState> states_;
     std::vector<argus::v1::AlarmEvent> alarms_;
     std::vector<argus::v1::PlateObservation> observations_;
+    std::vector<argus::v1::CaptureEvent> captures_;
     std::vector<argus::v1::FaceObservation> face_observations_;
     std::vector<argus::v1::FaceCapture> face_captures_;
     size_t plate_report_count_ = 0;
@@ -1369,7 +1386,8 @@ TEST(UdsReconcileTest, FaceRecognitionObservationUsesRealUdsCallbackAndRetry) {
     EXPECT_EQ(argus::core::ImageManager::instance().list_unreported_images().size(), 2U);
     EXPECT_EQ(pool.active_frame_count(), 0U);
 
-    // 阻塞首个报告并填满有界抓拍队列，确认 258 次算法输入只保留一个正在处理项和 256 个排队项。
+    // 阻塞首个报告并填满有界抓拍队列。由于人脸识别同时产生通用抓拍与人脸观察两个独立 pending 项（共 2 个 retain 引用），
+    // 队列容量 256 个项对应 128 个排队帧。
     app_server.service().block_face();
     push_frame(1000);
     ASSERT_TRUE(app_server.service().wait_for_face_report_start(std::chrono::seconds(3)));
@@ -1378,7 +1396,7 @@ TEST(UdsReconcileTest, FaceRecognitionObservationUsesRealUdsCallbackAndRetry) {
         push_frame(frame_id);
         wait_for_processed(++expected_processed);
     }
-    EXPECT_EQ(pool.active_frame_count(), 256U);
+    EXPECT_EQ(pool.active_frame_count(), 128U);
     app_server.service().release_face();
 
     server.stop();

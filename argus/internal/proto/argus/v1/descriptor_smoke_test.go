@@ -1,6 +1,6 @@
 // Package argusv1 包含从 engine/proto/argus/v1 生成的 Go protobuf/gRPC 代码。
 // 本文件提供生成物与权威 proto 契约一致的冒烟测试：包名、完整 service descriptor
-// 与 19 个本任务 RPC（6 个 Go server 入站 + 13 个 Engine client 出站）。
+// 与 26 个本任务 RPC（11 个 Go server 入站 + 15 个 Engine client 出站）。
 package argusv1
 
 import (
@@ -38,6 +38,7 @@ var expectedServices = map[string][]string{
 		"ReportPlateObservation",
 		"ReportFaceObservation",
 		"ReportFaceCapture",
+		"ReportCapture",
 		"ReportTaskState",
 		"ReportInstanceState",
 		"ReportMetrics",
@@ -88,13 +89,13 @@ func TestGeneratedDescriptorMatchesProto(t *testing.T) {
 			t.Errorf("service %q missing from generated descriptor", name)
 		}
 	}
-	// 本任务范围：10 个入站（ControlPlane 2 + Report 8）+ 15 个出站 EngineService = 25。
+	// 本任务范围：11 个入站（ControlPlane 2 + Report 9）+ 15 个出站 EngineService = 26。
 	taskRPCs := 0
 	for _, svc := range []string{"argus.v1.EngineService", "argus.v1.ControlPlaneService", "argus.v1.ReportService"} {
 		taskRPCs += len(expectedServices[svc])
 	}
-	if taskRPCs != 25 {
-		t.Errorf("in-scope RPC count = %d, want 25", taskRPCs)
+	if taskRPCs != 26 {
+		t.Errorf("in-scope RPC count = %d, want 26", taskRPCs)
 	}
 }
 

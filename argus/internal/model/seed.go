@@ -46,14 +46,6 @@ var seedMenuTree = []seedMenuItem{
 				},
 			},
 			{
-				Type: MenuTypeMenu, Name: "RecordPlate", Title: "routes.record.plate", Path: "/record/plate", Component: "/record/plate/index",
-				Icon: "ant-design:car-outlined", Permission: "record:plate", KeepAlive: true,
-				Children: []seedMenuItem{
-					{Type: MenuTypeButton, Name: "record.plate.query", Permission: "record:plate:query"},
-					{Type: MenuTypeButton, Name: "record.plate.export", Permission: "record:plate:export"},
-				},
-			},
-			{
 				Type: MenuTypeMenu, Name: "RecordCapture", Title: "routes.record.capture", Path: "/record/capture", Component: "/record/capture/index",
 				Icon: "ant-design:camera-outlined", Permission: "record:capture", KeepAlive: true,
 				Children: []seedMenuItem{
@@ -229,6 +221,9 @@ func Seed(db *gorm.DB) (bool, error) {
 	seeded := false
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		// 系统单例与内置算法必须在每次 seed 时幂等补齐，不能依赖 admin 是否存在。
+		if err := cleanupLegacyRecordPlateMenus(tx); err != nil {
+			return fmt.Errorf("cleanup legacy record plate menus: %w", err)
+		}
 		if err := seedSystemSingletons(tx); err != nil {
 			return fmt.Errorf("seed system singletons: %w", err)
 		}
@@ -417,6 +412,47 @@ func seedSystemSingletons(tx *gorm.DB) error {
 		return fmt.Errorf("seed builtin algorithm version (%s:%s): %w", lprVersion.AlgorithmID, lprVersion.Version, err)
 	}
 
+	return nil
+}
+
+func cleanupLegacyRecordPlateMenus(tx *gorm.DB) error {
+	var menus []Menu
+	if err := tx.Unscoped().Select("id, parent_id, name").Find(&menus).Error; err != nil {
+		return err
+	}
+
+	children := make(map[uint64][]uint64, len(menus))
+	legacyRoots := make([]uint64, 0)
+	for _, menu := range menus {
+		children[menu.ParentID] = append(children[menu.ParentID], menu.ID)
+		if menu.Name == "RecordPlate" {
+			legacyRoots = append(legacyRoots, menu.ID)
+		}
+	}
+	if len(legacyRoots) == 0 {
+		return nil
+	}
+
+	legacyIDs := make([]uint64, 0, len(legacyRoots))
+	queue := append([]uint64(nil), legacyRoots...)
+	seen := make(map[uint64]struct{}, len(queue))
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		legacyIDs = append(legacyIDs, id)
+		queue = append(queue, children[id]...)
+	}
+
+	if err := tx.Where("menu_id IN ?", legacyIDs).Delete(&RoleMenu{}).Error; err != nil {
+		return fmt.Errorf("delete legacy role menu bindings: %w", err)
+	}
+	if err := tx.Where("id IN ?", legacyIDs).Delete(&Menu{}).Error; err != nil {
+		return fmt.Errorf("soft delete legacy menus: %w", err)
+	}
 	return nil
 }
 

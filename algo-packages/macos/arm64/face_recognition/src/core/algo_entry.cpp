@@ -569,6 +569,7 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             for (const auto& tracked_face : tracked_faces) {
                 RecognizedPerson rp{};
                 rp.track_id = tracked_face.track_id;
+                rp.target_type = "face";
                 rp.person_bbox[0] = tracked_face.x;
                 rp.person_bbox[1] = tracked_face.y;
                 rp.person_bbox[2] = tracked_face.w;
@@ -641,6 +642,7 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             for (const auto& person : tracked_persons) {
                 RecognizedPerson rp{};
                 rp.track_id = person.track_id;
+                rp.target_type = "person";
                 rp.person_bbox[0] = person.x;
                 rp.person_bbox[1] = person.y;
                 rp.person_bbox[2] = person.w;
@@ -698,13 +700,11 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             return static_cast<int>(AV_OK);
         }
 
-        // 正常识别模式：只有当至少检测到一个有效人脸时才回调
-        bool has_any_face = false;
+        // 正常模式：任一有效目标（包括未检测到人脸的人体）都回调，便于引擎生成通用抓拍事件。
         std::vector<av_algo_image_req> img_reqs;
 
         for (const auto& p : result_persons) {
             if (p.has_face) {
-                has_any_face = true;
                 if (!p.embedding_base64.empty()) {
                     // 若有特征提取，构造高清人脸裁剪请求 ROI
                     av_algo_image_req req{};
@@ -720,7 +720,7 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             }
         }
 
-        if (has_any_face && inst->on_result) {
+        if (!result_persons.empty() && inst->on_result) {
             std::string result_json = Postprocessor::serialize_recognition_json(
                 result_persons, frame->frame_id, frame->pts_ns);
 

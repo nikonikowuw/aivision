@@ -61,4 +61,3 @@ func TestNewSQLiteConnectsAndCreatesDir(t *testing.T) {
 		t.Fatalf("ping failed: %v", err)
 	}
 }
-

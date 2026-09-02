@@ -121,6 +121,33 @@ bool decode_base64_strict(std::string_view encoded, std::vector<uint8_t>& decode
     return true;
 }
 
+av_rect expand_face_crop_roi(const double bbox[4], float expand_ratio = 0.4f) {
+    const float x = static_cast<float>(bbox[0]);
+    const float y = static_cast<float>(bbox[1]);
+    const float w = static_cast<float>(bbox[2]);
+    const float h = static_cast<float>(bbox[3]);
+
+    const float cx = x + w * 0.5f;
+    const float cy = y + h * 0.5f;
+
+    const float ew = w * (1.0f + expand_ratio);
+    const float eh = h * (1.0f + expand_ratio);
+
+    const float ex = std::max(0.0f, cx - ew * 0.5f);
+    const float ey = std::max(0.0f, cy - eh * 0.5f);
+    const float max_w = std::min(ew, 1.0f - ex);
+    const float max_h = std::min(eh, 1.0f - ey);
+
+    av_rect roi{};
+    roi.size = sizeof(av_rect);
+    roi.api_version = AV_ALGO_API_VERSION;
+    roi.x = ex;
+    roi.y = ey;
+    roi.width = std::max(0.001f, max_w);
+    roi.height = std::max(0.001f, max_h);
+    return roi;
+}
+
 fs::path package_root() {
     return fs::path(env_or_default("ARGUS_PACKAGE_DIR", "var/packages"));
 }
@@ -2738,14 +2765,7 @@ private:
                         pending.face_observation_crop_indices.push_back(crop_index);
                     }
 
-                    av_rect crop_roi{};
-                    crop_roi.size = sizeof(av_rect);
-                    crop_roi.api_version = AV_ALGO_API_VERSION;
-                    crop_roi.x = static_cast<float>(parsed.bbox[0]);
-                    crop_roi.y = static_cast<float>(parsed.bbox[1]);
-                    crop_roi.width = static_cast<float>(parsed.bbox[2]);
-                    crop_roi.height = static_cast<float>(parsed.bbox[3]);
-                    pending.face_crop_rois.push_back(crop_roi);
+                    pending.face_crop_rois.push_back(expand_face_crop_roi(parsed.bbox.data(), 0.4f));
 
                     float updated_sim = parsed.match.similarity;
                     float updated_qual = static_cast<float>(parsed.quality_score);

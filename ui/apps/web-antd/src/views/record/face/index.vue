@@ -23,9 +23,9 @@ import {
   getFaceObservationListApi,
 } from '#/api';
 
-import PlateThumbnail from '../plate/components/PlateThumbnail.vue';
+import CaptureThumbnail from '../capture/components/CaptureThumbnail.vue';
 
-const currentDetail = ref<null | FaceObservationApi.FaceObservationItem>(null);
+const currentDetail = ref<FaceObservationApi.FaceObservationItem | null>(null);
 
 const [DetailModal, detailModalApi] = useVbenModal({
   class: 'w-[1000px] max-w-[95vw]',
@@ -111,12 +111,8 @@ const gridOptions: VxeTableGridOptions<FaceObservationApi.FaceObservationItem> =
     proxyConfig: {
       ajax: {
         query: async ({ page }, formValues) => {
-          const {
-            maxSimilarity,
-            minSimilarity,
-            timeRange,
-            ...rest
-          } = formValues || {};
+          const { maxSimilarity, minSimilarity, timeRange, ...rest } =
+            formValues || {};
           let startTime: string | undefined;
           let endTime: string | undefined;
           if (timeRange && Array.isArray(timeRange) && timeRange.length === 2) {
@@ -234,20 +230,21 @@ function formatSimilarity(value?: number): string {
   <Page auto-content-height>
     <Grid>
       <template #faceCrop="{ row }">
-        <PlateThumbnail
+        <CaptureThumbnail
           fit="cover"
-          :height="64"
+          :height="56"
           :url="row.faceImageUrl"
-          :width="64"
+          :width="56"
           :alt="$t('record.face.detail.faceCrop')"
         />
       </template>
 
       <template #panorama="{ row }">
-        <PlateThumbnail
+        <CaptureThumbnail
           fit="cover"
           :height="48"
           :url="row.panoramaImageUrl"
+          :bbox="row.bbox"
           :width="72"
           :alt="$t('record.face.detail.panorama')"
         />
@@ -343,7 +340,7 @@ function formatSimilarity(value?: number): string {
             <div
               class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-4"
             >
-              <PlateThumbnail
+              <CaptureThumbnail
                 fit="contain"
                 :height="200"
                 :url="currentDetail.faceImageUrl"
@@ -361,10 +358,11 @@ function formatSimilarity(value?: number): string {
             <div
               class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-2"
             >
-              <PlateThumbnail
+              <CaptureThumbnail
                 fit="contain"
                 :height="220"
                 :url="currentDetail.panoramaImageUrl"
+                :bbox="currentDetail.bbox"
                 :width="440"
                 :alt="$t('record.face.detail.panorama')"
               />

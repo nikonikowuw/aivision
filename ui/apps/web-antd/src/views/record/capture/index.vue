@@ -270,6 +270,7 @@ function formatSimilarity(value?: number): string {
           fit="cover"
           :height="48"
           :url="row.bestPanoramaUrl || row.panoramaImageUrl"
+          :bbox="row.bestBbox"
           :width="72"
           :alt="$t('record.capture.columns.bestPanorama')"
         />

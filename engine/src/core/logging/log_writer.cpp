@@ -275,7 +275,7 @@ bool AsyncLogWriter::enqueue(LogRecord&& record) noexcept {
     std::atomic<uint64_t>& drop_counter =
         high_priority ? state_->pending_high_drops : state_->pending_normal_drops;
     try {
-        for (int attempt = 0; attempt < 3; ++attempt) {
+        for (int attempt = 0; attempt < 8; ++attempt) {
             std::unique_lock<std::mutex> lock(state_->mutex, std::try_to_lock);
             if (!lock.owns_lock()) {
                 std::this_thread::yield();

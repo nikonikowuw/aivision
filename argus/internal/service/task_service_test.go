@@ -68,6 +68,14 @@ const testConfigSchema = `{
 // newTaskServiceTestEnv 建 TaskService 测试环境：sqlite + 真实仓储 + fake profile client。
 // 返回具体 *taskService 以便测试直接操作 quotaManager（waitQuotaReady）。
 func newTaskServiceTestEnv(t *testing.T, total, reserved int32) (*taskService, *gorm.DB, *fakeProfileClient, repository.TaskRepository, *ReportAdapter) {
+	return newTaskServiceTestEnvWithProfile(t, profileResp(total, reserved), nil)
+}
+
+func newTaskServiceTestEnvWithError(t *testing.T, err error) (*taskService, *gorm.DB, *fakeProfileClient, repository.TaskRepository, *ReportAdapter) {
+	return newTaskServiceTestEnvWithProfile(t, nil, err)
+}
+
+func newTaskServiceTestEnvWithProfile(t *testing.T, resp *argusv1.QueryProfileResponse, profileErr error) (*taskService, *gorm.DB, *fakeProfileClient, repository.TaskRepository, *ReportAdapter) {
 	t.Helper()
 	db, err := gorm.Open(
 		sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())),
@@ -92,7 +100,7 @@ func newTaskServiceTestEnv(t *testing.T, total, reserved int32) (*taskService, *
 
 	taskRepo := repository.NewTaskRepository(db)
 	report := NewReportAdapter(taskRepo, zap.NewNop())
-	profile := &fakeProfileClient{profile: profileResp(total, reserved)}
+	profile := &fakeProfileClient{profile: resp, err: profileErr}
 	svc := NewTaskService(
 		taskRepo,
 		repository.NewCameraRepository(db),
@@ -452,8 +460,7 @@ func TestTaskServiceCRUD(t *testing.T) {
 // TestTaskServiceEngineUnavailableRejectsEnable 从未成功获取配额上限时拒绝启用实例
 // 并返回 CodeEngineUnavailable（design §7）；已有实例创建（含 FPS 档位校验）不受影响。
 func TestTaskServiceEngineUnavailableRejectsEnable(t *testing.T) {
-	svc, db, profile, _, _ := newTaskServiceTestEnv(t, 1000, 100)
-	profile.set(nil, errors.New("engine socket missing"))
+	svc, db, _, _, _ := newTaskServiceTestEnvWithError(t, errors.New("engine socket missing"))
 	seedTaskFixture(t, db)
 	// 不 waitQuotaReady：配额永不成功。
 	ctx := context.Background()
@@ -473,8 +480,7 @@ func TestTaskServiceEngineUnavailableRejectsEnable(t *testing.T) {
 // TestTaskServiceEngineUnavailableAllowsDisabledWrite Engine 离线（配额从未获取）时：
 // 停用实例的创建与配置更新仍被允许（离线编排），仅启用操作被拒（design §7）。
 func TestTaskServiceEngineUnavailableAllowsDisabledWrite(t *testing.T) {
-	svc, db, profile, taskRepo, _ := newTaskServiceTestEnv(t, 1000, 100)
-	profile.set(nil, errors.New("engine socket missing"))
+	svc, db, _, taskRepo, _ := newTaskServiceTestEnvWithError(t, errors.New("engine socket missing"))
 	seedTaskFixture(t, db)
 	// 不 waitQuotaReady：配额永不成功。
 	ctx := context.Background()

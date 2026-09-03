@@ -154,9 +154,9 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
     if (orig_w == 0 || orig_h == 0) return raw_faces;
 
     const int feat_strides[3] = {8, 16, 32};
-    const float* scores[3] = {scrfd_out.score_8.data(), scrfd_out.score_16.data(), scrfd_out.score_32.data()};
-    const float* bboxes[3] = {scrfd_out.bbox_8.data(), scrfd_out.bbox_16.data(), scrfd_out.bbox_32.data()};
-    const float* kps[3] = {scrfd_out.kps_8.data(), scrfd_out.kps_16.data(), scrfd_out.kps_32.data()};
+    const ScrfdHeadView* scores[3] = {&scrfd_out.score_8, &scrfd_out.score_16, &scrfd_out.score_32};
+    const ScrfdHeadView* bboxes[3] = {&scrfd_out.bbox_8, &scrfd_out.bbox_16, &scrfd_out.bbox_32};
+    const ScrfdHeadView* kps[3] = {&scrfd_out.kps_8, &scrfd_out.kps_16, &scrfd_out.kps_32};
 
     const float pad_x = lb_info.pad_x;
     const float pad_y = lb_info.pad_y;
@@ -171,14 +171,14 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
         int feat_w = static_cast<int>(net_w) / stride;
         int num_anchors = 2; // SCRFD 10G has 2 anchors per location
 
-        const float* score_ptr = scores[stride_idx];
-        const float* bbox_ptr = bboxes[stride_idx];
-        const float* kps_ptr = kps[stride_idx];
+        const ScrfdHeadView& score_head = *scores[stride_idx];
+        const ScrfdHeadView& bbox_head = *bboxes[stride_idx];
+        const ScrfdHeadView& kps_head = *kps[stride_idx];
 
         int total_anchors = feat_h * feat_w * num_anchors;
 
         for (int a_idx = 0; a_idx < total_anchors; ++a_idx) {
-            float score = score_ptr[a_idx];
+            float score = score_head.get(a_idx, 0);
             if (score < conf_thresh) continue;
 
             int loc_idx = a_idx / num_anchors;
@@ -188,11 +188,11 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
             float anchor_x = static_cast<float>(cx_grid * stride);
             float anchor_y = static_cast<float>(cy_grid * stride);
 
-            // Distance to bbox
-            float d_x1 = bbox_ptr[a_idx * 4 + 0] * stride;
-            float d_y1 = bbox_ptr[a_idx * 4 + 1] * stride;
-            float d_x2 = bbox_ptr[a_idx * 4 + 2] * stride;
-            float d_y2 = bbox_ptr[a_idx * 4 + 3] * stride;
+            // Distance to bbox (按需延迟读取)
+            float d_x1 = bbox_head.get(a_idx, 0) * stride;
+            float d_y1 = bbox_head.get(a_idx, 1) * stride;
+            float d_x2 = bbox_head.get(a_idx, 2) * stride;
+            float d_y2 = bbox_head.get(a_idx, 3) * stride;
 
             float x1_lb = anchor_x - d_x1;
             float y1_lb = anchor_y - d_y1;
@@ -209,8 +209,8 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
             if (face.x2 <= face.x1 || face.y2 <= face.y1) continue;
 
             for (int k = 0; k < 5; ++k) {
-                float kx_lb = anchor_x + kps_ptr[a_idx * 10 + k * 2 + 0] * stride;
-                float ky_lb = anchor_y + kps_ptr[a_idx * 10 + k * 2 + 1] * stride;
+                float kx_lb = anchor_x + kps_head.get(a_idx, k * 2 + 0) * stride;
+                float ky_lb = anchor_y + kps_head.get(a_idx, k * 2 + 1) * stride;
                 face.landmarks[k * 2 + 0] = std::clamp((kx_lb - pad_x) / scale, 0.0f, static_cast<float>(orig_w));
                 face.landmarks[k * 2 + 1] = std::clamp((ky_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_h));
             }

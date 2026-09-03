@@ -1,0 +1,83 @@
+{
+  "scenario": "faces_16",
+  "resolution": "1920x1080",
+  "mode": "best_shot",
+  "surface_type": "cvpixelbuffer",
+  "stride_mode": 0,
+  "num_faces": 16,
+  "warmup": 30,
+  "loops": 300,
+  "rss": {
+    "before_init_mb": 299.734,
+    "after_warmup_mb": 299.828,
+    "peak_mb": 325.516,
+    "after_close_mb": 257.609
+  },
+  "total_ms": {
+    "avg": 9.41885,
+    "p50": 8.45412,
+    "p95": 10.5712,
+    "p99": 70.0833,
+    "min": 7.54413,
+    "max": 87.7935,
+    "fps": 106.17
+  },
+  "stages_avg_ms": {
+    "nv12_conversion": 0.576842,
+    "letterbox": 0.946965,
+    "scrfd_infer": 2.06593,
+    "scrfd_copy": 4.5899,
+    "decode_nms": 0.017728,
+    "tracker_quality": 0.011393,
+    "alignment": 0.013383,
+    "glintr_infer": 0.658713,
+    "glintr_copy": 0.000278,
+    "embedding_encode": 0.00114567,
+    "serialization": 0.063547
+  },
+  "stages_p50_ms": {
+    "nv12_conversion": 0.5317,
+    "letterbox": 0.8442,
+    "scrfd_infer": 1.9824,
+    "scrfd_copy": 4.403,
+    "decode_nms": 0.0169,
+    "tracker_quality": 0.0082,
+    "alignment": 0,
+    "glintr_infer": 0,
+    "glintr_copy": 0,
+    "embedding_encode": 0,
+    "serialization": 0.0592
+  },
+  "stages_p95_ms": {
+    "nv12_conversion": 0.8097,
+    "letterbox": 1.4874,
+    "scrfd_infer": 2.5975,
+    "scrfd_copy": 5.5043,
+    "decode_nms": 0.0273,
+    "tracker_quality": 0.0155,
+    "alignment": 0,
+    "glintr_infer": 0,
+    "glintr_copy": 0,
+    "embedding_encode": 0,
+    "serialization": 0.0902
+  },
+  "stages_p99_ms": {
+    "nv12_conversion": 1.0393,
+    "letterbox": 3.0848,
+    "scrfd_infer": 3.0259,
+    "scrfd_copy": 6.6984,
+    "decode_nms": 0.0417,
+    "tracker_quality": 0.2106,
+    "alignment": 1.2618,
+    "glintr_infer": 59.711,
+    "glintr_copy": 0.0252,
+    "embedding_encode": 0.1006,
+    "serialization": 0.132
+  },
+  "counts": {
+    "detected_faces_avg": 16,
+    "tracks_avg": 16,
+    "embedding_calls_avg": 0.16,
+    "image_requests_avg": 0.16
+  }
+}

@@ -4,6 +4,7 @@
  */
 
 #include "preprocessor.hpp"
+#include "core/profile_stats.hpp"
 
 #import <CoreVideo/CoreVideo.h>
 #import <VideoToolbox/VideoToolbox.h>
@@ -135,7 +136,63 @@ bool compute_similarity_transform(const float src[5][2], const float dst[5][2], 
     return true;
 }
 
+struct PreprocessScratch {
+    std::vector<uint8_t> scaled_y;
+    std::vector<uint8_t> scaled_uv;
+    std::vector<uint8_t> scaled_argb;
+
+    void ensure_size(uint32_t nw, uint32_t nh) {
+        size_t y_sz = static_cast<size_t>(nw) * nh;
+        size_t uv_sz = static_cast<size_t>(nw) * ((nh + 1) / 2);
+        size_t argb_sz = static_cast<size_t>(nw) * nh * 4;
+        if (scaled_y.size() < y_sz) scaled_y.resize(y_sz);
+        if (scaled_uv.size() < uv_sz) scaled_uv.resize(uv_sz);
+        if (scaled_argb.size() < argb_sz) scaled_argb.resize(argb_sz);
+    }
+};
+
+static thread_local PreprocessScratch t_scratch;
+
 } // namespace
+
+PreprocessResult::~PreprocessResult() {
+    if (pixel_buffer) {
+        CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
+        pixel_buffer = nullptr;
+    }
+}
+
+PreprocessResult::PreprocessResult(PreprocessResult&& other) noexcept
+    : orig_width(other.orig_width),
+      orig_height(other.orig_height),
+      letterbox_rgb(std::move(other.letterbox_rgb)),
+      letterbox_info(other.letterbox_info),
+      y_plane(other.y_plane),
+      uv_plane(other.uv_plane),
+      y_stride(other.y_stride),
+      uv_stride(other.uv_stride),
+      pixel_buffer(other.pixel_buffer) {
+    other.pixel_buffer = nullptr;
+}
+
+PreprocessResult& PreprocessResult::operator=(PreprocessResult&& other) noexcept {
+    if (this != &other) {
+        if (pixel_buffer) {
+            CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
+        }
+        orig_width = other.orig_width;
+        orig_height = other.orig_height;
+        letterbox_rgb = std::move(other.letterbox_rgb);
+        letterbox_info = other.letterbox_info;
+        y_plane = other.y_plane;
+        uv_plane = other.uv_plane;
+        y_stride = other.y_stride;
+        uv_stride = other.uv_stride;
+        pixel_buffer = other.pixel_buffer;
+        other.pixel_buffer = nullptr;
+    }
+    return *this;
+}
 
 bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& out, std::string& error) {
     if (!frame) {
@@ -156,11 +213,9 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
 
     constexpr uint32_t kTargetWidth = 640;
     constexpr uint32_t kTargetHeight = 384;
+    out.orig_width = width;
+    out.orig_height = height;
     out.letterbox_info = argus::cv::compute_letterbox(width, height, kTargetWidth, kTargetHeight);
-    out.original_rgb.width = width;
-    out.original_rgb.height = height;
-    out.original_rgb.channels = 3;
-    out.original_rgb.data.resize(static_cast<size_t>(width) * height * 3);
 
     const uint8_t* y_plane = nullptr;
     const uint8_t* uv_plane = nullptr;
@@ -189,7 +244,27 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
         return false;
     }
 
-    // NV12 to ARGB conversion using vImage
+    out.y_plane = y_plane;
+    out.uv_plane = uv_plane;
+    out.y_stride = y_stride;
+    out.uv_stride = uv_stride;
+    out.pixel_buffer = pixel_buffer;
+
+#if ENABLE_PROFILING
+    auto* prof = get_active_profile_record();
+    ARGUS_SIGNPOST_BEGIN("preprocess");
+    auto t0_nv12 = std::chrono::steady_clock::now();
+#endif
+
+    // Letterbox geometry
+    uint32_t nw = static_cast<uint32_t>(std::round(static_cast<float>(width) * out.letterbox_info.scale));
+    uint32_t nh = static_cast<uint32_t>(std::round(static_cast<float>(height) * out.letterbox_info.scale));
+    uint32_t pad_x = static_cast<uint32_t>(std::round(out.letterbox_info.pad_x));
+    uint32_t pad_y = static_cast<uint32_t>(std::round(out.letterbox_info.pad_y));
+
+    // Ensure scratch buffer capacity
+    t_scratch.ensure_size(nw, nh);
+
     vImage_Buffer src_y = {
         .data = const_cast<uint8_t*>(y_plane),
         .height = height,
@@ -202,13 +277,44 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
         .width = width / 2,
         .rowBytes = static_cast<size_t>(uv_stride)
     };
-    vImage_Buffer dst_rgb = {
-        .data = out.original_rgb.data.data(),
-        .height = height,
-        .width = width,
-        .rowBytes = static_cast<size_t>(width) * 3
+
+    vImage_Buffer dst_y = {
+        .data = t_scratch.scaled_y.data(),
+        .height = nh,
+        .width = nw,
+        .rowBytes = static_cast<size_t>(nw)
+    };
+    vImage_Buffer dst_uv = {
+        .data = t_scratch.scaled_uv.data(),
+        .height = nh / 2,
+        .width = nw / 2,
+        .rowBytes = static_cast<size_t>(nw)
     };
 
+    // 1. Direct Planar8 scaling on Y plane
+    vImageScale_Planar8(&src_y, &dst_y, nullptr, kvImageHighQualityResampling);
+
+    // 2. Direct CbCr8 scaling on UV interleaved plane
+    vImageScale_CbCr8(&src_uv, &dst_uv, nullptr, kvImageHighQualityResampling);
+
+#if ENABLE_PROFILING
+    auto t1_nv12 = std::chrono::steady_clock::now();
+    if (prof) {
+        prof->nv12_conversion_ms = std::chrono::duration<double, std::milli>(t1_nv12 - t0_nv12).count();
+    }
+    auto t0_lb = std::chrono::steady_clock::now();
+#endif
+
+    // 3. Prepare target letterbox_rgb buffer (640x384, neutral gray 114 padded)
+    out.letterbox_rgb.width = kTargetWidth;
+    out.letterbox_rgb.height = kTargetHeight;
+    out.letterbox_rgb.channels = 3;
+    if (out.letterbox_rgb.data.size() != kTargetWidth * kTargetHeight * 3) {
+        out.letterbox_rgb.data.resize(kTargetWidth * kTargetHeight * 3);
+    }
+    std::fill(out.letterbox_rgb.data.begin(), out.letterbox_rgb.data.end(), 114);
+
+    // 4. Color conversion: only convert downsampled (nw x nh) pixels (e.g. 640x360 = 230K pixels, not 8.3M!)
     vImage_YpCbCrToARGB matrix;
     vImage_YpCbCrPixelRange pixel_range = {16, 128, 235, 240, 255, 0, 255, 1};
     vImageConvert_YpCbCrToARGB_GenerateConversion(
@@ -220,43 +326,14 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
         kvImageNoFlags
     );
 
-    std::vector<uint8_t> temp_argb(static_cast<size_t>(width) * height * 4);
-    vImage_Buffer dst_argb = {
-        .data = temp_argb.data(),
-        .height = height,
-        .width = width,
-        .rowBytes = static_cast<size_t>(width) * 4
-    };
-
-    vImageConvert_420Yp8_CbCr8ToARGB8888(&src_y, &src_uv, &dst_argb, &matrix, nullptr, 255, kvImageNoFlags);
-
-    if (pixel_buffer) {
-        CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
-    }
-
-    // ARGB to RGB for original image
-    vImageConvert_ARGB8888toRGB888(&dst_argb, &dst_rgb, kvImageNoFlags);
-
-    // Letterbox to 640x384 (Surveillance 16:9 optimized with neutral gray 114 padding)
-    out.letterbox_rgb.width = kTargetWidth;
-    out.letterbox_rgb.height = kTargetHeight;
-    out.letterbox_rgb.channels = 3;
-    out.letterbox_rgb.data.assign(kTargetWidth * kTargetHeight * 3, 114); // 114 pad color
-
-    uint32_t nw = static_cast<uint32_t>(std::round(static_cast<float>(width) * out.letterbox_info.scale));
-    uint32_t nh = static_cast<uint32_t>(std::round(static_cast<float>(height) * out.letterbox_info.scale));
-    uint32_t pad_x = static_cast<uint32_t>(std::round(out.letterbox_info.pad_x));
-    uint32_t pad_y = static_cast<uint32_t>(std::round(out.letterbox_info.pad_y));
-
-    std::vector<uint8_t> scaled_argb(static_cast<size_t>(nw) * nh * 4);
-    vImage_Buffer scaled_argb_buf = {
-        .data = scaled_argb.data(),
+    vImage_Buffer small_argb = {
+        .data = t_scratch.scaled_argb.data(),
         .height = nh,
         .width = nw,
         .rowBytes = static_cast<size_t>(nw * 4)
     };
 
-    vImageScale_ARGB8888(&dst_argb, &scaled_argb_buf, nullptr, kvImageHighQualityResampling);
+    vImageConvert_420Yp8_CbCr8ToARGB8888(&dst_y, &dst_uv, &small_argb, &matrix, nullptr, 255, kvImageNoFlags);
 
     vImage_Buffer roi_rgb_buf = {
         .data = out.letterbox_rgb.data.data() + (pad_y * kTargetWidth + pad_x) * 3,
@@ -265,12 +342,154 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
         .rowBytes = kTargetWidth * 3
     };
 
-    vImageConvert_ARGB8888toRGB888(&scaled_argb_buf, &roi_rgb_buf, kvImageNoFlags);
+    vImageConvert_ARGB8888toRGB888(&small_argb, &roi_rgb_buf, kvImageNoFlags);
+
+#if ENABLE_PROFILING
+    auto t1_lb = std::chrono::steady_clock::now();
+    ARGUS_SIGNPOST_END("preprocess");
+    if (prof) {
+        prof->letterbox_ms = std::chrono::duration<double, std::milli>(t1_lb - t0_lb).count();
+    }
+#endif
+
+    return true;
+}
+
+bool Preprocessor::align_face_112x112(const PreprocessResult& prep_res, const float landmarks_10[10],
+                                      ImageBuffer& out_face_112, std::string& error) {
+#if ENABLE_PROFILING
+    ARGUS_SIGNPOST_BEGIN("alignment");
+    auto t0_align = std::chrono::steady_clock::now();
+#endif
+    if (prep_res.orig_width == 0 || prep_res.orig_height == 0 || !prep_res.y_plane || !prep_res.uv_plane) {
+        error = "empty or invalid NV12 input planes in PreprocessResult";
+        return false;
+    }
+
+    float src[5][2];
+    for (int i = 0; i < 5; ++i) {
+        src[i][0] = landmarks_10[i * 2];
+        src[i][1] = landmarks_10[i * 2 + 1];
+    }
+
+    float M[2][3];
+    if (!compute_similarity_transform(src, kArcFaceSrc, M)) {
+        error = "failed to compute similarity transform";
+        return false;
+    }
+
+    float a = M[0][0], b = M[0][1], tx = M[0][2];
+    float c = M[1][0], d = M[1][1], ty = M[1][2];
+    float det = a * d - b * c;
+    if (std::abs(det) < 1e-7f) {
+        error = "singular similarity matrix";
+        return false;
+    }
+
+    float inv_a = d / det;
+    float inv_b = -b / det;
+    float inv_c = -c / det;
+    float inv_d = a / det;
+    float inv_tx = (b * ty - d * tx) / det;
+    float inv_ty = (c * tx - a * ty) / det;
+
+    out_face_112.width = 112;
+    out_face_112.height = 112;
+    out_face_112.channels = 3;
+    out_face_112.data.resize(112 * 112 * 3);
+
+    const uint8_t* y_plane = prep_res.y_plane;
+    const uint8_t* uv_plane = prep_res.uv_plane;
+    const int32_t y_stride = prep_res.y_stride;
+    const int32_t uv_stride = prep_res.uv_stride;
+    const int src_w = static_cast<int>(prep_res.orig_width);
+    const int src_h = static_cast<int>(prep_res.orig_height);
+    const int uv_w = src_w / 2;
+    const int uv_h = src_h / 2;
+
+    uint8_t* dst_ptr = out_face_112.data.data();
+
+    // Direct bilinear sampling from NV12 planes with BT.709 conversion
+    for (int y = 0; y < 112; ++y) {
+        for (int x = 0; x < 112; ++x) {
+            float src_x = inv_a * static_cast<float>(x) + inv_b * static_cast<float>(y) + inv_tx;
+            float src_y = inv_c * static_cast<float>(x) + inv_d * static_cast<float>(y) + inv_ty;
+
+            src_x = std::clamp(src_x, 0.0f, static_cast<float>(src_w - 1));
+            src_y = std::clamp(src_y, 0.0f, static_cast<float>(src_h - 1));
+
+            // Y plane bilinear interpolation
+            int x0 = static_cast<int>(std::floor(src_x));
+            int y0 = static_cast<int>(std::floor(src_y));
+            int x1 = std::min(x0 + 1, src_w - 1);
+            int y1 = std::min(y0 + 1, src_h - 1);
+
+            float wx1 = src_x - static_cast<float>(x0);
+            float wy1 = src_y - static_cast<float>(y0);
+            float wx0 = 1.0f - wx1;
+            float wy0 = 1.0f - wy1;
+
+            float y_val = wy0 * (wx0 * y_plane[y0 * y_stride + x0] + wx1 * y_plane[y0 * y_stride + x1]) +
+                          wy1 * (wx0 * y_plane[y1 * y_stride + x0] + wx1 * y_plane[y1 * y_stride + x1]);
+
+            // UV plane bilinear interpolation (chroma is 2x2 subsampled)
+            float uv_x = src_x * 0.5f;
+            float uv_y = src_y * 0.5f;
+
+            int ux0 = static_cast<int>(std::floor(uv_x));
+            int uy0 = static_cast<int>(std::floor(uv_y));
+            int ux1 = std::min(ux0 + 1, uv_w - 1);
+            int uy1 = std::min(uy0 + 1, uv_h - 1);
+
+            float uwx1 = uv_x - static_cast<float>(ux0);
+            float uwy1 = uv_y - static_cast<float>(uy0);
+            float uwx0 = 1.0f - uwx1;
+            float uwy0 = 1.0f - uwy1;
+
+            const uint8_t* p_uv00 = uv_plane + uy0 * uv_stride + ux0 * 2;
+            const uint8_t* p_uv01 = uv_plane + uy0 * uv_stride + ux1 * 2;
+            const uint8_t* p_uv10 = uv_plane + uy1 * uv_stride + ux0 * 2;
+            const uint8_t* p_uv11 = uv_plane + uy1 * uv_stride + ux1 * 2;
+
+            float u_val = uwy0 * (uwx0 * p_uv00[0] + uwx1 * p_uv01[0]) +
+                          uwy1 * (uwx0 * p_uv10[0] + uwx1 * p_uv11[0]);
+            float v_val = uwy0 * (uwx0 * p_uv00[1] + uwx1 * p_uv01[1]) +
+                          uwy1 * (uwx0 * p_uv10[1] + uwx1 * p_uv11[1]);
+
+            // BT.709 standard video range color conversion
+            float y_norm = (y_val - 16.0f) * 1.164383f;
+            float cb = u_val - 128.0f;
+            float cr = v_val - 128.0f;
+
+            float r_val = y_norm + 1.792741f * cr;
+            float g_val = y_norm - 0.213249f * cb - 0.532909f * cr;
+            float b_val = y_norm + 2.112402f * cb;
+
+            uint8_t* out_pixel = dst_ptr + (y * 112 + x) * 3;
+            out_pixel[0] = static_cast<uint8_t>(std::clamp(std::round(r_val), 0.0f, 255.0f));
+            out_pixel[1] = static_cast<uint8_t>(std::clamp(std::round(g_val), 0.0f, 255.0f));
+            out_pixel[2] = static_cast<uint8_t>(std::clamp(std::round(b_val), 0.0f, 255.0f));
+        }
+    }
+
+#if ENABLE_PROFILING
+    auto t1_align = std::chrono::steady_clock::now();
+    ARGUS_SIGNPOST_END("alignment");
+    auto* prof = get_active_profile_record();
+    if (prof) {
+        prof->alignment_ms += std::chrono::duration<double, std::milli>(t1_align - t0_align).count();
+    }
+#endif
+
     return true;
 }
 
 bool Preprocessor::align_face_112x112(const ImageBuffer& orig_rgb, const float landmarks_10[10],
                                      ImageBuffer& out_face_112, std::string& error) {
+#if ENABLE_PROFILING
+    ARGUS_SIGNPOST_BEGIN("alignment");
+    auto t0_align = std::chrono::steady_clock::now();
+#endif
     if (orig_rgb.width == 0 || orig_rgb.height == 0 || orig_rgb.data.empty()) {
         error = "empty original image";
         return false;
@@ -351,6 +570,15 @@ bool Preprocessor::align_face_112x112(const ImageBuffer& orig_rgb, const float l
             }
         }
     }
+
+#if ENABLE_PROFILING
+    auto t1_align = std::chrono::steady_clock::now();
+    ARGUS_SIGNPOST_END("alignment");
+    auto* prof = get_active_profile_record();
+    if (prof) {
+        prof->alignment_ms += std::chrono::duration<double, std::milli>(t1_align - t0_align).count();
+    }
+#endif
 
     return true;
 }

@@ -235,6 +235,10 @@ fsync_parent(final_path);
 - 每个 track 首次命中或相似度至少提升 `0.03` 才创建一次待上报观察。track 状态表容量为 4096；队列丢弃、抓拍失败、异常、重试耗尽和实例停止时必须清理相应状态。
 - 只有确定需要上报后才抓拍。一次成功处理先保存共享全景图和各自的人脸特写图，最多重试报告 3 次；重试只复用已落盘图片的 ID/相对路径，不再次访问已释放的帧。报告成功后再标记所引用图片；失败图片保留为 `unreported` orphan candidate。
 - `FaceObservation` 的 Go upsert 以唯一 `event_id` 为边界，只允许更高 `similarity` 覆盖旧记录；迟到的低分上报视为幂等成功，不得覆盖人员、摄像头名称快照或图片引用。
+- C ABI 回调参数 `av_algo_result` 及其内部 `json` 字符串和 `images` 数组生命周期仅在 `on_result` 回调执行期间有效；Engine 必须在回调内同步完成 JSON 解析、向量深拷贝与结构体验证，严禁将裸指针投递至异步队列。
+- `MLMultiArray` 输出读取（`dataPointer`）会触发底层 `MultiArrayBuffer::loadBuffer()` 与互斥锁跨硬件同步；应避免高频分散读取多个输出头，后续应优先采用单内存块映射或网络末端融合输出。
+- 算法包预处理管线严禁每帧分配和计算全分辨率 RGB/ARGB（如 4K 830 万像素原图）。Letterbox 缩放必须直接在原生 Planar 平面（如 NV12 的 Y 与 UV 平面，使用 `vImageScale_Planar8` / `vImageScale_CbCr8`）上分级硬件降采样，色彩转换仅针对缩放后的目标小视口（如 640x360 23 万像素）执行，工作区必须常驻复用；局部人脸对齐截取（如 112x112）应直接在 NV12 原图双平面按需执行双线性插值点采样与点级色彩转换，实现单帧 0 MB 全图堆分配。
+- 算法包内部阶段计时与 `os_signpost` 标记必须由编译开关（如 `ENABLE_PROFILING`）严格控制，默认生产构建保持为 OFF；profiling 结构化数据仅允许通过现有 C ABI `log` 回调回传，严禁新增导出符号破坏 C ABI 边界纯洁性。
 
 ### 11.4 Validation & Error Matrix
 

@@ -1,7 +1,7 @@
 {
-  "id": "face-recognition-analysis",
-  "name": "face-recognition-analysis",
-  "title": "face_recognition 算法多层面分析与验证",
+  "id": "face-recognition-algorithm-benchmark",
+  "name": "face-recognition-algorithm-benchmark",
+  "title": "face_recognition 算法包性能基线与 profiling",
   "description": "",
   "status": "done",
   "dev_type": null,
@@ -18,11 +18,8 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "09-03-face-recognition-algorithm-benchmark",
-    "09-03-face-recognition-cross-layer"
-  ],
-  "parent": null,
+  "children": [],
+  "parent": "09-03-face-recognition-analysis",
   "relatedFiles": [],
   "notes": "",
   "meta": {}

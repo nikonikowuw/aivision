@@ -4,6 +4,7 @@
  */
 
 #include "model_inference.hpp"
+#include "core/profile_stats.hpp"
 
 #import <CoreML/CoreML.h>
 #import <CoreVideo/CoreVideo.h>
@@ -185,6 +186,9 @@ bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& targ
         strides[i] = arr.strides[i].integerValue;
     }
 
+    const void* base_ptr = arr.dataPointer;
+    if (!base_ptr) return false;
+
     std::vector<NSInteger> coords(ndim, 0);
     for (size_t idx = 0; idx < total_elements; ++idx) {
         NSInteger offset = 0;
@@ -192,11 +196,11 @@ bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& targ
             offset += coords[d] * strides[d];
         }
         if (arr.dataType == MLMultiArrayDataTypeFloat32) {
-            target[idx] = static_cast<const float*>(arr.dataPointer)[offset];
+            target[idx] = static_cast<const float*>(base_ptr)[offset];
         } else if (arr.dataType == MLMultiArrayDataTypeFloat16) {
-            target[idx] = static_cast<float>(static_cast<const _Float16*>(arr.dataPointer)[offset]);
+            target[idx] = static_cast<float>(static_cast<const _Float16*>(base_ptr)[offset]);
         } else if (arr.dataType == MLMultiArrayDataTypeDouble) {
-            target[idx] = static_cast<float>(static_cast<const double*>(arr.dataPointer)[offset]);
+            target[idx] = static_cast<float>(static_cast<const double*>(base_ptr)[offset]);
         }
         // 推进 N 维坐标
         for (int d = static_cast<int>(ndim) - 1; d >= 0; --d) {
@@ -207,6 +211,55 @@ bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& targ
             coords[d] = 0;
         }
     }
+    return true;
+}
+
+static bool map_multiarray_to_head_view(
+    MLMultiArray* arr,
+    ScrfdHeadView& view,
+    uint32_t expected_anchors,
+    uint32_t dim1,
+    std::string& error) {
+    if (!arr) {
+        error = "null MLMultiArray";
+        return false;
+    }
+
+    view.num_anchors = expected_anchors;
+    view.dim1 = dim1;
+
+    if (arr.dataType == MLMultiArrayDataTypeFloat32) {
+        view.is_fp16 = false;
+        view.data = static_cast<const float*>(arr.dataPointer);
+        view.data_fp16 = nullptr;
+    } else if (arr.dataType == MLMultiArrayDataTypeFloat16) {
+        view.is_fp16 = true;
+        view.data = nullptr;
+        view.data_fp16 = static_cast<const _Float16*>(arr.dataPointer);
+    } else {
+        error = "unsupported MLMultiArray dataType in zero-copy path: " + std::to_string(static_cast<int>(arr.dataType));
+        return false;
+    }
+
+    if (!view.data && !view.data_fp16) {
+        error = "null dataPointer in MLMultiArray";
+        return false;
+    }
+
+    const NSInteger ndim = arr.shape.count;
+    if (ndim <= 1) {
+        view.stride_anchor = (ndim == 1) ? arr.strides[0].integerValue : 1;
+        view.stride_channel = 1;
+        return true;
+    }
+
+    // 典型 shape: [1, num_anchors, dim1] 或 [num_anchors, dim1]
+    const NSInteger anchor_axis = ndim - 2;
+    const NSInteger channel_axis = ndim - 1;
+
+    view.stride_anchor = arr.strides[anchor_axis].integerValue;
+    view.stride_channel = arr.strides[channel_axis].integerValue;
+
     return true;
 }
 
@@ -392,31 +445,67 @@ static bool run_scrfd_internal(MLModel* model,
             return false;
         }
 
+#if ENABLE_PROFILING
+        ARGUS_SIGNPOST_BEGIN("scrfd_inference");
+        auto t0_infer = std::chrono::steady_clock::now();
+#endif
+
         id<MLFeatureProvider> output_provider = [model predictionFromFeatures:input_provider error:&ns_error];
         if (!output_provider || ns_error) {
             error = "failed to run SCRFD prediction: " +
                     std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
+#if ENABLE_PROFILING
+            ARGUS_SIGNPOST_END("scrfd_inference");
+#endif
             return false;
         }
 
-        auto copy_head = [&](NSString* name, std::vector<float>& dst_vec, size_t dim1) -> bool {
+#if ENABLE_PROFILING
+        auto t1_infer = std::chrono::steady_clock::now();
+        ARGUS_SIGNPOST_END("scrfd_inference");
+        auto t0_copy = std::chrono::steady_clock::now();
+#endif
+
+        auto map_head = [&](NSString* name, ScrfdHeadView& view, uint32_t expected_anchors, uint32_t dim1) -> bool {
             MLFeatureValue* fv = [output_provider featureValueForName:name];
-            if (!fv || fv.type != MLFeatureTypeMultiArray) return false;
-            return copy_multiarray_to_float_vector(fv.multiArrayValue, dst_vec, dim1);
+            if (!fv || fv.type != MLFeatureTypeMultiArray) {
+                error = "missing or invalid output multiarray for head: " + std::string(name ? name.UTF8String : "nil");
+                return false;
+            }
+            return map_multiarray_to_head_view(fv.multiArrayValue, view, expected_anchors, dim1, error);
         };
 
-        if (!copy_head(heads.score_8_name, out.score_8, 1) ||
-            !copy_head(heads.score_16_name, out.score_16, 1) ||
-            !copy_head(heads.score_32_name, out.score_32, 1) ||
-            !copy_head(heads.bbox_8_name, out.bbox_8, 4) ||
-            !copy_head(heads.bbox_16_name, out.bbox_16, 4) ||
-            !copy_head(heads.bbox_32_name, out.bbox_32, 4) ||
-            !copy_head(heads.kps_8_name, out.kps_8, 10) ||
-            !copy_head(heads.kps_16_name, out.kps_16, 10) ||
-            !copy_head(heads.kps_32_name, out.kps_32, 10)) {
-            error = "failed to copy one or more SCRFD output arrays";
+        const uint32_t a8 = (net_w / 8) * (net_h / 8) * 2;
+        const uint32_t a16 = (net_w / 16) * (net_h / 16) * 2;
+        const uint32_t a32 = (net_w / 32) * (net_h / 32) * 2;
+
+        if (!map_head(heads.score_8_name, out.score_8, a8, 1) ||
+            !map_head(heads.score_16_name, out.score_16, a16, 1) ||
+            !map_head(heads.score_32_name, out.score_32, a32, 1) ||
+            !map_head(heads.bbox_8_name, out.bbox_8, a8, 4) ||
+            !map_head(heads.bbox_16_name, out.bbox_16, a16, 4) ||
+            !map_head(heads.bbox_32_name, out.bbox_32, a32, 4) ||
+            !map_head(heads.kps_8_name, out.kps_8, a8, 10) ||
+            !map_head(heads.kps_16_name, out.kps_16, a16, 10) ||
+            !map_head(heads.kps_32_name, out.kps_32, a32, 10)) {
             return false;
         }
+
+        // 保持 output_provider 及其所有 MLMultiArray 内存直到 out 析构
+        out.buffer_holder = std::shared_ptr<void>((__bridge_retained void*)output_provider, [](void* ptr) {
+            if (ptr) {
+                CFRelease(ptr);
+            }
+        });
+
+#if ENABLE_PROFILING
+        auto t1_copy = std::chrono::steady_clock::now();
+        auto* prof = get_active_profile_record();
+        if (prof) {
+            prof->scrfd_infer_ms = std::chrono::duration<double, std::milli>(t1_infer - t0_infer).count();
+            prof->scrfd_copy_ms = std::chrono::duration<double, std::milli>(t1_copy - t0_copy).count();
+        }
+#endif
 
         return true;
     }
@@ -576,12 +665,26 @@ static bool run_glintr_internal(MLModel* model,
             return false;
         }
 
+#if ENABLE_PROFILING
+        ARGUS_SIGNPOST_BEGIN("glintr_inference");
+        auto t0_infer = std::chrono::steady_clock::now();
+#endif
+
         id<MLFeatureProvider> output_provider = [model predictionFromFeatures:input_provider error:&ns_error];
         if (!output_provider || ns_error) {
             error = "failed to run GLINTR prediction: " +
                     std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
+#if ENABLE_PROFILING
+            ARGUS_SIGNPOST_END("glintr_inference");
+#endif
             return false;
         }
+
+#if ENABLE_PROFILING
+        auto t1_infer = std::chrono::steady_clock::now();
+        ARGUS_SIGNPOST_END("glintr_inference");
+        auto t0_copy = std::chrono::steady_clock::now();
+#endif
 
         MLFeatureValue* out_val = [output_provider featureValueForName:output_name];
         if (!out_val || out_val.type != MLFeatureTypeMultiArray) {
@@ -598,6 +701,16 @@ static bool run_glintr_internal(MLModel* model,
             error = "unexpected GLINTR embedding dimension (expected 512, got " + std::to_string(out.embedding.size()) + ")";
             return false;
         }
+
+#if ENABLE_PROFILING
+        auto t1_copy = std::chrono::steady_clock::now();
+        auto* prof = get_active_profile_record();
+        if (prof) {
+            prof->glintr_infer_ms += std::chrono::duration<double, std::milli>(t1_infer - t0_infer).count();
+            prof->glintr_copy_ms += std::chrono::duration<double, std::milli>(t1_copy - t0_copy).count();
+            prof->embedding_calls++;
+        }
+#endif
 
         return true;
     }

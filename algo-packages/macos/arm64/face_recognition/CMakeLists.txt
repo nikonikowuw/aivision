@@ -31,6 +31,11 @@ if(ENABLE_ASAN)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+option(ENABLE_PROFILING "Enable stage-level profiling and signposts" OFF)
+if(ENABLE_PROFILING)
+    add_compile_definitions(ENABLE_PROFILING=1)
+endif()
+
 list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vendor/argus-sdk/cmake")
 find_package(ArgusAlgoSDK REQUIRED)
 

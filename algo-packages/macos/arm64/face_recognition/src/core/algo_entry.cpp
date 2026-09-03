@@ -12,6 +12,7 @@
 #include "../inference/model_inference.hpp"
 #include "../postprocess/postprocessor.hpp"
 #include "config.hpp"
+#include "profile_stats.hpp"
 
 #import <CoreGraphics/CoreGraphics.h>
 #import <ImageIO/ImageIO.h>
@@ -275,8 +276,8 @@ void process_face_feature_and_track_state(
 
     if (!best_face) return;
 
-    const uint32_t orig_w = prep_res.original_rgb.width;
-    const uint32_t orig_h = prep_res.original_rgb.height;
+    const uint32_t orig_w = prep_res.orig_width;
+    const uint32_t orig_h = prep_res.orig_height;
 
     rp.has_face = true;
     float fx = std::clamp(best_face->x1 / static_cast<float>(orig_w), 0.0f, 0.9999f);
@@ -323,17 +324,27 @@ void process_face_feature_and_track_state(
     }
 
     if (need_extract) {
-        // 从原图直接做五点相似变换对齐截脸 -> 112x112
+        // 从 NV12 原图双平面直接做五点相似变换对齐截脸 -> 112x112 (零全图 RGB 分配)
         ImageBuffer face_112;
         std::string align_err;
-        if (Preprocessor::align_face_112x112(prep_res.original_rgb, best_face->landmarks.data(), face_112, align_err)) {
+        if (Preprocessor::align_face_112x112(prep_res, best_face->landmarks.data(), face_112, align_err)) {
             // 运行 GLINTR100 提取特征
             GlintrOutput glintr_out;
             std::string glintr_err;
             if (inst->lib->model_manager->run_glintr(face_112.data.data(), glintr_out, glintr_err)) {
                 std::string emb_b64;
                 std::string emb_err;
+#if ENABLE_PROFILING
+                auto t0_enc = std::chrono::steady_clock::now();
+#endif
                 if (Postprocessor::process_and_encode_embedding(glintr_out.embedding, emb_b64, emb_err)) {
+#if ENABLE_PROFILING
+                    auto t1_enc = std::chrono::steady_clock::now();
+                    auto* prof = get_active_profile_record();
+                    if (prof) {
+                        prof->embedding_encode_ms += std::chrono::duration<double, std::milli>(t1_enc - t0_enc).count();
+                    }
+#endif
                     rp.embedding_base64 = emb_b64;
                     track_state.recognition_count++;
                     track_state.last_extracted_frame = frame->frame_id;
@@ -521,6 +532,12 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
     auto* inst = static_cast<InstanceContext*>(inst_handle);
 
     return invoke_abi(inst, [&] {
+#if ENABLE_PROFILING
+        FrameProfileRecord current_profile{};
+        current_profile.frame_id = frame->frame_id;
+        set_active_profile_record(&current_profile);
+        auto t_proc_start = std::chrono::steady_clock::now();
+#endif
         if (inst->has_received_frame && frame->frame_id <= inst->last_frame_id) {
             return fail(inst, AV_ERR_INVALID_ARG, "frame_id must be strictly increasing");
         }
@@ -531,15 +548,15 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             return fail(inst, AV_ERR_INVALID_ARG, "self-test instance already emitted a result");
         }
 
-        // 1. 预处理：生成同帧原图 RGB 与 640x384 Letterbox 图
+        // 1. 预处理：生成 640x384 Letterbox 图并持有 NV12 零拷贝视图 (彻底废除全图 RGB)
         PreprocessResult prep_res;
         std::string prep_err;
         if (!Preprocessor::process_frame(frame, prep_res, prep_err)) {
             return fail(inst, AV_ERR_INFERENCE_FAILED, ("preprocess failed: " + prep_err).c_str());
         }
 
-        const uint32_t orig_w = prep_res.original_rgb.width;
-        const uint32_t orig_h = prep_res.original_rgb.height;
+        const uint32_t orig_w = prep_res.orig_width;
+        const uint32_t orig_h = prep_res.orig_height;
 
         // 2. SCRFD 10G 人脸检测（主路径必须模型）
         ScrfdOutput scrfd_out;
@@ -548,16 +565,27 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
             return fail(inst, AV_ERR_INTERNAL, ("SCRFD inference failed: " + scrfd_err).c_str());
         }
 
+#if ENABLE_PROFILING
+        auto t0_dec = std::chrono::steady_clock::now();
+#endif
         auto detected_faces = Postprocessor::decode_scrfd_faces(
             scrfd_out, prep_res.letterbox_info,
             orig_w, orig_h,
             inst->config.face_detection_threshold, inst->config.face_nms_threshold
         );
+#if ENABLE_PROFILING
+        auto t1_dec = std::chrono::steady_clock::now();
+        current_profile.decode_nms_ms = std::chrono::duration<double, std::milli>(t1_dec - t0_dec).count();
+        current_profile.detected_faces = static_cast<uint32_t>(detected_faces.size());
+#endif
 
         std::vector<RecognizedPerson> result_persons;
 
         // 3. 分支：默认纯人脸主路径 (enable_person_detection == false) vs 人体/人脸联合路径
         if (!inst->config.enable_person_detection) {
+#if ENABLE_PROFILING
+            auto t0_tq = std::chrono::steady_clock::now();
+#endif
             // 将 detected_faces 转换为 DetectionBox 驱动 tracker
             std::vector<argus::cv::DetectionBox> face_dets;
             face_dets.reserve(detected_faces.size());
@@ -632,6 +660,13 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
                 process_face_feature_and_track_state(inst, frame, prep_res, best_face, rp, track_state);
                 result_persons.push_back(std::move(rp));
             }
+#if ENABLE_PROFILING
+            auto t1_tq = std::chrono::steady_clock::now();
+            double raw_tq_ms = std::chrono::duration<double, std::milli>(t1_tq - t0_tq).count();
+            double inner_ms = current_profile.alignment_ms + current_profile.glintr_infer_ms +
+                              current_profile.glintr_copy_ms + current_profile.embedding_encode_ms;
+            current_profile.tracker_quality_ms = (raw_tq_ms > inner_ms) ? (raw_tq_ms - inner_ms) : 0.0;
+#endif
         } else {
             // 可选人体检测 + 人脸联合路径 (YOLOv8n + SCRFD)
             YoloOutput yolo_out;
@@ -734,8 +769,15 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
         }
 
         if (!result_persons.empty() && inst->on_result) {
+#if ENABLE_PROFILING
+            auto t0_ser = std::chrono::steady_clock::now();
+#endif
             std::string result_json = Postprocessor::serialize_recognition_json(
                 result_persons, frame->frame_id, frame->pts_ns);
+#if ENABLE_PROFILING
+            auto t1_ser = std::chrono::steady_clock::now();
+            current_profile.serialization_ms = std::chrono::duration<double, std::milli>(t1_ser - t0_ser).count();
+#endif
 
             av_algo_result res{};
             res.size = sizeof(res);
@@ -752,6 +794,15 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
 
             inst->on_result(&res, inst->result_user);
         }
+
+#if ENABLE_PROFILING
+        auto t_proc_end = std::chrono::steady_clock::now();
+        current_profile.total_ms = std::chrono::duration<double, std::milli>(t_proc_end - t_proc_start).count();
+        current_profile.tracks = static_cast<uint32_t>(result_persons.size());
+        current_profile.image_requests = static_cast<uint32_t>(img_reqs.size());
+        set_active_profile_record(nullptr);
+        log_message(inst->lib, 0, current_profile.to_json());
+#endif
 
         return static_cast<int>(AV_OK);
     });

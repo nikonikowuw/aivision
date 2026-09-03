@@ -50,6 +50,7 @@ argus_add_algo_package(face_recognition
         "-framework CoreVideo"
         "-framework CoreML"
         "-framework Accelerate"
+        "-framework VideoToolbox"
         "-framework ImageIO"
         "-framework CoreGraphics"
 )
@@ -95,6 +96,7 @@ if(BUILD_TESTING)
         argus_sdk_headers
         "-framework Foundation"
         "-framework CoreVideo"
+        "-framework VideoToolbox"
         "-framework Accelerate"
     )
     add_test(NAME face_recognition_preprocess_tests COMMAND face_recognition_preprocess_tests)

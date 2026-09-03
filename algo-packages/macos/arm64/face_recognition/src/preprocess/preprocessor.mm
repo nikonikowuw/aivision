@@ -6,6 +6,7 @@
 #include "preprocessor.hpp"
 
 #import <CoreVideo/CoreVideo.h>
+#import <VideoToolbox/VideoToolbox.h>
 #import <Accelerate/Accelerate.h>
 #include <algorithm>
 #include <cmath>
@@ -153,6 +154,9 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
         return false;
     }
 
+    constexpr uint32_t kTargetWidth = 640;
+    constexpr uint32_t kTargetHeight = 384;
+    out.letterbox_info = argus::cv::compute_letterbox(width, height, kTargetWidth, kTargetHeight);
     out.original_rgb.width = width;
     out.original_rgb.height = height;
     out.original_rgb.channels = 3;
@@ -185,7 +189,7 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
         return false;
     }
 
-    // NV12 to RGB24 conversion using vImage
+    // NV12 to ARGB conversion using vImage
     vImage_Buffer src_y = {
         .data = const_cast<uint8_t*>(y_plane),
         .height = height,
@@ -233,10 +237,7 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
     // ARGB to RGB for original image
     vImageConvert_ARGB8888toRGB888(&dst_argb, &dst_rgb, kvImageNoFlags);
 
-    // Letterbox to 640x384 (Surveillance 16:9 optimized)
-    constexpr uint32_t kTargetWidth = 640;
-    constexpr uint32_t kTargetHeight = 384;
-    out.letterbox_info = argus::cv::compute_letterbox(width, height, kTargetWidth, kTargetHeight);
+    // Letterbox to 640x384 (Surveillance 16:9 optimized with neutral gray 114 padding)
     out.letterbox_rgb.width = kTargetWidth;
     out.letterbox_rgb.height = kTargetHeight;
     out.letterbox_rgb.channels = 3;
@@ -265,7 +266,6 @@ bool Preprocessor::process_frame(const av_frame_desc* frame, PreprocessResult& o
     };
 
     vImageConvert_ARGB8888toRGB888(&scaled_argb_buf, &roi_rgb_buf, kvImageNoFlags);
-
     return true;
 }
 

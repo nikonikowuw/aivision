@@ -268,7 +268,7 @@ constexpr uint32_t kImagePurposeFaceCrop = 0; // 高清人脸特写裁剪 ROI �
 void process_face_feature_and_track_state(
     InstanceContext* inst,
     const av_frame_desc* frame,
-    const PreprocessResult& prep_res,
+    PreprocessResult& prep_res,
     const FaceDetection* best_face,
     RecognizedPerson& rp,
     TrackQualityState& track_state) {
@@ -890,11 +890,19 @@ extern "C" AV_EXPORT int av_algo_extract_face(av_algo_library lib_handle,
         CGContextRelease(context);
         CGImageRelease(image);
 
-        for (size_t i = 0; i < width * height; ++i) {
-            orig_rgb.data[i * 3 + 0] = rgba[i * 4 + 0];
-            orig_rgb.data[i * 3 + 1] = rgba[i * 4 + 1];
-            orig_rgb.data[i * 3 + 2] = rgba[i * 4 + 2];
-        }
+        vImage_Buffer full_rgba_buf = {
+            .data = rgba.data(),
+            .height = static_cast<vImagePixelCount>(height),
+            .width = static_cast<vImagePixelCount>(width),
+            .rowBytes = width * 4
+        };
+        vImage_Buffer full_rgb_buf = {
+            .data = orig_rgb.data.data(),
+            .height = static_cast<vImagePixelCount>(height),
+            .width = static_cast<vImagePixelCount>(width),
+            .rowBytes = width * 3
+        };
+        vImageConvert_RGBA8888toRGB888(&full_rgba_buf, &full_rgb_buf, kvImageNoFlags);
 
         // Letterbox to 640x640 (1:1 square ratio for static registration photos: IDs, selfies, passports)
         constexpr uint32_t kTargetWidth = 640;

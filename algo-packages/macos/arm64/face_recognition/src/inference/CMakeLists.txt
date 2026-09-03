@@ -10,4 +10,6 @@ target_include_directories(face_recognition_inference PRIVATE
 target_link_libraries(face_recognition_inference PRIVATE
     "-framework Foundation"
     "-framework CoreML"
+    "-framework CoreVideo"
+    "-framework VideoToolbox"
 )

@@ -10,5 +10,6 @@ target_include_directories(face_recognition_preprocess PRIVATE
 target_link_libraries(face_recognition_preprocess PRIVATE
     "-framework Foundation"
     "-framework CoreVideo"
+    "-framework VideoToolbox"
     "-framework Accelerate"
 )

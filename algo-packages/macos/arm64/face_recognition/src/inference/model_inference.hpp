@@ -5,6 +5,12 @@
 #include <vector>
 #include <cstdint>
 
+#ifdef __APPLE__
+typedef struct __CVBuffer* CVPixelBufferRef;
+#else
+typedef void* CVPixelBufferRef;
+#endif
+
 namespace face_recognition {
 
 /**
@@ -58,9 +64,16 @@ public:
                      std::string& error);
 
     bool run_yolo(const uint8_t* rgb_640x384, YoloOutput& out, std::string& error);
+    bool run_yolo(CVPixelBufferRef pixel_buffer, YoloOutput& out, std::string& error);
+
     bool run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& out, std::string& error);
+    bool run_scrfd(CVPixelBufferRef pixel_buffer, ScrfdOutput& out, std::string& error);
+
     bool run_scrfd_reg(const uint8_t* rgb_640x640, ScrfdOutput& out, std::string& error);
+    bool run_scrfd_reg(CVPixelBufferRef pixel_buffer, ScrfdOutput& out, std::string& error);
+
     bool run_glintr(const uint8_t* rgb_112x112, GlintrOutput& out, std::string& error);
+    bool run_glintr(CVPixelBufferRef pixel_buffer, GlintrOutput& out, std::string& error);
 
 private:
     std::unique_ptr<CoreMLRunnerImpl> impl_;

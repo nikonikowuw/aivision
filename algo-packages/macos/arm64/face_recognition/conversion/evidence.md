@@ -7,16 +7,16 @@
 - `yolov8n.pt`: 6,233,485 bytes
 - Source location: `tentcoo/rknn_model_zoo/examples/insightface/antelopev2` + `ultralytics/yolov8n`
 
-## Converted Core ML Models (640x384 Surveillance Optimization)
+## Converted Core ML Models (640x384 Surveillance Optimization & ImageType Hardware Preprocessing)
 
-Converted with `coremltools 9.0` (macOS 14 deployment target, float16 compute precision):
+Converted with `coremltools` (macOS 14 deployment target, float16 compute precision, native `ImageType` input):
 
-- `model/yolov8n.mlpackage`:
-  - Input: `image` [1, 3, 384, 640] (RGB, float32, normalized with `x / 255.0`)
-  - Output: `var_911` [1, 84, 5040] (float32)
+- `model/yolov8n.mlpackage` / `model/yolo26n.mlpackage`:
+  - Input: `images` [1, 3, 384, 640] (`ImageType` ColorSpace RGB, hardware normalized with `scale = 1/255.0, bias = 0`)
+  - Output: `var_1801` [1, 300, 6] or `var_911` (float16 / float32)
 
 - `model/scrfd_10g_bnkps.mlpackage` (Surveillance Streaming Pipeline):
-  - Input: `input_1` [1, 3, 384, 640] (RGB, float32, normalized with `(x - 127.5) / 128.0`)
+  - Input: `input_1` [1, 3, 384, 640] (`ImageType` ColorSpace RGB, hardware normalized with `scale = 1/128.0, bias = [-127.5/128.0, -127.5/128.0, -127.5/128.0]`)
   - Outputs (9 heads, anchor counts reduced by 40% for 16:9 surveillance):
     - `score_8` [7680, 1] (score stride 8, down from 12800)
     - `score_16` [1920, 1] (score stride 16, down from 3200)
@@ -29,7 +29,7 @@ Converted with `coremltools 9.0` (macOS 14 deployment target, float16 compute pr
     - `kps_32` [480, 10] (5 landmarks stride 32, down from 800)
 
 - `model/scrfd_10g_640x640.mlpackage` (Static Face Registration Pipeline):
-  - Input: `input_1` [1, 3, 640, 640] (RGB, float32, normalized with `(x - 127.5) / 128.0`)
+  - Input: `input_1` [1, 3, 640, 640] (`ImageType` ColorSpace RGB, hardware normalized with `scale = 1/128.0, bias = [-127.5/128.0, -127.5/128.0, -127.5/128.0]`)
   - Outputs (9 heads, 1:1 square ratio for ID photos, selfies, and passports):
     - `score_8` [12800, 1]
     - `score_16` [3200, 1]
@@ -42,9 +42,9 @@ Converted with `coremltools 9.0` (macOS 14 deployment target, float16 compute pr
     - `kps_32` [800, 10]
 
 - `model/glintr100.mlpackage`:
-  - Input: `input_1` [1, 3, 112, 112] (RGB, float32, normalized with `(x - 127.5) / 127.5`)
+  - Input: `input_1` [1, 3, 112, 112] (`ImageType` ColorSpace RGB, hardware normalized with `scale = 1/127.5, bias = [-1.0, -1.0, -1.0]`)
   - Output: `var_2160` [1, 512] (float32)
 
 - `model/adaface_ir101.mlpackage`:
-  - Input: `input_1` [1, 3, 112, 112] (RGB, float32, normalized with `(x - 127.5) / 127.5`)
-  - Output: `var_2195` [1, 512] (float32, AdaFace IR-101 WebFace12M Backbone, FP16 for ANE)
+  - Input: `input_1` [1, 3, 112, 112] (`ImageType` ColorSpace RGB, hardware normalized with `scale = 1/127.5, bias = [-1.0, -1.0, -1.0]`)
+  - Output: `var_2547` [1, 512] (float32, AdaFace IR-101 WebFace12M Backbone, FP16 for ANE)

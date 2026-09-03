@@ -6,6 +6,9 @@
 #include "model_inference.hpp"
 
 #import <CoreML/CoreML.h>
+#import <CoreVideo/CoreVideo.h>
+#import <VideoToolbox/VideoToolbox.h>
+#import <Accelerate/Accelerate.h>
 #import <Foundation/Foundation.h>
 #include <filesystem>
 #include <cmath>
@@ -77,7 +80,16 @@ public:
     NSString* glintr_input_name = nil;
     NSString* glintr_output_name = nil;
 
+    CVPixelBufferRef scrfd_cached_pb = nullptr;
+    CVPixelBufferRef scrfd_reg_cached_pb = nullptr;
+    CVPixelBufferRef glintr_cached_pb = nullptr;
+    CVPixelBufferRef yolo_cached_pb = nullptr;
+
     ~CoreMLRunnerImpl() {
+        if (scrfd_cached_pb) { CVPixelBufferRelease(scrfd_cached_pb); scrfd_cached_pb = nullptr; }
+        if (scrfd_reg_cached_pb) { CVPixelBufferRelease(scrfd_reg_cached_pb); scrfd_reg_cached_pb = nullptr; }
+        if (glintr_cached_pb) { CVPixelBufferRelease(glintr_cached_pb); glintr_cached_pb = nullptr; }
+        if (yolo_cached_pb) { CVPixelBufferRelease(yolo_cached_pb); yolo_cached_pb = nullptr; }
         yolo_model = nil;
         scrfd_model = nil;
         scrfd_reg_model = nil;
@@ -198,77 +210,185 @@ bool copy_multiarray_to_float_vector(MLMultiArray* arr, std::vector<float>& targ
     return true;
 }
 
-bool run_scrfd_internal(MLModel* model,
-                         const ScrfdHeadNames& heads,
-                         const uint8_t* rgb,
-                         int net_w,
-                         int net_h,
-                         ScrfdOutput& out,
-                         std::string& error) {
+static MLFeatureValue* prepare_input_feature_value(
+    MLFeatureDescription* input_desc,
+    CVPixelBufferRef pb,
+    const uint8_t* rgb,
+    int width,
+    int height,
+    float norm_min,
+    float norm_max,
+    CVPixelBufferRef& cached_pb,
+    std::string& error) {
+    @autoreleasepool {
+        if (!input_desc) {
+            error = "null input feature description";
+            return nil;
+        }
+
+        if (input_desc.type == MLFeatureTypeImage) {
+            if (pb) {
+                return [MLFeatureValue featureValueWithPixelBuffer:pb];
+            }
+            if (!rgb) {
+                error = "both pixel buffer and RGB buffer are null";
+                return nil;
+            }
+
+            if (!cached_pb ||
+                CVPixelBufferGetWidth(cached_pb) != static_cast<size_t>(width) ||
+                CVPixelBufferGetHeight(cached_pb) != static_cast<size_t>(height)) {
+                if (cached_pb) {
+                    CVPixelBufferRelease(cached_pb);
+                    cached_pb = nullptr;
+                }
+                NSDictionary* options = @{
+                    (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
+                    (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
+                    (id)kCVPixelBufferMetalCompatibilityKey: @YES
+                };
+                CVReturn status = CVPixelBufferCreate(
+                    kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
+                    (__bridge CFDictionaryRef)options, &cached_pb
+                );
+                if (status != kCVReturnSuccess || !cached_pb) {
+                    error = "failed to create destination BGRA pixel buffer";
+                    return nil;
+                }
+            }
+
+            CVPixelBufferLockBaseAddress(cached_pb, 0);
+            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(cached_pb));
+            size_t bpr = CVPixelBufferGetBytesPerRow(cached_pb);
+
+            vImage_Buffer src_buf = {
+                .data = const_cast<uint8_t*>(rgb),
+                .height = (vImagePixelCount)height,
+                .width = (vImagePixelCount)width,
+                .rowBytes = (size_t)width * 3
+            };
+            vImage_Buffer dst_buf = {
+                .data = dst,
+                .height = (vImagePixelCount)height,
+                .width = (vImagePixelCount)width,
+                .rowBytes = bpr
+            };
+
+            vImageConvert_RGB888toBGRA8888(&src_buf, nullptr, 255, &dst_buf, false, kvImageNoFlags);
+            CVPixelBufferUnlockBaseAddress(cached_pb, 0);
+
+            return [MLFeatureValue featureValueWithPixelBuffer:cached_pb];
+        }
+
+        if (input_desc.type == MLFeatureTypeMultiArray) {
+            const int pixels = width * height;
+            NSArray<NSNumber*>* shape = @[@1, @3, @(height), @(width)];
+            NSError* ns_error = nil;
+            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
+            if (!input_array || ns_error) {
+                error = "failed to allocate input MLMultiArray: " +
+                        std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
+                return nil;
+            }
+
+            float* dst = static_cast<float*>(input_array.dataPointer);
+            vImage_Buffer dst_rf = { .data = dst + 0 * pixels, .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width * sizeof(float) };
+            vImage_Buffer dst_gf = { .data = dst + 1 * pixels, .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width * sizeof(float) };
+            vImage_Buffer dst_bf = { .data = dst + 2 * pixels, .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width * sizeof(float) };
+
+            if (pb) {
+                CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+                uint8_t* base = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
+                size_t bpr = CVPixelBufferGetBytesPerRow(pb);
+                OSType fmt = CVPixelBufferGetPixelFormatType(pb);
+
+                vImage_Buffer src_buf = {
+                    .data = base,
+                    .height = (vImagePixelCount)height,
+                    .width = (vImagePixelCount)width,
+                    .rowBytes = bpr
+                };
+
+                std::vector<uint8_t> p0(pixels), p1(pixels), p2(pixels), p3(pixels);
+                vImage_Buffer buf0 = { .data = p0.data(), .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width };
+                vImage_Buffer buf1 = { .data = p1.data(), .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width };
+                vImage_Buffer buf2 = { .data = p2.data(), .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width };
+                vImage_Buffer buf3 = { .data = p3.data(), .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width };
+
+                vImageConvert_ARGB8888toPlanar8(&src_buf, &buf0, &buf1, &buf2, &buf3, kvImageNoFlags);
+                CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+
+                // 根据 PixelFormat 判断通道顺序
+                // kCVPixelFormatType_32BGRA 内存顺序为 B, G, R, A => buf0=B, buf1=G, buf2=R, buf3=A
+                // kCVPixelFormatType_32RGBA 内存顺序为 R, G, B, A => buf0=R, buf1=G, buf2=B, buf3=A
+                const vImage_Buffer* plane_r = (fmt == kCVPixelFormatType_32BGRA) ? &buf2 : &buf0;
+                const vImage_Buffer* plane_g = &buf1;
+                const vImage_Buffer* plane_b = (fmt == kCVPixelFormatType_32BGRA) ? &buf0 : &buf2;
+
+                vImageConvert_Planar8toPlanarF(plane_r, &dst_rf, norm_max, norm_min, kvImageNoFlags);
+                vImageConvert_Planar8toPlanarF(plane_g, &dst_gf, norm_max, norm_min, kvImageNoFlags);
+                vImageConvert_Planar8toPlanarF(plane_b, &dst_bf, norm_max, norm_min, kvImageNoFlags);
+            } else if (rgb) {
+                vImage_Buffer src_rgb = {
+                    .data = const_cast<uint8_t*>(rgb),
+                    .height = (vImagePixelCount)height,
+                    .width = (vImagePixelCount)width,
+                    .rowBytes = (size_t)width * 3
+                };
+                std::vector<uint8_t> pr(pixels), pg(pixels), pb_plane(pixels);
+                vImage_Buffer br = { .data = pr.data(), .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width };
+                vImage_Buffer bg = { .data = pg.data(), .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width };
+                vImage_Buffer bb = { .data = pb_plane.data(), .height = (vImagePixelCount)height, .width = (vImagePixelCount)width, .rowBytes = (size_t)width };
+
+                vImageConvert_RGB888toPlanar8(&src_rgb, &br, &bg, &bb, kvImageNoFlags);
+
+                vImageConvert_Planar8toPlanarF(&br, &dst_rf, norm_max, norm_min, kvImageNoFlags);
+                vImageConvert_Planar8toPlanarF(&bg, &dst_gf, norm_max, norm_min, kvImageNoFlags);
+                vImageConvert_Planar8toPlanarF(&bb, &dst_bf, norm_max, norm_min, kvImageNoFlags);
+            } else {
+                error = "both pixel buffer and RGB buffer are null";
+                return nil;
+            }
+
+            return [MLFeatureValue featureValueWithMultiArray:input_array];
+        }
+
+        error = "unsupported input feature type: " + std::to_string(input_desc.type);
+        return nil;
+    }
+}
+
+static bool run_scrfd_internal(MLModel* model,
+                               const ScrfdHeadNames& heads,
+                               CVPixelBufferRef pb,
+                               const uint8_t* rgb,
+                               int net_w,
+                               int net_h,
+                               CVPixelBufferRef& cached_pb,
+                               ScrfdOutput& out,
+                               std::string& error) {
     @autoreleasepool {
         if (!model) {
             error = "SCRFD model not loaded";
             return false;
         }
 
-        const int pixels = net_w * net_h;
         MLFeatureDescription* input_desc = model.modelDescription.inputDescriptionsByName[heads.input_name];
-        MLFeatureValue* input_val = nil;
+        // SCRFD 归一化: (x - 127.5) / 128.0 => min = -127.5/128.0, max = 127.5/128.0
+        float norm_min = (0.0f - 127.5f) / 128.0f;
+        float norm_max = (255.0f - 127.5f) / 128.0f;
+
+        MLFeatureValue* input_val = prepare_input_feature_value(
+            input_desc, pb, rgb, net_w, net_h, norm_min, norm_max, cached_pb, error
+        );
+        if (!input_val) return false;
+
         NSError* ns_error = nil;
-
-        if (input_desc.type == MLFeatureTypeImage) {
-            NSDictionary* options = @{
-                (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
-                (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
-            };
-            CVPixelBufferRef pb = nullptr;
-            CVReturn status = CVPixelBufferCreate(
-                kCFAllocatorDefault, net_w, net_h, kCVPixelFormatType_32BGRA,
-                (__bridge CFDictionaryRef)options, &pb);
-            if (status != kCVReturnSuccess || !pb) {
-                error = "failed to create pixel buffer for SCRFD input";
-                return false;
-            }
-
-            CVPixelBufferLockBaseAddress(pb, 0);
-            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
-            size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
-            for (int y = 0; y < net_h; ++y) {
-                uint8_t* row = dst + y * bytes_per_row;
-                for (int x = 0; x < net_w; ++x) {
-                    const uint8_t* src_px = rgb + (y * net_w + x) * 3;
-                    row[x * 4 + 0] = src_px[2]; // B
-                    row[x * 4 + 1] = src_px[1]; // G
-                    row[x * 4 + 2] = src_px[0]; // R
-                    row[x * 4 + 3] = 255;       // A
-                }
-            }
-            CVPixelBufferUnlockBaseAddress(pb, 0);
-            input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
-            CVPixelBufferRelease(pb);
-        } else {
-            // SCRFD 归一化: (img - 127.5) / 128.0
-            NSArray<NSNumber*>* shape = @[@1, @3, @(net_h), @(net_w)];
-            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
-            if (!input_array || ns_error) {
-                error = "failed to allocate SCRFD input multiarray";
-                return false;
-            }
-
-            float* dst = static_cast<float*>(input_array.dataPointer);
-            for (int c = 0; c < 3; ++c) {
-                float* channel_ptr = dst + c * pixels;
-                for (int i = 0; i < pixels; ++i) {
-                    channel_ptr[i] = (static_cast<float>(rgb[i * 3 + c]) - 127.5f) / 128.0f;
-                }
-            }
-            input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
-        }
-
         NSDictionary* input_dict = @{heads.input_name: input_val};
         id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
         if (!input_provider || ns_error) {
-            error = "failed to create SCRFD feature provider";
+            error = "failed to create SCRFD feature provider: " +
+                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
             return false;
         }
 
@@ -363,84 +483,50 @@ bool ModelInferenceManager::load_models(const std::string& package_root,
     }
 }
 
-bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out, std::string& error) {
+static bool run_yolo_internal(MLModel* model,
+                              NSString* input_name,
+                              NSString* output_name,
+                              CVPixelBufferRef pb,
+                              const uint8_t* rgb,
+                              CVPixelBufferRef& cached_pb,
+                              YoloOutput& out,
+                              std::string& error) {
     @autoreleasepool {
-        if (!impl_->yolo_model) {
+        if (!model) {
             error = "yolov8n model not loaded";
             return false;
         }
 
         constexpr int kNetW = 640;
         constexpr int kNetH = 384;
-        constexpr int kPixels = kNetW * kNetH;
 
-        MLFeatureDescription* input_desc = impl_->yolo_model.modelDescription.inputDescriptionsByName[impl_->yolo_input_name];
-        MLFeatureValue* input_val = nil;
+        MLFeatureDescription* input_desc = model.modelDescription.inputDescriptionsByName[input_name];
+        // YOLO 归一化: x / 255.0 => min = 0.0, max = 1.0
+        float norm_min = 0.0f;
+        float norm_max = 1.0f;
+
+        MLFeatureValue* input_val = prepare_input_feature_value(
+            input_desc, pb, rgb, kNetW, kNetH, norm_min, norm_max, cached_pb, error
+        );
+        if (!input_val) return false;
+
         NSError* ns_error = nil;
-
-        if (input_desc.type == MLFeatureTypeImage) {
-            NSDictionary* options = @{
-                (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
-                (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
-            };
-            CVPixelBufferRef pb = nullptr;
-            CVReturn status = CVPixelBufferCreate(
-                kCFAllocatorDefault, kNetW, kNetH, kCVPixelFormatType_32BGRA,
-                (__bridge CFDictionaryRef)options, &pb);
-            if (status != kCVReturnSuccess || !pb) {
-                error = "failed to create pixel buffer for YOLO input";
-                return false;
-            }
-
-            CVPixelBufferLockBaseAddress(pb, 0);
-            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
-            size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
-            for (int y = 0; y < kNetH; ++y) {
-                uint8_t* row = dst + y * bytes_per_row;
-                for (int x = 0; x < kNetW; ++x) {
-                    const uint8_t* src_px = rgb_640x384 + (y * kNetW + x) * 3;
-                    row[x * 4 + 0] = src_px[2]; // B
-                    row[x * 4 + 1] = src_px[1]; // G
-                    row[x * 4 + 2] = src_px[0]; // R
-                    row[x * 4 + 3] = 255;       // A
-                }
-            }
-            CVPixelBufferUnlockBaseAddress(pb, 0);
-            input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
-            CVPixelBufferRelease(pb);
-        } else {
-            NSArray<NSNumber*>* shape = @[@1, @3, @(kNetH), @(kNetW)];
-            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
-            if (!input_array || ns_error) {
-                error = "failed to allocate YOLO input multiarray";
-                return false;
-            }
-
-            float* dst = static_cast<float*>(input_array.dataPointer);
-            for (int c = 0; c < 3; ++c) {
-                float* channel_ptr = dst + c * kPixels;
-                for (int i = 0; i < kPixels; ++i) {
-                    channel_ptr[i] = static_cast<float>(rgb_640x384[i * 3 + c]) / 255.0f;
-                }
-            }
-            input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
-        }
-
-        NSDictionary* input_dict = @{impl_->yolo_input_name: input_val};
+        NSDictionary* input_dict = @{input_name: input_val};
         id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
         if (!input_provider || ns_error) {
-            error = "failed to create YOLO feature provider";
+            error = "failed to create YOLO feature provider: " +
+                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
             return false;
         }
 
-        id<MLFeatureProvider> output_provider = [impl_->yolo_model predictionFromFeatures:input_provider error:&ns_error];
+        id<MLFeatureProvider> output_provider = [model predictionFromFeatures:input_provider error:&ns_error];
         if (!output_provider || ns_error) {
             error = "failed to run YOLO prediction: " +
                     std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
             return false;
         }
 
-        MLFeatureValue* out_val = [output_provider featureValueForName:impl_->yolo_output_name];
+        MLFeatureValue* out_val = [output_provider featureValueForName:output_name];
         if (!out_val || out_val.type != MLFeatureTypeMultiArray) {
             error = "invalid YOLO output multiarray";
             return false;
@@ -455,96 +541,49 @@ bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out
     }
 }
 
-bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& out, std::string& error) {
-    return run_scrfd_internal(impl_->scrfd_model, impl_->scrfd_heads, rgb_640x384, 640, 384, out, error);
-}
-
-bool ModelInferenceManager::run_scrfd_reg(const uint8_t* rgb_640x640, ScrfdOutput& out, std::string& error) {
-    if (!impl_->scrfd_reg_model) {
-        error = "SCRFD 640x640 registration model not loaded";
-        return false;
-    }
-    return run_scrfd_internal(impl_->scrfd_reg_model, impl_->scrfd_reg_heads, rgb_640x640, 640, 640, out, error);
-}
-
-bool ModelInferenceManager::run_glintr(const uint8_t* rgb_112x112, GlintrOutput& out, std::string& error) {
+static bool run_glintr_internal(MLModel* model,
+                                NSString* input_name,
+                                NSString* output_name,
+                                CVPixelBufferRef pb,
+                                const uint8_t* rgb,
+                                CVPixelBufferRef& cached_pb,
+                                GlintrOutput& out,
+                                std::string& error) {
     @autoreleasepool {
-        if (!impl_->glintr_model) {
+        if (!model) {
             error = "GLINTR model not loaded";
             return false;
         }
 
         constexpr int kNetDim = 112;
-        constexpr int kPixels = kNetDim * kNetDim;
 
-        MLFeatureDescription* input_desc = impl_->glintr_model.modelDescription.inputDescriptionsByName[impl_->glintr_input_name];
-        MLFeatureValue* input_val = nil;
+        MLFeatureDescription* input_desc = model.modelDescription.inputDescriptionsByName[input_name];
+        // GLINTR 归一化: (x - 127.5) / 127.5 => min = -1.0, max = 1.0
+        float norm_min = (0.0f - 127.5f) / 127.5f;
+        float norm_max = (255.0f - 127.5f) / 127.5f;
+
+        MLFeatureValue* input_val = prepare_input_feature_value(
+            input_desc, pb, rgb, kNetDim, kNetDim, norm_min, norm_max, cached_pb, error
+        );
+        if (!input_val) return false;
+
         NSError* ns_error = nil;
-
-        if (input_desc.type == MLFeatureTypeImage) {
-            NSDictionary* options = @{
-                (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
-                (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
-            };
-            CVPixelBufferRef pb = nullptr;
-            CVReturn status = CVPixelBufferCreate(
-                kCFAllocatorDefault, kNetDim, kNetDim, kCVPixelFormatType_32BGRA,
-                (__bridge CFDictionaryRef)options, &pb);
-            if (status != kCVReturnSuccess || !pb) {
-                error = "failed to create pixel buffer for GLINTR input";
-                return false;
-            }
-
-            CVPixelBufferLockBaseAddress(pb, 0);
-            uint8_t* dst = static_cast<uint8_t*>(CVPixelBufferGetBaseAddress(pb));
-            size_t bytes_per_row = CVPixelBufferGetBytesPerRow(pb);
-            for (int y = 0; y < kNetDim; ++y) {
-                uint8_t* row = dst + y * bytes_per_row;
-                for (int x = 0; x < kNetDim; ++x) {
-                    const uint8_t* src_px = rgb_112x112 + (y * kNetDim + x) * 3;
-                    row[x * 4 + 0] = src_px[2]; // B
-                    row[x * 4 + 1] = src_px[1]; // G
-                    row[x * 4 + 2] = src_px[0]; // R
-                    row[x * 4 + 3] = 255;       // A
-                }
-            }
-            CVPixelBufferUnlockBaseAddress(pb, 0);
-            input_val = [MLFeatureValue featureValueWithPixelBuffer:pb];
-            CVPixelBufferRelease(pb);
-        } else {
-            // GLINTR 归一化: (img - 127.5) / 127.5
-            NSArray<NSNumber*>* shape = @[@1, @3, @(kNetDim), @(kNetDim)];
-            MLMultiArray* input_array = [[MLMultiArray alloc] initWithShape:shape dataType:MLMultiArrayDataTypeFloat32 error:&ns_error];
-            if (!input_array || ns_error) {
-                error = "failed to allocate GLINTR input multiarray";
-                return false;
-            }
-
-            float* dst = static_cast<float*>(input_array.dataPointer);
-            for (int c = 0; c < 3; ++c) {
-                float* channel_ptr = dst + c * kPixels;
-                for (int i = 0; i < kPixels; ++i) {
-                    channel_ptr[i] = (static_cast<float>(rgb_112x112[i * 3 + c]) - 127.5f) / 127.5f;
-                }
-            }
-            input_val = [MLFeatureValue featureValueWithMultiArray:input_array];
-        }
-
-        NSDictionary* input_dict = @{impl_->glintr_input_name: input_val};
+        NSDictionary* input_dict = @{input_name: input_val};
         id<MLFeatureProvider> input_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:input_dict error:&ns_error];
         if (!input_provider || ns_error) {
-            error = "failed to create GLINTR feature provider";
+            error = "failed to create GLINTR feature provider: " +
+                    std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
             return false;
         }
 
-        id<MLFeatureProvider> output_provider = [impl_->glintr_model predictionFromFeatures:input_provider error:&ns_error];
+        id<MLFeatureProvider> output_provider = [model predictionFromFeatures:input_provider error:&ns_error];
         if (!output_provider || ns_error) {
             error = "failed to run GLINTR prediction: " +
                     std::string(ns_error ? ns_error.localizedDescription.UTF8String : "unknown error");
             return false;
         }
 
-        MLFeatureValue* out_val = [output_provider featureValueForName:impl_->glintr_output_name];
+        MLFeatureValue* out_val = [output_provider featureValueForName:output_name];
         if (!out_val || out_val.type != MLFeatureTypeMultiArray) {
             error = "invalid GLINTR output multiarray";
             return false;
@@ -562,6 +601,46 @@ bool ModelInferenceManager::run_glintr(const uint8_t* rgb_112x112, GlintrOutput&
 
         return true;
     }
+}
+
+bool ModelInferenceManager::run_yolo(CVPixelBufferRef pixel_buffer, YoloOutput& out, std::string& error) {
+    return run_yolo_internal(impl_->yolo_model, impl_->yolo_input_name, impl_->yolo_output_name, pixel_buffer, nullptr, impl_->yolo_cached_pb, out, error);
+}
+
+bool ModelInferenceManager::run_yolo(const uint8_t* rgb_640x384, YoloOutput& out, std::string& error) {
+    return run_yolo_internal(impl_->yolo_model, impl_->yolo_input_name, impl_->yolo_output_name, nullptr, rgb_640x384, impl_->yolo_cached_pb, out, error);
+}
+
+bool ModelInferenceManager::run_scrfd(CVPixelBufferRef pixel_buffer, ScrfdOutput& out, std::string& error) {
+    return run_scrfd_internal(impl_->scrfd_model, impl_->scrfd_heads, pixel_buffer, nullptr, 640, 384, impl_->scrfd_cached_pb, out, error);
+}
+
+bool ModelInferenceManager::run_scrfd(const uint8_t* rgb_640x384, ScrfdOutput& out, std::string& error) {
+    return run_scrfd_internal(impl_->scrfd_model, impl_->scrfd_heads, nullptr, rgb_640x384, 640, 384, impl_->scrfd_cached_pb, out, error);
+}
+
+bool ModelInferenceManager::run_scrfd_reg(CVPixelBufferRef pixel_buffer, ScrfdOutput& out, std::string& error) {
+    if (!impl_->scrfd_reg_model) {
+        error = "SCRFD 640x640 registration model not loaded";
+        return false;
+    }
+    return run_scrfd_internal(impl_->scrfd_reg_model, impl_->scrfd_reg_heads, pixel_buffer, nullptr, 640, 640, impl_->scrfd_reg_cached_pb, out, error);
+}
+
+bool ModelInferenceManager::run_scrfd_reg(const uint8_t* rgb_640x640, ScrfdOutput& out, std::string& error) {
+    if (!impl_->scrfd_reg_model) {
+        error = "SCRFD 640x640 registration model not loaded";
+        return false;
+    }
+    return run_scrfd_internal(impl_->scrfd_reg_model, impl_->scrfd_reg_heads, nullptr, rgb_640x640, 640, 640, impl_->scrfd_reg_cached_pb, out, error);
+}
+
+bool ModelInferenceManager::run_glintr(CVPixelBufferRef pixel_buffer, GlintrOutput& out, std::string& error) {
+    return run_glintr_internal(impl_->glintr_model, impl_->glintr_input_name, impl_->glintr_output_name, pixel_buffer, nullptr, impl_->glintr_cached_pb, out, error);
+}
+
+bool ModelInferenceManager::run_glintr(const uint8_t* rgb_112x112, GlintrOutput& out, std::string& error) {
+    return run_glintr_internal(impl_->glintr_model, impl_->glintr_input_name, impl_->glintr_output_name, nullptr, rgb_112x112, impl_->glintr_cached_pb, out, error);
 }
 
 } // namespace face_recognition

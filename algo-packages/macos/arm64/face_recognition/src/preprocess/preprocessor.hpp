@@ -5,6 +5,12 @@
 #include <vector>
 #include <cstdint>
 
+#ifdef __APPLE__
+typedef struct __CVBuffer* CVPixelBufferRef;
+#else
+typedef void* CVPixelBufferRef;
+#endif
+
 namespace face_recognition {
 
 /**
@@ -27,7 +33,7 @@ struct PreprocessResult {
 };
 
 /**
- * @brief 图像预处理器（支持 NV12/CVPixelBuffer -> 原图 RGB -> 640x384 letterbox 及五点相似变换截取）
+ * @brief 图像预处理器（支持 SIMD 硬件加速转码及五点相似变换截取）
  */
 class Preprocessor {
 public:
@@ -35,7 +41,7 @@ public:
     ~Preprocessor() = default;
 
     /**
-     * @brief 解码输入帧并生成原图 RGB 及 640x384 letterbox (安防 16:9 优化)
+     * @brief 解码输入帧并生成原图 RGB 及 640x384 letterbox 缓冲区 (安防 16:9 优化)
      */
     static bool process_frame(const av_frame_desc* frame, PreprocessResult& out, std::string& error);
 

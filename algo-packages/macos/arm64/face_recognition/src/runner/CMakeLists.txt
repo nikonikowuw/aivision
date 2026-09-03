@@ -15,5 +15,6 @@ target_link_libraries(face_recognition_runner PRIVATE
     "-framework CoreGraphics"
     "-framework ImageIO"
     "-framework CoreVideo"
+    "-framework VideoToolbox"
     "-framework Accelerate"
 )

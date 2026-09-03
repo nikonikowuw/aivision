@@ -220,6 +220,26 @@ async function handleViewCapture(row: CaptureApi.CaptureItem) {
 function formatRatio(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
+
+function targetTagColor(type: string): string {
+  switch (type) {
+    case 'face': {
+      return 'purple';
+    }
+    case 'non_motor': {
+      return 'orange';
+    }
+    case 'person': {
+      return 'blue';
+    }
+    case 'vehicle': {
+      return 'cyan';
+    }
+    default: {
+      return 'default';
+    }
+  }
+}
 </script>
 
 <template>
@@ -260,7 +280,7 @@ function formatRatio(value: number): string {
 
     <Grid>
       <template #targetType="{ row }">
-        <Tag :color="row.targetType === 'person' ? 'blue' : 'cyan'">
+        <Tag :color="targetTagColor(row.targetType)">
           {{ $t(`record.capture.targets.${row.targetType}`) }}
         </Tag>
       </template>

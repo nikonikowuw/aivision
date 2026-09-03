@@ -2645,9 +2645,9 @@ private:
         pending.image_roi.y = 0.0f;
         pending.image_roi.width = 1.0f;
         pending.image_roi.height = 1.0f;
-        pending.capture_crop_rois.reserve(candidates.size());
-        pending.capture_sub_crop_rois.reserve(candidates.size());
-        pending.generic_captures.reserve(candidates.size());
+        pending.capture_crop_rois.reserve(candidates.size() * 2);
+        pending.capture_sub_crop_rois.reserve(candidates.size() * 2);
+        pending.generic_captures.reserve(candidates.size() * 2);
 
         PendingCapture dropped;
         std::vector<std::pair<std::string, GenericTrackReportState>> state_updates;
@@ -2656,63 +2656,103 @@ private:
             std::lock_guard<std::mutex> queue_lock(capture_mutex_);
             size_t target_sequence = 0;
             for (const auto& candidate : candidates) {
-                const std::string state_key = instance->get_run_id() + "/" + std::to_string(candidate.track_id);
-                const auto state = generic_track_states_.find(state_key);
-                const float quality = static_cast<float>(candidate.has_face ? candidate.face_confidence
-                                                                            : candidate.person_confidence);
-                const bool due = state == generic_track_states_.end() ||
-                                 now - state->second.last_report_at >= std::chrono::milliseconds(800) ||
-                                 quality >= state->second.last_quality + 0.15f;
-                if (!due) continue;
+                // 1. 人体独立抓拍分支
+                if (candidate.target_type == "person") {
+                    const std::string person_state_key =
+                        instance->get_run_id() + "/person-" + std::to_string(candidate.track_id);
+                    const auto person_state = generic_track_states_.find(person_state_key);
+                    const float person_quality = static_cast<float>(candidate.person_confidence);
+                    const bool person_due = person_state == generic_track_states_.end() ||
+                                            now - person_state->second.last_report_at >= std::chrono::milliseconds(800) ||
+                                            person_quality >= person_state->second.last_quality + 0.15f;
+                    if (person_due) {
+                        argus::v1::CaptureEvent event;
+                        event.set_event_id(instance->get_run_id() + "/" + std::to_string(frame.frame_id) + "-" +
+                                           std::to_string(candidate.track_id) + "-" + std::to_string(target_sequence++));
+                        event.set_instance_id(instance->get_instance_id());
+                        event.set_camera_id(instance->get_camera_id());
+                        event.set_camera_name(camera_name_for(instance->get_camera_id()));
+                        event.set_algorithm_id(instance->get_algorithm_id());
+                        event.set_algorithm_version(instance->get_version());
+                        event.set_target_type("person");
+                        event.set_track_id(candidate.track_id);
+                        event.set_wall_time_ns(frame.wall_time_ns);
+                        event.set_time_synced(frame.time_synced != 0);
+                        event.mutable_bbox()->set_x_min(static_cast<float>(candidate.bbox[0]));
+                        event.mutable_bbox()->set_y_min(static_cast<float>(candidate.bbox[1]));
+                        event.mutable_bbox()->set_x_max(static_cast<float>(candidate.bbox[0] + candidate.bbox[2]));
+                        event.mutable_bbox()->set_y_max(static_cast<float>(candidate.bbox[1] + candidate.bbox[3]));
+                        event.set_confidence(static_cast<float>(candidate.person_confidence));
+                        event.set_quality_score(person_quality);
+                        event.set_is_recognized(recognized_track_ids.contains(candidate.track_id));
+                        event.set_attributes_json(candidate.attributes_json);
+                        pending.generic_captures.push_back(std::move(event));
 
-                argus::v1::CaptureEvent event;
-                event.set_event_id(instance->get_run_id() + "/" + std::to_string(frame.frame_id) + "-" +
-                                   std::to_string(candidate.track_id) + "-" + std::to_string(target_sequence++));
-                event.set_instance_id(instance->get_instance_id());
-                event.set_camera_id(instance->get_camera_id());
-                event.set_camera_name(camera_name_for(instance->get_camera_id()));
-                event.set_algorithm_id(instance->get_algorithm_id());
-                event.set_algorithm_version(instance->get_version());
-                event.set_target_type(candidate.target_type);
-                event.set_track_id(candidate.track_id);
-                event.set_wall_time_ns(frame.wall_time_ns);
-                event.set_time_synced(frame.time_synced != 0);
-                event.mutable_bbox()->set_x_min(static_cast<float>(candidate.bbox[0]));
-                event.mutable_bbox()->set_y_min(static_cast<float>(candidate.bbox[1]));
-                event.mutable_bbox()->set_x_max(static_cast<float>(candidate.bbox[0] + candidate.bbox[2]));
-                event.mutable_bbox()->set_y_max(static_cast<float>(candidate.bbox[1] + candidate.bbox[3]));
-                if (candidate.target_type == "person" && candidate.has_face) {
-                    event.mutable_sub_bbox()->set_x_min(static_cast<float>(candidate.face_bbox[0]));
-                    event.mutable_sub_bbox()->set_y_min(static_cast<float>(candidate.face_bbox[1]));
-                    event.mutable_sub_bbox()->set_x_max(static_cast<float>(candidate.face_bbox[0] + candidate.face_bbox[2]));
-                    event.mutable_sub_bbox()->set_y_max(static_cast<float>(candidate.face_bbox[1] + candidate.face_bbox[3]));
+                        av_rect crop_roi{};
+                        crop_roi.size = sizeof(av_rect);
+                        crop_roi.api_version = AV_ALGO_API_VERSION;
+                        crop_roi.x = static_cast<float>(candidate.bbox[0]);
+                        crop_roi.y = static_cast<float>(candidate.bbox[1]);
+                        crop_roi.width = static_cast<float>(candidate.bbox[2]);
+                        crop_roi.height = static_cast<float>(candidate.bbox[3]);
+                        pending.capture_crop_rois.push_back(crop_roi);
+
+                        av_rect sub_crop_roi{};
+                        sub_crop_roi.size = sizeof(av_rect);
+                        sub_crop_roi.api_version = AV_ALGO_API_VERSION;
+                        pending.capture_sub_crop_rois.push_back(sub_crop_roi);
+                        state_updates.push_back({person_state_key, GenericTrackReportState{person_quality, now}});
+                    }
                 }
-                event.set_confidence(static_cast<float>(candidate.person_confidence));
-                event.set_quality_score(quality);
-                event.set_is_recognized(recognized_track_ids.contains(candidate.track_id));
-                event.set_attributes_json(candidate.attributes_json);
-                pending.generic_captures.push_back(std::move(event));
 
-                av_rect crop_roi{};
-                crop_roi.size = sizeof(av_rect);
-                crop_roi.api_version = AV_ALGO_API_VERSION;
-                crop_roi.x = static_cast<float>(candidate.bbox[0]);
-                crop_roi.y = static_cast<float>(candidate.bbox[1]);
-                crop_roi.width = static_cast<float>(candidate.bbox[2]);
-                crop_roi.height = static_cast<float>(candidate.bbox[3]);
-                pending.capture_crop_rois.push_back(crop_roi);
+                // 2. 人脸独立抓拍分支 (含人脸的人体目标或纯人脸目标均拆分为独立人脸抓拍)
+                if (candidate.has_face || candidate.target_type == "face") {
+                    const std::string face_state_key =
+                        instance->get_run_id() + "/face-" + std::to_string(candidate.track_id);
+                    const auto face_state = generic_track_states_.find(face_state_key);
+                    const auto& f_bbox = (candidate.target_type == "face" && !candidate.has_face)
+                        ? candidate.bbox
+                        : candidate.face_bbox;
+                    const double f_conf = (candidate.target_type == "face" && !candidate.has_face)
+                        ? candidate.person_confidence
+                        : candidate.face_confidence;
+                    const float face_quality = static_cast<float>(f_conf);
+                    const bool face_due = face_state == generic_track_states_.end() ||
+                                          now - face_state->second.last_report_at >= std::chrono::milliseconds(800) ||
+                                          face_quality >= face_state->second.last_quality + 0.15f;
+                    if (face_due) {
+                        argus::v1::CaptureEvent event;
+                        event.set_event_id(instance->get_run_id() + "/" + std::to_string(frame.frame_id) + "-" +
+                                           std::to_string(candidate.track_id) + "-" + std::to_string(target_sequence++));
+                        event.set_instance_id(instance->get_instance_id());
+                        event.set_camera_id(instance->get_camera_id());
+                        event.set_camera_name(camera_name_for(instance->get_camera_id()));
+                        event.set_algorithm_id(instance->get_algorithm_id());
+                        event.set_algorithm_version(instance->get_version());
+                        event.set_target_type("face");
+                        event.set_track_id(candidate.track_id);
+                        event.set_wall_time_ns(frame.wall_time_ns);
+                        event.set_time_synced(frame.time_synced != 0);
+                        event.mutable_bbox()->set_x_min(static_cast<float>(f_bbox[0]));
+                        event.mutable_bbox()->set_y_min(static_cast<float>(f_bbox[1]));
+                        event.mutable_bbox()->set_x_max(static_cast<float>(f_bbox[0] + f_bbox[2]));
+                        event.mutable_bbox()->set_y_max(static_cast<float>(f_bbox[1] + f_bbox[3]));
+                        event.set_confidence(static_cast<float>(f_conf));
+                        event.set_quality_score(face_quality);
+                        event.set_is_recognized(recognized_track_ids.contains(candidate.track_id));
+                        event.set_attributes_json(candidate.attributes_json);
+                        pending.generic_captures.push_back(std::move(event));
 
-                av_rect sub_crop_roi{};
-                sub_crop_roi.size = sizeof(av_rect);
-                sub_crop_roi.api_version = AV_ALGO_API_VERSION;
-                if (candidate.target_type == "person" && candidate.has_face) {
-                    sub_crop_roi.x = static_cast<float>(candidate.face_bbox[0]);
-                    sub_crop_roi.y = static_cast<float>(candidate.face_bbox[1]);
-                    sub_crop_roi.width = static_cast<float>(candidate.face_bbox[2]);
-                    sub_crop_roi.height = static_cast<float>(candidate.face_bbox[3]);
+                        av_rect face_crop_roi = expand_face_crop_roi(f_bbox.data(), 0.4f);
+                        pending.capture_crop_rois.push_back(face_crop_roi);
+
+                        av_rect sub_crop_roi{};
+                        sub_crop_roi.size = sizeof(av_rect);
+                        sub_crop_roi.api_version = AV_ALGO_API_VERSION;
+                        pending.capture_sub_crop_rois.push_back(sub_crop_roi);
+                        state_updates.push_back({face_state_key, GenericTrackReportState{face_quality, now}});
+                    }
                 }
-                pending.capture_sub_crop_rois.push_back(sub_crop_roi);
-                state_updates.push_back({state_key, GenericTrackReportState{quality, now}});
             }
             if (!pending.generic_captures.empty()) {
                 if (generic_track_states_.size() + state_updates.size() > kMaxGenericTrackStates) {

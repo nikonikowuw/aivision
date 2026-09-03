@@ -1514,4 +1514,48 @@ TEST(UdsReconcileTest, FaceCaptureReportAndClient) {
     app_server.stop();
 }
 
+TEST(UdsReconcileTest, GenericCaptureReportAndClient) {
+    const std::string app_sock = "/tmp/argus-test-generic-capture-client-app.sock";
+    StubAppServer app_server;
+    ASSERT_TRUE(app_server.start(app_sock));
+
+    argus::core::UdsClient client(app_sock);
+
+    argus::v1::CaptureEvent person_capture;
+    person_capture.set_event_id("run-1/100-1-0");
+    person_capture.set_instance_id("inst-1");
+    person_capture.set_camera_id("cam-1");
+    person_capture.set_camera_name("Gate Cam");
+    person_capture.set_algorithm_id("yolo26n");
+    person_capture.set_algorithm_version("1.0.0");
+    person_capture.set_target_type("person");
+    person_capture.set_track_id(1);
+    person_capture.set_confidence(0.91f);
+    person_capture.set_quality_score(0.91f);
+
+    argus::v1::CaptureEvent face_capture;
+    face_capture.set_event_id("run-1/100-1-1");
+    face_capture.set_instance_id("inst-1");
+    face_capture.set_camera_id("cam-1");
+    face_capture.set_camera_name("Gate Cam");
+    face_capture.set_algorithm_id("face_recognition");
+    face_capture.set_algorithm_version("1.0.0");
+    face_capture.set_target_type("face");
+    face_capture.set_track_id(1);
+    face_capture.set_confidence(0.95f);
+    face_capture.set_quality_score(0.95f);
+
+    EXPECT_TRUE(client.report_capture(person_capture));
+    EXPECT_TRUE(client.report_capture(face_capture));
+
+    const auto captures = app_server.service().captures();
+    ASSERT_EQ(captures.size(), 2U);
+    EXPECT_EQ(captures[0].target_type(), "person");
+    EXPECT_EQ(captures[0].track_id(), 1);
+    EXPECT_EQ(captures[1].target_type(), "face");
+    EXPECT_EQ(captures[1].track_id(), 1);
+
+    app_server.stop();
+}
+
 #endif // !defined(ARGUS_SKIP_IPC_TESTS)

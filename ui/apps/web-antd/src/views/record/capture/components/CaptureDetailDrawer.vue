@@ -183,7 +183,10 @@ async function handleConfirmRegister() {
         </DescriptionsItem>
       </Descriptions>
 
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div
+        class="grid grid-cols-1 gap-4"
+        :class="capture.subCropImageUrl ? 'md:grid-cols-3' : 'md:grid-cols-2'"
+      >
         <Card size="small" :title="$t('record.capture.drawer.panorama')">
           <CaptureThumbnail
             :alt="$t('record.capture.drawer.imageCleaned')"
@@ -208,7 +211,11 @@ async function handleConfirmRegister() {
             :width="240"
           />
         </Card>
-        <Card size="small" :title="$t('record.capture.drawer.subCrop')">
+        <Card
+          v-if="capture.subCropImageUrl"
+          size="small"
+          :title="$t('record.capture.drawer.subCrop')"
+        >
           <CaptureThumbnail
             :alt="$t('record.capture.drawer.imageCleaned')"
             :bbox="capture.subBbox"

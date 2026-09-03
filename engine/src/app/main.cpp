@@ -232,6 +232,7 @@ int main() {
         LOG_ERROR("engine.app", "engine.uds_start_failed",
                   "failed to start engine UDS server", "ENGINE_UDS_START_FAILED",
                   {{"platform_id", platform_id}});
+        argus::core::LiveStreamManager::instance().stop_server();
         argus::logging::Logger::shutdown();
         return 1;
     }

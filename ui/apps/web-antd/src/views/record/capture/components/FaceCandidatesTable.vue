@@ -12,8 +12,11 @@ import FaceThumbnail from '../../../resource/person/components/FaceThumbnail.vue
 
 export interface FaceCandidateItem {
   faceId?: string;
+  face_id?: string;
   personId?: string;
+  person_id?: string;
   personName?: string;
+  person_name?: string;
   similarity: number;
 }
 
@@ -34,7 +37,14 @@ const props = withDefaults(
   },
 );
 
-const effectiveCandidates = computed(() => props.candidates ?? []);
+const effectiveCandidates = computed(() =>
+  (props.candidates ?? []).map((cand) => ({
+    faceId: cand.faceId || cand.face_id || '',
+    personId: cand.personId || cand.person_id || '',
+    personName: cand.personName || cand.person_name || '',
+    similarity: cand.similarity,
+  })),
+);
 
 function formatSimilarity(sim?: number): string {
   if (sim === undefined || sim === null || Number.isNaN(sim)) return '-';

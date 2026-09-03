@@ -313,10 +313,16 @@ bool ModelInferenceManager::load_models(const std::string& package_root,
     @autoreleasepool {
         std::filesystem::path root(package_root);
 
-        // 1. Load YOLOv8n (可选能力)
-        if (!yolo_rel_path.empty() && std::filesystem::exists(root / yolo_rel_path)) {
+        // 1. Load YOLOv8n / YOLO26n (可选能力)
+        std::string actual_yolo_path = yolo_rel_path;
+        if (!actual_yolo_path.empty() && !std::filesystem::exists(root / actual_yolo_path)) {
+            if (std::filesystem::exists(root / "model/yolo26n.mlpackage")) {
+                actual_yolo_path = "model/yolo26n.mlpackage";
+            }
+        }
+        if (!actual_yolo_path.empty() && std::filesystem::exists(root / actual_yolo_path)) {
             std::string yolo_err;
-            impl_->yolo_model = compile_and_load_model(root / yolo_rel_path, yolo_err);
+            impl_->yolo_model = compile_and_load_model(root / actual_yolo_path, yolo_err);
             if (impl_->yolo_model) {
                 MLModelDescription* yolo_desc = impl_->yolo_model.modelDescription;
                 if (yolo_desc.inputDescriptionsByName.count > 0 && yolo_desc.outputDescriptionsByName.count > 0) {

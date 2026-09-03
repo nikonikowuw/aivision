@@ -279,14 +279,18 @@ void process_face_feature_and_track_state(
     const uint32_t orig_h = prep_res.original_rgb.height;
 
     rp.has_face = true;
-    rp.face_bbox[0] = best_face->x1 / static_cast<float>(orig_w);
-    rp.face_bbox[1] = best_face->y1 / static_cast<float>(orig_h);
-    rp.face_bbox[2] = (best_face->x2 - best_face->x1) / static_cast<float>(orig_w);
-    rp.face_bbox[3] = (best_face->y2 - best_face->y1) / static_cast<float>(orig_h);
-    rp.face_confidence = best_face->score;
+    float fx = std::clamp(best_face->x1 / static_cast<float>(orig_w), 0.0f, 0.9999f);
+    float fy = std::clamp(best_face->y1 / static_cast<float>(orig_h), 0.0f, 0.9999f);
+    float fw = std::clamp((best_face->x2 - best_face->x1) / static_cast<float>(orig_w), 1e-4f, 1.0f - fx);
+    float fh = std::clamp((best_face->y2 - best_face->y1) / static_cast<float>(orig_h), 1e-4f, 1.0f - fy);
+    rp.face_bbox[0] = fx;
+    rp.face_bbox[1] = fy;
+    rp.face_bbox[2] = fw;
+    rp.face_bbox[3] = fh;
+    rp.face_confidence = std::clamp(best_face->score, 0.0f, 1.0f);
     for (int k = 0; k < 5; ++k) {
-        rp.face_landmarks[k * 2 + 0] = best_face->landmarks[k * 2 + 0] / static_cast<float>(orig_w);
-        rp.face_landmarks[k * 2 + 1] = best_face->landmarks[k * 2 + 1] / static_cast<float>(orig_h);
+        rp.face_landmarks[k * 2 + 0] = std::clamp(best_face->landmarks[k * 2 + 0] / static_cast<float>(orig_w), 0.0f, 1.0f);
+        rp.face_landmarks[k * 2 + 1] = std::clamp(best_face->landmarks[k * 2 + 1] / static_cast<float>(orig_h), 0.0f, 1.0f);
     }
 
     float face_w_px = best_face->x2 - best_face->x1;
@@ -579,11 +583,11 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
                 RecognizedPerson rp{};
                 rp.track_id = tracked_face.track_id;
                 rp.target_type = "face";
-                rp.person_bbox[0] = tracked_face.x;
-                rp.person_bbox[1] = tracked_face.y;
-                rp.person_bbox[2] = tracked_face.w;
-                rp.person_bbox[3] = tracked_face.h;
-                rp.person_confidence = tracked_face.confidence;
+                rp.person_bbox[0] = std::clamp(tracked_face.x, 0.0f, 0.9999f);
+                rp.person_bbox[1] = std::clamp(tracked_face.y, 0.0f, 0.9999f);
+                rp.person_bbox[2] = std::clamp(tracked_face.w, 1e-4f, 1.0f - rp.person_bbox[0]);
+                rp.person_bbox[3] = std::clamp(tracked_face.h, 1e-4f, 1.0f - rp.person_bbox[1]);
+                rp.person_confidence = std::clamp(tracked_face.confidence, 0.0f, 1.0f);
 
                 auto& track_state = inst->track_quality_map[tracked_face.track_id];
                 track_state.hit_count++;
@@ -652,11 +656,11 @@ static int instance_process(av_algo_instance inst_handle, const av_frame_desc* f
                 RecognizedPerson rp{};
                 rp.track_id = person.track_id;
                 rp.target_type = "person";
-                rp.person_bbox[0] = person.x;
-                rp.person_bbox[1] = person.y;
-                rp.person_bbox[2] = person.w;
-                rp.person_bbox[3] = person.h;
-                rp.person_confidence = person.confidence;
+                rp.person_bbox[0] = std::clamp(person.x, 0.0f, 0.9999f);
+                rp.person_bbox[1] = std::clamp(person.y, 0.0f, 0.9999f);
+                rp.person_bbox[2] = std::clamp(person.w, 1e-4f, 1.0f - rp.person_bbox[0]);
+                rp.person_bbox[3] = std::clamp(person.h, 1e-4f, 1.0f - rp.person_bbox[1]);
+                rp.person_confidence = std::clamp(person.confidence, 0.0f, 1.0f);
 
                 auto& track_state = inst->track_quality_map[person.track_id];
                 track_state.hit_count++;

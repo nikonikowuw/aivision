@@ -28,6 +28,9 @@ import { copyToClipboard } from '#/utils/clipboard';
 import { getConfidenceTagColor } from '#/utils/format';
 
 import CaptureThumbnail from './CaptureThumbnail.vue';
+import FaceCandidatesTable, {
+  type FaceCandidateItem,
+} from './FaceCandidatesTable.vue';
 
 const props = defineProps<{
   capture: CaptureApi.CaptureItem | null;
@@ -58,7 +61,14 @@ const ignoredAttributeKeys = new Set([
   'person_confidence',
   'face_confidence',
   'has_face',
+  'candidates',
+  'match',
 ]);
+
+const faceCandidates = computed(() => {
+  const cands = props.capture?.attributes?.candidates;
+  return Array.isArray(cands) ? (cands as FaceCandidateItem[]) : [];
+});
 
 const attributeEntries = computed(() =>
   Object.entries(props.capture?.attributes ?? {}).filter(
@@ -418,7 +428,26 @@ async function handleConfirmRegister() {
         </div>
       </Card>
 
-      <!-- 4. AI 目标属性 -->
+      <!-- 4. Top-K 候选识别结果 (当抓拍存在人脸特征并完成底库比对时展示) -->
+      <Card
+        v-if="faceCandidates.length > 0"
+        size="small"
+        class="shadow-xs border-border/80"
+      >
+        <template #title>
+          <div class="flex items-center gap-2 text-xs font-semibold">
+            <IconifyIcon icon="lucide:users" class="size-4 text-primary" />
+            <span>{{ $t('record.capture.drawer.candidatesTitle') || 'Top-5 候选底库比对分析' }}</span>
+            <Tag color="blue" class="m-0 text-[10px] font-mono">Top-{{ faceCandidates.length }}</Tag>
+          </div>
+        </template>
+        <FaceCandidatesTable
+          :candidates="faceCandidates"
+          :show-match-badge="true"
+        />
+      </Card>
+
+      <!-- 5. AI 目标属性 -->
       <Card
         v-if="attributeEntries.length > 0"
         size="small"
@@ -445,7 +474,7 @@ async function handleConfirmRegister() {
         </div>
       </Card>
 
-      <!-- 5. 快捷注册区域 -->
+      <!-- 6. 快捷注册区域 -->
       <div
         v-if="canRegisterFace"
         class="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 p-3.5"

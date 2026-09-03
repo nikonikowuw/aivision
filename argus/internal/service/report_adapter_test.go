@@ -418,6 +418,48 @@ func TestReportAdapterReconcilesGenericCaptureImageReferences(t *testing.T) {
 	}
 }
 
+func TestReportAdapter_AcceptCapture(t *testing.T) {
+	db := newDesiredStateTestDB(t)
+	if err := db.AutoMigrate(&model.CaptureRecord{}); err != nil {
+		t.Fatalf("AutoMigrate CaptureRecord: %v", err)
+	}
+	captureRepo := repository.NewCaptureRepository(db)
+	adapter := NewReportAdapterWithCaptures(nil, nil, nil, nil, nil, captureRepo, nil, zap.NewNop())
+	ctx := context.Background()
+
+	event := &argusv1.CaptureEvent{
+		EventId:          "run-1/100-1-0",
+		InstanceId:       "inst-1",
+		CameraId:         "cam-1",
+		CameraName:       "Camera 1",
+		AlgorithmId:      "face_recognition",
+		AlgorithmVersion: "1.0.0",
+		TargetType:       "face",
+		TrackId:          1,
+		Confidence:       0.85,
+		QualityScore:     0.90,
+		Bbox: &argusv1.BoundingBox{
+			XMin: 0.1, YMin: 0.2, XMax: 0.4, YMax: 0.5,
+		},
+		AttributesJson: `{"has_face":true,"quality_score":0.9}`,
+	}
+	if err := adapter.AcceptCapture(ctx, event); err != nil {
+		t.Fatalf("AcceptCapture failed: %v", err)
+	}
+	// duplicate should succeed idempotently
+	if err := adapter.AcceptCapture(ctx, event); err != nil {
+		t.Fatalf("AcceptCapture duplicate failed: %v", err)
+	}
+
+	records, total, err := captureRepo.ListPage(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListPage failed: %v", err)
+	}
+	if total != 1 || len(records) != 1 {
+		t.Fatalf("expected 1 record, got total=%d len=%d", total, len(records))
+	}
+}
+
 // TestReportAdapterRejectsEmptyIDs 空标识的状态上报按内部错误处理，不得返回成功 ACK。
 func TestReportAdapterRejectsEmptyIDs(t *testing.T) {
 	db := newDesiredStateTestDB(t)

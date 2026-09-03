@@ -32,7 +32,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	handlerFunc := middleware.ErrorHandler()
+	handlerFunc := middleware.NewErrorHandler(zapLogger)
 	authRepository := repository.NewAuthRepository(gormDB)
 	authMiddleware := middleware.NewAuthMiddleware(authRepository, cfg)
 	menuRepository := repository.NewMenuRepository(gormDB)
@@ -107,6 +107,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 	captureHandler := api.NewCaptureHandler(captureService)
 	storageHandler := api.NewStorageHandler(storageCleanupService, zapLogger)
 	deps := router.Deps{
+		Logger:                  zapLogger,
 		ErrorHandler:            handlerFunc,
 		AuthMiddleware:          authMiddleware,
 		PermMiddleware:          permMiddleware,

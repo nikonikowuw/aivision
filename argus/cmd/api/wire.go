@@ -25,7 +25,7 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		db.New,
 		logger.New,
 		storage.New,
-		middleware.ErrorHandler,
+		middleware.NewErrorHandler,
 		repository.NewAuthRepository,
 		middleware.NewAuthMiddleware,
 		middleware.NewPermMiddleware,

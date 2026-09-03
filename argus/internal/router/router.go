@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.uber.org/zap"
 
 	_ "argus/app/docs"
 	"argus/app/internal/api"
@@ -70,6 +71,7 @@ const (
 // Deps 路由依赖集合：新增业务模块时扩展结构体字段，避免 New 签名随之膨胀
 // （wire.Struct 按字段自动装配，见 cmd/api/wire.go）。
 type Deps struct {
+	Logger                  *zap.Logger
 	ErrorHandler            gin.HandlerFunc
 	AuthMiddleware          *middleware.AuthMiddleware
 	PermMiddleware          *middleware.PermMiddleware
@@ -109,7 +111,15 @@ func New(cfg *config.Config, deps Deps) *gin.Engine {
 	engine.HandleMethodNotAllowed = true
 	// 操作日志包住 recovery 与统一错误处理，以便记录最终 HTTP 状态（包括 panic 的 500）。
 	engine.Use(deps.OplogMiddleware.Handler)
-	engine.Use(gin.CustomRecovery(func(c *gin.Context, _ any) {
+	engine.Use(gin.CustomRecovery(func(c *gin.Context, recovered any) {
+		if deps.Logger != nil {
+			deps.Logger.Error("panic recovered",
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.Any("panic", recovered),
+				zap.Stack("stack"),
+			)
+		}
 		response.WriteFail(c, http.StatusInternalServerError, errno.CodeInternal)
 	}))
 	// 统一错误处理：位于 recovery 之后、业务路由之前；handler 仅 c.Error，由中间件输出。

@@ -13,6 +13,12 @@ namespace face_recognition {
 
 namespace {
 
+inline float safe_clamp(float val, float min_v, float max_v, float fallback = 0.0f) {
+    if (!std::isfinite(val)) return fallback;
+    if (min_v > max_v) return min_v;
+    return std::clamp(val, min_v, max_v);
+}
+
 // Base64 编码辅助函数
 std::string base64_encode(const uint8_t* data, size_t len) {
     static const char base64_chars[] =
@@ -50,62 +56,92 @@ std::vector<argus::cv::DetectionBox> Postprocessor::decode_yolo_persons(
     std::vector<argus::cv::DetectionBox> candidates;
     if (yolo_out.data.empty() || orig_w == 0 || orig_h == 0) return candidates;
 
-    // Shape can be [84, num_boxes] or [num_boxes, 84]
     const size_t total_elements = yolo_out.data.size();
-    size_t num_boxes = yolo_out.num_boxes;
-    bool is_transposed = true;
-    if (total_elements % 84 == 0) {
-        num_boxes = total_elements / 84;
-    }
-
     const float net_w = lb_info.net_w > 0 ? static_cast<float>(lb_info.net_w) : 640.0f;
     const float net_h = lb_info.net_h > 0 ? static_cast<float>(lb_info.net_h) : 384.0f;
 
-    for (size_t i = 0; i < num_boxes; ++i) {
-        float cx, cy, w, h, person_score;
-        if (is_transposed) {
-            cx = yolo_out.data[0 * num_boxes + i];
-            cy = yolo_out.data[1 * num_boxes + i];
-            w = yolo_out.data[2 * num_boxes + i];
-            h = yolo_out.data[3 * num_boxes + i];
-            person_score = yolo_out.data[4 * num_boxes + i]; // class 0 = person
-        } else {
-            cx = yolo_out.data[i * 84 + 0];
-            cy = yolo_out.data[i * 84 + 1];
-            w = yolo_out.data[i * 84 + 2];
-            h = yolo_out.data[i * 84 + 3];
-            person_score = yolo_out.data[i * 84 + 4];
+    // Case 1: YOLO26 / YOLOv10 end-to-end output [N, 6] -> (x1, y1, x2, y2, score, cls_id)
+    if (total_elements % 6 == 0 && total_elements <= 3000) {
+        const size_t num_boxes = total_elements / 6;
+        for (size_t i = 0; i < num_boxes; ++i) {
+            const float score = yolo_out.data[i * 6 + 4];
+            const int cls_id = static_cast<int>(std::round(yolo_out.data[i * 6 + 5]));
+            if (!std::isfinite(score) || score < conf_thresh || cls_id != 0) continue; // class 0 = person
+
+            const float x1 = yolo_out.data[i * 6 + 0];
+            const float y1 = yolo_out.data[i * 6 + 1];
+            const float x2 = yolo_out.data[i * 6 + 2];
+            const float y2 = yolo_out.data[i * 6 + 3];
+            if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) || !std::isfinite(y2) ||
+                x2 <= x1 || y2 <= y1) continue;
+
+            argus::cv::NormalizedBBox norm_lb{
+                .x_min = x1 / net_w,
+                .y_min = y1 / net_h,
+                .x_max = x2 / net_w,
+                .y_max = y2 / net_h
+            };
+            argus::cv::NormalizedBBox orig_norm = lb_info.unletterbox_bbox(norm_lb, orig_w, orig_h);
+            const float bw = orig_norm.x_max - orig_norm.x_min;
+            const float bh = orig_norm.y_max - orig_norm.y_min;
+            if (bw < 0.01f || bh < 0.01f) continue;
+
+            argus::cv::DetectionBox det{};
+            det.class_id = 0;
+            det.label = "person";
+            det.confidence = std::clamp(score, 0.0f, 1.0f);
+            det.x = orig_norm.x_min;
+            det.y = orig_norm.y_min;
+            det.w = bw;
+            det.h = bh;
+            candidates.push_back(det);
         }
-
-        if (person_score < conf_thresh) continue;
-
-        // Bounding box in letterbox space
-        float x1 = cx - w * 0.5f;
-        float y1 = cy - h * 0.5f;
-        float x2 = cx + w * 0.5f;
-        float y2 = cy + h * 0.5f;
-
-        // Unletterbox to original normalized coordinates
-        argus::cv::NormalizedBBox norm_lb{
-            .x_min = x1 / net_w,
-            .y_min = y1 / net_h,
-            .x_max = x2 / net_w,
-            .y_max = y2 / net_h
-        };
-        argus::cv::NormalizedBBox orig_norm = lb_info.unletterbox_bbox(norm_lb, orig_w, orig_h);
-
-        argus::cv::DetectionBox det{};
-        det.class_id = 0;
-        det.label = "person";
-        det.confidence = person_score;
-        det.x = orig_norm.x_min;
-        det.y = orig_norm.y_min;
-        det.w = orig_norm.x_max - orig_norm.x_min;
-        det.h = orig_norm.y_max - orig_norm.y_min;
-        candidates.push_back(det);
+        return argus::cv::nms_filter(candidates, nms_thresh);
     }
 
-    return argus::cv::nms_filter(candidates, nms_thresh);
+    // Case 2: YOLOv8 raw anchor output [84, num_boxes]
+    if (total_elements % 84 == 0) {
+        const size_t num_boxes = total_elements / 84;
+        for (size_t i = 0; i < num_boxes; ++i) {
+            const float cx = yolo_out.data[0 * num_boxes + i];
+            const float cy = yolo_out.data[1 * num_boxes + i];
+            const float w = yolo_out.data[2 * num_boxes + i];
+            const float h = yolo_out.data[3 * num_boxes + i];
+            const float person_score = yolo_out.data[4 * num_boxes + i]; // class 0 = person
+            if (!std::isfinite(person_score) || person_score < conf_thresh) continue;
+            if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(w) || !std::isfinite(h) ||
+                w <= 0.0f || h <= 0.0f) continue;
+
+            const float x1 = cx - w * 0.5f;
+            const float y1 = cy - h * 0.5f;
+            const float x2 = cx + w * 0.5f;
+            const float y2 = cy + h * 0.5f;
+
+            argus::cv::NormalizedBBox norm_lb{
+                .x_min = x1 / net_w,
+                .y_min = y1 / net_h,
+                .x_max = x2 / net_w,
+                .y_max = y2 / net_h
+            };
+            argus::cv::NormalizedBBox orig_norm = lb_info.unletterbox_bbox(norm_lb, orig_w, orig_h);
+            const float bw = orig_norm.x_max - orig_norm.x_min;
+            const float bh = orig_norm.y_max - orig_norm.y_min;
+            if (bw < 0.01f || bh < 0.01f) continue;
+
+            argus::cv::DetectionBox det{};
+            det.class_id = 0;
+            det.label = "person";
+            det.confidence = std::clamp(person_score, 0.0f, 1.0f);
+            det.x = orig_norm.x_min;
+            det.y = orig_norm.y_min;
+            det.w = bw;
+            det.h = bh;
+            candidates.push_back(det);
+        }
+        return argus::cv::nms_filter(candidates, nms_thresh);
+    }
+
+    return candidates;
 }
 
 std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
@@ -165,11 +201,12 @@ std::vector<FaceDetection> Postprocessor::decode_scrfd_faces(
 
             // Unletterbox to original image pixel coordinates
             FaceDetection face{};
-            face.score = score;
+            face.score = std::clamp(score, 0.0f, 1.0f);
             face.x1 = std::clamp((x1_lb - pad_x) / scale, 0.0f, static_cast<float>(orig_w));
             face.y1 = std::clamp((y1_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_h));
             face.x2 = std::clamp((x2_lb - pad_x) / scale, 0.0f, static_cast<float>(orig_w));
             face.y2 = std::clamp((y2_lb - pad_y) / scale, 0.0f, static_cast<float>(orig_h));
+            if (face.x2 <= face.x1 || face.y2 <= face.y1) continue;
 
             for (int k = 0; k < 5; ++k) {
                 float kx_lb = anchor_x + kps_ptr[a_idx * 10 + k * 2 + 0] * stride;
@@ -269,7 +306,7 @@ std::string Postprocessor::serialize_recognition_json(
     uint64_t pts_ns) {
 
     std::ostringstream ss;
-    ss << std::fixed << std::setprecision(4);
+    ss << std::fixed << std::setprecision(6);
     ss << "{\n";
     ss << "  \"schema_version\": 1,\n";
     ss << "  \"frame_id\": " << frame_id << ",\n";
@@ -279,22 +316,35 @@ std::string Postprocessor::serialize_recognition_json(
 
     for (size_t i = 0; i < persons.size(); ++i) {
         const auto& p = persons[i];
+        const float bx = safe_clamp(p.person_bbox[0], 0.0f, 0.9999f, 0.0f);
+        const float by = safe_clamp(p.person_bbox[1], 0.0f, 0.9999f, 0.0f);
+        const float bw = safe_clamp(p.person_bbox[2], 0.0001f, 1.0f - bx, 0.0001f);
+        const float bh = safe_clamp(p.person_bbox[3], 0.0001f, 1.0f - by, 0.0001f);
+        const float conf = safe_clamp(p.person_confidence, 0.0f, 1.0f, 0.0f);
+
         ss << "    {\n";
         ss << "      \"track_id\": " << p.track_id << ",\n";
         ss << "      \"target_type\": \"" << p.target_type << "\",\n";
-        ss << "      \"bbox\": [" << p.person_bbox[0] << ", " << p.person_bbox[1] << ", "
-           << p.person_bbox[2] << ", " << p.person_bbox[3] << "],\n";
-        ss << "      \"confidence\": " << p.person_confidence << ",\n";
+        ss << "      \"bbox\": [" << bx << ", " << by << ", " << bw << ", " << bh << "],\n";
+        ss << "      \"confidence\": " << conf << ",\n";
 
         if (p.has_face) {
+            const float fx = safe_clamp(p.face_bbox[0], 0.0f, 0.9999f, 0.0f);
+            const float fy = safe_clamp(p.face_bbox[1], 0.0f, 0.9999f, 0.0f);
+            const float fw = safe_clamp(p.face_bbox[2], 0.0001f, 1.0f - fx, 0.0001f);
+            const float fh = safe_clamp(p.face_bbox[3], 0.0001f, 1.0f - fy, 0.0001f);
+            const float f_conf = safe_clamp(p.face_confidence, 0.0f, 1.0f, 0.0f);
+            const float q_score = safe_clamp(p.face_quality, 0.0f, 1.0f, f_conf);
+
             ss << "      \"face\": {\n";
-            ss << "        \"bbox\": [" << p.face_bbox[0] << ", " << p.face_bbox[1] << ", "
-               << p.face_bbox[2] << ", " << p.face_bbox[3] << "],\n";
-            ss << "        \"confidence\": " << p.face_confidence << ",\n";
+            ss << "        \"bbox\": [" << fx << ", " << fy << ", " << fw << ", " << fh << "],\n";
+            ss << "        \"confidence\": " << f_conf << ",\n";
+            ss << "        \"quality_score\": " << q_score << ",\n";
             ss << "        \"landmarks\": [\n";
             for (int k = 0; k < 5; ++k) {
-                ss << "          [" << p.face_landmarks[k * 2] << ", " << p.face_landmarks[k * 2 + 1] << "]"
-                   << (k == 4 ? "" : ",") << "\n";
+                const float lx = safe_clamp(p.face_landmarks[k * 2], 0.0f, 1.0f, 0.0f);
+                const float ly = safe_clamp(p.face_landmarks[k * 2 + 1], 0.0f, 1.0f, 0.0f);
+                ss << "          [" << lx << ", " << ly << "]" << (k == 4 ? "" : ",") << "\n";
             }
             ss << "        ],\n";
             if (!p.embedding_base64.empty()) {

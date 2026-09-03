@@ -16,6 +16,7 @@ type AlgorithmFilter struct {
 	PageSize      int
 	AlgorithmType string
 	Keyword       string // 模糊匹配 algorithm_id 或 name
+	IsBuiltin     *bool
 }
 
 // AlgorithmRepository 算法及算法版本仓储接口。
@@ -101,6 +102,9 @@ func (r *algorithmRepository) ListAlgorithms(ctx context.Context, filter *Algori
 	if filter != nil {
 		if filter.AlgorithmType != "" {
 			db = db.Where("algorithm_type = ?", filter.AlgorithmType)
+		}
+		if filter.IsBuiltin != nil {
+			db = db.Where("is_builtin = ?", *filter.IsBuiltin)
 		}
 		if filter.Keyword != "" {
 			pattern := "%" + filter.Keyword + "%"

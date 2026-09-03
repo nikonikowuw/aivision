@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { $t } from '@vben/locales';
 import { useAccessStore } from '@vben/stores';
@@ -21,20 +21,41 @@ const props = withDefaults(
     alt: '',
     bbox: undefined,
     fit: 'cover',
-    height: 48,
+    height: undefined,
     original: false,
     preview: true,
     url: '',
-    width: 96,
+    width: undefined,
   },
 );
 
 const accessStore = useAccessStore();
+const containerRef = ref<HTMLDivElement | null>(null);
+const imgRef = ref<HTMLImageElement | null>(null);
+
 const isError = ref<boolean>(false);
 const previewVisible = ref<boolean>(false);
 const previewImageSrc = ref<string>('');
 const previewLoading = ref<boolean>(false);
 const hdPreviewDataUrl = ref<string>('');
+
+const overlayStyle = ref<Record<string, string>>({
+  left: '0px',
+  top: '0px',
+  width: '100%',
+  height: '100%',
+});
+
+const containerStyle = computed(() => {
+  const style: Record<string, string> = {};
+  if (typeof props.width === 'number' && props.width > 0) {
+    style.width = `${props.width}px`;
+  }
+  if (typeof props.height === 'number' && props.height > 0) {
+    style.height = `${props.height}px`;
+  }
+  return style;
+});
 
 // 原生缩略图直链（带 Token 鉴权，默认 type=thumb 由浏览器 C++ 内核多线程流式懒加载）
 const thumbnailUrl = computed(() => {
@@ -82,12 +103,132 @@ const normalizedBbox = computed<[number, number, number, number] | null>(() => {
   return [minX, minY, maxX, maxY];
 });
 
+const cornerBracketPath = computed(() => {
+  if (!normalizedBbox.value) return '';
+  const [minX, minY, maxX, maxY] = normalizedBbox.value;
+  const bx = minX * 100;
+  const by = minY * 100;
+  const bw = (maxX - minX) * 100;
+  const bh = (maxY - minY) * 100;
+  const lenX = Math.min(bw * 0.2, 8);
+  const lenY = Math.min(bh * 0.2, 8);
+
+  return [
+    `M ${bx} ${by + lenY} L ${bx} ${by} L ${bx + lenX} ${by}`,
+    `M ${bx + bw - lenX} ${by} L ${bx + bw} ${by} L ${bx + bw} ${by + lenY}`,
+    `M ${bx} ${by + bh - lenY} L ${bx} ${by + bh} L ${bx + lenX} ${by + bh}`,
+    `M ${bx + bw - lenX} ${by + bh} L ${bx + bw} ${by + bh} L ${bx + bw} ${by + bh - lenY}`,
+  ].join(' ');
+});
+
+function updateOverlayGeometry() {
+  if (!imgRef.value || !containerRef.value) return;
+  const img = imgRef.value;
+  const container = containerRef.value;
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+  if (!nw || !nh) return;
+
+  const cw = container.clientWidth;
+  const ch = container.clientHeight;
+  if (!cw || !ch) return;
+
+  if (props.fit === 'contain') {
+    const imgRatio = nw / nh;
+    const containerRatio = cw / ch;
+    if (imgRatio > containerRatio) {
+      // 黑边在上下
+      const renderW = cw;
+      const renderH = cw / imgRatio;
+      const renderTop = (ch - renderH) / 2;
+      overlayStyle.value = {
+        left: '0px',
+        top: `${renderTop}px`,
+        width: `${renderW}px`,
+        height: `${renderH}px`,
+      };
+    } else {
+      // 黑边在左右
+      const renderH = ch;
+      const renderW = ch * imgRatio;
+      const renderLeft = (cw - renderW) / 2;
+      overlayStyle.value = {
+        left: `${renderLeft}px`,
+        top: '0px',
+        width: `${renderW}px`,
+        height: `${renderH}px`,
+      };
+    }
+  } else if (props.fit === 'cover') {
+    const imgRatio = nw / nh;
+    const containerRatio = cw / ch;
+    if (imgRatio > containerRatio) {
+      // 左右被裁切
+      const scale = ch / nh;
+      const scaledW = nw * scale;
+      const offsetX = (cw - scaledW) / 2;
+      overlayStyle.value = {
+        left: `${offsetX}px`,
+        top: '0px',
+        width: `${scaledW}px`,
+        height: `${ch}px`,
+      };
+    } else {
+      // 上下被裁切
+      const scale = cw / nw;
+      const scaledH = nh * scale;
+      const offsetY = (ch - scaledH) / 2;
+      overlayStyle.value = {
+        left: '0px',
+        top: `${offsetY}px`,
+        width: `${cw}px`,
+        height: `${scaledH}px`,
+      };
+    }
+  } else {
+    overlayStyle.value = {
+      left: '0px',
+      top: '0px',
+      width: '100%',
+      height: '100%',
+    };
+  }
+}
+
+function onImageLoad() {
+  isError.value = false;
+  nextTick(() => {
+    updateOverlayGeometry();
+  });
+}
+
+let resizeObserver: null | ResizeObserver = null;
+
+onMounted(() => {
+  if (containerRef.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      updateOverlayGeometry();
+    });
+    resizeObserver.observe(containerRef.value);
+  }
+});
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+});
+
 watch(
-  () => props.url,
+  () => [props.url, props.fit, props.width, props.height],
   () => {
     isError.value = false;
     hdPreviewDataUrl.value = '';
     previewImageSrc.value = '';
+    nextTick(() => {
+      updateOverlayGeometry();
+    });
   },
 );
 
@@ -146,16 +287,19 @@ async function getHdPanoramaPreview(): Promise<string> {
     const ph = (maxY - minY) * hdH;
 
     offscreenCtx.save();
-    offscreenCtx.lineWidth = Math.max(3, Math.round(hdW / 400));
-    offscreenCtx.strokeStyle = '#1890ff';
-    offscreenCtx.fillStyle = 'rgba(24, 144, 255, 0.18)';
+    offscreenCtx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    offscreenCtx.shadowBlur = 4;
+    offscreenCtx.lineWidth = Math.max(2, Math.round(hdW / 700));
+    offscreenCtx.strokeStyle = '#0ea5e9';
+    offscreenCtx.fillStyle = 'rgba(14, 165, 233, 0.12)';
     offscreenCtx.fillRect(px, py, pw, ph);
     offscreenCtx.strokeRect(px, py, pw, ph);
 
-    // 绘制微型科技感四角包角高亮
-    const cornerLen = Math.min(pw, ph) * 0.2;
-    offscreenCtx.lineWidth = Math.max(4, Math.round(hdW / 300));
-    offscreenCtx.strokeStyle = '#52c41a';
+    // 绘制精致四角同色系包角
+    const cornerLen = Math.min(pw, ph) * 0.18;
+    offscreenCtx.lineWidth = Math.max(3, Math.round(hdW / 450));
+    offscreenCtx.strokeStyle = '#38bdf8';
+    offscreenCtx.lineCap = 'square';
 
     // 左上
     offscreenCtx.beginPath();
@@ -215,12 +359,13 @@ async function handlePreviewClick() {
 
 <template>
   <div
-    class="relative flex items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
+    ref="containerRef"
+    class="relative flex mx-auto items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
     :class="{
       'cursor-pointer transition hover:opacity-90':
         preview && thumbnailUrl && !isError,
     }"
-    :style="{ width: `${width}px`, height: `${height}px` }"
+    :style="containerStyle"
     @click="handlePreviewClick"
   >
     <!-- 无图或加载失败 -->
@@ -234,6 +379,7 @@ async function handlePreviewClick() {
     <!-- 列表展示图：直接使用原生 <img> + loading="lazy"，由浏览器底层多线程并行流式加载 -->
     <template v-else>
       <img
+        ref="imgRef"
         :alt="alt || $t('record.capture.drawer.noImage')"
         :height="height"
         :src="thumbnailUrl"
@@ -241,24 +387,39 @@ async function handlePreviewClick() {
         :width="width"
         loading="lazy"
         class="h-full w-full select-none"
+        @load="onImageLoad"
         @error="() => (isError = true)"
       />
 
-      <!-- 缩略图上的微型矢量目标框指示 (纯 SVG 矢量层覆盖，0 JS CPU 消耗) -->
+      <!-- 紧贴图片实际渲染区域的 SVG 目标框指示 (纯矢量层覆盖，0 坐标偏移) -->
       <svg
         v-if="normalizedBbox"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        class="pointer-events-none absolute inset-0 h-full w-full"
+        class="pointer-events-none absolute"
+        :style="overlayStyle"
       >
+        <!-- 主体矩形（带微妙投影以保证高低亮背景下的识别度） -->
         <rect
           :x="normalizedBbox[0] * 100"
           :y="normalizedBbox[1] * 100"
           :width="(normalizedBbox[2] - normalizedBbox[0]) * 100"
           :height="(normalizedBbox[3] - normalizedBbox[1]) * 100"
-          fill="rgba(24, 144, 255, 0.22)"
-          stroke="#1890ff"
-          stroke-width="2"
+          fill="rgba(14, 165, 233, 0.12)"
+          stroke="#0ea5e9"
+          stroke-width="1.5"
+          vector-effect="non-scaling-stroke"
+          style="filter: drop-shadow(0 0 1.5px rgb(0 0 0 / 70%))"
+        />
+
+        <!-- 四角科技感直角包角 (与边框同色系高亮，去除突兀异色) -->
+        <path
+          :d="cornerBracketPath"
+          fill="none"
+          stroke="#38bdf8"
+          stroke-width="2.5"
+          stroke-linecap="square"
+          vector-effect="non-scaling-stroke"
         />
       </svg>
 

@@ -24,6 +24,7 @@ import {
   getPlateObservationListApi,
 } from '#/api';
 import { getTodayRange } from '#/utils/date';
+import { getConfidenceTagColor } from '#/utils/format';
 
 import PlateTag from './components/PlateTag.vue';
 import PlateThumbnail from './components/PlateThumbnail.vue';
@@ -49,7 +50,12 @@ const gridOptions: VxeTableGridOptions<PlateObservationApi.PlateObservationItem>
       isHover: true,
     },
     columns: [
-      { field: 'id', title: $t('record.plate.columns.id'), width: 70 },
+      {
+        type: 'seq',
+        title: $t('system.common.index'),
+        width: 60,
+        align: 'center',
+      },
       {
         field: 'plateCrop',
         title: $t('record.plate.columns.plateCrop'),
@@ -161,6 +167,9 @@ const gridOptions: VxeTableGridOptions<PlateObservationApi.PlateObservationItem>
 
 const [Grid] = useVbenVxeGrid({
   formOptions: {
+    commonConfig: {
+      labelWidth: 80,
+    },
     schema: [
       {
         component: 'ApiSelect',
@@ -314,10 +323,11 @@ function getPlateColorLabel(color?: string): string {
 
       <template #panorama="{ row }">
         <PlateThumbnail
-          fit="cover"
-          :height="48"
+          fit="contain"
+          :height="41"
           :url="row.panoramaImageUrl"
           :width="72"
+          class="mx-auto aspect-video"
         />
       </template>
 
@@ -350,13 +360,13 @@ function getPlateColorLabel(color?: string): string {
       </template>
 
       <template #confidence="{ row }">
-        <Tag :color="row.confidence >= 0.8 ? 'green' : 'orange'">
+        <Tag :color="getConfidenceTagColor(row.confidence)">
           {{ (row.confidence * 100).toFixed(1) }}%
         </Tag>
       </template>
 
       <template #ocrConfidence="{ row }">
-        <Tag :color="row.ocrConfidence >= 0.8 ? 'green' : 'orange'">
+        <Tag :color="getConfidenceTagColor(row.ocrConfidence)">
           {{ (row.ocrConfidence * 100).toFixed(1) }}%
         </Tag>
       </template>
@@ -394,12 +404,12 @@ function getPlateColorLabel(color?: string): string {
             {{ getPlateTypeLabel(currentDetail.plateType) }}
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.confidence')">
-            <Tag color="green">
+            <Tag :color="getConfidenceTagColor(currentDetail.confidence)">
               {{ (currentDetail.confidence * 100).toFixed(1) }}%
             </Tag>
           </DescriptionsItem>
           <DescriptionsItem :label="$t('record.plate.detail.ocrConfidence')">
-            <Tag color="cyan">
+            <Tag :color="getConfidenceTagColor(currentDetail.ocrConfidence)">
               {{ (currentDetail.ocrConfidence * 100).toFixed(1) }}%
             </Tag>
           </DescriptionsItem>
@@ -469,3 +479,17 @@ function getPlateColorLabel(color?: string): string {
     </DetailModal>
   </Page>
 </template>
+
+<style scoped>
+:deep([data-slot='form-label']) {
+  display: inline-block !important;
+  width: 76px !important;
+  min-width: 76px !important;
+  padding-right: 0 !important;
+  margin-right: 8px !important;
+  font-weight: 500;
+  line-height: 32px !important;
+  text-align: justify !important;
+  text-align-last: justify !important;
+}
+</style>

@@ -1206,16 +1206,32 @@ private:
                 // reported_events_ 只服务于告警/车牌事件，不能阻断更优人脸结果。
                 accepted = !pending.faces.empty() || !pending.captures.empty();
             } else if (pending.kind == PendingCapture::Kind::Capture) {
-                std::vector<argus::v1::CaptureEvent> new_captures;
-                new_captures.reserve(pending.generic_captures.size());
-                for (auto& capture : pending.generic_captures) {
-                    if (bypass_event_dedup || remember_event_id(capture.event_id())) {
-                        new_captures.push_back(std::move(capture));
+                if (bypass_event_dedup) {
+                    accepted = !pending.generic_captures.empty();
+                } else {
+                    std::vector<argus::v1::CaptureEvent> new_captures;
+                    std::vector<av_rect> new_crop_rois;
+                    std::vector<av_rect> new_sub_crop_rois;
+                    new_captures.reserve(pending.generic_captures.size());
+                    new_crop_rois.reserve(pending.capture_crop_rois.size());
+                    new_sub_crop_rois.reserve(pending.capture_sub_crop_rois.size());
+                    for (size_t i = 0; i < pending.generic_captures.size(); ++i) {
+                        if (remember_event_id(pending.generic_captures[i].event_id())) {
+                            new_captures.push_back(std::move(pending.generic_captures[i]));
+                            if (i < pending.capture_crop_rois.size()) {
+                                new_crop_rois.push_back(pending.capture_crop_rois[i]);
+                            }
+                            if (i < pending.capture_sub_crop_rois.size()) {
+                                new_sub_crop_rois.push_back(pending.capture_sub_crop_rois[i]);
+                            }
+                        }
                     }
-                }
-                if (!new_captures.empty()) {
-                    pending.generic_captures = std::move(new_captures);
-                    accepted = true;
+                    if (!new_captures.empty()) {
+                        pending.generic_captures = std::move(new_captures);
+                        pending.capture_crop_rois = std::move(new_crop_rois);
+                        pending.capture_sub_crop_rois = std::move(new_sub_crop_rois);
+                        accepted = true;
+                    }
                 }
             }
             if (accepted) {
@@ -1990,6 +2006,10 @@ private:
     }
 
     void remove_instance(const std::string& instance_id, bool forget_config = true) {
+        {
+            std::lock_guard<std::mutex> lock(health_mutex_);
+            instance_health_.erase(instance_id);
+        }
         const auto instance = AlgoManager::instance().get(instance_id);
         if (!instance) {
             ResourceLedger::instance().release(instance_id);
@@ -2117,9 +2137,132 @@ private:
         return {};
     }
 
+    struct InstanceHealthState {
+        std::string camera_id;
+        uint32_t consecutive_invalid = 0;
+        uint32_t consecutive_valid = 0;
+        bool is_degraded = false;
+        std::string last_reason;
+    };
+    std::mutex health_mutex_;
+    std::unordered_map<std::string, InstanceHealthState> instance_health_;
+
+    static constexpr uint32_t kDegradeInvalidThreshold = 5;
+    static constexpr uint32_t kRecoverValidThreshold = 5;
+
+    static bool normalize_and_validate_bbox(const nlohmann::json& json,
+                                            const av_frame_desc& frame,
+                                            std::array<double, 4>& bbox) {
+        if (!json.is_array() || json.size() != bbox.size()) return false;
+        for (size_t index = 0; index < bbox.size(); ++index) {
+            if (!json[index].is_number()) return false;
+            bbox[index] = json[index].get<double>();
+            if (!std::isfinite(bbox[index])) return false;
+        }
+        if ((bbox[0] > 1.0001 || bbox[1] > 1.0001 || bbox[2] > 1.0001 || bbox[3] > 1.0001) &&
+            frame.width > 0 && frame.height > 0) {
+            bbox[0] /= static_cast<double>(frame.width);
+            bbox[1] /= static_cast<double>(frame.height);
+            bbox[2] /= static_cast<double>(frame.width);
+            bbox[3] /= static_cast<double>(frame.height);
+        }
+        for (size_t index = 0; index < bbox.size(); ++index) {
+            if (!std::isfinite(bbox[index]) || bbox[index] < -1e-3 || bbox[index] > 1.001) {
+                return false;
+            }
+            bbox[index] = std::clamp(bbox[index], 0.0, 1.0);
+        }
+        if (bbox[0] >= 0.9999) bbox[0] = 0.9999;
+        if (bbox[1] >= 0.9999) bbox[1] = 0.9999;
+        bbox[2] = std::clamp(bbox[2], 1e-4, 1.0 - bbox[0]);
+        bbox[3] = std::clamp(bbox[3], 1e-4, 1.0 - bbox[1]);
+        return bbox[2] > 0.0 && bbox[3] > 0.0;
+    }
+
+    void record_instance_invalid_result(const std::shared_ptr<AlgorithmInstance>& instance,
+                                        std::string_view reason) {
+        if (!instance) return;
+        const std::string instance_id = instance->get_instance_id();
+        const std::string camera_id = instance->get_camera_id();
+        bool should_report = false;
+        std::string report_msg;
+        {
+            std::lock_guard<std::mutex> lock(health_mutex_);
+            auto& h = instance_health_[instance_id];
+            h.camera_id = camera_id;
+            h.consecutive_invalid++;
+            h.consecutive_valid = 0;
+            h.last_reason = std::string(reason);
+            if (!h.is_degraded && h.consecutive_invalid >= kDegradeInvalidThreshold) {
+                h.is_degraded = true;
+                should_report = true;
+                report_msg = "ALGO_RESULT_INVALID: " + h.last_reason;
+            }
+        }
+        if (should_report && app_client_) {
+            argus::v1::InstanceState state;
+            state.set_instance_id(instance_id);
+            state.set_status(argus::v1::INSTANCE_STATUS_DEGRADED);
+            state.set_message(report_msg);
+            app_client_->report_instance_state(state);
+
+            argus::v1::TaskState task_state;
+            task_state.set_camera_id(camera_id);
+            task_state.set_status(argus::v1::TASK_STATUS_DEGRADED);
+            task_state.set_message(report_msg);
+            app_client_->report_task_state(task_state);
+        }
+    }
+
+    void record_instance_valid_result(const std::shared_ptr<AlgorithmInstance>& instance) {
+        if (!instance) return;
+        const std::string instance_id = instance->get_instance_id();
+        const std::string camera_id = instance->get_camera_id();
+        bool should_report_recovery = false;
+        bool has_other_degraded = false;
+        {
+            std::lock_guard<std::mutex> lock(health_mutex_);
+            auto it = instance_health_.find(instance_id);
+            if (it != instance_health_.end()) {
+                auto& h = it->second;
+                h.camera_id = camera_id;
+                h.consecutive_invalid = 0;
+                h.consecutive_valid++;
+                if (h.is_degraded && h.consecutive_valid >= kRecoverValidThreshold) {
+                    h.is_degraded = false;
+                    should_report_recovery = true;
+                }
+            }
+            if (should_report_recovery) {
+                for (const auto& [inst_id, h] : instance_health_) {
+                    if (h.is_degraded && h.camera_id == camera_id) {
+                        has_other_degraded = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (should_report_recovery && app_client_) {
+            argus::v1::InstanceState state;
+            state.set_instance_id(instance_id);
+            state.set_status(argus::v1::INSTANCE_STATUS_RUNNING);
+            state.set_message("recovered");
+            app_client_->report_instance_state(state);
+
+            if (!has_other_degraded) {
+                argus::v1::TaskState task_state;
+                task_state.set_camera_id(camera_id);
+                task_state.set_status(argus::v1::TASK_STATUS_RUNNING);
+                task_state.set_message("running");
+                app_client_->report_task_state(task_state);
+            }
+        }
+    }
+
     void log_invalid_result(const std::shared_ptr<AlgorithmInstance>& instance,
                             const av_algo_result& result, const av_frame_desc& frame,
                             std::string_view reason) noexcept {
+        record_instance_invalid_result(instance, reason);
         const uint64_t count = invalid_result_count_.fetch_add(1, std::memory_order_relaxed) + 1;
         const uint32_t result_kind = result.size >= offsetof(av_algo_result, kind) + sizeof(result.kind)
             ? result.kind
@@ -2260,6 +2403,7 @@ private:
             }
             // 仅在任务成功进入有界队列后记录各目标 event_id；满队列/停机丢弃不会阻塞算法线程。
             enqueue_pending_capture(std::move(pending));
+            record_instance_valid_result(instance);
         } catch (...) {
             // Malformed plugin output is isolated to this result callback.
         }
@@ -2284,18 +2428,9 @@ private:
                 }
                 return true;
             };
-            const auto valid_bbox = [](const nlohmann::json& json,
+            const auto valid_bbox = [&frame](const nlohmann::json& json,
                                        std::array<double, 4>& bbox) {
-                if (!json.is_array() || json.size() != bbox.size()) return false;
-                for (size_t index = 0; index < bbox.size(); ++index) {
-                    if (!json[index].is_number()) return false;
-                    bbox[index] = json[index].get<double>();
-                    if (!std::isfinite(bbox[index]) || bbox[index] < 0.0 || bbox[index] > 1.0) {
-                        return false;
-                    }
-                }
-                return bbox[2] > 0.0 && bbox[3] > 0.0 &&
-                       bbox[0] + bbox[2] <= 1.0 && bbox[1] + bbox[3] <= 1.0;
+                return normalize_and_validate_bbox(json, frame, bbox);
             };
             constexpr size_t kMaxPlateTextBytes = 32;
             const auto supported_color = [](std::string_view color) {
@@ -2411,13 +2546,17 @@ private:
                     return;
                 }
 
-                const double confidence = item["confidence"].get<double>();
-                const double ocr_confidence = item["ocr_confidence"].get<double>();
-                if (!std::isfinite(confidence) || confidence < 0.0 || confidence > 1.0 ||
-                    !std::isfinite(ocr_confidence) || ocr_confidence < 0.0 || ocr_confidence > 1.0) {
+                double confidence = item["confidence"].get<double>();
+                double ocr_confidence = item["ocr_confidence"].get<double>();
+                if (!std::isfinite(confidence) || confidence < 0.0 ||
+                    !std::isfinite(ocr_confidence) || ocr_confidence < 0.0) {
                     reject("plate confidence is invalid");
                     return;
                 }
+                if (confidence > 1.0 && confidence <= 100.0) confidence /= 100.0;
+                if (ocr_confidence > 1.0 && ocr_confidence <= 100.0) ocr_confidence /= 100.0;
+                confidence = std::clamp(confidence, 0.0, 1.0);
+                ocr_confidence = std::clamp(ocr_confidence, 0.0, 1.0);
 
                 std::array<double, 4> bbox{};
                 if (!valid_bbox(item["bbox"], bbox)) {
@@ -2530,6 +2669,7 @@ private:
             }
             pending.frame_retained = true;
             enqueue_pending_capture(std::move(pending));
+            record_instance_valid_result(instance);
         } catch (...) {
             reject("malformed recognition result");
         }
@@ -2538,7 +2678,8 @@ private:
     void enqueue_generic_capture_events(const std::shared_ptr<AlgorithmInstance>& instance,
                                          const nlohmann::json& value,
                                          const av_frame_desc& frame,
-                                         const std::unordered_set<int64_t>& recognized_track_ids) {
+                                         const std::unordered_set<int64_t>& recognized_track_ids,
+                                         const std::unordered_map<int64_t, std::vector<FaceMatch>>& face_candidates_by_track = {}) {
         if (!instance || !value.contains("persons") || !value["persons"].is_array() ||
             !frame.frame_token || !frame.opaque || frame.size < sizeof(av_frame_desc) ||
             !safe_package_component(instance->get_run_id())) {
@@ -2553,17 +2694,11 @@ private:
             bool has_face = false;
             double person_confidence = 0.0;
             double face_confidence = 0.0;
+            double quality_score = 0.0;
             std::string attributes_json;
         };
-        const auto valid_bbox = [](const nlohmann::json& json, std::array<double, 4>& bbox) {
-            if (!json.is_array() || json.size() != bbox.size()) return false;
-            for (size_t index = 0; index < bbox.size(); ++index) {
-                if (!json[index].is_number()) return false;
-                bbox[index] = json[index].get<double>();
-                if (!std::isfinite(bbox[index]) || bbox[index] < 0.0 || bbox[index] > 1.0) return false;
-            }
-            return bbox[2] > 0.0 && bbox[3] > 0.0 &&
-                   bbox[0] + bbox[2] <= 1.0 && bbox[1] + bbox[3] <= 1.0;
+        const auto valid_bbox = [&frame](const nlohmann::json& json, std::array<double, 4>& bbox) {
+            return normalize_and_validate_bbox(json, frame, bbox);
         };
         const auto read_track_id = [](const nlohmann::json& json, int64_t& value_out) {
             if (json.is_number_integer()) {
@@ -2582,51 +2717,93 @@ private:
         for (const auto& person : value["persons"]) {
             if (!person.is_object() || !person.contains("track_id") || !person.contains("bbox") ||
                 !person.contains("confidence")) {
-                return;
+                continue;
             }
             Candidate candidate;
             if (!read_track_id(person["track_id"], candidate.track_id) ||
                 !valid_bbox(person["bbox"], candidate.bbox) || !person["confidence"].is_number()) {
-                return;
+                continue;
             }
             candidate.person_confidence = person["confidence"].get<double>();
-            if (!std::isfinite(candidate.person_confidence) || candidate.person_confidence < 0.0 ||
-                candidate.person_confidence > 1.0) {
-                return;
+            if (!std::isfinite(candidate.person_confidence) || candidate.person_confidence < 0.0) {
+                continue;
             }
+            if (candidate.person_confidence > 1.0 && candidate.person_confidence <= 100.0) {
+                candidate.person_confidence /= 100.0;
+            }
+            candidate.person_confidence = std::clamp(candidate.person_confidence, 0.0, 1.0);
 
-            const bool has_face_field = person.contains("face") && !person["face"].is_null();
+            const bool has_face_field = person.contains("face") && !person["face"].is_null() && person["face"].is_object();
             if (has_face_field) {
                 const auto& face = person["face"];
-                if (!face.is_object() || !face.contains("bbox") || !face.contains("confidence") ||
-                    !face["confidence"].is_number() || !valid_bbox(face["bbox"], candidate.face_bbox)) {
-                    return;
+                if (face.contains("bbox") && face.contains("confidence") &&
+                    face["confidence"].is_number() && valid_bbox(face["bbox"], candidate.face_bbox)) {
+                    candidate.face_confidence = face["confidence"].get<double>();
+                    if (candidate.face_confidence > 1.0 && candidate.face_confidence <= 100.0) {
+                        candidate.face_confidence /= 100.0;
+                    }
+                    candidate.face_confidence = std::clamp(candidate.face_confidence, 0.0, 1.0);
+                    if (face.contains("quality_score") && face["quality_score"].is_number()) {
+                        double q = face["quality_score"].get<double>();
+                        if (std::isfinite(q) && q >= 0.0) {
+                            if (q > 1.0 && q <= 100.0) q /= 100.0;
+                            candidate.quality_score = std::clamp(q, 0.0, 1.0);
+                        }
+                    } else {
+                        candidate.quality_score = candidate.face_confidence;
+                    }
+                    candidate.has_face = true;
                 }
-                candidate.face_confidence = face["confidence"].get<double>();
-                if (!std::isfinite(candidate.face_confidence) || candidate.face_confidence < 0.0 ||
-                    candidate.face_confidence > 1.0) {
-                    return;
+            }
+            if (!candidate.has_face) {
+                if (person.contains("quality_score") && person["quality_score"].is_number()) {
+                    double q = person["quality_score"].get<double>();
+                    if (std::isfinite(q) && q >= 0.0) {
+                        if (q > 1.0 && q <= 100.0) q /= 100.0;
+                        candidate.quality_score = std::clamp(q, 0.0, 1.0);
+                    }
+                } else {
+                    candidate.quality_score = candidate.person_confidence;
                 }
-                candidate.has_face = true;
             }
 
-            if (person.contains("target_type")) {
-                if (!person["target_type"].is_string()) return;
+            if (person.contains("target_type") && person["target_type"].is_string()) {
                 candidate.target_type = person["target_type"].get<std::string>();
             } else {
-                // 兼容尚未增加 target_type 字段的旧算法包：有 face 子对象时按 face，否则按 person。
                 candidate.target_type = candidate.has_face ? "face" : "person";
             }
-            if (candidate.target_type != "face" && candidate.target_type != "person") return;
-            if (candidate.target_type == "face" && !candidate.has_face) return;
+            if (candidate.target_type != "face" && candidate.target_type != "person") continue;
+            if (candidate.target_type == "face" && !candidate.has_face) {
+                candidate.face_bbox = candidate.bbox;
+                candidate.face_confidence = candidate.person_confidence;
+                candidate.has_face = true;
+            }
 
             nlohmann::json attributes = nlohmann::json::object();
             attributes["has_face"] = candidate.has_face;
             attributes["person_confidence"] = candidate.person_confidence;
+            attributes["quality_score"] = candidate.quality_score;
             if (candidate.has_face) {
                 attributes["face_confidence"] = candidate.face_confidence;
+                attributes["face_quality_score"] = candidate.quality_score;
                 attributes["face_bbox"] = {candidate.face_bbox[0], candidate.face_bbox[1],
                                              candidate.face_bbox[2], candidate.face_bbox[3]};
+            }
+            const auto cand_it = face_candidates_by_track.find(candidate.track_id);
+            if (cand_it != face_candidates_by_track.end() && !cand_it->second.empty()) {
+                nlohmann::json candidates_arr = nlohmann::json::array();
+                for (const auto& cand : cand_it->second) {
+                    nlohmann::json cand_obj = nlohmann::json::object();
+                    cand_obj["faceId"] = cand.entry.face_id;
+                    cand_obj["face_id"] = cand.entry.face_id;
+                    cand_obj["personId"] = cand.entry.person_id;
+                    cand_obj["person_id"] = cand.entry.person_id;
+                    cand_obj["personName"] = cand.entry.person_name;
+                    cand_obj["person_name"] = cand.entry.person_name;
+                    cand_obj["similarity"] = std::clamp(cand.similarity, 0.0f, 1.0f);
+                    candidates_arr.push_back(std::move(cand_obj));
+                }
+                attributes["candidates"] = std::move(candidates_arr);
             }
             candidate.attributes_json = attributes.dump();
             candidates.push_back(std::move(candidate));
@@ -2656,14 +2833,17 @@ private:
             std::lock_guard<std::mutex> queue_lock(capture_mutex_);
             size_t target_sequence = 0;
             for (const auto& candidate : candidates) {
-                // 1. 人体独立抓拍分支
-                if (candidate.target_type == "person") {
+                // 1. 人体/普通目标独立抓拍分支
+                if (candidate.target_type != "face") {
                     const std::string person_state_key =
-                        instance->get_run_id() + "/person-" + std::to_string(candidate.track_id);
+                        instance->get_run_id() + "/" + candidate.target_type + "-" + std::to_string(candidate.track_id);
                     const auto person_state = generic_track_states_.find(person_state_key);
-                    const float person_quality = static_cast<float>(candidate.person_confidence);
+                    const float person_quality = static_cast<float>(
+                        candidate.target_type == "person"
+                            ? candidate.person_confidence
+                            : (candidate.quality_score > 0 ? candidate.quality_score : candidate.person_confidence));
                     const bool person_due = person_state == generic_track_states_.end() ||
-                                            now - person_state->second.last_report_at >= std::chrono::milliseconds(800) ||
+                                            now - person_state->second.last_report_at >= std::chrono::milliseconds(3000) ||
                                             person_quality >= person_state->second.last_quality + 0.15f;
                     if (person_due) {
                         argus::v1::CaptureEvent event;
@@ -2674,14 +2854,18 @@ private:
                         event.set_camera_name(camera_name_for(instance->get_camera_id()));
                         event.set_algorithm_id(instance->get_algorithm_id());
                         event.set_algorithm_version(instance->get_version());
-                        event.set_target_type("person");
+                        event.set_target_type(candidate.target_type);
                         event.set_track_id(candidate.track_id);
                         event.set_wall_time_ns(frame.wall_time_ns);
                         event.set_time_synced(frame.time_synced != 0);
-                        event.mutable_bbox()->set_x_min(static_cast<float>(candidate.bbox[0]));
-                        event.mutable_bbox()->set_y_min(static_cast<float>(candidate.bbox[1]));
-                        event.mutable_bbox()->set_x_max(static_cast<float>(candidate.bbox[0] + candidate.bbox[2]));
-                        event.mutable_bbox()->set_y_max(static_cast<float>(candidate.bbox[1] + candidate.bbox[3]));
+                        const float x_min = std::clamp(static_cast<float>(candidate.bbox[0]), 0.0f, 0.9999f);
+                        const float y_min = std::clamp(static_cast<float>(candidate.bbox[1]), 0.0f, 0.9999f);
+                        const float x_max = std::clamp(static_cast<float>(candidate.bbox[0] + candidate.bbox[2]), x_min + 1e-4f, 1.0f);
+                        const float y_max = std::clamp(static_cast<float>(candidate.bbox[1] + candidate.bbox[3]), y_min + 1e-4f, 1.0f);
+                        event.mutable_bbox()->set_x_min(x_min);
+                        event.mutable_bbox()->set_y_min(y_min);
+                        event.mutable_bbox()->set_x_max(x_max);
+                        event.mutable_bbox()->set_y_max(y_max);
                         event.set_confidence(static_cast<float>(candidate.person_confidence));
                         event.set_quality_score(person_quality);
                         event.set_is_recognized(recognized_track_ids.contains(candidate.track_id));
@@ -2716,9 +2900,9 @@ private:
                     const double f_conf = (candidate.target_type == "face" && !candidate.has_face)
                         ? candidate.person_confidence
                         : candidate.face_confidence;
-                    const float face_quality = static_cast<float>(f_conf);
+                    const float face_quality = static_cast<float>(candidate.quality_score > 0 ? candidate.quality_score : f_conf);
                     const bool face_due = face_state == generic_track_states_.end() ||
-                                          now - face_state->second.last_report_at >= std::chrono::milliseconds(800) ||
+                                          now - face_state->second.last_report_at >= std::chrono::milliseconds(3000) ||
                                           face_quality >= face_state->second.last_quality + 0.15f;
                     if (face_due) {
                         argus::v1::CaptureEvent event;
@@ -2733,10 +2917,14 @@ private:
                         event.set_track_id(candidate.track_id);
                         event.set_wall_time_ns(frame.wall_time_ns);
                         event.set_time_synced(frame.time_synced != 0);
-                        event.mutable_bbox()->set_x_min(static_cast<float>(f_bbox[0]));
-                        event.mutable_bbox()->set_y_min(static_cast<float>(f_bbox[1]));
-                        event.mutable_bbox()->set_x_max(static_cast<float>(f_bbox[0] + f_bbox[2]));
-                        event.mutable_bbox()->set_y_max(static_cast<float>(f_bbox[1] + f_bbox[3]));
+                        const float fx_min = std::clamp(static_cast<float>(f_bbox[0]), 0.0f, 0.9999f);
+                        const float fy_min = std::clamp(static_cast<float>(f_bbox[1]), 0.0f, 0.9999f);
+                        const float fx_max = std::clamp(static_cast<float>(f_bbox[0] + f_bbox[2]), fx_min + 1e-4f, 1.0f);
+                        const float fy_max = std::clamp(static_cast<float>(f_bbox[1] + f_bbox[3]), fy_min + 1e-4f, 1.0f);
+                        event.mutable_bbox()->set_x_min(fx_min);
+                        event.mutable_bbox()->set_y_min(fy_min);
+                        event.mutable_bbox()->set_x_max(fx_max);
+                        event.mutable_bbox()->set_y_max(fy_max);
                         event.set_confidence(static_cast<float>(f_conf));
                         event.set_quality_score(face_quality);
                         event.set_is_recognized(recognized_track_ids.contains(candidate.track_id));
@@ -2819,21 +3007,12 @@ private:
                 value_out = static_cast<int64_t>(unsigned_value);
                 return true;
             };
-            const auto valid_bbox = [](const nlohmann::json& json,
+            const auto valid_bbox = [&frame](const nlohmann::json& json,
                                        std::array<double, 4>& bbox) {
-                if (!json.is_array() || json.size() != bbox.size()) return false;
-                for (size_t index = 0; index < bbox.size(); ++index) {
-                    if (!json[index].is_number()) return false;
-                    bbox[index] = json[index].get<double>();
-                    if (!std::isfinite(bbox[index]) || bbox[index] < 0.0 || bbox[index] > 1.0) {
-                        return false;
-                    }
-                }
-                return bbox[2] > 0.0 && bbox[3] > 0.0 &&
-                       bbox[0] + bbox[2] <= 1.0 && bbox[1] + bbox[3] <= 1.0;
+                return normalize_and_validate_bbox(json, frame, bbox);
             };
             const auto close_to = [](double left, double right) {
-                return std::fabs(left - right) <= 1e-4;
+                return std::fabs(left - right) <= 5e-4;
             };
             const auto valid_embedding = [](const std::vector<float>& embedding) {
                 if (embedding.size() != kFaceEmbeddingDimensions) return false;
@@ -2854,9 +3033,9 @@ private:
                        request.purpose == kImagePurposeFaceCrop &&
                        std::isfinite(request.x) && std::isfinite(request.y) &&
                        std::isfinite(request.w) && std::isfinite(request.h) &&
-                       request.x >= 0.0f && request.y >= 0.0f && request.w > 0.0f &&
-                       request.h > 0.0f && request.x + request.w <= 1.0f &&
-                       request.y + request.h <= 1.0f;
+                       request.x >= -1e-4f && request.y >= -1e-4f && request.w > 0.0f &&
+                       request.h > 0.0f && request.x + request.w <= 1.0001f &&
+                       request.y + request.h <= 1.0001f;
             };
 
             if (!value.is_object() || !field_allowed(value, {
@@ -2942,17 +3121,20 @@ private:
                     reject("person bbox is invalid");
                     return;
                 }
-                const double person_confidence = person["confidence"].get<double>();
-                if (!std::isfinite(person_confidence) || person_confidence < 0.0 ||
-                    person_confidence > 1.0) {
+                double person_confidence = person["confidence"].get<double>();
+                if (!std::isfinite(person_confidence) || person_confidence < 0.0) {
                     reject("person confidence is invalid");
                     return;
                 }
+                if (person_confidence > 1.0 && person_confidence <= 100.0) {
+                    person_confidence /= 100.0;
+                }
+                person_confidence = std::clamp(person_confidence, 0.0, 1.0);
                 if (!person.contains("face") || person["face"].is_null()) continue;
 
                 const auto& face = person["face"];
                 if (!face.is_object() || !field_allowed(face, {
-                        "bbox", "confidence", "landmarks", "embedding"}) ||
+                        "bbox", "confidence", "quality_score", "landmarks", "embedding"}) ||
                     !face.contains("bbox") || !face.contains("confidence") ||
                     !face["confidence"].is_number() || !face.contains("landmarks") ||
                     !face.contains("embedding")) {
@@ -2964,11 +3146,30 @@ private:
                     reject("face bbox is invalid");
                     return;
                 }
-                const double face_confidence = face["confidence"].get<double>();
-                if (!std::isfinite(face_confidence) || face_confidence < 0.0 ||
-                    face_confidence > 1.0) {
+                double face_confidence = face["confidence"].get<double>();
+                if (!std::isfinite(face_confidence) || face_confidence < 0.0) {
                     reject("face confidence is invalid");
                     return;
+                }
+                if (face_confidence > 1.0 && face_confidence <= 100.0) {
+                    face_confidence /= 100.0;
+                }
+                face_confidence = std::clamp(face_confidence, 0.0, 1.0);
+                double face_quality = face_confidence;
+                if (face.contains("quality_score")) {
+                    if (!face["quality_score"].is_number()) {
+                        reject("face quality score is invalid");
+                        return;
+                    }
+                    face_quality = face["quality_score"].get<double>();
+                    if (!std::isfinite(face_quality) || face_quality < 0.0) {
+                        reject("face quality score is invalid");
+                        return;
+                    }
+                    if (face_quality > 1.0 && face_quality <= 100.0) {
+                        face_quality /= 100.0;
+                    }
+                    face_quality = std::clamp(face_quality, 0.0, 1.0);
                 }
                 const auto& landmarks = face["landmarks"];
                 if (!landmarks.is_array() || landmarks.size() != 5) {
@@ -3035,7 +3236,7 @@ private:
                 faces_with_embedding.push_back(ParsedFace{
                     .track_id = track_id,
                     .bbox = face_bbox,
-                    .quality_score = face_confidence,
+                    .quality_score = face_quality,
                     .image_request_index = faces_with_embedding.size(),
                     .embedding = std::move(query),
                     .match = match,
@@ -3058,7 +3259,15 @@ private:
                 }
             }
 
-            enqueue_generic_capture_events(instance, value, frame, recognized_track_ids);
+            std::unordered_map<int64_t, std::vector<FaceMatch>> face_candidates_by_track;
+            face_candidates_by_track.reserve(faces_with_embedding.size());
+            for (const auto& parsed : faces_with_embedding) {
+                if (!parsed.candidates.empty()) {
+                    face_candidates_by_track[parsed.track_id] = parsed.candidates;
+                }
+            }
+            enqueue_generic_capture_events(instance, value, frame, recognized_track_ids, face_candidates_by_track);
+            record_instance_valid_result(instance);
             if (faces_with_embedding.empty()) return;
 
             if (!frame.frame_token || !frame.opaque || frame.size < sizeof(av_frame_desc)) {
@@ -3233,9 +3442,13 @@ private:
             }
             dropped.release_frame();
             if (!accepted) pending.release_frame();
-            if (accepted) capture_cv_.notify_one();
+            if (accepted) {
+                capture_cv_.notify_one();
+            }
+        } catch (const std::exception& e) {
+            reject(std::string("malformed face recognition result: ") + e.what());
         } catch (...) {
-            reject("malformed face recognition result");
+            reject("malformed face recognition result: unknown exception");
         }
     }
 

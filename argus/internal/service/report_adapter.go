@@ -623,21 +623,34 @@ func (a *ReportAdapter) AcceptCapture(ctx context.Context, event *argusv1.Captur
 }
 
 func finiteRatio(value float32) bool {
-	return !math.IsNaN(float64(value)) && !math.IsInf(float64(value), 0) && value >= 0 && value <= 1
+	return !math.IsNaN(float64(value)) && !math.IsInf(float64(value), 0) && value >= -1e-4 && value <= 1.0001
 }
 
 func captureBBoxJSON(bbox *argusv1.BoundingBox) ([]byte, error) {
+	clamp := func(v float32) float32 {
+		if v < 0 {
+			return 0
+		}
+		if v > 1 {
+			return 1
+		}
+		return v
+	}
 	values := []float32{bbox.GetXMin(), bbox.GetYMin(), bbox.GetXMax(), bbox.GetYMax()}
 	for _, value := range values {
 		if !finiteRatio(value) {
 			return nil, errors.New("capture bbox contains invalid coordinate")
 		}
 	}
-	if values[2] <= values[0] || values[3] <= values[1] {
+	xMin := clamp(values[0])
+	yMin := clamp(values[1])
+	xMax := clamp(values[2])
+	yMax := clamp(values[3])
+	if xMax <= xMin || yMax <= yMin {
 		return nil, errors.New("capture bbox has invalid bounds")
 	}
 	return json.Marshal(map[string]float32{
-		"x_min": values[0], "y_min": values[1], "x_max": values[2], "y_max": values[3],
+		"x_min": xMin, "y_min": yMin, "x_max": xMax, "y_max": yMax,
 	})
 }
 

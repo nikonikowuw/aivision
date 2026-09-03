@@ -44,3 +44,7 @@ Converted with `coremltools 9.0` (macOS 14 deployment target, float16 compute pr
 - `model/glintr100.mlpackage`:
   - Input: `input_1` [1, 3, 112, 112] (RGB, float32, normalized with `(x - 127.5) / 127.5`)
   - Output: `var_2160` [1, 512] (float32)
+
+- `model/adaface_ir101.mlpackage`:
+  - Input: `input_1` [1, 3, 112, 112] (RGB, float32, normalized with `(x - 127.5) / 127.5`)
+  - Output: `var_2195` [1, 512] (float32, AdaFace IR-101 WebFace12M Backbone, FP16 for ANE)

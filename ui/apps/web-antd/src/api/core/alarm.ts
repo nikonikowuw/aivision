@@ -45,6 +45,7 @@ export namespace AlarmRecordApi {
     cameraId?: string;
     algorithmId?: string;
     alarmTypeId?: string;
+    targetLabel?: string;
     minConfidence?: number;
     maxConfidence?: number;
   }
@@ -96,9 +97,9 @@ export async function getAlarmImageBlobApi(
   const url = isThumbnail
     ? `/record/images/${imageId}?type=thumb`
     : `/record/images/${imageId}`;
-  const promise = requestClient.download<Blob>(url).catch((err) => {
+  const promise = requestClient.download<Blob>(url).catch((error) => {
     imageBlobCache.delete(cacheKey);
-    throw err;
+    throw error;
   });
   imageBlobCache.set(cacheKey, promise);
   return await promise;

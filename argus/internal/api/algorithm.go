@@ -28,11 +28,19 @@ func (h *AlgorithmHandler) ListAlgorithms(c *gin.Context) {
 	algoType := c.Query("algorithmType")
 	keyword := c.Query("keyword")
 
+	var isBuiltin *bool
+	if isBuiltinStr := c.Query("isBuiltin"); isBuiltinStr != "" {
+		if val, err := strconv.ParseBool(isBuiltinStr); err == nil {
+			isBuiltin = &val
+		}
+	}
+
 	filter := &repository.AlgorithmFilter{
 		Page:          page,
 		PageSize:      pageSize,
 		AlgorithmType: algoType,
 		Keyword:       keyword,
+		IsBuiltin:     isBuiltin,
 	}
 
 	items, total, err := h.svc.ListAlgorithms(c.Request.Context(), filter)

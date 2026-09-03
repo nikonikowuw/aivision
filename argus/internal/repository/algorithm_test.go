@@ -328,3 +328,44 @@ func TestAlgorithmRepositoryRestoreLastVersion(t *testing.T) {
 		t.Fatalf("restored version = %+v, want id %d active", restoredVersion, versionSnapshot.ID)
 	}
 }
+
+func TestAlgorithmRepositoryListAlgorithmsWithFilter(t *testing.T) {
+	db := newAlgorithmRepoTestDB(t)
+	repo := NewAlgorithmRepository(db)
+	ctx := context.Background()
+
+	algoBuiltin := &model.Algorithm{
+		AlgorithmID:   "yolo26n",
+		Name:          "YOLO26n Builtin",
+		AlgorithmType: "object_detection",
+		IsBuiltin:     true,
+		ActiveVersion: "1.0.0",
+	}
+	algoCustom := &model.Algorithm{
+		AlgorithmID:   "custom_face",
+		Name:          "Custom Face",
+		AlgorithmType: "face_recognition",
+		IsBuiltin:     false,
+		ActiveVersion: "1.0.0",
+	}
+	if err := db.Create(algoBuiltin).Error; err != nil {
+		t.Fatalf("create builtin: %v", err)
+	}
+	if err := db.Create(algoCustom).Error; err != nil {
+		t.Fatalf("create custom: %v", err)
+	}
+
+	// Filter Builtin only
+	bTrue := true
+	items, total, err := repo.ListAlgorithms(ctx, &AlgorithmFilter{IsBuiltin: &bTrue})
+	if err != nil || total != 1 || len(items) != 1 || items[0].AlgorithmID != "yolo26n" {
+		t.Fatalf("filter is_builtin=true: items=%+v, total=%d, err=%v", items, total, err)
+	}
+
+	// Filter Custom only
+	bFalse := false
+	items, total, err = repo.ListAlgorithms(ctx, &AlgorithmFilter{IsBuiltin: &bFalse})
+	if err != nil || total != 1 || len(items) != 1 || items[0].AlgorithmID != "custom_face" {
+		t.Fatalf("filter is_builtin=false: items=%+v, total=%d, err=%v", items, total, err)
+	}
+}

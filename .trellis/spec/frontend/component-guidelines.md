@@ -294,6 +294,171 @@ async function fetchStatusSilently() {
 
 ---
 
+## 智能识别记录视图与抓拍渲染契约（Record Views & Target Box Rendering Contracts）
+
+本规范适用于 `record/face`（人脸记录）、`record/capture`（全量抓拍）、`record/alarm`（智能告警）、`record/plate`（车牌记录）等视觉智能记录模块的表格视图、搜索表单、详情弹窗与目标框（BBox）渲染。
+
+### 1. 范围 / 触发
+
+- **触发场景**：开发或重构视觉记录表格、全景/特写缩略图展示、目标框标注（Bounding Box）、搜索栏表单排版及 1:1 比对核验弹窗。
+- **核心目标**：保障列表缩略图、详情卡片与点击全屏放大预览三层视图在几何坐标、视觉样式、线宽粗细上的 100% 绝对一致，消除由于 CSS 裁剪和 SVG 比例拉伸导致的视觉断层。
+
+### 2. 契约与规范细节
+
+#### A. 目标框 (BBox) 矢量渲染与预览一致性
+
+1. **统一视觉语言**：
+   - **矩形主体框**：科技蓝细边框（`#3b82f6`），半透明填充（`rgba(59, 130, 246, 0.18)`）；
+   - **四角直角包角（Corner Brackets）**：必须使用翠绿色（`#10b981`），线帽为直角（`stroke-linecap="square"`）；
+   - 缩略图、详情卡片和点击大图 Canvas 预览必须保持完全相同的视觉配色与四角包角高亮。
+2. **矢量线宽恒定（`non-scaling-stroke`）**：
+   - SVG `<rect>` 与 `<path>` 必须标记 `vector-effect="non-scaling-stroke"`，确保无论容器是 `72px` 缩略图还是 `500px+` 详情卡片，屏幕物理线宽恒定为 1.5px~2.5px，禁止出现随容器巨幅拉粗。
+3. **消除裁剪导致的坐标偏移**：
+   - 带有 BBox 叠加的全景监控图容器必须保持与摄像头监控流一致的 `16:9` 物理宽高比（如 `72×41`、`85×48`、`aspect-video`），并使用 `fit="contain"`，禁止使用破坏归一化坐标映射的自由 `object-fit: cover` 裁剪。
+4. **性能保护**：
+   - 列表静态渲染使用轻量级 SVG 覆盖层（0 JS 渲染开销）；
+   - 1080P/4K 高清原图的 Canvas 目标框生成保持“仅在用户主动点击放大时按需单例生成（Lazy load on click）”，列表滚动零内存与显存浪费。
+
+#### B. 搜索表单两端分散对齐规范（Justified Filter Labels）
+
+1. **统一基准宽度**：
+   - `useVbenVxeGrid` 的 `formOptions` 统一通过 `commonConfig: { labelWidth: 80 }` 为 3~5 字中文字符分配 `80px` 布局基准宽度；
+2. **两端分散对齐 CSS**：
+   - 通过 `:deep([data-slot="form-label"])` 设置 `text-align: justify; text-align-last: justify;`，使 3 字（`摄 像 头`）、4 字（`人 员 姓 名`）、5 字（`最小相似度`）中文字符在 `76px` 视口内均匀拉伸分散，冒号垂直排齐。
+
+#### C. 表格列与详情对齐契约
+
+1. **表格序号列**：统一使用 `type: 'seq'` 序号列，禁止展示无业务语义的底层自增主键 `id`。
+2. **无端截断禁止**：人员工号（`personId`）、车牌号、事件流水号等在详情卡片中必须完整展示，不添加多余的 `max-w` 截断与 Tooltip。
+3. **1:1 比对核验对称布局**：
+   - 顶部：现场抓拍特写（96×96） ↔ 居中相似度指示器 ↔ 底库样本照（96×96）居中对称呈现；
+   - 中部：全景抓拍大图（左 50%）与结构化元数据面板（右 50%）完全等宽高对称。
+
+### 3. 正反示例对比（Wrong vs Correct）
+
+#### 错误做法（Wrong）
+
+```vue
+<!-- 错误：SVG 目标框未固定线宽，容器未保持 16:9，导致粗细变形与坐标偏移 -->
+<div class="h-16 w-16 overflow-hidden">
+  <img :src="url" class="object-cover" />
+  <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="absolute inset-0">
+    <rect :x="x" :y="y" :width="w" :height="h" stroke="#1890ff" stroke-width="2" />
+  </svg>
+</div>
+```
+
+#### 正确做法（Correct）
+
+```vue
+<!-- 正确：保持 16:9 物理画面比，使用 non-scaling-stroke 和统一直角包角 -->
+<div class="relative aspect-video w-[72px] h-[41px] items-center justify-center overflow-hidden">
+  <img :src="thumbnailUrl" class="h-full w-full object-contain" loading="lazy" />
+  <svg v-if="normalizedBbox" viewBox="0 0 100 100" preserveAspectRatio="none" class="pointer-events-none absolute inset-0 h-full w-full">
+    <rect
+      :x="normalizedBbox[0] * 100"
+      :y="normalizedBbox[1] * 100"
+      :width="(normalizedBbox[2] - normalizedBbox[0]) * 100"
+      :height="(normalizedBbox[3] - normalizedBbox[1]) * 100"
+      fill="rgba(59, 130, 246, 0.18)"
+      stroke="#3b82f6"
+      stroke-width="1.5"
+      vector-effect="non-scaling-stroke"
+    />
+    <path
+      :d="cornerBracketPath"
+      fill="none"
+      stroke="#10b981"
+      stroke-width="2.5"
+      stroke-linecap="square"
+      vector-effect="non-scaling-stroke"
+    />
+  </svg>
+</div>
+```
+
+---
+
+## 卡片式目录与网格布局规范 (Card Catalog & Grid Layout Guidelines)
+
+### 1. 范围 / 触发
+
+- **触发场景**：开发或重构 AI 算法包管理、模型资产卡片、任务实例卡片、边缘节点卡片等网格/卡片式资源目录。
+- **核心目标**：确保卡片排列符合直观的从左至右（Left-to-Right）水平阅读顺序，杜绝纵向瀑布流造成的错行误解；规范整卡可点击时的微动效与内部交互事件阻断。
+
+### 2. 契约与规范细节
+
+#### A. 网格布局与排列顺序契约
+
+1. **禁止使用 CSS Multi-column (`columns-*`) 作为有序卡片容器**：
+   - CSS `columns` 遵循从上到下的纵向列分流（Column-first）。在元素较少（如 3~4 个）时，第 2 或第 3 项会被排在第一列的下方（第二行），严重破坏从左到右阅读习惯。
+2. **强制使用 Responsive CSS Grid (`grid grid-cols-*` 或 `auto-fill`)**：
+   - 优先采用自适应填满网格：`grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4`，或者分断点响应式 `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`。
+   - `auto-fill + minmax` 能在折叠侧边栏、改变窗口大小、不同屏幕宽度下平滑动态计算最佳列数，保证每张卡片不会被无限挤压变窄或过度拉宽，保持从左到右水平排满。
+3. **同行动高与对齐契约**：
+   - 卡片容器根元素统一使用 `h-full flex flex-col justify-between`，使同行动高卡片的底部元信息与操作栏自然吸底对齐。
+
+#### B. 整卡点击与事件冒泡契约 (Clickable Card & Event Bubbling)
+
+1. **主交互与悬浮动效**：
+   - 整卡支持点击打开版本/详情抽屉（`@click="handleOpenDrawer(item)"`）；
+   - 卡片容器添加 `cursor-pointer hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] transition-all duration-200`，右上角可配合 `arrow-up-right` 提示可点击性。
+2. **内嵌操作显式阻止冒泡 (Mandatory `.stop`)**：
+   - 卡片内部的所有独立微交互（如：一键复制 ID、参数规范按钮、操作列按钮、Popover 触发器）**必须使用 `@click.stop`**，防止触发外层卡片的抽屉打开动作。
+
+#### C. 工具栏与筛选交互极简契约
+
+1. **避免重置与刷新图标并排混淆**：
+   - 搜索框统一配置 `allow-clear` 自带清空；
+   - 工具栏右侧仅保留功能明确的「刷新」按钮（保留当前筛选条件重新拉取远端最新状态），避免放置无文字提示的逆时针重置图标与顺时针刷新图标引起语义混淆；
+   - 在搜索结果为空（Empty State）的中心提示卡片中提供「重置筛选条件」显式大按钮承接清空需求。
+
+### 3. 正反示例对比（Wrong vs Correct）
+
+#### 错误做法（Wrong）
+
+```vue
+<!-- 错误：使用 columns 导致从上到下错位排版；内嵌按钮未阻止冒泡导致点击按钮同时触发卡片点击 -->
+<div class="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
+  <div v-for="item in list" :key="item.id" class="break-inside-avoid" @click="openDrawer(item)">
+    <div class="card">
+      <button @click="copyId(item.id)">Copy</button>
+      <button @click="openSchema(item)">Schema</button>
+    </div>
+  </div>
+</div>
+```
+
+#### 正确做法（Correct）
+
+```vue
+<!-- 正确：使用 CSS Grid auto-fill 保障平滑自适应，内部微操作全部使用 @click.stop 阻止冒泡 -->
+<div class="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4">
+  <div
+    v-for="item in list"
+    :key="item.id"
+    class="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-5 h-full cursor-pointer hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] transition-all"
+    @click="openDrawer(item)"
+  >
+    <!-- 头部信息与可点击指示 -->
+    <div class="flex items-start justify-between">
+      <span class="font-bold">{{ item.name }}</span>
+      <button type="button" @click.stop="copyId(item.id)">
+        <IconifyIcon icon="lucide:copy" class="size-3" />
+      </button>
+    </div>
+
+    <!-- 底部操作栏吸底并阻止冒泡 -->
+    <div class="mt-4 border-t border-border pt-3 flex justify-between items-center">
+      <span class="text-xs text-muted-foreground">{{ item.createdAt }}</span>
+      <button type="button" @click.stop="openSchema(item)">参数规范</button>
+    </div>
+  </div>
+</div>
+```
+
+---
+
 ## 常见错误
 
 - **VxeTable 配置了 `type: 'expand'` 列却遗漏 `expandConfig`**，导致展开箭头不显示或行展开控制器无法被激活。

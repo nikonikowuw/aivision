@@ -8,11 +8,11 @@ import { Image as AntImage } from 'ant-design-vue';
 import { getAlarmImageBlobApi } from '#/api/core/alarm';
 
 const props = defineProps<{
-  imageId?: string;
   bbox?: [number, number, number, number]; // [x1, y1, x2, y2] 归一化坐标
-  width?: number;
   height?: number;
+  imageId?: string;
   padRatio?: number; // 扩图外延比例，默认 0.15 (15%)
+  width?: number;
 }>();
 
 const accessStore = useAccessStore();
@@ -87,8 +87,8 @@ async function getHdCroppedPreview(): Promise<string> {
     const fullBlobUrl = URL.createObjectURL(fullBlob);
     const hdImg = new Image();
     await new Promise((resolve, reject) => {
-      hdImg.onload = resolve;
-      hdImg.onerror = reject;
+      hdImg.addEventListener('load', resolve, { once: true });
+      hdImg.addEventListener('error', reject, { once: true });
       hdImg.src = fullBlobUrl;
     });
 
@@ -132,8 +132,8 @@ async function getHdCroppedPreview(): Promise<string> {
     hdCroppedDataUrl.value = offscreenCanvas.toDataURL('image/jpeg', 0.95);
     URL.revokeObjectURL(fullBlobUrl);
     return hdCroppedDataUrl.value;
-  } catch (e) {
-    console.error('Failed to crop HD target:', e);
+  } catch (error) {
+    console.error('Failed to crop HD target:', error);
     return '';
   }
 }
@@ -174,10 +174,10 @@ async function handlePreviewClick() {
   <div
     ref="containerRef"
     :key="props.imageId"
-    class="relative flex cursor-pointer items-center justify-center overflow-hidden rounded border border-border bg-muted/40 transition hover:opacity-90"
+    class="relative flex mx-auto cursor-pointer items-center justify-center overflow-hidden rounded border border-border bg-muted/40 transition hover:opacity-90"
     :style="{
-      width: (props.width || 64) + 'px',
-      height: (props.height || 64) + 'px',
+      width: `${props.width || 64}px`,
+      height: `${props.height || 64}px`,
     }"
     @click="handlePreviewClick"
   >
@@ -185,11 +185,7 @@ async function handlePreviewClick() {
       无图
     </span>
     <!-- 列表展示：使用视口懒加载 + CSS GPU 级视口裁剪（0 JS 离屏 Canvas，瞬间出图） -->
-    <div
-      v-else-if="isVisible"
-      class="h-full w-full"
-      :style="cropStyle"
-    />
+    <div v-else-if="isVisible" class="h-full w-full" :style="cropStyle"></div>
 
     <!-- 点击放大预览弹窗（无损从 1080P/4K 高清原图提取） -->
     <div style="display: none">

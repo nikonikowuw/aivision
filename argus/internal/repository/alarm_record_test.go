@@ -111,19 +111,19 @@ func TestAlarmRecordRepository_ListPageAndFilters(t *testing.T) {
 
 	if err := repo.Create(ctx, &model.AlarmRecord{
 		EventID: "e1", InstanceID: "i1", CameraID: "cam-1", AlgorithmID: "yolo", AlarmTypeID: "invade",
-		OccurredAt: t1, Confidence: 0.70, ImageID: "img-1",
+		OccurredAt: t1, TargetLabel: "person", Confidence: 0.70, ImageID: "img-1",
 	}); err != nil {
 		t.Fatalf("create e1: %v", err)
 	}
 	if err := repo.Create(ctx, &model.AlarmRecord{
 		EventID: "e2", InstanceID: "i1", CameraID: "cam-1", AlgorithmID: "yolo", AlarmTypeID: "invade",
-		OccurredAt: t2, Confidence: 0.85, ImageID: "img-2",
+		OccurredAt: t2, TargetLabel: "car", Confidence: 0.85, ImageID: "img-2",
 	}); err != nil {
 		t.Fatalf("create e2: %v", err)
 	}
 	if err := repo.Create(ctx, &model.AlarmRecord{
 		EventID: "e3", InstanceID: "i2", CameraID: "cam-2", AlgorithmID: "fire", AlarmTypeID: "smoke",
-		OccurredAt: t3, Confidence: 0.95, ImageID: "img-3",
+		OccurredAt: t3, TargetLabel: "person", Confidence: 0.95, ImageID: "img-3",
 	}); err != nil {
 		t.Fatalf("create e3: %v", err)
 	}
@@ -144,7 +144,13 @@ func TestAlarmRecordRepository_ListPageAndFilters(t *testing.T) {
 		t.Fatalf("filter camera: err=%v, total=%d", err, total)
 	}
 
-	// 3. 筛选置信度区间 [0.80, 0.90]
+	// 3. 筛选目标类型
+	items, total, err = repo.ListPage(ctx, &repository.AlarmRecordFilter{TargetLabel: "person"})
+	if err != nil || total != 2 || len(items) != 2 {
+		t.Fatalf("filter target label: total=%d, len=%d, err=%v", total, len(items), err)
+	}
+
+	// 4. 筛选置信度区间 [0.80, 0.90]
 	minConf := float32(0.80)
 	maxConf := float32(0.90)
 	items, total, err = repo.ListPage(ctx, &repository.AlarmRecordFilter{
@@ -155,7 +161,7 @@ func TestAlarmRecordRepository_ListPageAndFilters(t *testing.T) {
 		t.Fatalf("filter confidence: total=%d, err=%v", total, err)
 	}
 
-	// 4. 筛选时间区间 [t1+30m, t3]
+	// 5. 筛选时间区间 [t1+30m, t3]
 	start := t1.Add(30 * time.Minute)
 	items, total, err = repo.ListPage(ctx, &repository.AlarmRecordFilter{
 		StartTime: &start,
@@ -165,7 +171,7 @@ func TestAlarmRecordRepository_ListPageAndFilters(t *testing.T) {
 		t.Fatalf("filter time: total=%d, err=%v", total, err)
 	}
 
-	// 5. 批量查询已存在的 image_id
+	// 6. 批量查询已存在的 image_id
 	existing, err := repo.FindExistingImageIDs(ctx, []string{"img-1", "img-3", "img-unknown"})
 	if err != nil {
 		t.Fatalf("find existing images: %v", err)

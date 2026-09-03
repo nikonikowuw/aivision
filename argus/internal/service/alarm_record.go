@@ -25,6 +25,7 @@ type AlarmRecordQuery struct {
 	CameraID      string     `form:"cameraId"`
 	AlgorithmID   string     `form:"algorithmId"`
 	AlarmTypeID   string     `form:"alarmTypeId"`
+	TargetLabel   string     `form:"targetLabel"`
 	MinConfidence *float32   `form:"minConfidence"`
 	MaxConfidence *float32   `form:"maxConfidence"`
 }
@@ -122,6 +123,7 @@ func (s *alarmRecordService) ListPage(ctx context.Context, q *AlarmRecordQuery) 
 		CameraID:      query.CameraID,
 		AlgorithmID:   query.AlgorithmID,
 		AlarmTypeID:   query.AlarmTypeID,
+		TargetLabel:   strings.TrimSpace(query.TargetLabel),
 		MinConfidence: query.MinConfidence,
 		MaxConfidence: query.MaxConfidence,
 	}

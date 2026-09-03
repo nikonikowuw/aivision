@@ -19,6 +19,7 @@ type AlarmRecordFilter struct {
 	CameraID      string
 	AlgorithmID   string
 	AlarmTypeID   string
+	TargetLabel   string
 	MinConfidence *float32
 	MaxConfidence *float32
 }
@@ -125,6 +126,9 @@ func (r *alarmRecordRepository) ListPage(ctx context.Context, filter *AlarmRecor
 	}
 	if f.AlarmTypeID != "" {
 		query = query.Where("alarm_type_id = ?", f.AlarmTypeID)
+	}
+	if f.TargetLabel != "" {
+		query = query.Where("target_label = ?", f.TargetLabel)
 	}
 	if f.MinConfidence != nil {
 		query = query.Where("confidence >= ?", *f.MinConfidence)

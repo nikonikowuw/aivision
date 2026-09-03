@@ -75,29 +75,32 @@ if os.path.exists(scrfd_onnx):
     scrfd_mlmodel_reg.save(os.path.join(model_dir, "scrfd_10g_640x640.mlpackage"))
     print("SCRFD 10G (640x640) converted.")
 
-# 2. GLINTR100 (112x112)
+# 2. GLINTR100 / AdaFace (112x112)
 glintr_onnx = os.path.join(weights_dir, "glintr100.onnx")
-if not os.path.exists(glintr_onnx):
-    for candidate in [
-        "weights/scrfd_10g_bnkps.onnx",
-    ]:
-        if os.path.exists(candidate):
-            glintr_onnx = candidate
-            break
+adaface_onnx = os.path.join(weights_dir, "adaface_ir101.onnx")
 
-if os.path.exists(glintr_onnx):
-    print("Converting GLINTR100 (112x112 FP16 compute precision for Neural Engine acceleration)...")
-    glintr_torch = onnx2torch.convert(glintr_onnx).eval()
-    dummy_glintr = torch.randn(1, 3, 112, 112)
-    traced_glintr = torch.jit.trace(glintr_torch, dummy_glintr)
-    glintr_mlmodel = ct.convert(
-        traced_glintr,
+rec_onnx = None
+rec_out_name = "glintr100.mlpackage"
+if os.path.exists(adaface_onnx):
+    rec_onnx = adaface_onnx
+    rec_out_name = "adaface_ir101.mlpackage"
+elif os.path.exists(glintr_onnx):
+    rec_onnx = glintr_onnx
+    rec_out_name = "glintr100.mlpackage"
+
+if rec_onnx:
+    print(f"Converting Face Recognition Backbone ({rec_onnx} -> {rec_out_name}, 112x112 FP16 for Neural Engine)...")
+    rec_torch = onnx2torch.convert(rec_onnx).eval()
+    dummy_rec = torch.randn(1, 3, 112, 112)
+    traced_rec = torch.jit.trace(rec_torch, dummy_rec)
+    rec_mlmodel = ct.convert(
+        traced_rec,
         inputs=[ct.TensorType(name='input_1', shape=(1, 3, 112, 112), dtype=np.float32)],
         compute_precision=ct.precision.FLOAT16,
         minimum_deployment_target=ct.target.macOS14
     )
-    glintr_mlmodel.save(os.path.join(model_dir, "glintr100.mlpackage"))
-    print("GLINTR100 converted.")
+    rec_mlmodel.save(os.path.join(model_dir, rec_out_name))
+    print(f"{rec_out_name} converted.")
 EOF
 
 echo "[convert.sh] Done."

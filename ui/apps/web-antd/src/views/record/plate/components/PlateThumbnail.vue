@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { useAccessStore } from '@vben/stores';
 
@@ -7,13 +7,14 @@ import { Image as AntImage, Spin } from 'ant-design-vue';
 
 const props = withDefaults(
   defineProps<{
-    url?: string;
-    width?: number;
-    height?: number;
     alt?: string;
     fit?: 'contain' | 'cover' | 'fill';
+    height?: number;
+    url?: string;
+    width?: number;
   }>(),
   {
+    alt: '',
     fit: 'cover',
     height: 48,
     url: '',
@@ -26,16 +27,28 @@ const imageSrc = ref<string>('');
 const loading = ref<boolean>(false);
 const isError = ref<boolean>(false);
 
+let currentBlobUrl = '';
+
+function cleanup() {
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = '';
+  }
+}
+
 const authUrl = computed(() => {
   if (!props.url) return '';
   const token = accessStore.accessToken;
   const delimiter = props.url.includes('?') ? '&' : '?';
-  return token ? `${props.url}${delimiter}token=${encodeURIComponent(token)}` : props.url;
+  return token
+    ? `${props.url}${delimiter}token=${encodeURIComponent(token)}`
+    : props.url;
 });
 
 watch(
   () => props.url,
   async (newUrl) => {
+    cleanup();
     if (!newUrl) {
       imageSrc.value = '';
       return;
@@ -52,7 +65,8 @@ watch(
         throw new Error(`HTTP ${resp.status}`);
       }
       const blob = await resp.blob();
-      imageSrc.value = URL.createObjectURL(blob);
+      currentBlobUrl = URL.createObjectURL(blob);
+      imageSrc.value = currentBlobUrl;
     } catch {
       isError.value = true;
       imageSrc.value = authUrl.value;
@@ -62,20 +76,19 @@ watch(
   },
   { immediate: true },
 );
+
+onBeforeUnmount(() => {
+  cleanup();
+});
 </script>
 
 <template>
   <div
-    class="flex items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
+    class="flex mx-auto items-center justify-center overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800"
     :style="{ width: `${width}px`, height: `${height}px` }"
   >
     <Spin v-if="loading" size="small" />
-    <div
-      v-else-if="!url || isError"
-      class="text-xs text-neutral-400"
-    >
-      -
-    </div>
+    <div v-else-if="!url || isError" class="text-xs text-neutral-400">-</div>
     <AntImage
       v-else
       :alt="alt || 'plate'"

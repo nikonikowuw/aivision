@@ -1,0 +1,28 @@
+{
+  "id": "rockchip-platform-adapter",
+  "name": "rockchip-platform-adapter",
+  "title": "Engine Rockchip 平台适配器",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "niko",
+  "assignee": "niko",
+  "createdAt": "2026-09-02",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-02-engine-zlm-aarch64-e2e"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

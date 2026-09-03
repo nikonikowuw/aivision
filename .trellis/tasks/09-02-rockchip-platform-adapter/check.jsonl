@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/index.md", "reason": "Quality Check 最低验证命令与核心边界复核"}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "平台接口实现合规性复核"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "ABI 零改动与帧句柄使用合规性复核"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "测试覆盖与 sanitizer 门禁复核"}
+{"file": ".trellis/spec/engine/directory-structure.md", "reason": "CMake target 与头文件纯洁性复核"}

@@ -5,33 +5,31 @@ import type { FaceObservationApi } from '#/api';
 import { ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
+import { IconifyIcon } from '@vben/icons';
 import { $t } from '@vben/locales';
 import { formatDateTime } from '@vben/utils';
 
-import {
-  Button,
-  Card,
-  Descriptions,
-  DescriptionsItem,
-  Tag,
-  Tooltip,
-} from 'ant-design-vue';
+import { Button, Tag } from 'ant-design-vue';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   getCameraPageApi,
   getFaceObservationDetailApi,
   getFaceObservationListApi,
+  getPersonFaceImageUrl,
 } from '#/api';
+import { copyToClipboard } from '#/utils/clipboard';
 import { getTodayRange } from '#/utils/date';
+import { getConfidenceTagColor } from '#/utils/format';
 
+import FaceThumbnail from '../../resource/person/components/FaceThumbnail.vue';
 import CaptureThumbnail from '../capture/components/CaptureThumbnail.vue';
 import FaceCandidatesTable from '../capture/components/FaceCandidatesTable.vue';
 
 const currentDetail = ref<FaceObservationApi.FaceObservationItem | null>(null);
 
 const [DetailModal, detailModalApi] = useVbenModal({
-  class: 'w-[1000px] max-w-[95vw]',
+  class: 'w-[1120px] max-w-[96vw]',
   fullscreenButton: true,
   onConfirm: () => {
     detailModalApi.close();
@@ -47,37 +45,50 @@ const gridOptions: VxeTableGridOptions<FaceObservationApi.FaceObservationItem> =
       isHover: true,
     },
     columns: [
-      { field: 'id', title: $t('record.face.columns.id'), width: 70 },
+      {
+        type: 'seq',
+        title: $t('system.common.index'),
+        width: 60,
+        align: 'center',
+      },
       {
         field: 'faceCrop',
         title: $t('record.face.columns.faceCrop'),
-        width: 96,
+        width: 88,
         align: 'center',
         slots: { default: 'faceCrop' },
       },
       {
         field: 'panorama',
         title: $t('record.face.columns.panorama'),
-        width: 90,
+        width: 96,
         align: 'center',
         slots: { default: 'panorama' },
       },
       {
+        field: 'galleryFace',
+        title: $t('record.face.columns.galleryFace'),
+        width: 88,
+        align: 'center',
+        slots: { default: 'galleryFace' },
+      },
+      {
         field: 'personName',
         title: $t('record.face.columns.personName'),
-        minWidth: 130,
+        minWidth: 120,
         slots: { default: 'personName' },
       },
       {
         field: 'personId',
         title: $t('record.face.columns.personId'),
-        minWidth: 150,
+        minWidth: 140,
+        align: 'center',
         slots: { default: 'personId' },
       },
       {
         field: 'similarity',
         title: $t('record.face.columns.similarity'),
-        width: 110,
+        width: 100,
         align: 'center',
         slots: { default: 'similarity' },
       },
@@ -91,13 +102,7 @@ const gridOptions: VxeTableGridOptions<FaceObservationApi.FaceObservationItem> =
         formatter: 'formatDateTime',
         title: $t('record.face.columns.observedAt'),
         width: 170,
-      },
-      {
-        field: 'trackId',
-        title: $t('record.face.columns.trackId'),
-        width: 90,
         align: 'center',
-        formatter: ({ cellValue }) => (cellValue ? `#${cellValue}` : '-'),
       },
       {
         field: 'actions',
@@ -106,6 +111,7 @@ const gridOptions: VxeTableGridOptions<FaceObservationApi.FaceObservationItem> =
         slots: { default: 'actions' },
         title: $t('system.common.action'),
         width: 90,
+        align: 'center',
       },
     ],
     pagerConfig: {
@@ -139,6 +145,9 @@ const gridOptions: VxeTableGridOptions<FaceObservationApi.FaceObservationItem> =
 
 const [Grid] = useVbenVxeGrid({
   formOptions: {
+    commonConfig: {
+      labelWidth: 80,
+    },
     schema: [
       {
         component: 'ApiSelect',
@@ -239,19 +248,37 @@ function formatSimilarity(value?: number): string {
           :height="56"
           :url="row.faceImageUrl"
           :width="56"
-          :alt="$t('record.face.detail.faceCrop')"
+          :alt="$t('record.face.columns.faceCrop')"
+          class="mx-auto"
         />
       </template>
 
       <template #panorama="{ row }">
         <CaptureThumbnail
-          fit="cover"
-          :height="48"
+          fit="contain"
+          :height="41"
           :url="row.panoramaImageUrl"
           :bbox="row.bbox"
           :width="72"
-          :alt="$t('record.face.detail.panorama')"
+          :alt="$t('record.face.columns.panorama')"
+          class="mx-auto aspect-video"
         />
+      </template>
+
+      <template #galleryFace="{ row }">
+        <FaceThumbnail
+          v-if="row.personId && row.faceId"
+          :size="56"
+          :url="getPersonFaceImageUrl(row.personId, row.faceId, 'aligned')"
+          :alt="row.personName || 'Gallery'"
+          class="mx-auto"
+        />
+        <div
+          v-else
+          class="flex h-14 w-14 mx-auto items-center justify-center rounded border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 text-neutral-400"
+        >
+          <IconifyIcon icon="lucide:user" class="size-6" />
+        </div>
       </template>
 
       <template #personName="{ row }">
@@ -259,16 +286,14 @@ function formatSimilarity(value?: number): string {
       </template>
 
       <template #personId="{ row }">
-        <Tooltip v-if="row.personId" :title="row.personId">
-          <span class="block max-w-[150px] truncate font-mono text-xs">
-            {{ row.personId }}
-          </span>
-        </Tooltip>
+        <span v-if="row.personId" class="font-mono text-xs">
+          {{ row.personId }}
+        </span>
         <span v-else>-</span>
       </template>
 
       <template #similarity="{ row }">
-        <Tag :color="row.similarity >= 0.85 ? 'green' : 'blue'">
+        <Tag :color="getConfidenceTagColor(row.similarity)">
           {{ formatSimilarity(row.similarity) }}
         </Tag>
       </template>
@@ -281,110 +306,426 @@ function formatSimilarity(value?: number): string {
     </Grid>
 
     <DetailModal>
-      <div v-if="currentDetail" class="space-y-6">
-        <Descriptions bordered :column="{ xs: 1, sm: 2, md: 3 }" size="small">
-          <DescriptionsItem :label="$t('record.face.detail.personName')">
-            {{ currentDetail.personName || '-' }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.personId')">
-            {{ currentDetail.personId || '-' }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.faceId')">
-            <Tooltip v-if="currentDetail.faceId" :title="currentDetail.faceId">
-              <span class="max-w-[180px] truncate font-mono text-xs">
-                {{ currentDetail.faceId }}
+      <div v-if="currentDetail" class="space-y-4">
+        <!-- 1. 顶部 1:1 人脸比对核验区（居中对称展示） -->
+        <div
+          class="relative flex items-center justify-center overflow-hidden rounded-xl border border-border/80 bg-gradient-to-b from-card via-card to-muted/20 py-4.5 px-6 shadow-sm"
+        >
+          <!-- 1:1 现场抓拍 vs 底库样本 居中对称展示 -->
+          <div class="flex items-center justify-center gap-4 sm:gap-8">
+            <!-- 现场抓拍特写 -->
+            <div class="flex flex-col items-center gap-1.5">
+              <div
+                class="relative overflow-hidden rounded-xl border-2 border-primary/50 bg-neutral-950 p-1 shadow-md transition hover:border-primary"
+              >
+                <CaptureThumbnail
+                  fit="cover"
+                  :height="96"
+                  :original="true"
+                  :url="currentDetail.faceImageUrl"
+                  :width="96"
+                  :alt="$t('record.face.columns.faceCrop')"
+                  class="rounded-lg"
+                />
+              </div>
+              <span
+                class="rounded-md bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary"
+              >
+                {{ $t('record.face.columns.faceCrop') }}
               </span>
-            </Tooltip>
-            <span v-else>-</span>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.similarity')">
-            <Tag color="green">
-              {{ formatSimilarity(currentDetail.similarity) }}
-            </Tag>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.algorithm')">
-            {{ currentDetail.algorithmId || '-' }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.algorithmVersion')">
-            {{ currentDetail.algorithmVersion || '-' }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.trackId')">
-            {{ currentDetail.trackId ? `#${currentDetail.trackId}` : '-' }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.timeSynced')">
-            <Tag :color="currentDetail.timeSynced ? 'green' : 'orange'">
-              {{
-                currentDetail.timeSynced
-                  ? $t('record.face.detail.synced')
-                  : $t('record.face.detail.notSynced')
-              }}
-            </Tag>
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.camera')">
-            {{ currentDetail.cameraName || currentDetail.cameraId || '-' }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.observedAt')">
-            {{ formatDateTime(currentDetail.observedAt) || '-' }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="$t('record.face.detail.eventId')" :span="2">
-            <Tooltip :title="currentDetail.eventId">
-              <span class="max-w-[280px] truncate font-mono text-xs">
-                {{ currentDetail.eventId }}
+            </div>
+
+            <!-- 中间：置信度连线与 AI 比对结果指示器 -->
+            <div class="flex flex-col items-center gap-1.5 px-2">
+              <div class="flex items-center gap-2 sm:gap-3">
+                <div class="h-0.5 w-6 bg-border sm:w-12"></div>
+                <div
+                  class="flex flex-col items-center justify-center rounded-2xl border px-4 py-2 shadow-xs"
+                  :class="[
+                    currentDetail.similarity >= 0.85
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : currentDetail.similarity >= 0.7
+                        ? 'border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                        : 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                  ]"
+                >
+                  <span class="font-mono text-2xl font-black tracking-tight">
+                    {{ (currentDetail.similarity * 100).toFixed(1) }}%
+                  </span>
+                  <span class="text-[11px] font-bold uppercase tracking-wider">
+                    {{
+                      currentDetail.similarity >= 0.8
+                        ? $t('record.face.detail.matchPass')
+                        : $t('record.face.detail.matchWarn')
+                    }}
+                  </span>
+                </div>
+                <div class="h-0.5 w-6 bg-border sm:w-12"></div>
+              </div>
+              <span class="text-xs font-medium text-muted-foreground">
+                {{ $t('record.face.columns.similarity') }}
               </span>
-            </Tooltip>
-          </DescriptionsItem>
-        </Descriptions>
-
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <Card
-            class="md:col-span-1"
-            size="small"
-            :title="$t('record.face.detail.faceCrop')"
-          >
-            <div
-              class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-4"
-            >
-              <CaptureThumbnail
-                fit="contain"
-                :height="200"
-                :original="true"
-                :url="currentDetail.faceImageUrl"
-                :width="200"
-                :alt="$t('record.face.detail.faceCrop')"
-              />
             </div>
-          </Card>
 
-          <Card
-            class="md:col-span-2"
-            size="small"
-            :title="$t('record.face.detail.panorama')"
-          >
-            <div
-              class="flex h-[240px] items-center justify-center rounded bg-neutral-900 p-2"
-            >
-              <CaptureThumbnail
-                fit="contain"
-                :height="220"
-                :original="true"
-                :url="currentDetail.panoramaImageUrl"
-                :bbox="currentDetail.bbox"
-                :width="440"
-                :alt="$t('record.face.detail.panorama')"
-              />
+            <!-- 底库注册样本照 -->
+            <div class="flex flex-col items-center gap-1.5">
+              <div
+                class="relative overflow-hidden rounded-xl border-2 border-border/80 bg-neutral-950 p-1 shadow-md transition hover:border-primary/60"
+              >
+                <FaceThumbnail
+                  v-if="currentDetail.personId && currentDetail.faceId"
+                  :size="96"
+                  :url="
+                    getPersonFaceImageUrl(
+                      currentDetail.personId,
+                      currentDetail.faceId,
+                      'aligned',
+                    )
+                  "
+                  :alt="currentDetail.personName || 'Gallery'"
+                  class="rounded-lg"
+                />
+                <div
+                  v-else
+                  class="flex h-[96px] w-[96px] items-center justify-center rounded-lg bg-neutral-900 text-neutral-400"
+                >
+                  <IconifyIcon icon="lucide:user" class="size-10" />
+                </div>
+              </div>
+              <span
+                class="rounded-md bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground"
+              >
+                {{ $t('record.face.columns.galleryFace') }}
+              </span>
             </div>
-          </Card>
+          </div>
         </div>
 
-        <!-- Top-5 候选比对分析卡片 -->
-        <Card size="small" :title="$t('record.face.detail.candidatesTitle')">
+        <!-- 2. 中部：全景抓拍大图（左 50%）+ 结构化信息（右 50%）完全等宽高对称 -->
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 items-stretch">
+          <!-- 左侧：全景抓拍大图与目标框 (50% 宽度，等高卡片) -->
+          <div
+            class="flex h-full flex-col justify-between rounded-xl border border-border/80 bg-card p-4 shadow-sm"
+          >
+            <div>
+              <div
+                class="mb-3 flex items-center justify-between border-b border-border/60 pb-2.5"
+              >
+                <div class="flex items-center gap-2">
+                  <IconifyIcon
+                    icon="lucide:image"
+                    class="size-4 text-primary"
+                  />
+                  <span class="text-xs font-semibold text-foreground">
+                    {{ $t('record.face.columns.panorama') }}
+                  </span>
+                  <span
+                    class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground"
+                  >
+                    16:9
+                  </span>
+                </div>
+                <Tag
+                  :color="currentDetail.timeSynced ? 'green' : 'orange'"
+                  class="text-[11px]"
+                >
+                  {{
+                    currentDetail.timeSynced
+                      ? $t('record.face.detail.synced')
+                      : $t('record.face.detail.notSynced')
+                  }}
+                </Tag>
+              </div>
+
+              <!-- 全景抓拍原生 16:9 物理画面视口 (带目标 BBox 标注) -->
+              <div
+                class="group relative aspect-video w-full items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-zinc-950 shadow-inner"
+              >
+                <CaptureThumbnail
+                  fit="contain"
+                  :original="true"
+                  :url="currentDetail.panoramaImageUrl"
+                  :bbox="currentDetail.bbox"
+                  :alt="$t('record.face.columns.panorama')"
+                  class="h-full w-full aspect-video"
+                />
+              </div>
+            </div>
+
+            <div class="mt-2.5 text-center text-[11px] text-muted-foreground">
+              {{ $t('record.alarm.detail.cropTip') }}
+            </div>
+          </div>
+
+          <!-- 右侧：结构化元数据面板 (50% 宽度，等高卡片) -->
+          <div
+            class="flex h-full flex-col justify-between rounded-xl border border-border/80 bg-card p-4 shadow-sm"
+          >
+            <div
+              class="mb-3 flex items-center gap-2 border-b border-border/60 pb-2.5"
+            >
+              <IconifyIcon icon="lucide:info" class="size-4 text-primary" />
+              <span class="text-xs font-semibold text-foreground">
+                {{ $t('record.face.detail.eventInfo') }}
+              </span>
+            </div>
+
+            <div
+              class="flex flex-1 flex-col justify-between divide-y divide-dashed divide-border/40 py-0.5"
+            >
+              <!-- 1. 人员姓名 -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.columns.personName')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center font-semibold text-foreground text-[13px]"
+                >
+                  {{ currentDetail.personName || '-' }}
+                </div>
+              </div>
+
+              <!-- 2. 人员工号/ID -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.columns.personId')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center"
+                >
+                  <span
+                    class="font-mono text-xs font-medium text-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/40"
+                  >
+                    {{ currentDetail.personId || '-' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 3. 人脸样本 ID -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.detail.faceId')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center"
+                >
+                  <span
+                    v-if="currentDetail.faceId"
+                    class="font-mono text-xs text-muted-foreground"
+                  >
+                    {{ currentDetail.faceId }}
+                  </span>
+                  <span v-else class="text-muted-foreground">-</span>
+                </div>
+              </div>
+
+              <!-- 4. 相似度 -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.columns.similarity')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center"
+                >
+                  <Tag
+                    :color="getConfidenceTagColor(currentDetail.similarity)"
+                    class="font-mono font-semibold px-2.5 py-0.5 text-xs rounded-md m-0"
+                  >
+                    {{ (currentDetail.similarity * 100).toFixed(1) }}%
+                  </Tag>
+                </div>
+              </div>
+
+              <!-- 5. 抓拍摄像头 -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.columns.cameraName')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center font-medium text-foreground/90 text-xs"
+                >
+                  {{
+                    currentDetail.cameraName || currentDetail.cameraId || '-'
+                  }}
+                </div>
+              </div>
+
+              <!-- 6. 识别时间 -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.columns.observedAt')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center font-mono text-xs text-foreground/80"
+                >
+                  {{ formatDateTime(currentDetail.observedAt) || '-' }}
+                </div>
+              </div>
+
+              <!-- 7. Track ID -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.detail.trackId')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center"
+                >
+                  <Tag
+                    v-if="currentDetail.trackId"
+                    color="purple"
+                    class="font-mono text-xs px-2 py-0.2 rounded m-0"
+                  >
+                    #{{ currentDetail.trackId }}
+                  </Tag>
+                  <span v-else class="text-muted-foreground">-</span>
+                </div>
+              </div>
+
+              <!-- 8. 识别算法 -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.detail.algorithm')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center gap-1.5"
+                >
+                  <span class="font-mono text-xs text-foreground font-medium">
+                    {{ currentDetail.algorithmId || '-' }}
+                  </span>
+                  <span
+                    v-if="currentDetail.algorithmVersion"
+                    class="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary"
+                  >
+                    v{{ currentDetail.algorithmVersion }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 9. 事件标识 -->
+              <div class="flex items-center py-1.5">
+                <div class="flex items-center shrink-0">
+                  <span class="meta-label">{{
+                    $t('record.face.detail.eventId')
+                  }}</span>
+                  <span class="meta-colon">：</span>
+                </div>
+                <div
+                  class="flex-1 flex items-center justify-center text-center"
+                >
+                  <div class="inline-flex items-center justify-center gap-1.5">
+                    <span
+                      class="font-mono text-xs text-muted-foreground select-all rounded bg-muted/40 px-2 py-0.5 border border-border/40"
+                    >
+                      {{ currentDetail.eventId }}
+                    </span>
+                    <Button
+                      type="text"
+                      size="small"
+                      class="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-primary transition-colors flex items-center justify-center"
+                      @click="
+                        copyToClipboard(
+                          currentDetail.eventId,
+                          $t('record.face.detail.copySuccess'),
+                        )
+                      "
+                    >
+                      <IconifyIcon icon="lucide:copy" class="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 底部：Top-5 候选人员比对溯源 -->
+        <div class="rounded-xl border border-border/80 bg-card p-3.5 shadow-sm">
+          <div
+            class="mb-3 flex items-center justify-between border-b border-border/60 pb-2"
+          >
+            <div class="flex items-center gap-2">
+              <IconifyIcon icon="lucide:users" class="size-4 text-primary" />
+              <span class="text-xs font-semibold text-foreground">
+                {{ $t('record.face.detail.candidatesTitle') }}
+              </span>
+            </div>
+            <span class="text-[11px] text-muted-foreground">
+              Top-K 空间特征向量欧氏距离匹配
+            </span>
+          </div>
+
           <FaceCandidatesTable
-            :candidates="currentDetail.candidates"
-            :top1-similarity="currentDetail.similarity"
+            :candidates="currentDetail?.candidates"
+            :top1-similarity="currentDetail?.similarity"
             :empty-text="$t('record.face.detail.noCandidates')"
           />
-        </Card>
+        </div>
       </div>
     </DetailModal>
   </Page>
 </template>
+
+<style scoped>
+:deep([data-slot='form-label']) {
+  display: inline-block !important;
+  width: 76px !important;
+  min-width: 76px !important;
+  padding-right: 0 !important;
+  margin-right: 8px !important;
+  font-weight: 500;
+  line-height: 32px !important;
+  text-align: justify !important;
+  text-align-last: justify !important;
+}
+
+.candidate-table th,
+.candidate-table td {
+  vertical-align: middle !important;
+  text-align: center !important;
+}
+
+.meta-label {
+  display: inline-block;
+  width: 78px;
+  min-width: 78px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  text-align: justify;
+  text-align-last: justify;
+}
+
+.meta-colon {
+  display: inline-block;
+  margin-right: 6px;
+  margin-left: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: hsl(var(--muted-foreground));
+}
+</style>

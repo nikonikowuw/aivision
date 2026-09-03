@@ -42,6 +42,7 @@ export namespace AlgorithmApi {
     pageSize?: number;
     algorithmType?: string;
     keyword?: string;
+    isBuiltin?: boolean;
   }
 
   export interface AlgorithmPageResult {

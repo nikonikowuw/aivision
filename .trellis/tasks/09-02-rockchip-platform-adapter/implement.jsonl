@@ -1,0 +1,9 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/engine/index.md", "reason": "引擎核心边界与开发前 Gate，新增 platform target 必读"}
+{"file": ".trellis/spec/engine/platform-guidelines.md", "reason": "IPlatformAdapter/图像原语/watchdog/能力档案的权威规范"}
+{"file": ".trellis/spec/engine/abi-guidelines.md", "reason": "152B 帧描述符、opaque 与 frame_token 分离、DMA-BUF 语义"}
+{"file": ".trellis/spec/engine/directory-structure.md", "reason": "platform_rockchip 的 CMake target 与目录边界矩阵"}
+{"file": ".trellis/spec/engine/error-observability-guidelines.md", "reason": "遥测降级原因、稳定错误码与日志字段"}
+{"file": ".trellis/spec/engine/quality-guidelines.md", "reason": "fixture/fake clock 单测要求与 sanitizer 门禁"}
+{"file": ".trellis/spec/engine/deployment-profile.md", "reason": "新增 platform_id 需固定媒体/运行时/watchdog 组合"}
+{"file": ".trellis/spec/guides/index.md", "reason": "跨层思考与代码复用指南"}

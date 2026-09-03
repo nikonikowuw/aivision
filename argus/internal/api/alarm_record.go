@@ -22,7 +22,7 @@ func NewAlarmRecordHandler(svc service.AlarmRecordService) *AlarmRecordHandler {
 
 // ListPage 分页查询告警记录 (GET /api/record/alarms)。
 // @Summary 分页查询告警记录
-// @Description 支持按发生时间区间、摄像头、算法、告警类型、置信度区间组合分页查询
+// @Description 支持按发生时间区间、摄像头、算法、告警类型、目标类型、置信度区间组合分页查询
 // @Tags 告警记录
 // @Security BearerAuth
 // @Produce json
@@ -33,6 +33,7 @@ func NewAlarmRecordHandler(svc service.AlarmRecordService) *AlarmRecordHandler {
 // @Param cameraId query string false "摄像头ID"
 // @Param algorithmId query string false "算法ID"
 // @Param alarmTypeId query string false "告警类型ID"
+// @Param targetLabel query string false "目标类型标签"
 // @Param minConfidence query number false "最低置信度"
 // @Param maxConfidence query number false "最高置信度"
 // @Success 200 {object} response.Result{data=service.AlarmRecordPageResult} "告警分页数据"

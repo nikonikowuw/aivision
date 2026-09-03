@@ -126,9 +126,12 @@ export async function batchDeleteCameraApi(ids: number[]) {
 
 /**
  * 摄像头测活（TCP 优先，失败回退 UDP；测活失败也返回 code=0，结果在 data.status）
+ * 后端整体超时约为 12s，此处前端设置 15s 超时，避免网络层在后端诊断完成前过早抛出 timeout
  */
 export async function probeCameraApi(data: CameraApi.ProbeCameraInput) {
-  return requestClient.post<CameraApi.ProbeResult>('/camera/probe', data);
+  return requestClient.post<CameraApi.ProbeResult>('/camera/probe', data, {
+    timeout: 15_000,
+  });
 }
 
 /**

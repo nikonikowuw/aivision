@@ -117,6 +117,7 @@ const roleOptions: Array<{ icon: string; role: RuleRole }> = [
 ];
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
+const videoContainerRef = ref<HTMLDivElement | null>(null);
 const canvasSize = ref({ height: 0, width: 0 });
 const devicePixelRatio = ref(1);
 const mediaWidth = ref(0);
@@ -138,14 +139,7 @@ let streamSession = 0;
 let resizeObserver: null | ResizeObserver = null;
 
 const canDraw = computed(
-  () =>
-    Boolean(streamUrl.value) &&
-    mediaWidth.value > 0 &&
-    mediaHeight.value > 0 &&
-    metadataReady.value &&
-    !streamError.value &&
-    canvasSize.value.width > 0 &&
-    canvasSize.value.height > 0,
+  () => canvasSize.value.width > 0 && canvasSize.value.height > 0,
 );
 
 const directionOptions = computed(() => [
@@ -506,11 +500,13 @@ function getCanvasMetrics() {
 
 function getViewport(): VideoViewport {
   const metrics = getCanvasMetrics();
+  const vWidth = mediaWidth.value > 0 ? mediaWidth.value : 1920;
+  const vHeight = mediaHeight.value > 0 ? mediaHeight.value : 1080;
   return {
     elementHeight: metrics?.height ?? canvasSize.value.height,
     elementWidth: metrics?.width ?? canvasSize.value.width,
-    videoHeight: mediaHeight.value,
-    videoWidth: mediaWidth.value,
+    videoHeight: vHeight,
+    videoWidth: vWidth,
   };
 }
 
@@ -904,6 +900,8 @@ function renderCanvas() {
   if (draftRule.value) drawDraftRule(context, draftRule.value);
 }
 
+let resizeRaf: null | number = null;
+
 function resizeCanvas() {
   const canvas = canvasRef.value;
   if (!canvas) return;
@@ -912,11 +910,25 @@ function resizeCanvas() {
   if (!metrics) return;
 
   const { height, width } = metrics;
-  canvasSize.value = { height, width };
+  if (canvasSize.value.width !== width || canvasSize.value.height !== height) {
+    canvasSize.value = { height, width };
+  }
   devicePixelRatio.value = window.devicePixelRatio || 1;
-  canvas.width = Math.max(1, Math.floor(width * devicePixelRatio.value));
-  canvas.height = Math.max(1, Math.floor(height * devicePixelRatio.value));
+  const targetW = Math.max(1, Math.floor(width * devicePixelRatio.value));
+  const targetH = Math.max(1, Math.floor(height * devicePixelRatio.value));
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
   renderCanvas();
+}
+
+function safeResizeCanvas() {
+  if (resizeRaf !== null) return;
+  resizeRaf = window.requestAnimationFrame(() => {
+    resizeRaf = null;
+    resizeCanvas();
+  });
 }
 
 function handleVideoMetadata(size: { height: number; width: number }) {
@@ -949,8 +961,6 @@ async function releaseStream() {
   cameraNumericId.value = null;
   streamUrl.value = '';
   streamLoading.value = false;
-  mediaWidth.value = 0;
-  mediaHeight.value = 0;
   metadataReady.value = false;
 
   if (activeCameraId !== null) {
@@ -982,6 +992,9 @@ async function startStream() {
     if (camera.lastWidth > 0 && camera.lastHeight > 0) {
       mediaWidth.value = camera.lastWidth;
       mediaHeight.value = camera.lastHeight;
+    } else if (mediaWidth.value === 0) {
+      mediaWidth.value = 1920;
+      mediaHeight.value = 1080;
     }
 
     const stream = await startLivePreviewApi(camera.id, STREAM_TYPE);
@@ -1050,15 +1063,19 @@ watch([mediaWidth, mediaHeight, streamUrl], () => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
-  if (typeof ResizeObserver !== 'undefined' && canvasRef.value) {
-    resizeObserver = new ResizeObserver(() => resizeCanvas());
-    resizeObserver.observe(canvasRef.value);
+  if (typeof ResizeObserver !== 'undefined' && videoContainerRef.value) {
+    resizeObserver = new ResizeObserver(() => safeResizeCanvas());
+    resizeObserver.observe(videoContainerRef.value);
   }
   void nextTick(resizeCanvas);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyDown);
+  if (resizeRaf !== null) {
+    window.cancelAnimationFrame(resizeRaf);
+    resizeRaf = null;
+  }
   resizeObserver?.disconnect();
   resizeObserver = null;
   resetInteraction();
@@ -1152,7 +1169,8 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      class="relative min-h-[240px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-950 shadow-inner aspect-video"
+      ref="videoContainerRef"
+      class="relative min-h-[240px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-950 shadow-inner aspect-video shrink-0"
     >
       <VideoPlayer
         :url="streamUrl"
@@ -1191,9 +1209,14 @@ onBeforeUnmount(() => {
       </div>
       <div
         v-if="streamError"
-        class="pointer-events-none absolute inset-x-4 top-1/2 z-20 -translate-y-1/2"
+        class="pointer-events-none absolute inset-x-4 top-3 z-20"
       >
-        <Alert :message="streamError" type="error" show-icon />
+        <Alert
+          :message="`${streamError}（已切换至标准 1080P 参考画布，可正常配置规则）`"
+          type="warning"
+          show-icon
+          class="shadow-md"
+        />
       </div>
       <div
         v-else-if="streamUrl && !canDraw"

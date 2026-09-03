@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"argus/app/internal/model"
 	"argus/app/internal/pkg/engineipc"
@@ -246,10 +248,22 @@ func (s *cameraService) ProbeCamera(ctx context.Context, req *ProbeCameraRequest
 		Protocol: protocol,
 		Url:      url,
 	})
+	var result *ProbeCameraResult
 	if err != nil {
-		return nil, mapProbeEngineError(err)
+		// 探测超时属于业务层探测失败（摄像头离线/不可达），绝不能作为系统 500 内部错误抛出
+		if isTimeoutError(err) {
+			result = &ProbeCameraResult{
+				Status:         model.CameraProbeFailed,
+				FailureCode:    "RTSP_PLAY_TIMEOUT",
+				FailureMessage: "camera probe timed out: " + err.Error(),
+				ElapsedMS:      uint64(CameraProbeTimeout / time.Millisecond),
+			}
+		} else {
+			return nil, mapProbeEngineError(err)
+		}
+	} else {
+		result = buildProbeResult(resp)
 	}
-	result := buildProbeResult(resp)
 
 	// 落库规则：有 id 且完成后当前配置指纹仍匹配才持久化；否则 stale 不覆盖。
 	if req.ID != 0 {
@@ -418,11 +432,8 @@ func cameraConfigHash(protocol, url, transportPolicy string) string {
 }
 
 // mapProbeEngineError 将 Engine RPC 处理错误映射为业务错误码。
-// 注意：测活失败（status=failed）不走这里；这里只处理参数/平台/传输层错误。
+// 注意：测活失败（status=failed 与超时）不走这里；这里只处理参数/平台/传输层崩溃等非预期系统错误。
 func mapProbeEngineError(err error) error {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return errno.NewError(errno.CodeInternal)
-	}
 	var remote *engineipc.RemoteError
 	if errors.As(err, &remote) {
 		switch remote.Code {
@@ -433,4 +444,14 @@ func mapProbeEngineError(err error) error {
 		}
 	}
 	return errno.NewError(errno.CodeInternal)
+}
+
+func isTimeoutError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if s, ok := status.FromError(err); ok && s.Code() == codes.DeadlineExceeded {
+		return true
+	}
+	return false
 }

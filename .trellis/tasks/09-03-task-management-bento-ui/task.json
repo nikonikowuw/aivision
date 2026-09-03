@@ -1,0 +1,33 @@
+{
+  "id": "task-management-bento-ui",
+  "name": "task-management-bento-ui",
+  "title": "任务管理页面 Bento 卡片重构与 UI 现代化",
+  "description": "专为边缘设备 4~64 路场景打造的 Bento 卡片矩阵，取代传统密集表格，包含顶部 KPI 仪表板、卡片 1:N 算法流水线插槽、底部磨砂悬浮操作坞与就地平滑防抖轮询。",
+  "status": "completed",
+  "dev_type": "feature",
+  "scope": "frontend",
+  "package": "ui",
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-09-03",
+  "completedAt": "2026-09-03",
+  "branch": null,
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/tasks/09-03-task-management-bento-ui/prototype.html",
+    "apps/web-antd/public/prototype-bento-task.html",
+    "apps/web-antd/src/views/resource/task/index.vue",
+    "apps/web-antd/src/views/resource/task/components/TaskFormModal.vue",
+    "apps/web-antd/src/views/resource/task/components/InstanceDrawer.vue",
+    "apps/web-antd/src/views/resource/task/components/InstanceFormModal.vue"
+  ],
+  "notes": "",
+  "meta": {}
+}

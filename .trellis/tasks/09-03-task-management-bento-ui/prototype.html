@@ -1,0 +1,2319 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARGUS 边缘 AI 任务管理 · Bento 卡片矩阵原型 (Edge Bento Matrix)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- FontAwesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+            },
+            edge: {
+              bg: '#090d16',
+              sidebar: '#0c121e',
+              card: '#121826',
+              cardHover: '#161f32',
+              border: '#1f293d',
+              borderHover: '#334155',
+              subtle: '#26334a'
+            }
+          },
+          fontFamily: {
+            mono: ['"JetBrains Mono"', 'Menlo', 'Monaco', 'Courier New', 'monospace'],
+            sans: ['"PingFang SC"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif']
+          },
+          boxShadow: {
+            'glow-emerald': '0 0 16px -2px rgba(16, 185, 129, 0.25)',
+            'glow-amber': '0 0 16px -2px rgba(245, 158, 11, 0.25)',
+            'glow-blue': '0 0 16px -2px rgba(59, 130, 246, 0.25)',
+            'glass': '0 20px 30px -10px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.08)'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=PingFang+SC:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'PingFang SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* 自定义纤细滚动条 */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.25);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 116, 139, 0.45);
+    }
+    /* 发光呼吸灯 */
+    @keyframes breathing {
+      0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 3px #10b981); }
+      50% { opacity: 0.55; transform: scale(0.92); filter: drop-shadow(0 0 1px #10b981); }
+    }
+    .status-pulse-emerald {
+      animation: breathing 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes amber-breathing {
+      0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 3px #f59e0b); }
+      50% { opacity: 0.5; transform: scale(0.92); filter: drop-shadow(0 0 1px #f59e0b); }
+    }
+    .status-pulse-amber {
+      animation: amber-breathing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    /* 渐变遮罩 */
+    .mask-gradient {
+      mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+    }
+  </style>
+</head>
+
+<body class="bg-[#0b0f19] text-slate-200 min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-200">
+  <div id="app" class="flex-1 flex flex-col h-screen overflow-hidden">
+    
+    <!-- 顶部状态导航栏 (Global Top Bar) -->
+    <header class="h-14 border-b border-edge-border bg-edge-bg/85 backdrop-blur-md px-6 flex items-center justify-between shrink-0 z-30">
+      <div class="flex items-center gap-3.5">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400">
+          <i class="fa-solid fa-microchip text-sm"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm font-semibold tracking-wide text-slate-100">
+              ARGUS 边缘智能网关 · 任务管理控制台
+            </h1>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-medium">
+              BENTO V2
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-400">RK3588 · 8-Core NPU · 1:N 视频推理调度中台</p>
+        </div>
+      </div>
+
+      <!-- 右侧控制区：静默轮询指示、主题切换、新建任务 -->
+      <div class="flex items-center gap-3.5">
+        <div class="flex items-center gap-2 text-xs text-slate-400 bg-edge-card/80 border border-edge-border px-3 py-1.5 rounded-lg">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 status-pulse-emerald"></span>
+          <span class="text-[11px] font-mono">静默轮询 2.0s</span>
+        </div>
+
+        <button 
+          @click="toggleTheme" 
+          title="切换深浅主题"
+          class="w-8 h-8 rounded-lg border border-edge-border bg-edge-card hover:bg-edge-cardHover text-slate-400 hover:text-slate-200 flex items-center justify-center text-xs transition-colors"
+        >
+          <i :class="isDark ? 'fa-regular fa-sun' : 'fa-regular fa-moon'"></i>
+        </button>
+
+        <button 
+          @click="openNewTaskModal"
+          class="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm shadow-emerald-950 hover:shadow-glow-emerald"
+        >
+          <i class="fa-solid fa-plus text-[11px]"></i>
+          新建分析任务
+        </button>
+      </div>
+    </header>
+
+    <!-- 主视口区域 -->
+    <main class="flex-1 overflow-y-auto p-6 flex flex-col gap-5 max-w-[1780px] w-full mx-auto">
+
+      <!-- 1. 顶部全局看板 (Top Edge KPI Dashboard + Filter Toolbar) -->
+      <section class="grid grid-cols-1 xl:grid-cols-12 gap-4 shrink-0">
+        <!-- 3 个微型 Bento KPI 块 (占 7 列) -->
+        <div class="xl:col-span-7 grid grid-cols-3 gap-3.5">
+          <!-- KPI 1: 通道状态 -->
+          <div class="rounded-xl border border-edge-border bg-edge-card/70 backdrop-blur p-3.5 flex flex-col justify-between hover:border-edge-borderHover transition-all">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-video text-[11px] text-emerald-400"></i>
+                分析通道状态
+              </span>
+              <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">100% 正常</span>
+            </div>
+            <div class="my-1 flex items-baseline gap-2">
+              <span class="text-2xl font-bold font-mono text-slate-100">{{ runningTasksCount }}</span>
+              <span class="text-xs text-slate-400 font-mono">/ {{ tasks.length }} 在线</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 status-pulse-emerald"></span>
+              <span>全部视频流握手就绪</span>
+            </div>
+          </div>
+
+          <!-- KPI 2: 调度算法集群 -->
+          <div class="rounded-xl border border-edge-border bg-edge-card/70 backdrop-blur p-3.5 flex flex-col justify-between hover:border-edge-borderHover transition-all">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-layer-group text-[11px] text-blue-400"></i>
+                调度算法集群
+              </span>
+              <span class="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded border border-blue-500/20">双核调度</span>
+            </div>
+            <div class="my-1 flex items-baseline gap-2">
+              <span class="text-2xl font-bold font-mono text-slate-100">{{ activeInstancesCount }}</span>
+              <span class="text-xs text-slate-400 font-mono">个活跃实例</span>
+            </div>
+            <div class="flex items-center justify-between text-[11px] text-slate-400">
+              <span>平均 2.4 模型/通道</span>
+              <span class="text-slate-400">0 报错</span>
+            </div>
+          </div>
+
+          <!-- KPI 3: NPU 算力负荷 -->
+          <div class="rounded-xl border border-edge-border bg-edge-card/70 backdrop-blur p-3.5 flex flex-col justify-between hover:border-edge-borderHover transition-all">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-solid fa-bolt text-[11px] text-amber-400"></i>
+                NPU 算力负荷
+              </span>
+              <span class="text-[10px] font-mono font-medium" :class="loadPercentage > 85 ? 'text-rose-400' : 'text-amber-400'">
+                {{ loadPercentage }}% 占用
+              </span>
+            </div>
+            <div class="my-1 flex items-baseline gap-1.5">
+              <span class="text-2xl font-bold font-mono text-slate-100">{{ usedComputeUnits }}</span>
+              <span class="text-xs text-slate-400 font-mono">/ {{ totalComputeUnits }} Units</span>
+            </div>
+            <!-- 超细发丝级能量条 -->
+            <div class="space-y-1">
+              <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  class="h-full rounded-full transition-all duration-500"
+                  :class="loadPercentage > 80 ? 'bg-amber-500' : 'bg-gradient-to-r from-emerald-500 to-amber-500'"
+                  :style="{ width: `${loadPercentage}%` }"
+                ></div>
+              </div>
+              <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+                <span>余量: {{ totalComputeUnits - usedComputeUnits }} Units</span>
+                <span>额定 6.0 TOPS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧检索与状态胶囊工具栏 (占 5 列) -->
+        <div class="xl:col-span-5 rounded-xl border border-edge-border bg-edge-card/70 backdrop-blur p-3.5 flex flex-col justify-between gap-3 hover:border-edge-borderHover transition-all">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-sliders text-xs text-slate-400"></i>
+              快速检索与状态过滤
+            </span>
+            <span class="text-[11px] text-slate-400 font-mono">共匹配 {{ filteredTasks.length }} 路通道</span>
+          </div>
+
+          <!-- 搜索输入框 -->
+          <div class="relative w-full">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input 
+              v-model="searchQuery" 
+              placeholder="搜索任务名称、cam-01、或挂载算法模型..." 
+              class="w-full bg-edge-bg/80 border border-edge-border rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-emerald-500/70 transition-colors"
+            />
+            <button 
+              v-if="searchQuery" 
+              @click="searchQuery = ''"
+              class="absolute right-2.5 top-2 text-slate-400 hover:text-slate-300 text-xs"
+            >
+              <i class="fa-solid fa-circle-xmark"></i>
+            </button>
+          </div>
+
+          <!-- 快捷过滤胶囊 -->
+          <div class="flex items-center gap-2">
+            <button 
+              v-for="filter in statusFilters" 
+              :key="filter.key"
+              @click="currentStatusFilter = filter.key"
+              :class="currentStatusFilter === filter.key ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40' : 'bg-edge-bg/50 text-slate-400 border-edge-border hover:text-slate-300'"
+              class="px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all flex items-center gap-1.5"
+            >
+              <span>{{ filter.label }}</span>
+              <span class="text-[10px] font-mono opacity-80">({{ filter.count }})</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 主体 Bento 卡片矩阵 (Responsive Bento Cards Grid) -->
+      <section class="flex-1">
+        <!-- 空状态提示 (如果无匹配任务) -->
+        <div 
+          v-if="filteredTasks.length === 0" 
+          class="h-72 rounded-2xl border border-dashed border-edge-border bg-edge-card/40 flex flex-col items-center justify-center text-center p-8"
+        >
+          <div class="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center text-slate-400 text-lg mb-3">
+            <i class="fa-solid fa-video-slash"></i>
+          </div>
+          <h3 class="text-sm font-semibold text-slate-200">未发现匹配的视频分析任务</h3>
+          <p class="text-xs text-slate-400 mt-1 max-w-sm">当前过滤条件下无活跃通道，您可以重置筛选或从可用摄像头接入新的分析流。</p>
+          <button 
+            @click="resetFilters" 
+            class="mt-4 px-3 py-1.5 rounded-lg border border-edge-border bg-edge-card text-xs text-slate-300 hover:text-white"
+          >
+            重置检索条件
+          </button>
+        </div>
+
+        <!-- 正常 Bento 卡片自适应网格 (1列/2列/3列自适应) -->
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
+          <div 
+            v-for="task in filteredTasks" 
+            :key="task.cameraId"
+            class="group relative rounded-2xl border bg-edge-card/85 backdrop-blur p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+            :class="[
+              selectedTaskIds.includes(task.cameraId) 
+                ? 'border-emerald-500/60 ring-1 ring-emerald-500/30 bg-emerald-950/10' 
+                : 'border-edge-border hover:border-edge-borderHover'
+            ]"
+          >
+            <!-- 卡片头部 (Header: 状态、名称、通道主控) -->
+            <div>
+              <div class="flex items-start justify-between gap-2 pb-3 border-b border-edge-border/80">
+                <div class="flex items-start gap-3 min-w-0">
+                  <!-- 多选框：Hover 优雅浮现，或选中时常驻 -->
+                  <div 
+                    @click.stop="toggleSelectTask(task.cameraId)"
+                    class="mt-1 w-4 h-4 rounded-full border cursor-pointer flex items-center justify-center transition-all duration-150 shrink-0"
+                    :class="[
+                      selectedTaskIds.includes(task.cameraId)
+                        ? 'bg-emerald-500 border-emerald-400 text-white'
+                        : 'border-slate-600 group-hover:opacity-100 opacity-0 bg-slate-900/80 hover:border-emerald-400'
+                    ]"
+                  >
+                    <i v-if="selectedTaskIds.includes(task.cameraId)" class="fa-solid fa-check text-[9px]"></i>
+                  </div>
+
+                  <!-- 摄像头图标 + 名称 + 状态徽标 -->
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                      <h3 class="text-sm font-semibold text-slate-100 truncate group-hover:text-emerald-300 transition-colors">
+                        {{ task.name }}
+                      </h3>
+                      <!-- 通道运行态 Badge -->
+                      <span 
+            <!-- 卡片主体内容 -->
+            <div>
+              <!-- 1. 头部：状态、标题、通道号、启停 Switch、快捷菜单 -->
+              <div class="flex items-start justify-between gap-3 pl-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span 
+                      class="w-2.5 h-2.5 rounded-full shrink-0" 
+                      :class="task.actualStatus === 2 ? 'bg-emerald-500 status-pulse-emerald' : task.actualStatus === 1 ? 'bg-blue-500 animate-pulse' : 'bg-slate-500'"
+                    ></span>
+                    <h3 
+                      class="truncate text-base font-bold text-slate-100 hover:text-emerald-400 transition-colors cursor-pointer"
+                      @click="openWorkbench(task)"
+                      :title="task.name"
+                    >
+                      {{ task.name || '未命名分析任务' }}
+                    </h3>
+                  </div>
+
+                  <div class="mt-1 flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                    <span class="rounded bg-slate-800/80 px-1.5 py-0.5 text-slate-200 font-medium select-all shrink-0">
+                      {{ task.cameraId }}
+                    </span>
+                    <span class="text-slate-400 font-sans">
+                      {{ getTaskStatusText(task.actualStatus) }}
+                    </span>
+                    <span class="text-slate-600">·</span>
+                    <span>{{ task.lastFrame }}</span>
+                  </div>
+                </div>
+
+                <!-- 右上角：启停开关 + 快捷菜单 -->
+                <div class="flex items-center gap-2 shrink-0 pt-0.5" @click.stop>
+                  <button 
+                    @click="toggleTaskEnabled(task)"
+                    title="通道期望启停"
+                    class="w-7 h-3.5 rounded-full transition-colors relative p-0.5 border"
+                    :class="task.desiredEnabled ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-800 border-slate-700'"
+                  >
+                    <span 
+                      class="w-2 h-2 rounded-full bg-white block transition-transform shadow"
+                      :class="task.desiredEnabled ? 'translate-x-3.5' : 'translate-x-0'"
+                    ></span>
+                  </button>
+
+                  <button 
+                    @click="openTaskEditModal(task)"
+                    class="size-6 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center"
+                  >
+                    <i class="fa-solid fa-ellipsis-vertical text-xs"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 2. 媒体规格与实时性能指标条 -->
+              <div class="my-3 flex items-center justify-between rounded-xl bg-slate-800/40 border border-slate-700/50 px-3 py-2 text-xs font-mono">
+                <div class="flex items-center gap-2 text-slate-200">
+                  <span class="flex items-center gap-1 text-slate-400 font-sans">
+                    <i class="fa-solid fa-chart-line text-[11px] text-emerald-400"></i>
+                    <span>吞吐</span>
+                  </span>
+                  <span class="font-bold text-emerald-400">
+                    {{ task.totalFps > 0 ? task.totalFps.toFixed(1) : '0.0' }} fps
+                  </span>
+                  <span class="text-slate-600">·</span>
+                  <span class="text-slate-400 font-sans">算力</span>
+                  <span class="font-bold text-amber-400">
+                    {{ task.instances.length * 8 }} Units
+                  </span>
+                </div>
+
+                <span 
+                  class="text-[10px] px-1.5 py-0.2 rounded font-mono font-medium border"
+                  :class="getTaskStatusBadgeClass(task.actualStatus)"
+                >
+                  {{ task.actualStatus === 2 ? 'RUNNING' : task.actualStatus === 1 ? 'STARTING' : 'IDLE' }}
+                </span>
+              </div>
+
+              <!-- 3. AI 算法流水线算子卡片列 (带专业图标与门类徽标) -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
+                  <span class="font-medium flex items-center gap-1">
+                    <i class="fa-solid fa-layer-group text-emerald-400 text-[10px]"></i>
+                    <span>已挂载算法流水线</span>
+                  </span>
+                  <span class="font-mono text-[10px]">
+                    {{ task.instances.filter(i => i.enabled).length }}/{{ task.instances.length }} 活跃
+                  </span>
+                </div>
+
+                <!-- 算法未挂载时的空插槽引导 -->
+                <div 
+                  v-if="task.instances.length === 0"
+                  class="rounded-xl border border-dashed border-slate-700/80 bg-slate-800/20 p-3 text-center"
+                >
+                  <p class="text-xs text-slate-400">该通道暂未挂载任何推理算法</p>
+                  <button 
+                    @click="openAddInstanceModal(task)"
+                    class="mt-1.5 text-xs text-emerald-400 hover:underline font-medium inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <i class="fa-solid fa-plus text-[10px]"></i>
+                    <span>立即挂载首个算法</span>
+                  </button>
+                </div>
+
+                <!-- 算法实例行卡片 -->
+                <div 
+                  v-for="inst in task.instances" 
+                  :key="inst.instanceId"
+                  @click="openEditInstanceModal(task, inst)"
+                  class="rounded-xl border bg-slate-800/30 px-2.5 py-1.5 flex items-center justify-between gap-2 transition-all hover:bg-slate-800/60 cursor-pointer"
+                  :class="inst.enabled ? 'border-slate-700/80' : 'border-slate-800 opacity-60'"
+                >
+                  <div class="flex items-center gap-2 min-w-0">
+                    <div class="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs shrink-0">
+                      <i class="fa-solid fa-microchip text-[10px]"></i>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-semibold text-slate-200 truncate max-w-[120px]">
+                          {{ formatAlgoName(inst.algorithmId) }}
+                        </span>
+                        <span class="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                          {{ inst.rulesCount }} 规则
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0 font-mono text-xs">
+                    <span class="text-slate-400 text-[11px]">
+                      <strong class="text-slate-200">{{ inst.currentFps ? inst.currentFps.toFixed(0) : '-' }}</strong>/{{ inst.analysisFps }}fps
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 挂载更多算法按钮 -->
+                <button 
+                  v-if="task.instances.length > 0"
+                  @click="openAddInstanceModal(task)"
+                  class="w-full py-1.5 rounded-xl border border-dashed border-slate-700 hover:border-emerald-500/60 hover:bg-emerald-500/5 text-slate-400 hover:text-emerald-400 text-xs font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
+                >
+                  <i class="fa-solid fa-plus text-[10px]"></i>
+                  <span>挂载算法</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 卡片底部 (Footer: 状态描述与工作台入口) -->
+            <div class="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-between text-xs">
+              <span class="text-slate-400 font-mono text-[11px]">
+                {{ task.instances.length ? `${task.instances.length} 个模型已配置` : '等待算法挂载' }}
+              </span>
+
+              <button 
+                @click="openWorkbench(task)"
+                class="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 transition-all text-xs font-medium"
+              >
+                <span>工作台</span>
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 4. 底部磨砂悬浮操作坞 (Floating Glass Action Dock) -->
+    <transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="transform translate-y-12 opacity-0"
+      enter-to-class="transform translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="transform translate-y-0 opacity-100"
+      leave-to-class="transform translate-y-12 opacity-0"
+    >
+      <div 
+        v-if="selectedTaskIds.length > 0" 
+        class="fixed bottom-6 inset-x-0 mx-auto w-fit z-40"
+      >
+        <div class="bg-edge-sidebar/90 backdrop-blur-xl border border-edge-border/90 px-4 py-2.5 rounded-2xl shadow-glass flex items-center gap-4 text-xs">
+          <div class="flex items-center gap-2 border-r border-slate-700/80 pr-4">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 status-pulse-emerald"></span>
+            <span class="text-slate-200 font-medium">已选择 <strong class="font-mono text-emerald-400">{{ selectedTaskIds.length }}</strong> 路任务</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button 
+              @click="batchSetEnabled(true)"
+              class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 font-medium flex items-center gap-1.5 transition-colors"
+            >
+              <i class="fa-solid fa-play text-[10px]"></i>
+              批量启动
+            </button>
+            <button 
+              @click="batchSetEnabled(false)"
+              class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium flex items-center gap-1.5 transition-colors"
+            >
+              <i class="fa-solid fa-pause text-[10px]"></i>
+              批量停用
+            </button>
+            <button 
+              @click="batchDelete"
+              class="px-3 py-1.5 rounded-lg bg-rose-950/30 hover:bg-rose-900/40 text-rose-400 border border-rose-800/40 font-medium flex items-center gap-1.5 transition-colors"
+            >
+              <i class="fa-solid fa-trash text-[10px]"></i>
+              批量删除
+            </button>
+          </div>
+
+          <div class="border-l border-slate-700/80 pl-2">
+            <button 
+              @click="clearSelection" 
+              class="w-6 h-6 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center text-xs"
+              title="取消选择"
+            >
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 5. 交互式抽屉：三栏经典 IDE 工作台 (Three-Column Studio Workbench) -->
+    <div 
+      v-if="drawerOpen" 
+      class="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-sm transition-opacity"
+      @click.self="drawerOpen = false"
+    >
+      <div class="w-full max-w-6xl xl:max-w-[1520px] bg-[#0b101b] border-l border-edge-border h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+        <!-- 1. 工作台顶部导航栏 (清爽无拥挤胶囊) -->
+        <div class="h-14 px-6 border-b border-edge-border flex items-center justify-between bg-edge-bg/95 shrink-0">
+          <!-- 左侧：任务与摄像头规格 -->
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400">
+              <i class="fa-solid fa-desktop text-xs"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-slate-100">{{ currentTask?.name }} · 算法深度工作台</h2>
+                <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-edge-card border border-edge-border text-slate-300">
+                  {{ currentTask?.cameraId }}
+                </span>
+                <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  1080P @ 25 FPS
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 中间：状态概览提示 -->
+          <div class="hidden md:flex items-center gap-2 text-xs font-mono text-slate-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 status-pulse-emerald"></span>
+            <span>已挂载 {{ currentTask?.instances.length || 0 }} 个算法算子 · 算力占用 {{ (currentTask?.instances.length || 0) * 8 }} Units · 调度运行正常</span>
+          </div>
+
+          <!-- 右侧：关闭按钮 -->
+          <div class="flex items-center gap-3">
+            <button @click="drawerOpen = false" class="w-8 h-8 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center transition-colors">
+              <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. 工作台主体三栏架构 (Three-Column Layout: 左栏算法列表 + 中栏视频画布 + 右栏参数检查器) -->
+        <div class="flex-1 overflow-hidden grid grid-cols-12">
+          
+          <!-- 左栏 (3 列 / 25%)：算法流水线资产树 (垂直列表，无限纵向扩展容纳) -->
+          <div class="col-span-12 lg:col-span-3 border-r border-edge-border flex flex-col bg-edge-sidebar/60 overflow-hidden">
+            <!-- 栏目头部 -->
+            <div class="p-3.5 border-b border-edge-border flex items-center justify-between bg-edge-bg/60">
+              <div>
+                <span class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                  <i class="fa-solid fa-diagram-project text-emerald-400 text-[11px]"></i>
+                  挂载算法流水线
+                </span>
+                <p class="text-[10px] text-slate-500 mt-0.5">点击切换调参上下文 (共 {{ currentTask?.instances.length || 0 }} 个)</p>
+              </div>
+              <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-edge-card text-emerald-400 border border-edge-border">
+                {{ currentTask?.instances.filter(i => i.enabled).length }}/{{ currentTask?.instances.length }} 活跃
+              </span>
+            </div>
+
+            <!-- 可垂直滚动的算法实例卡片列表 (纵向拓展，再多算法也不会挤爆) -->
+            <div class="flex-1 overflow-y-auto p-3 space-y-2.5">
+              <div 
+                v-if="!currentTask?.instances || currentTask?.instances.length === 0"
+                class="py-12 px-4 rounded-xl border border-dashed border-edge-border text-center text-xs text-slate-500"
+              >
+                <i class="fa-solid fa-cube text-2xl text-slate-600 mb-2 block"></i>
+                <p>该通道暂未配置任何算法</p>
+                <p class="text-[10px] text-slate-600 mt-1">请点击下方按钮挂载首个算子</p>
+              </div>
+
+              <!-- 垂直算法卡片项 -->
+              <div 
+                v-for="inst in currentTask?.instances" 
+                :key="inst.instanceId"
+                @click="activeWorkbenchInstanceId = inst.instanceId"
+                class="rounded-xl border p-3 transition-all duration-150 cursor-pointer flex flex-col justify-between group"
+                :class="[
+                  activeWorkbenchInstanceId === inst.instanceId 
+                    ? 'border-emerald-500 bg-emerald-950/25 ring-1 ring-emerald-500/40 shadow-glow-emerald' 
+                    : 'border-edge-border bg-edge-bg/80 hover:border-slate-600 hover:bg-edge-card'
+                ]"
+              >
+                <!-- 卡片顶部：算法名与启停 Switch -->
+                <div class="flex items-start justify-between gap-2 mb-2">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="w-2 h-2 rounded-full shrink-0" :class="getInstanceDotClass(inst.actualStatus, inst.enabled)"></span>
+                    <div class="min-w-0">
+                      <div class="text-xs font-semibold text-slate-200 truncate group-hover:text-emerald-300 transition-colors">
+                        {{ formatAlgoName(inst.algorithmId) }}
+                      </div>
+                      <span class="text-[9px] font-mono text-slate-500">{{ inst.instanceId.slice(0, 8) }}</span>
+                    </div>
+                  </div>
+
+                  <!-- 独立 Switch 开关 -->
+                  <div @click.stop class="shrink-0">
+                    <button 
+                      @click="toggleInstanceEnabled(inst)"
+                      title="独立启停算法"
+                      class="w-7 h-3.5 rounded-full transition-colors relative p-0.5 border"
+                      :class="inst.enabled ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-800 border-slate-700'"
+                    >
+                      <span 
+                        class="w-2 h-2 rounded-full bg-white block transition-transform shadow"
+                        :class="inst.enabled ? 'translate-x-3.5' : 'translate-x-0'"
+                      ></span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 卡片中段：吞吐条与规则数 -->
+                <div class="space-y-1 mb-2">
+                  <div class="flex justify-between items-center text-[10px] font-mono">
+                    <span :class="inst.currentFps >= inst.analysisFps * 0.9 ? 'text-emerald-400' : 'text-amber-400'">
+                      {{ inst.currentFps ? inst.currentFps.toFixed(1) : '-' }} / {{ inst.analysisFps }} fps
+                    </span>
+                    <span class="text-slate-400 text-[9px] bg-slate-800/80 px-1 rounded">
+                      {{ inst.rulesCount }} 规则
+                    </span>
+                  </div>
+                  <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      class="h-full rounded-full transition-all duration-500"
+                      :class="inst.currentFps >= inst.analysisFps * 0.9 ? 'bg-emerald-500' : 'bg-amber-500'"
+                      :style="{ width: `${Math.min(100, Math.round(((inst.currentFps || 0) / inst.analysisFps) * 100))}%` }"
+                    ></div>
+                  </div>
+                </div>
+
+                <!-- 卡片底端：算力占用与移除 -->
+                <div class="pt-2 border-t border-edge-border/50 flex items-center justify-between text-[10px]">
+                  <span class="font-mono text-amber-400 font-medium">⚡ 8 Units</span>
+                  <div class="flex items-center gap-2">
+                    <span v-if="activeWorkbenchInstanceId === inst.instanceId" class="text-emerald-400 font-medium text-[9px] font-mono">
+                      ● 正在调参
+                    </span>
+                    <button 
+                      @click.stop="deleteInstance(currentTask, inst)"
+                      class="text-slate-500 hover:text-rose-400 p-0.5 transition-colors"
+                      title="移除该算法实例"
+                    >
+                      <i class="fa-solid fa-trash-can text-[10px]"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部挂载新算法模型按钮 (固定常驻) -->
+            <div class="p-3 border-t border-edge-border bg-edge-bg/80 shrink-0">
+              <button 
+                @click="openAddInstanceModal(currentTask)"
+                class="w-full py-2 rounded-xl border border-dashed border-emerald-500/50 hover:border-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/15 text-emerald-400 text-xs font-medium flex items-center justify-center gap-1.5 transition-all shadow-xs"
+              >
+                <i class="fa-solid fa-plus text-[11px]"></i>
+                <span>挂载新算法模型</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 中栏 (5 列 / 41.7%)：视频画布与几何规则标注视窗 (纯粹专注视觉反馈) -->
+          <div class="col-span-12 lg:col-span-5 border-r border-edge-border flex flex-col p-4 overflow-y-auto bg-slate-950/40">
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <span class="font-medium text-slate-300 flex items-center gap-1.5">
+                <i class="fa-solid fa-video text-emerald-400"></i>
+                WebRTC 实时流与几何标注视窗
+              </span>
+              <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                ● 2.1 Mbps · 延迟 110ms · 0 丢包
+              </span>
+            </div>
+
+            <!-- 16:9 视频大视窗 -->
+            <div class="relative aspect-video rounded-xl bg-slate-950 border border-edge-border overflow-hidden flex items-center justify-center group shadow-xl">
+              <!-- 网格纹理底图 -->
+              <div class="absolute inset-0 bg-[linear-gradient(to_right,#1f293d_1px,transparent_1px),linear-gradient(to_bottom,#1f293d_1px,transparent_1px)] bg-[size:2.5rem_2.5rem] opacity-20"></div>
+
+              <div class="text-center z-10 opacity-70">
+                <i class="fa-solid fa-camera-retro text-4xl text-slate-700 mb-2 block"></i>
+                <span class="text-xs text-slate-500 font-mono">Stream: {{ currentTask?.cameraId }} (1920x1080)</span>
+              </div>
+
+              <!-- 检测框 1 (随选中算法动态联动) -->
+              <div class="absolute left-1/4 top-1/3 w-32 h-44 border-2 border-emerald-400 bg-emerald-500/15 rounded z-10 flex flex-col justify-between p-1.5 shadow-glow-emerald">
+                <span class="text-[9px] font-mono bg-emerald-500 text-black px-1 font-bold w-fit rounded-xs">person 96%</span>
+                <div class="flex justify-between items-center text-[8px] font-mono text-emerald-300">
+                  <span>trk_104</span>
+                  <span>0.8ms</span>
+                </div>
+              </div>
+
+              <!-- 检测框 2 -->
+              <div class="absolute right-1/4 top-1/2 w-28 h-32 border-2 border-blue-400 bg-blue-500/15 rounded z-10 flex flex-col justify-between p-1.5">
+                <span class="text-[9px] font-mono bg-blue-500 text-white px-1 font-bold w-fit rounded-xs">car 92%</span>
+                <span class="text-[8px] font-mono text-blue-300">trk_108</span>
+              </div>
+
+              <!-- 规则多边形防区 (带选中算法标识) -->
+              <svg class="absolute inset-0 w-full h-full pointer-events-none z-10">
+                <polygon points="90,70 320,80 300,230 70,210" fill="rgba(16, 185, 129, 0.12)" stroke="rgba(16, 185, 129, 0.8)" stroke-width="2" stroke-dasharray="5,5" />
+                <text x="100" y="100" fill="#34d399" font-size="11" font-family="monospace">ROI-01: 核心检测区域</text>
+                <!-- 越界警戒线 -->
+                <line x1="340" y1="60" x2="480" y2="220" stroke="#f59e0b" stroke-width="2.5" stroke-dasharray="6,4" />
+                <text x="360" y="140" fill="#fbbf24" font-size="10" font-family="monospace">Line-01: 越界警戒线 ⇄</text>
+              </svg>
+
+              <!-- 浮动绘制工具栏 -->
+              <div class="absolute bottom-3 right-3 flex items-center gap-2 z-20">
+                <button 
+                  @click="showToast('已进入多边形防区绘制模式，请在画布上点击锚点')"
+                  class="px-2.5 py-1.5 rounded-lg bg-black/75 hover:bg-black/90 border border-slate-700 text-xs text-slate-200 flex items-center gap-1.5 backdrop-blur transition-all"
+                >
+                  <i class="fa-solid fa-draw-polygon text-emerald-400 text-xs"></i>
+                  <span>绘制多边形</span>
+                </button>
+                <button 
+                  @click="showToast('已进入越界警戒线绘制模式')"
+                  class="px-2.5 py-1.5 rounded-lg bg-black/75 hover:bg-black/90 border border-slate-700 text-xs text-slate-200 flex items-center gap-1.5 backdrop-blur transition-all"
+                >
+                  <i class="fa-solid fa-arrows-split-up-and-left text-amber-400 text-xs"></i>
+                  <span>绘制警戒线</span>
+                </button>
+                <button 
+                  @click="showToast('已截取当前视频帧')"
+                  class="w-7 h-7 rounded-lg bg-black/75 hover:bg-black/90 border border-slate-700 text-xs text-slate-300 flex items-center justify-center backdrop-blur"
+                  title="抓拍快照"
+                >
+                  <i class="fa-solid fa-camera"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- 视频流状态条 -->
+            <div class="mt-3 p-3 rounded-xl bg-edge-bg border border-edge-border flex items-center justify-between text-[11px] text-slate-400 font-mono">
+              <div class="flex items-center gap-3">
+                <span class="text-slate-300">编码: H.264 (Baseline)</span>
+                <span>分辨率: 1920x1080</span>
+                <span>实时帧率: 25.0 fps</span>
+              </div>
+              <div class="flex items-center gap-2 text-emerald-400">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 status-pulse-emerald"></span>
+                <span>VPU 硬件解码正常</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右栏 (4 列 / 33.3%)：当前选中算法即时调参属性面板 (In-place Parameter Inspector) -->
+          <div class="col-span-12 lg:col-span-4 flex flex-col justify-between p-4 overflow-y-auto bg-edge-sidebar/30">
+            <div v-if="activeWorkbenchInstance" class="space-y-3.5">
+              <!-- 检查器头部：当前选中的算法实例名与上下文标识 -->
+              <div class="pb-2.5 border-b border-edge-border flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full" :class="getInstanceDotClass(activeWorkbenchInstance.actualStatus, activeWorkbenchInstance.enabled)"></span>
+                  <div>
+                    <h3 class="text-xs font-semibold text-slate-100 flex items-center gap-1.5">
+                      {{ formatAlgoName(activeWorkbenchInstance.algorithmId) }}
+                      <span class="text-[9px] font-mono px-1 rounded bg-edge-bg text-slate-400 border border-edge-border">
+                        ID: {{ activeWorkbenchInstance.instanceId.slice(0, 8) }}
+                      </span>
+                    </h3>
+                    <span class="text-[10px] text-slate-500">参数即时调参面板 · 所见即所得</span>
+                  </div>
+                </div>
+
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded font-medium border"
+                  :class="activeWorkbenchInstance.enabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'"
+                >
+                  {{ activeWorkbenchInstance.enabled ? '● 正在运行' : '○ 已暂停' }}
+                </span>
+              </div>
+
+              <!-- 参数模块 1: 推理采样帧率与算力档位 -->
+              <div class="rounded-xl border border-edge-border bg-edge-bg/80 p-3 space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-slate-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-gauge-high text-emerald-400 text-[11px]"></i>
+                    推理采样帧率 (Target FPS)
+                  </span>
+                  <span class="font-mono font-bold text-emerald-400 text-xs">
+                    {{ activeWorkbenchInstance.analysisFps }} FPS
+                  </span>
+                </div>
+                <!-- 滑块 -->
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="30" 
+                  v-model.number="activeWorkbenchInstance.analysisFps"
+                  class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                />
+                <!-- 快捷预设按钮组 -->
+                <div class="flex items-center gap-1.5 pt-0.5">
+                  <span class="text-[10px] text-slate-500 font-mono">档位:</span>
+                  <button 
+                    v-for="preset in [5, 10, 15, 25]" 
+                    :key="preset"
+                    @click="activeWorkbenchInstance.analysisFps = preset"
+                    :class="activeWorkbenchInstance.analysisFps === preset ? 'bg-emerald-600 text-white' : 'bg-edge-card text-slate-400 hover:text-slate-200 border border-edge-border'"
+                    class="px-2 py-0.5 rounded text-[10px] font-mono transition-colors"
+                  >
+                    {{ preset }} fps {{ preset === 15 ? '(推荐)' : '' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- 参数模块 2: 针对算法模型的专属定制参数 (Dynamic Algorithm Schema) -->
+              <div class="rounded-xl border border-edge-border bg-edge-bg/80 p-3 space-y-2.5 text-xs">
+                <div class="flex items-center justify-between pb-1.5 border-b border-edge-border/50">
+                  <span class="font-medium text-slate-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sliders text-emerald-400 text-[11px]"></i>
+                    {{ formatAlgoName(activeWorkbenchInstance.algorithmId) }} · 专属推理参数
+                  </span>
+                  <span class="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+                    SCHEMA ACTIVE
+                  </span>
+                </div>
+
+                <!-- 1. YOLOv26n 目标检测专属参数 -->
+                <div v-if="activeWorkbenchInstance.algorithmId === 'yolo26n'" class="space-y-2.5">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>目标置信度阈值 (Confidence)</span>
+                      <span class="font-mono text-emerald-400 font-bold">0.45</span>
+                    </div>
+                    <input type="range" min="0.1" max="0.95" step="0.05" value="0.45" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                  </div>
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>非极大值抑制 (IoU Threshold)</span>
+                      <span class="font-mono text-blue-400 font-bold">0.50</span>
+                    </div>
+                    <input type="range" min="0.1" max="0.9" step="0.05" value="0.50" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                  </div>
+                  <div>
+                    <span class="text-[10px] text-slate-400 block mb-1">目标检测类别使能:</span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 text-[10px] font-medium flex items-center gap-1">
+                        <i class="fa-solid fa-check text-[8px]"></i> 人员 (Person)
+                      </span>
+                      <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 text-[10px] font-medium flex items-center gap-1">
+                        <i class="fa-solid fa-check text-[8px]"></i> 车辆 (Vehicle)
+                      </span>
+                      <span class="px-2 py-0.5 rounded bg-edge-card text-slate-400 border border-edge-border text-[10px]">
+                        非机动车
+                      </span>
+                      <span class="px-2 py-0.5 rounded bg-edge-card text-slate-400 border border-edge-border text-[10px]">
+                        箱体包裹
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. FaceNet 人脸抓拍识别专属参数 -->
+                <div v-else-if="activeWorkbenchInstance.algorithmId === 'face_detect'" class="space-y-2.5">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>人脸比对相似度阈值 (Similarity)</span>
+                      <span class="font-mono text-emerald-400 font-bold">0.70</span>
+                    </div>
+                    <input type="range" min="0.5" max="0.95" step="0.05" value="0.70" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                  </div>
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>最小人脸像素尺寸 (Min Face Size)</span>
+                      <span class="font-mono text-blue-400 font-bold">48 px</span>
+                    </div>
+                    <input type="range" min="32" max="128" step="8" value="48" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300">大角度/模糊侧脸过滤</span>
+                      <p class="text-[9px] text-slate-500">俯仰偏航角超过 35° 时自动剔除防误报</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300">红外活体防伪核验</span>
+                      <p class="text-[9px] text-slate-500">抵御屏幕翻拍与打印照片攻击</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 3. FireSmoke 烟火检测告警专属参数 -->
+                <div v-else-if="activeWorkbenchInstance.algorithmId === 'fire_smoke'" class="space-y-2.5">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>明火识别灵敏度 (Flame Sensitivity)</span>
+                      <span class="font-mono text-amber-400 font-bold">0.80</span>
+                    </div>
+                    <input type="range" min="0.5" max="0.98" step="0.02" value="0.80" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300">烟雾羽流扩散追踪 (Plume Analysis)</span>
+                      <p class="text-[9px] text-slate-500">对半透明烟雾进行连通域动态分析</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300">夜间红外低照度增强</span>
+                      <p class="text-[9px] text-slate-500">微光环境下自动拉升动态对比度</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 4. PlateOCR 车牌识别抓拍专属参数 -->
+                <div v-else-if="activeWorkbenchInstance.algorithmId === 'plate_ocr'" class="space-y-2.5">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>字符光学识别置信度 (OCR Threshold)</span>
+                      <span class="font-mono text-cyan-400 font-bold">0.75</span>
+                    </div>
+                    <input type="range" min="0.5" max="0.95" step="0.05" value="0.75" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                  </div>
+                  <div>
+                    <span class="text-[10px] text-slate-400 block mb-1">支持牌照类别过滤:</span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/40 text-[10px] font-medium">
+                        蓝牌 (燃油乘用车)
+                      </span>
+                      <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 text-[10px] font-medium">
+                        绿牌 (新能源)
+                      </span>
+                      <span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/40 text-[10px] font-medium">
+                        黄牌 (大型货车)
+                      </span>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300">大倾角透视自动矫正</span>
+                      <p class="text-[9px] text-slate-500">解决侧方摄像头角度畸变识别问题</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 5. SafetyHelmet 安全帽合规检测专属参数 -->
+                <div v-else class="space-y-2.5">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>安全帽穿戴置信度 (Helmet Score)</span>
+                      <span class="font-mono text-amber-400 font-bold">0.55</span>
+                    </div>
+                    <input type="range" min="0.3" max="0.9" step="0.05" value="0.55" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300">头肩人体骨架拓扑关联</span>
+                      <p class="text-[9px] text-slate-500">杜绝手持安全帽造成的合规误判</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300">同步核查反光警示背心</span>
+                      <p class="text-[9px] text-slate-500">穿戴安全帽且着反光衣才判定合规</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 参数模块 3: 节能与动态门控 (MotionGate™) -->
+              <div class="rounded-xl border border-edge-border bg-edge-bg/80 p-3 space-y-1.5 text-xs">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <span class="font-medium text-slate-200 flex items-center gap-1.5">
+                      <i class="fa-solid fa-leaf text-emerald-400 text-[11px]"></i>
+                      MotionGate™ 像素节能门控
+                    </span>
+                    <p class="text-[10px] text-slate-500 mt-0.5">画面无运动时降频休眠，运动瞬时唤醒</p>
+                  </div>
+                  <button class="w-8 h-4 rounded-full transition-colors relative p-0.5 border bg-emerald-600 border-emerald-500">
+                    <span class="w-2.5 h-2.5 rounded-full bg-white block transition-transform shadow translate-x-4"></span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 参数模块 4: 该算法绑定的几何规则清单 (Rules List) -->
+              <div class="rounded-xl border border-edge-border bg-edge-bg/80 p-3 space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-slate-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-shapes text-amber-400 text-[11px]"></i>
+                    生效的几何防区规则 ({{ activeWorkbenchInstance.rulesCount }} 处)
+                  </span>
+                  <button 
+                    @click="showToast('已在中间视窗激活新防区绘制')" 
+                    class="text-emerald-400 hover:text-emerald-300 text-[10px] font-medium flex items-center gap-1"
+                  >
+                    <i class="fa-solid fa-plus text-[9px]"></i>
+                    添加规则
+                  </button>
+                </div>
+
+                <div class="space-y-1">
+                  <div class="p-1.5 rounded-lg bg-edge-card border border-edge-border flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      <span class="text-slate-200 text-[11px]">ROI-01: 核心检测区域 (包含防区)</span>
+                    </div>
+                    <span class="text-[9px] font-mono text-slate-500">4 顶点</span>
+                  </div>
+                  <div class="p-1.5 rounded-lg bg-edge-card border border-edge-border flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                      <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      <span class="text-slate-200 text-[11px]">Line-01: 越界警戒线 (双向穿越)</span>
+                    </div>
+                    <span class="text-[9px] font-mono text-slate-500">2 点</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 无选中算法时的空状态 -->
+            <div v-else class="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-500">
+              <i class="fa-solid fa-layer-group text-3xl mb-2 text-slate-600"></i>
+              <p class="text-xs">暂无选中的算法实例，请在左侧流水线选择或挂载新算法</p>
+            </div>
+
+            <!-- 右侧底部保存操作 -->
+            <div class="pt-3 border-t border-edge-border flex items-center justify-between text-xs mt-3">
+              <span class="text-[10px] text-slate-500 font-mono">
+                <i class="fa-solid fa-check text-emerald-400 mr-1"></i>
+                实时联动生效
+              </span>
+              <div class="flex items-center gap-2">
+                <button 
+                  @click="showToast('已恢复推荐预设参数')"
+                  class="px-2.5 py-1.5 rounded-lg border border-edge-border text-slate-400 hover:text-slate-200 transition-colors text-xs"
+                >
+                  重置默认
+                </button>
+                <button 
+                  @click="showToast('已原子化同步至边缘推理引擎 (Engine)'); drawerOpen = false;"
+                  class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-glow-emerald transition-all text-xs"
+                >
+                  保存并生效
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. 视觉化算法模型卡片集市 (左右分栏 Split Model Marketplace Modal) -->
+    <div 
+      v-if="instanceModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+    >
+      <div class="w-full max-w-5xl h-[86vh] max-h-[820px] rounded-2xl bg-edge-sidebar border border-edge-border shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+        <!-- 集市头部导航 (清爽无拥挤) -->
+        <div class="p-4 px-6 border-b border-edge-border flex items-center justify-between bg-edge-bg/95 shrink-0">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400">
+              <i class="fa-solid fa-cube text-xs"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold text-slate-100">
+                  {{ isEditingInstance ? '算法参数配置中心' : 'AI 算法模型集市 · 挂载与即时配置' }}
+                </h3>
+                <span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  NPU CORE 0 ACTIVE
+                </span>
+              </div>
+              <p class="text-[10px] text-slate-500">
+                目标通道: <strong class="text-slate-300">{{ currentTask?.name }}</strong> 
+                <span class="font-mono">({{ currentTask?.cameraId }})</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-edge-bg border border-edge-border text-xs">
+              <span class="text-slate-400">算力余量:</span>
+              <span class="font-mono font-bold text-emerald-400">{{ totalComputeUnits - usedComputeUnits }} Units</span>
+            </div>
+            <button @click="instanceModalOpen = false" class="w-8 h-8 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center transition-colors">
+              <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 集市主体左右分栏架构 (Left: 模型库货架 42% | Right: 专属动态参数面板 58%) -->
+        <div class="flex-1 overflow-hidden grid grid-cols-12">
+          
+          <!-- 左侧 5 列 (约 42%)：算法模型货架 (单列卡片垂直列表，带门类过滤) -->
+          <div class="col-span-12 md:col-span-5 border-r border-edge-border flex flex-col bg-edge-bg/50 overflow-hidden">
+            <!-- 门类快捷筛选胶囊 -->
+            <div class="p-3 border-b border-edge-border bg-edge-bg/80 flex flex-wrap gap-1.5 shrink-0">
+              <button 
+                v-for="cat in algoCategories" 
+                :key="cat.key"
+                @click="selectedAlgoCategory = cat.key"
+                :class="selectedAlgoCategory === cat.key ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40' : 'bg-edge-card text-slate-400 border-edge-border hover:text-slate-200'"
+                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-all flex items-center gap-1"
+              >
+                <span>{{ cat.label }}</span>
+                <span class="font-mono opacity-70">({{ cat.count }})</span>
+              </button>
+            </div>
+
+            <!-- 可垂直滚动的模型卡片列表 -->
+            <div class="flex-1 overflow-y-auto p-3 space-y-2">
+              <div 
+                v-for="algo in filteredAlgorithms" 
+                :key="algo.id"
+                @click="!isEditingInstance && (modalInstanceForm.algorithmId = algo.id)"
+                class="rounded-xl border p-3 transition-all duration-150 flex flex-col justify-between group"
+                :class="[
+                  modalInstanceForm.algorithmId === algo.id 
+                    ? 'border-emerald-500 bg-emerald-950/25 shadow-glow-emerald ring-1 ring-emerald-500/40 cursor-default' 
+                    : isEditingInstance 
+                      ? 'border-edge-border/40 opacity-40 cursor-not-allowed' 
+                      : 'border-edge-border bg-edge-bg/80 hover:border-slate-600 hover:bg-edge-card cursor-pointer'
+                ]"
+              >
+                <div class="flex items-start justify-between gap-2 mb-1.5">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <div 
+                      class="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs shrink-0 bg-gradient-to-br shadow-xs"
+                      :class="algo.iconColor"
+                    >
+                      <i :class="algo.icon"></i>
+                    </div>
+                    <div class="min-w-0">
+                      <h4 class="text-xs font-semibold text-slate-200 truncate group-hover:text-emerald-300 transition-colors">
+                        {{ algo.name }}
+                      </h4>
+                      <span class="text-[10px] text-slate-500">{{ algo.categoryLabel }}</span>
+                    </div>
+                  </div>
+                  <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                    ⚡ {{ algo.units }}U
+                  </span>
+                </div>
+
+                <p class="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mb-2">
+                  {{ algo.description }}
+                </p>
+
+                <div class="pt-2 border-t border-edge-border/50 flex items-center justify-between text-[10px]">
+                  <span class="font-mono text-slate-500">延迟 ~{{ algo.latency }}</span>
+                  <span v-if="modalInstanceForm.algorithmId === algo.id" class="text-emerald-400 font-medium font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-circle-check"></i>
+                    配置中
+                  </span>
+                  <span v-else class="text-slate-500 group-hover:text-slate-300">
+                    点击选择
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右侧 7 列 (约 58%)：针对所选算法的专属动态参数面板 (Dynamic Schema Inspector) -->
+          <div class="col-span-12 md:col-span-7 flex flex-col justify-between bg-edge-sidebar/80 overflow-hidden">
+            <!-- 头部：选定模型状态条 -->
+            <div class="p-3.5 px-5 border-b border-edge-border bg-edge-bg/60 flex items-center justify-between shrink-0">
+              <div class="flex items-center gap-2.5">
+                <div 
+                  class="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm shrink-0 bg-gradient-to-br"
+                  :class="currentSelectedAlgo?.iconColor"
+                >
+                  <i :class="currentSelectedAlgo?.icon"></i>
+                </div>
+                <div>
+                  <h4 class="text-xs font-semibold text-slate-100 flex items-center gap-1.5">
+                    {{ currentSelectedAlgo?.name }}
+                    <span class="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-400">
+                      {{ currentSelectedAlgo?.version }}
+                    </span>
+                  </h4>
+                  <span class="text-[10px] text-slate-400">{{ currentSelectedAlgo?.categoryLabel }} · 专属参数配置台</span>
+                </div>
+              </div>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                ● 资源申请 +8 Units
+              </span>
+            </div>
+
+            <!-- 可滚动的动态参数表单内容区 -->
+            <div class="flex-1 overflow-y-auto p-5 space-y-4">
+              <!-- 分组 1: 调度与资源基准 (通用) -->
+              <div class="rounded-xl border border-edge-border bg-edge-bg/80 p-3.5 space-y-2.5 text-xs">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-slate-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-gauge-high text-emerald-400 text-[11px]"></i>
+                    推理采样分析帧率 (Target FPS)
+                  </span>
+                  <span class="font-mono font-bold text-emerald-400 text-xs">{{ modalInstanceForm.analysisFps }} FPS</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="30" 
+                  v-model.number="modalInstanceForm.analysisFps"
+                  class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                />
+                <div class="flex items-center gap-1.5 pt-0.5">
+                  <span class="text-[10px] text-slate-500 font-mono">预设档位:</span>
+                  <button 
+                    v-for="preset in [5, 10, 15, 25]" 
+                    :key="preset"
+                    @click="modalInstanceForm.analysisFps = preset"
+                    :class="modalInstanceForm.analysisFps === preset ? 'bg-emerald-600 text-white' : 'bg-edge-card text-slate-400 border border-edge-border'"
+                    class="px-2 py-0.5 rounded text-[10px] font-mono transition-colors"
+                  >
+                    {{ preset }}fps
+                  </button>
+                </div>
+              </div>
+
+              <!-- 分组 2: 针对不同算法完全异构的专属参数 (Dynamic Model Schema) -->
+              <div class="rounded-xl border border-edge-border bg-edge-bg/80 p-3.5 space-y-3 text-xs">
+                <div class="flex items-center justify-between pb-1.5 border-b border-edge-border/50">
+                  <span class="font-medium text-slate-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sliders text-emerald-400 text-[11px]"></i>
+                    模型专属定制参数 (Schema Config)
+                  </span>
+                  <span class="text-[9px] font-mono text-slate-500">
+                    {{ modalInstanceForm.algorithmId.toUpperCase() }}
+                  </span>
+                </div>
+
+                <!-- 2.1 YOLOv26n 通用目标检测 -->
+                <div v-if="modalInstanceForm.algorithmId === 'yolo26n'" class="space-y-3">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>目标置信度阈值 (Confidence Score)</span>
+                      <span class="font-mono text-emerald-400 font-bold">{{ modalInstanceForm.confidence }}</span>
+                    </div>
+                    <input type="range" min="0.1" max="0.95" step="0.05" v-model.number="modalInstanceForm.confidence" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                  </div>
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>重叠抑制门限 (IoU / NMS Threshold)</span>
+                      <span class="font-mono text-blue-400 font-bold">{{ modalInstanceForm.iou }}</span>
+                    </div>
+                    <input type="range" min="0.1" max="0.9" step="0.05" v-model.number="modalInstanceForm.iou" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                  </div>
+                  <div>
+                    <span class="text-[11px] text-slate-300 block mb-1">本次关心并检测的目标分类:</span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <button 
+                        @click="toggleModalClass('person')"
+                        :class="modalInstanceForm.targetClasses.includes('person') ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40' : 'bg-edge-card text-slate-400 border-edge-border'"
+                        class="px-2 py-1 rounded text-[10px] font-medium border flex items-center gap-1 transition-colors"
+                      >
+                        <i v-if="modalInstanceForm.targetClasses.includes('person')" class="fa-solid fa-check text-[8px]"></i> 人员 (Person)
+                      </button>
+                      <button 
+                        @click="toggleModalClass('vehicle')"
+                        :class="modalInstanceForm.targetClasses.includes('vehicle') ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40' : 'bg-edge-card text-slate-400 border-edge-border'"
+                        class="px-2 py-1 rounded text-[10px] font-medium border flex items-center gap-1 transition-colors"
+                      >
+                        <i v-if="modalInstanceForm.targetClasses.includes('vehicle')" class="fa-solid fa-check text-[8px]"></i> 车辆 (Vehicle)
+                      </button>
+                      <button 
+                        @click="toggleModalClass('bicycle')"
+                        :class="modalInstanceForm.targetClasses.includes('bicycle') ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40' : 'bg-edge-card text-slate-400 border-edge-border'"
+                        class="px-2 py-1 rounded text-[10px] font-medium border flex items-center gap-1 transition-colors"
+                      >
+                        <i v-if="modalInstanceForm.targetClasses.includes('bicycle')" class="fa-solid fa-check text-[8px]"></i> 非机动车
+                      </button>
+                      <button 
+                        @click="toggleModalClass('package')"
+                        :class="modalInstanceForm.targetClasses.includes('package') ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40' : 'bg-edge-card text-slate-400 border-edge-border'"
+                        class="px-2 py-1 rounded text-[10px] font-medium border flex items-center gap-1 transition-colors"
+                      >
+                        <i v-if="modalInstanceForm.targetClasses.includes('package')" class="fa-solid fa-check text-[8px]"></i> 箱体包裹
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2.2 FaceNet 人脸抓拍识别 -->
+                <div v-else-if="modalInstanceForm.algorithmId === 'face_detect'" class="space-y-3">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>人脸比对相似度阈值 (Similarity Score)</span>
+                      <span class="font-mono text-emerald-400 font-bold">0.70</span>
+                    </div>
+                    <input type="range" min="0.5" max="0.95" step="0.05" value="0.70" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                  </div>
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>最小人脸像素尺寸 (Min Face Size)</span>
+                      <span class="font-mono text-blue-400 font-bold">48 px</span>
+                    </div>
+                    <input type="range" min="32" max="128" step="8" value="48" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300 font-medium">大角度与模糊侧脸过滤</span>
+                      <p class="text-[9px] text-slate-500">俯仰偏航角超过 35° 时自动剔除防误报</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300 font-medium">红外活体防伪核验</span>
+                      <p class="text-[9px] text-slate-500">抵御手机翻拍与打印照片欺骗攻击</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 2.3 FireSmoke 烟火防患安全告警 -->
+                <div v-else-if="modalInstanceForm.algorithmId === 'fire_smoke'" class="space-y-3">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>明火识别灵敏度 (Flame Sensitivity)</span>
+                      <span class="font-mono text-amber-400 font-bold">0.80</span>
+                    </div>
+                    <input type="range" min="0.5" max="0.98" step="0.02" value="0.80" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300 font-medium">烟雾羽流扩散分析 (Plume Tracking)</span>
+                      <p class="text-[9px] text-slate-500">半透明与上升烟羽形态连通域检测</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300 font-medium">夜间红外低照度增强</span>
+                      <p class="text-[9px] text-slate-500">微光与黑夜环境下自适应拉升暗区对比度</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 2.4 PlateOCR 车牌识别抓拍 -->
+                <div v-else-if="modalInstanceForm.algorithmId === 'plate_ocr'" class="space-y-3">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>字符光学识别置信度 (OCR Threshold)</span>
+                      <span class="font-mono text-cyan-400 font-bold">0.75</span>
+                    </div>
+                    <input type="range" min="0.5" max="0.95" step="0.05" value="0.75" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                  </div>
+                  <div>
+                    <span class="text-[11px] text-slate-300 block mb-1">支持牌照类别过滤:</span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <span class="px-2 py-1 rounded bg-blue-500/15 text-blue-400 border border-blue-500/40 text-[10px] font-medium">
+                        蓝牌 (燃油乘用车)
+                      </span>
+                      <span class="px-2 py-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 text-[10px] font-medium">
+                        绿牌 (新能源)
+                      </span>
+                      <span class="px-2 py-1 rounded bg-amber-500/15 text-amber-400 border border-amber-500/40 text-[10px] font-medium">
+                        黄牌 (大型货车)
+                      </span>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300 font-medium">大倾角透视自动校准</span>
+                      <p class="text-[9px] text-slate-500">针对侧面斜拍镜头进行四边形透视变换矫正</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 2.5 SafetyHelmet 安全帽合规检测 -->
+                <div v-else class="space-y-3">
+                  <div>
+                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                      <span>安全帽穿戴置信度 (Helmet Score)</span>
+                      <span class="font-mono text-amber-400 font-bold">0.55</span>
+                    </div>
+                    <input type="range" min="0.3" max="0.9" step="0.05" value="0.55" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300 font-medium">头肩人体骨架严格关联</span>
+                      <p class="text-[9px] text-slate-500">仅在帽子佩戴于头顶骨架时判定合规 (防手持)</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-between pt-1 border-t border-edge-border/40">
+                    <div>
+                      <span class="text-[11px] text-slate-300 font-medium">同步核查反光警示背心</span>
+                      <p class="text-[9px] text-slate-500">施工与仓储高危区域双重合规核验</p>
+                    </div>
+                    <button class="w-7 h-3.5 rounded-full bg-emerald-600 border border-emerald-500 p-0.5 relative">
+                      <span class="w-2 h-2 rounded-full bg-white block translate-x-3.5 shadow"></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分组 3: 节能与使能控制 -->
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="p-3 rounded-xl bg-edge-bg border border-edge-border flex items-center justify-between">
+                  <div>
+                    <span class="text-[11px] text-slate-300 font-medium">节能门控</span>
+                    <p class="text-[9px] text-slate-500">画面静止休眠</p>
+                  </div>
+                  <button 
+                    @click="modalInstanceForm.motionGate = !modalInstanceForm.motionGate"
+                    class="w-7 h-3.5 rounded-full transition-colors relative p-0.5 border"
+                    :class="modalInstanceForm.motionGate ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-800 border-slate-700'"
+                  >
+                    <span class="w-2 h-2 rounded-full bg-white block transition-transform shadow" :class="modalInstanceForm.motionGate ? 'translate-x-3.5' : 'translate-x-0'"></span>
+                  </button>
+                </div>
+
+                <div class="p-3 rounded-xl bg-edge-bg border border-edge-border flex items-center justify-between">
+                  <div>
+                    <span class="text-[11px] text-slate-300 font-medium">初始调度使能</span>
+                    <p class="text-[9px] text-slate-500">保存即刻调度</p>
+                  </div>
+                  <button 
+                    @click="modalInstanceForm.enabled = !modalInstanceForm.enabled"
+                    class="w-7 h-3.5 rounded-full transition-colors relative p-0.5 border"
+                    :class="modalInstanceForm.enabled ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-800 border-slate-700'"
+                  >
+                    <span class="w-2 h-2 rounded-full bg-white block transition-transform shadow" :class="modalInstanceForm.enabled ? 'translate-x-3.5' : 'translate-x-0'"></span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 分组 4: 硬件算力预检条 -->
+              <div class="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-900/30 flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2">
+                  <i class="fa-solid fa-microchip text-emerald-400 text-xs"></i>
+                  <span class="text-slate-300 text-[11px]">
+                    申请 <strong class="text-amber-400 font-mono">+8 Units</strong>，调度后总负荷 
+                    <strong class="text-slate-200 font-mono">{{ usedComputeUnits + (isEditingInstance ? 0 : 8) }} / {{ totalComputeUnits }} Units</strong>
+                  </span>
+                </div>
+                <span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  预检通过
+                </span>
+              </div>
+            </div>
+
+            <!-- 右侧底部保存操作栏 -->
+            <div class="p-3.5 px-5 border-t border-edge-border bg-edge-bg/95 flex justify-end gap-3 text-xs shrink-0">
+              <button @click="instanceModalOpen = false" class="px-4 py-1.5 rounded-lg border border-edge-border text-slate-400 hover:text-slate-200 transition-colors">
+                取消
+              </button>
+              <button @click="saveInstanceModal" class="px-5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-glow-emerald transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-plus text-[10px]" v-if="!isEditingInstance"></i>
+                <span>{{ isEditingInstance ? '保存参数调优' : '确认挂载并立即调度' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. 任务新建/编辑弹窗 (Visual Camera Source Picker) -->
+    <div 
+      v-if="taskModalOpen" 
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-edge-sidebar border border-edge-border shadow-2xl p-5 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-edge-border">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <i class="fa-solid fa-video text-xs"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-slate-100">
+                {{ isEditingTask ? '编辑视频分析任务' : '接入摄像头新建分析任务' }}
+              </h3>
+              <p class="text-[11px] text-slate-400">绑定视频输入流并建立独立推理上下文</p>
+            </div>
+          </div>
+          <button @click="taskModalOpen = false" class="text-slate-400 hover:text-slate-200">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="space-y-3.5 text-xs">
+          <!-- 视频源可视化卡片单选 -->
+          <div>
+            <label class="block text-slate-300 font-medium mb-1.5">选择待接入的摄像头源</label>
+            <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
+              <div 
+                v-for="cam in availableCameras" 
+                :key="cam.id"
+                @click="!isEditingTask && (modalTaskForm.cameraId = cam.id)"
+                class="rounded-xl border p-2.5 flex items-center justify-between transition-all"
+                :class="[
+                  modalTaskForm.cameraId === cam.id 
+                    ? 'border-emerald-500 bg-emerald-950/20 ring-1 ring-emerald-500/30' 
+                    : isEditingTask 
+                      ? 'border-edge-border/40 opacity-50' 
+                      : 'border-edge-border bg-edge-bg/70 hover:border-slate-600 cursor-pointer'
+                ]"
+              >
+                <div class="flex items-center gap-2.5">
+                  <div class="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300 text-xs">
+                    <i class="fa-solid fa-camera"></i>
+                  </div>
+                  <div>
+                    <div class="font-medium text-slate-200">{{ cam.name }}</div>
+                    <div class="text-[10px] font-mono text-slate-400">{{ cam.id }} · {{ cam.protocol }} · {{ cam.resolution }}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 font-mono text-[10px]">
+                  <span class="text-emerald-400">● 流就绪</span>
+                  <i v-if="modalTaskForm.cameraId === cam.id" class="fa-solid fa-circle-check text-emerald-400 text-xs"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 任务名称 -->
+          <div>
+            <label class="block text-slate-300 font-medium mb-1.5">任务显示别名</label>
+            <input 
+              v-model="modalTaskForm.name" 
+              placeholder="请输入易识别的分析任务名称 (如：西区智能装卸泊位)"
+              class="w-full bg-edge-bg border border-edge-border rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 placeholder-slate-500"
+            />
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-edge-border flex justify-end gap-2 text-xs">
+          <button @click="taskModalOpen = false" class="px-3.5 py-1.5 rounded-lg border border-edge-border text-slate-400 hover:text-slate-200">
+            取消
+          </button>
+          <button @click="saveTaskModal" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium">
+            确认接入并创建
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 轻量 Toast 提示 -->
+    <transition
+      enter-active-class="transition duration-150 ease-out"
+      enter-from-class="transform -translate-y-4 opacity-0"
+      enter-to-class="transform translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="transform translate-y-0 opacity-100"
+      leave-to-class="transform -translate-y-4 opacity-0"
+    >
+      <div 
+        v-if="toastMessage" 
+        class="fixed top-6 inset-x-0 mx-auto w-fit z-50 bg-slate-800/90 border border-emerald-500/40 text-emerald-300 text-xs px-4 py-2 rounded-xl shadow-xl flex items-center gap-2 backdrop-blur"
+      >
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span>{{ toastMessage }}</span>
+      </div>
+    </transition>
+
+  </div>
+
+  <!-- Vue 3 交互逻辑 -->
+  <script>
+    const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+    createApp({
+      setup() {
+        const isDark = ref(true);
+        const searchQuery = ref('');
+        const currentStatusFilter = ref('all'); // 'all' | 'running' | 'degraded' | 'unconfigured'
+        const selectedTaskIds = ref([]);
+        const toastMessage = ref('');
+
+        // 抽屉与模态框状态
+        const drawerOpen = ref(false);
+        const currentTask = ref(null);
+        const activeWorkbenchInstanceId = ref('');
+        const instanceModalOpen = ref(false);
+        const isEditingInstance = ref(false);
+        const taskModalOpen = ref(false);
+        const isEditingTask = ref(false);
+
+        const modalInstanceForm = ref({
+          algorithmId: 'yolo26n',
+          analysisFps: 15,
+          confidence: 0.45,
+          iou: 0.50,
+          targetClasses: ['person', 'vehicle'],
+          motionGate: true,
+          enabled: true
+        });
+
+        function toggleModalClass(cls) {
+          const idx = modalInstanceForm.value.targetClasses.indexOf(cls);
+          if (idx >= 0) modalInstanceForm.value.targetClasses.splice(idx, 1);
+          else modalInstanceForm.value.targetClasses.push(cls);
+        }
+
+        // 可用算法模型集市资产库
+        const availableAlgorithms = ref([
+          {
+            id: 'yolo26n',
+            name: 'YOLOv26n 基础通用检测',
+            code: 'yolo26n',
+            version: 'v1.2.0',
+            category: 'detection',
+            categoryLabel: '通用目标检测',
+            icon: 'fa-solid fa-shapes',
+            iconColor: 'from-emerald-500 to-teal-600',
+            units: 8,
+            latency: '8.2ms',
+            tags: ['80类目标', '端侧加速', 'INT8量化'],
+            description: '全场景人员、机动车、非机动车、箱体等 80 种高频物体高精度实时定位与分类。'
+          },
+          {
+            id: 'face_detect',
+            name: 'FaceNet 人脸抓拍与识别',
+            code: 'face_detect',
+            version: 'v2.0.1',
+            category: 'biometric',
+            categoryLabel: '人脸与身份',
+            icon: 'fa-solid fa-id-card-clip',
+            iconColor: 'from-blue-500 to-indigo-600',
+            units: 8,
+            latency: '11.5ms',
+            tags: ['5点关键点', '特征对齐', '防伪打光'],
+            description: '出入口与重要防区人员人脸检测、多角度姿态过滤与 512 维特征向量毫秒级提取。'
+          },
+          {
+            id: 'fire_smoke',
+            name: 'FireSmoke 烟火检测告警',
+            code: 'fire_smoke',
+            version: 'v1.0.4',
+            category: 'safety',
+            categoryLabel: '安全与消防',
+            icon: 'fa-solid fa-fire-flame-curved',
+            iconColor: 'from-amber-500 to-rose-600',
+            units: 8,
+            latency: '7.8ms',
+            tags: ['烟羽扩散', '明火光斑', '全天候巡检'],
+            description: '工业厂房、仓库与周界全天候微光火焰识别与动态烟羽扩散追踪，支持夜间自适应。'
+          },
+          {
+            id: 'plate_ocr',
+            name: 'PlateOCR 车牌识别抓拍',
+            code: 'plate_ocr',
+            version: 'v1.3.0',
+            category: 'traffic',
+            categoryLabel: '交通与卡口',
+            icon: 'fa-solid fa-car-side',
+            iconColor: 'from-cyan-500 to-blue-600',
+            units: 8,
+            latency: '9.0ms',
+            tags: ['新能源双行', '大角度倾斜', '汉字OCR'],
+            description: '进出卡口高精度车牌定位、字符分割与汉字光学识别，兼容各类新能源与货车牌照。'
+          },
+          {
+            id: 'helmet_detect',
+            name: 'SafetyHelmet 安全帽合规检测',
+            code: 'helmet_detect',
+            version: 'v1.1.0',
+            category: 'safety',
+            categoryLabel: '安全与消防',
+            icon: 'fa-solid fa-hard-hat',
+            iconColor: 'from-yellow-500 to-amber-600',
+            units: 8,
+            latency: '8.5ms',
+            tags: ['头部骨架关联', '反光衣', '违规预警'],
+            description: '车间施工作业人员合规防护穿戴监控，实时分析安全帽规范佩戴状态。'
+          }
+        ]);
+
+        const selectedAlgoCategory = ref('all');
+        const algoCategories = computed(() => [
+          { key: 'all', label: '全部模型', count: availableAlgorithms.value.length },
+          { key: 'detection', label: '通用检测', count: availableAlgorithms.value.filter(a => a.category === 'detection').length },
+          { key: 'biometric', label: '人脸感知', count: availableAlgorithms.value.filter(a => a.category === 'biometric').length },
+          { key: 'safety', label: '安全消防', count: availableAlgorithms.value.filter(a => a.category === 'safety').length },
+          { key: 'traffic', label: '交通卡口', count: availableAlgorithms.value.filter(a => a.category === 'traffic').length }
+        ]);
+
+        const filteredAlgorithms = computed(() => {
+          if (selectedAlgoCategory.value === 'all') return availableAlgorithms.value;
+          return availableAlgorithms.value.filter(a => a.category === selectedAlgoCategory.value);
+        });
+
+        const currentSelectedAlgo = computed(() => {
+          return availableAlgorithms.value.find(a => a.id === modalInstanceForm.value.algorithmId) || availableAlgorithms.value[0];
+        });
+
+        // 工作台中当前聚焦选中的算法实例 (实时联动右侧参数检查器)
+        const activeWorkbenchInstance = computed(() => {
+          if (!currentTask.value || !currentTask.value.instances || currentTask.value.instances.length === 0) return null;
+          return currentTask.value.instances.find(i => i.instanceId === activeWorkbenchInstanceId.value) || currentTask.value.instances[0] || null;
+        });
+
+        // 待接入摄像头流
+        const availableCameras = ref([
+          { id: 'cam-09', name: '西区智能装卸泊位', protocol: 'RTSP', resolution: '1080P @ 25fps' },
+          { id: 'cam-10', name: '2号动力机房内部', protocol: 'RTSP', resolution: '1080P @ 25fps' },
+          { id: 'cam-11', name: '北侧员工餐厅出入口', protocol: 'RTSP', resolution: '720P @ 25fps' }
+        ]);
+
+        const modalTaskForm = ref({
+          cameraId: 'cam-09',
+          name: '西区智能装卸泊位'
+        });
+
+        // 任务列表模拟数据 (4~8路典型边缘路数)
+        const tasks = ref([
+          {
+            cameraId: 'cam-01',
+            name: '园区东大门主干道',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 2, // RUNNING
+            lastFrame: '0.2s 前',
+            instances: [
+              {
+                instanceId: 'inst-01a-yolo',
+                algorithmId: 'yolo26n',
+                analysisFps: 15,
+                currentFps: 14.8,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 2
+              },
+              {
+                instanceId: 'inst-01b-fire',
+                algorithmId: 'fire_smoke',
+                analysisFps: 10,
+                currentFps: 9.9,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 1
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-02',
+            name: '生产车间 A 区装配线',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 2,
+            lastFrame: '0.3s 前',
+            instances: [
+              {
+                instanceId: 'inst-02a-helmet',
+                algorithmId: 'helmet_detect',
+                analysisFps: 12,
+                currentFps: 11.9,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 1
+              },
+              {
+                instanceId: 'inst-02b-face',
+                algorithmId: 'face_detect',
+                analysisFps: 15,
+                currentFps: 14.7,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 0
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-03',
+            name: '地下停车场负一层入口',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 3, // DEGRADED (网络或光照导致降级)
+            lastFrame: '1.2s 前',
+            instances: [
+              {
+                instanceId: 'inst-03a-plate',
+                algorithmId: 'plate_ocr',
+                analysisFps: 15,
+                currentFps: 8.5, // 降级
+                enabled: true,
+                actualStatus: 3,
+                rulesCount: 1
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-04',
+            name: '园区南门周界电子围栏',
+            resolution: '2560x1440',
+            sourceFps: 30,
+            desiredEnabled: true,
+            actualStatus: 2,
+            lastFrame: '0.1s 前',
+            instances: [
+              {
+                instanceId: 'inst-04a-yolo',
+                algorithmId: 'yolo26n',
+                analysisFps: 20,
+                currentFps: 19.8,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 3
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-05',
+            name: '危化品原料中转库房',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 2,
+            lastFrame: '0.4s 前',
+            instances: [
+              {
+                instanceId: 'inst-05a-fire',
+                algorithmId: 'fire_smoke',
+                analysisFps: 10,
+                currentFps: 10.0,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 2
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-06',
+            name: '综合办公楼 1F 访客大厅',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: false,
+            actualStatus: 5, // STOPPED
+            lastFrame: '5m 前',
+            instances: [
+              {
+                instanceId: 'inst-06a-face',
+                algorithmId: 'face_detect',
+                analysisFps: 15,
+                currentFps: 0,
+                enabled: false,
+                actualStatus: 4,
+                rulesCount: 0
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-07',
+            name: '物流装卸货运通道',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: true,
+            actualStatus: 2,
+            lastFrame: '0.3s 前',
+            instances: [
+              {
+                instanceId: 'inst-07a-yolo',
+                algorithmId: 'yolo26n',
+                analysisFps: 15,
+                currentFps: 14.9,
+                enabled: true,
+                actualStatus: 2,
+                rulesCount: 1
+              }
+            ]
+          },
+          {
+            cameraId: 'cam-08',
+            name: '备用通道待分配流',
+            resolution: '1920x1080',
+            sourceFps: 25,
+            desiredEnabled: false,
+            actualStatus: 0, // UNSPECIFIED / UNCONFIGURED
+            lastFrame: '未连接',
+            instances: []
+          }
+        ]);
+
+        // 动态计算每个任务的实时总吞吐
+        tasks.value.forEach(t => {
+          t.totalFps = t.instances.reduce((acc, i) => acc + (i.enabled && i.currentFps ? i.currentFps : 0), 0);
+        });
+
+        // 过滤与计算
+        const runningTasksCount = computed(() => tasks.value.filter(t => t.actualStatus === 2).length);
+        const activeInstancesCount = computed(() => {
+          return tasks.value.reduce((acc, t) => acc + t.instances.filter(i => i.enabled).length, 0);
+        });
+
+        const totalComputeUnits = ref(64);
+        const usedComputeUnits = computed(() => activeInstancesCount.value * 8);
+        const loadPercentage = computed(() => Math.round((usedComputeUnits.value / totalComputeUnits.value) * 100));
+
+        // 状态过滤药丸定义
+        const statusFilters = computed(() => [
+          { key: 'all', label: '全部通道', count: tasks.value.length },
+          { key: 'running', label: '运行中', count: tasks.value.filter(t => t.actualStatus === 2).length },
+          { key: 'degraded', label: '降级/异常', count: tasks.value.filter(t => t.actualStatus === 3 || t.actualStatus === 6).length },
+          { key: 'unconfigured', label: '未配置算法', count: tasks.value.filter(t => t.instances.length === 0).length }
+        ]);
+
+        const filteredTasks = computed(() => {
+          return tasks.value.filter(t => {
+            // 搜索过滤
+            const q = searchQuery.value.trim().toLowerCase();
+            const matchQuery = !q || 
+              t.name.toLowerCase().includes(q) || 
+              t.cameraId.toLowerCase().includes(q) ||
+              t.instances.some(i => i.algorithmId.toLowerCase().includes(q));
+
+            // 状态过滤
+            let matchStatus = true;
+            if (currentStatusFilter.value === 'running') matchStatus = (t.actualStatus === 2);
+            else if (currentStatusFilter.value === 'degraded') matchStatus = (t.actualStatus === 3 || t.actualStatus === 6);
+            else if (currentStatusFilter.value === 'unconfigured') matchStatus = (t.instances.length === 0);
+
+            return matchQuery && matchStatus;
+          });
+        });
+
+        // 状态码转换与样式辅助
+        function getTaskStatusText(status) {
+          switch (status) {
+            case 1: return '启动中';
+            case 2: return '运行中';
+            case 3: return '降级';
+            case 4: return '重连中';
+            case 5: return '已停止';
+            case 6: return '异常';
+            default: return '待配置';
+          }
+        }
+
+        function getTaskStatusBadgeClass(status) {
+          switch (status) {
+            case 2: return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+            case 3: return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+            case 5: return 'bg-slate-800 text-slate-400 border-slate-700';
+            case 6: return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+            default: return 'bg-slate-800/80 text-slate-400 border-slate-700/80';
+          }
+        }
+
+        function getTaskStatusDotClass(status) {
+          switch (status) {
+            case 2: return 'bg-emerald-400 status-pulse-emerald';
+            case 3: return 'bg-amber-400 status-pulse-amber';
+            case 5: return 'bg-slate-500';
+            case 6: return 'bg-rose-400 animate-ping';
+            default: return 'bg-slate-500';
+          }
+        }
+
+        function getInstanceDotClass(status, enabled) {
+          if (!enabled) return 'bg-slate-600';
+          switch (status) {
+            case 2: return 'bg-emerald-400 status-pulse-emerald';
+            case 3: return 'bg-amber-400 status-pulse-amber';
+            case 6: return 'bg-rose-400';
+            default: return 'bg-slate-500';
+          }
+        }
+
+        function formatAlgoName(algoId) {
+          const map = {
+            'yolo26n': 'YOLOv26n 基础检测',
+            'face_detect': 'FaceNet 人脸抓拍',
+            'fire_smoke': 'FireSmoke 烟火告警',
+            'plate_ocr': 'PlateOCR 车牌识别',
+            'helmet_detect': 'SafetyHelmet 安全帽'
+          };
+          return map[algoId] || algoId;
+        }
+
+        // 交互动作
+        function toggleTheme() {
+          isDark.value = !isDark.value;
+          if (isDark.value) document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+        }
+
+        function toggleSelectTask(cameraId) {
+          const idx = selectedTaskIds.value.indexOf(cameraId);
+          if (idx >= 0) selectedTaskIds.value.splice(idx, 1);
+          else selectedTaskIds.value.push(cameraId);
+        }
+
+        function clearSelection() {
+          selectedTaskIds.value = [];
+        }
+
+        function toggleTaskEnabled(task) {
+          task.desiredEnabled = !task.desiredEnabled;
+          task.actualStatus = task.desiredEnabled ? 2 : 5;
+          task.instances.forEach(i => {
+            i.enabled = task.desiredEnabled;
+            i.actualStatus = task.desiredEnabled ? 2 : 4;
+          });
+          showToast(`已${task.desiredEnabled ? '启动' : '停止'}通道 [${task.name}]`);
+        }
+
+        function toggleInstanceEnabled(inst) {
+          inst.enabled = !inst.enabled;
+          inst.actualStatus = inst.enabled ? 2 : 4;
+          showToast(`算法 [${formatAlgoName(inst.algorithmId)}] 已${inst.enabled ? '启用' : '暂停'}`);
+        }
+
+        function batchSetEnabled(enabled) {
+          tasks.value.forEach(t => {
+            if (selectedTaskIds.value.includes(t.cameraId)) {
+              t.desiredEnabled = enabled;
+              t.actualStatus = enabled ? 2 : 5;
+              t.instances.forEach(i => {
+                i.enabled = enabled;
+                i.actualStatus = enabled ? 2 : 4;
+              });
+            }
+          });
+          showToast(`已批量${enabled ? '启动' : '停用'} ${selectedTaskIds.value.length} 路任务`);
+          clearSelection();
+        }
+
+        function batchDelete() {
+          const count = selectedTaskIds.value.length;
+          tasks.value = tasks.value.filter(t => !selectedTaskIds.value.includes(t.cameraId));
+          showToast(`已成功移除 ${count} 路分析任务`);
+          clearSelection();
+        }
+
+        function openWorkbench(task) {
+          currentTask.value = task;
+          activeWorkbenchInstanceId.value = task.instances && task.instances.length > 0 ? task.instances[0].instanceId : '';
+          drawerOpen.value = true;
+        }
+
+        function openAddInstanceModal(task) {
+          currentTask.value = task;
+          isEditingInstance.value = false;
+          modalInstanceForm.value = {
+            algorithmId: 'yolo26n',
+            analysisFps: 15,
+            confidence: 0.45,
+            iou: 0.50,
+            targetClasses: ['person', 'vehicle'],
+            motionGate: true,
+            enabled: true
+          };
+          instanceModalOpen.value = true;
+        }
+
+        function openEditInstanceModal(task, inst) {
+          currentTask.value = task;
+          isEditingInstance.value = true;
+          modalInstanceForm.value = {
+            algorithmId: inst.algorithmId,
+            analysisFps: inst.analysisFps,
+            confidence: inst.confidence || 0.45,
+            iou: inst.iou || 0.50,
+            targetClasses: inst.targetClasses ? [...inst.targetClasses] : ['person', 'vehicle'],
+            motionGate: inst.motionGate !== undefined ? inst.motionGate : true,
+            enabled: inst.enabled
+          };
+          instanceModalOpen.value = true;
+        }
+
+        function saveInstanceModal() {
+          if (!currentTask.value) return;
+          if (!isEditingInstance.value) {
+            const newInst = {
+              instanceId: `inst-${Date.now().toString(36)}`,
+              algorithmId: modalInstanceForm.value.algorithmId,
+              analysisFps: modalInstanceForm.value.analysisFps,
+              currentFps: modalInstanceForm.value.enabled ? modalInstanceForm.value.analysisFps * 0.98 : 0,
+              confidence: modalInstanceForm.value.confidence,
+              iou: modalInstanceForm.value.iou,
+              targetClasses: [...modalInstanceForm.value.targetClasses],
+              motionGate: modalInstanceForm.value.motionGate,
+              enabled: modalInstanceForm.value.enabled,
+              actualStatus: modalInstanceForm.value.enabled ? 2 : 4,
+              rulesCount: 1
+            };
+            currentTask.value.instances.push(newInst);
+            activeWorkbenchInstanceId.value = newInst.instanceId;
+            showToast(`已挂载算法 [${formatAlgoName(newInst.algorithmId)}] 并应用所配参数`);
+          } else {
+            const target = currentTask.value.instances.find(i => i.instanceId === activeWorkbenchInstanceId.value);
+            if (target) {
+              target.analysisFps = modalInstanceForm.value.analysisFps;
+              target.confidence = modalInstanceForm.value.confidence;
+              target.iou = modalInstanceForm.value.iou;
+              target.targetClasses = [...modalInstanceForm.value.targetClasses];
+              target.motionGate = modalInstanceForm.value.motionGate;
+              target.enabled = modalInstanceForm.value.enabled;
+            }
+            showToast('算法参数配置已更新');
+          }
+          instanceModalOpen.value = false;
+        }
+
+        function deleteInstance(task, inst) {
+          const idx = task.instances.findIndex(i => i.instanceId === inst.instanceId);
+          if (idx >= 0) {
+            task.instances.splice(idx, 1);
+            if (activeWorkbenchInstanceId.value === inst.instanceId) {
+              activeWorkbenchInstanceId.value = task.instances[0]?.instanceId || '';
+            }
+            showToast(`已移除实例 [${formatAlgoName(inst.algorithmId)}]`);
+          }
+        }
+
+        function openNewTaskModal() {
+          isEditingTask.value = false;
+          taskModalOpen.value = true;
+        }
+
+        function openTaskEditModal(task) {
+          currentTask.value = task;
+          isEditingTask.value = true;
+          modalTaskForm.value = {
+            cameraId: task.cameraId,
+            name: task.name
+          };
+          taskModalOpen.value = true;
+        }
+
+        function saveTaskModal() {
+          if (!isEditingTask.value) {
+            tasks.value.unshift({
+              cameraId: modalTaskForm.value.cameraId,
+              name: modalTaskForm.value.name,
+              resolution: '1920x1080',
+              sourceFps: 25,
+              desiredEnabled: true,
+              actualStatus: 2,
+              lastFrame: '刚刚',
+              instances: [
+                {
+                  instanceId: `inst-${Date.now().toString(36)}`,
+                  algorithmId: 'yolo26n',
+                  analysisFps: 15,
+                  currentFps: 14.9,
+                  enabled: true,
+                  actualStatus: 2,
+                  rulesCount: 1
+                }
+              ]
+            });
+            showToast(`分析任务 [${modalTaskForm.value.name}] 创建成功`);
+          } else if (currentTask.value) {
+            currentTask.value.name = modalTaskForm.value.name;
+            showToast('任务信息已更新');
+          }
+          taskModalOpen.value = false;
+        }
+
+        function resetFilters() {
+          searchQuery.value = '';
+          currentStatusFilter.value = 'all';
+        }
+
+        function showToast(msg) {
+          toastMessage.value = msg;
+          setTimeout(() => {
+            if (toastMessage.value === msg) toastMessage.value = '';
+          }, 2400);
+        }
+
+        // 模拟边缘硬件实时心跳抖动 (每 2 秒微波动 FPS 与心跳)
+        let ticker = null;
+        onMounted(() => {
+          ticker = setInterval(() => {
+            tasks.value.forEach(t => {
+              if (t.actualStatus === 2) {
+                t.instances.forEach(i => {
+                  if (i.enabled) {
+                    const delta = (Math.random() - 0.5) * 0.4;
+                    i.currentFps = Math.max(0, Math.min(i.analysisFps, i.analysisFps + delta));
+                  }
+                });
+                t.totalFps = t.instances.reduce((acc, i) => acc + (i.enabled && i.currentFps ? i.currentFps : 0), 0);
+              }
+            });
+          }, 2000);
+        });
+
+        onUnmounted(() => {
+          if (ticker) clearInterval(ticker);
+        });
+
+        return {
+          isDark,
+          searchQuery,
+          currentStatusFilter,
+          statusFilters,
+          selectedTaskIds,
+          tasks,
+          filteredTasks,
+          runningTasksCount,
+          activeInstancesCount,
+          totalComputeUnits,
+          usedComputeUnits,
+          loadPercentage,
+          drawerOpen,
+          currentTask,
+          activeWorkbenchInstanceId,
+          activeWorkbenchInstance,
+          instanceModalOpen,
+          isEditingInstance,
+          taskModalOpen,
+          isEditingTask,
+          modalInstanceForm,
+          modalTaskForm,
+          availableAlgorithms,
+          selectedAlgoCategory,
+          algoCategories,
+          filteredAlgorithms,
+          currentSelectedAlgo,
+          availableCameras,
+          toastMessage,
+          toggleTheme,
+          toggleSelectTask,
+          toggleModalClass,
+          clearSelection,
+          toggleTaskEnabled,
+          toggleInstanceEnabled,
+          batchSetEnabled,
+          batchDelete,
+          openWorkbench,
+          openAddInstanceModal,
+          openEditInstanceModal,
+          saveInstanceModal,
+          deleteInstance,
+          openNewTaskModal,
+          openTaskEditModal,
+          saveTaskModal,
+          resetFilters,
+          showToast,
+          getTaskStatusText,
+          getTaskStatusBadgeClass,
+          getTaskStatusDotClass,
+          getInstanceDotClass,
+          formatAlgoName
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

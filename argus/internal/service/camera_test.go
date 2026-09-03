@@ -305,6 +305,18 @@ func TestCameraServiceProbeEngineErrorMapping(t *testing.T) {
 	if !errno.Is(err, errno.CodeInternal) {
 		t.Fatalf("transport error = %v, want CodeInternal", err)
 	}
+
+	// 验证 context.DeadlineExceeded 超时场景：应当作为正常的 RTSP_PLAY_TIMEOUT 失败结构返回，绝不当作 CodeInternal 报错
+	fake.onCall = func(_ context.Context, _ *argusv1.ProbeCameraRequest) (*argusv1.ProbeCameraResponse, error) {
+		return nil, context.DeadlineExceeded
+	}
+	res, err := svc.ProbeCamera(ctx, &ProbeCameraRequest{Protocol: "rtsp", RtspURL: "rtsp://192.168.1.10/live"})
+	if err != nil {
+		t.Fatalf("context.DeadlineExceeded returned unexpected error: %v", err)
+	}
+	if res.Status != model.CameraProbeFailed || res.FailureCode != "RTSP_PLAY_TIMEOUT" {
+		t.Fatalf("expected status=failed failureCode=RTSP_PLAY_TIMEOUT, got status=%s code=%s", res.Status, res.FailureCode)
+	}
 }
 
 func TestCameraServiceLivePreview(t *testing.T) {

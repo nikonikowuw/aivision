@@ -44,6 +44,7 @@ const decoderType = ref('MSE (Hardware)');
 let player: mpegts.Player | null = null;
 let statsTimer: null | number = null;
 let reconnectTimer: null | number = null;
+let waitingTimer: null | number = null;
 let retryCount = 0;
 const MAX_RETRY_COUNT = 3;
 
@@ -54,6 +55,10 @@ function emitVideoMetadata() {
 }
 
 function handleVideoPlaying() {
+  if (waitingTimer !== null) {
+    window.clearTimeout(waitingTimer);
+    waitingTimer = null;
+  }
   loading.value = false;
   error.value = null;
   emitVideoMetadata();
@@ -67,10 +72,19 @@ function handleVideoPlaying() {
 }
 
 function handleVideoWaiting() {
-  loading.value = true;
+  // 防抖 500ms：视频流偶发网络微卡顿或首帧就绪间隙不闪现黑底加载圈
+  if (waitingTimer !== null) return;
+  waitingTimer = window.setTimeout(() => {
+    loading.value = true;
+    waitingTimer = null;
+  }, 500);
 }
 
 function removeVideoEventListeners() {
+  if (waitingTimer !== null) {
+    window.clearTimeout(waitingTimer);
+    waitingTimer = null;
+  }
   videoRef.value?.removeEventListener('loadedmetadata', emitVideoMetadata);
   videoRef.value?.removeEventListener('resize', emitVideoMetadata);
   videoRef.value?.removeEventListener('playing', handleVideoPlaying);

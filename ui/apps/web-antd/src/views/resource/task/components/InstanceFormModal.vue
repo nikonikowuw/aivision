@@ -3,19 +3,18 @@ import type { AlgorithmApi, TaskApi } from '#/api';
 
 import { computed, nextTick, ref, watch } from 'vue';
 
+import { IconifyIcon } from '@vben/icons';
 import { $t } from '@vben/locales';
 
 import {
+  Alert,
   Button,
-  Form,
-  FormItem,
-  InputNumber,
+  Input,
   message,
   Modal,
-  Select,
+  Radio,
+  Slider,
   Switch,
-  TabPane,
-  Tabs,
   Tag,
 } from 'ant-design-vue';
 
@@ -62,6 +61,10 @@ const loading = ref(false);
 const submitting = ref(false);
 const schemaFormRef = ref<InstanceType<typeof SchemaForm>>();
 
+// 算法分类与检索
+const selectedCategory = ref('all');
+const algoSearchKeyword = ref('');
+
 // 算法列表
 const algorithmList = ref<AlgorithmApi.AlgorithmItem[]>([]);
 const selectedAlgorithmId = ref<string>('');
@@ -74,6 +77,109 @@ const paramsJson = ref<Record<string, unknown>>({});
 const rules = ref<TaskApi.DetectionRule[]>([]);
 const ruleEditorRef = ref<InstanceType<typeof DetectionRuleEditor>>();
 
+function getAlgorithmCategory(algo: AlgorithmApi.AlgorithmItem): string {
+  const id = algo.algorithmId.toLowerCase();
+  const type = (algo.algorithmType || '').toLowerCase();
+  if (id.includes('face') || type.includes('face')) return 'face';
+  if (
+    id.includes('fire') ||
+    id.includes('smoke') ||
+    id.includes('helmet') ||
+    id.includes('safety')
+  ) {
+    return 'safety';
+  }
+  if (
+    id.includes('plate') ||
+    id.includes('traffic') ||
+    id.includes('vehicle') ||
+    id.includes('car')
+  ) {
+    return 'traffic';
+  }
+  return 'general';
+}
+
+function getCategoryInfo(algo: AlgorithmApi.AlgorithmItem) {
+  const cat = getAlgorithmCategory(algo);
+  switch (cat) {
+    case 'face': {
+      return {
+        bg: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+        borderHover: 'hover:border-blue-500/40',
+        categoryLabel: '人脸感知',
+        icon: 'lucide:scan-face',
+      };
+    }
+    case 'safety': {
+      return {
+        bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        borderHover: 'hover:border-amber-500/40',
+        categoryLabel: '安全防范',
+        icon: 'lucide:shield-alert',
+      };
+    }
+    case 'traffic': {
+      return {
+        bg: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
+        borderHover: 'hover:border-cyan-500/40',
+        categoryLabel: '交通卡口',
+        icon: 'lucide:car',
+      };
+    }
+    default: {
+      return {
+        bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+        borderHover: 'hover:border-emerald-500/40',
+        categoryLabel: '通用检测',
+        icon: 'lucide:scan',
+      };
+    }
+  }
+}
+
+const algoCategories = computed(() => {
+  const list = algorithmList.value.filter((a) => Boolean(a.activeVersion));
+  const counts: Record<string, number> = {
+    all: list.length,
+    face: 0,
+    general: 0,
+    safety: 0,
+    traffic: 0,
+  };
+  for (const a of list) {
+    const cat = getAlgorithmCategory(a);
+    if (counts[cat] !== undefined) {
+      counts[cat]++;
+    }
+  }
+  return [
+    { count: counts.all, key: 'all', label: '全部' },
+    { count: counts.general, key: 'general', label: '通用检测' },
+    { count: counts.face, key: 'face', label: '人脸感知' },
+    { count: counts.safety, key: 'safety', label: '安全防范' },
+    { count: counts.traffic, key: 'traffic', label: '交通卡口' },
+  ];
+});
+
+const filteredAlgorithmList = computed(() => {
+  const kw = algoSearchKeyword.value.trim().toLowerCase();
+  return algorithmList.value.filter((a) => {
+    if (!a.activeVersion) return false;
+    if (selectedCategory.value !== 'all') {
+      const cat = getAlgorithmCategory(a);
+      if (cat !== selectedCategory.value) return false;
+    }
+    if (kw) {
+      const matchName = a.name.toLowerCase().includes(kw);
+      const matchId = a.algorithmId.toLowerCase().includes(kw);
+      const matchDesc = (a.description || '').toLowerCase().includes(kw);
+      if (!matchName && !matchId && !matchDesc) return false;
+    }
+    return true;
+  });
+});
+
 // 当前选中的算法对象及其激活版本
 const currentAlgorithm = computed(() => {
   return (
@@ -81,6 +187,18 @@ const currentAlgorithm = computed(() => {
       (a) => a.algorithmId === selectedAlgorithmId.value,
     ) || null
   );
+});
+
+const currentCategoryInfo = computed(() => {
+  if (!currentAlgorithm.value) {
+    return {
+      bg: 'bg-primary/10 text-primary',
+      borderHover: 'hover:border-primary',
+      categoryLabel: '推理模型',
+      icon: 'lucide:cpu',
+    };
+  }
+  return getCategoryInfo(currentAlgorithm.value);
 });
 
 const isFaceRecognition = computed(
@@ -109,17 +227,6 @@ const maxFps = computed(() => {
   return sorted[0]?.fps || 30;
 });
 
-const fpsTiersDisplay = computed(() => {
-  if (fpsTiers.value.length === 0)
-    return $t('resource.task.instance.noTierConstraint');
-  return fpsTiers.value
-    .map(
-      (t) =>
-        `${t.fps}fps (${t.units} ${$t('resource.task.instance.tierUnit')})`,
-    )
-    .join(', ');
-});
-
 const currentConfigSchema = computed(() => {
   return currentActiveVersion.value?.configSchema || null;
 });
@@ -132,14 +239,6 @@ const algorithmOptions = computed(() => {
       label: `${formatAlgorithmName(a.algorithmId, a.name)} (${a.algorithmId})`,
       value: a.algorithmId,
     }));
-});
-
-// 是否支持 target_classes 属性
-const hasTargetClasses = computed(() => {
-  const schema = currentConfigSchema.value;
-  if (!schema || typeof schema !== 'object') return false;
-  const properties = (schema as Record<string, any>).properties;
-  return Boolean(properties && 'target_classes' in properties);
 });
 
 // 当前生效的目标类别（供绘制区域时做明确指示）
@@ -171,6 +270,8 @@ watch(
     if (!isOpen) return;
 
     activeTab.value = 'params';
+    algoSearchKeyword.value = '';
+    selectedCategory.value = 'all';
     await loadAlgorithms();
 
     if (props.instance) {
@@ -215,10 +316,7 @@ watch(
       similarityThreshold.value = 0.7;
       paramsJson.value = {};
       rules.value = [];
-      // 保证每次新建时都重新选择默认算法并触发 schema 变化
       selectedAlgorithmId.value = algorithmOptions.value[0]?.value || '';
-      // 显式应用算法 schema 默认值：重新打开弹窗时 schema 引用可能不变，
-      // SchemaForm 的 watcher 不会再次触发，必须主动补齐默认值。
       await nextTick();
       schemaFormRef.value?.applyDefaults();
     }
@@ -226,12 +324,14 @@ watch(
 );
 
 // 算法切换时，FPS 上限联动纠偏并重置新建状态下的参数
-watch(selectedAlgorithmId, (newId, oldId) => {
+watch(selectedAlgorithmId, async (newId, oldId) => {
   if (!isEdit.value && maxFps.value && analysisFps.value > maxFps.value) {
     analysisFps.value = maxFps.value;
   }
   if (!isEdit.value && newId !== oldId) {
     paramsJson.value = {};
+    await nextTick();
+    schemaFormRef.value?.applyDefaults();
   }
 });
 
@@ -313,268 +413,418 @@ async function handleOk() {
     :title="title"
     :confirm-loading="submitting"
     destroy-on-close
-    width="1040px"
+    width="min(1040px, 95vw)"
     @ok="handleOk"
   >
-    <Tabs v-model:active-key="activeTab" class="instance-form-tabs mt-1">
-      <!-- Tab 1: 算法与参数配置 -->
-      <TabPane key="params">
-        <template #tab>
-          <span class="flex items-center gap-1.5 px-1 font-medium">
-            <span>⚙️</span>
+    <!-- 头部导航与 Tab 切换 -->
+    <div
+      class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-border"
+    >
+      <div
+        class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+      >
+        <span>视频通道:</span>
+        <span class="font-mono font-bold text-foreground">{{ cameraId }}</span>
+        <Tag color="cyan" class="m-0 text-[10px]">硬件解码流水线</Tag>
+      </div>
+
+      <Radio.Group v-model:value="activeTab" button-style="solid" size="small">
+        <Radio.Button value="params">
+          <span class="flex items-center gap-1.5">
+            <IconifyIcon icon="lucide:sliders" class="size-3.5" />
             <span>{{ $t('resource.task.instance.tabParams') }}</span>
           </span>
-        </template>
-
-        <Form layout="vertical" class="pt-2 max-h-[62vh] overflow-y-auto pr-1">
-          <!-- 选择算法 -->
-          <FormItem
-            :label="$t('resource.task.instance.algorithm')"
-            required
-            class="mb-3"
-          >
-            <Select
-              v-model:value="selectedAlgorithmId"
-              :options="algorithmOptions"
-              :disabled="isEdit"
-              :placeholder="
-                $t('resource.task.instance.algorithmSelectPlaceholder')
-              "
-              class="w-full"
-            />
-            <div
-              v-if="currentAlgorithm"
-              class="text-muted-foreground mt-1.5 flex flex-col gap-1 text-xs"
+        </Radio.Button>
+        <Radio.Button value="rules">
+          <span class="flex items-center gap-1.5">
+            <IconifyIcon icon="lucide:shapes" class="size-3.5" />
+            <span>{{ $t('resource.task.instance.tabRules') }}</span>
+            <Tag
+              v-if="rules.length > 0"
+              color="blue"
+              class="m-0 text-[9px] px-1 py-0 ml-1"
             >
-              <div class="flex items-center gap-2">
-                <span>{{ $t('resource.task.instance.activeVersion') }}:</span>
-                <Tag v-if="currentAlgorithm.activeVersion" color="blue">
-                  {{ currentAlgorithm.activeVersion }}
-                </Tag>
-                <Tag v-else color="red">
-                  {{ $t('resource.task.instance.noActiveVersion') }}
+              {{ rules.length }}
+            </Tag>
+          </span>
+        </Radio.Button>
+      </Radio.Group>
+    </div>
+
+    <!-- Tab 1: 左右分栏算法集市与动态参数配置 -->
+    <div
+      v-show="activeTab === 'params'"
+      class="mt-3.5 min-h-[500px] lg:h-[64vh] lg:max-h-[620px] grid grid-cols-12 gap-4"
+    >
+      <!-- 左侧 (小屏 12 列 / 大屏 5 列)：AI 算法模型货架 -->
+      <div
+        class="col-span-12 lg:col-span-5 border border-border rounded-xl bg-card flex flex-col overflow-hidden shadow-xs h-[360px] lg:h-full"
+      >
+        <!-- 门类筛选 Radio -->
+        <div class="p-2 border-b border-border bg-muted/30 overflow-x-auto">
+          <Radio.Group
+            v-model:value="selectedCategory"
+            button-style="solid"
+            size="small"
+            class="flex whitespace-nowrap min-w-max"
+          >
+            <Radio.Button
+              v-for="cat in algoCategories"
+              :key="cat.key"
+              :value="cat.key"
+              class="text-center text-xs px-2.5"
+            >
+              {{ cat.label }}
+            </Radio.Button>
+          </Radio.Group>
+        </div>
+
+        <!-- 搜索输入框 -->
+        <div class="p-2 border-b border-border bg-card">
+          <Input
+            v-model:value="algoSearchKeyword"
+            placeholder="搜索算法名称或 ID..."
+            allow-clear
+            size="small"
+          >
+            <template #prefix>
+              <IconifyIcon
+                icon="lucide:search"
+                class="size-3.5 text-muted-foreground"
+              />
+            </template>
+          </Input>
+        </div>
+
+        <!-- 算法卡片垂直滚动列表 -->
+        <div class="flex-1 overflow-y-auto p-2.5 space-y-2">
+          <div
+            v-for="algo in filteredAlgorithmList"
+            :key="algo.algorithmId"
+            @click="!isEdit && (selectedAlgorithmId = algo.algorithmId)"
+            class="rounded-xl border p-3 transition-all duration-200 flex flex-col justify-between group"
+            :class="[
+              selectedAlgorithmId === algo.algorithmId
+                ? 'border-primary bg-primary/[0.04] ring-2 ring-primary/20 shadow-xs cursor-default'
+                : isEdit
+                  ? 'border-border/60 opacity-50 cursor-not-allowed'
+                  : 'border-border bg-card hover:border-primary/50 cursor-pointer',
+            ]"
+          >
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-1.5">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <div
+                    class="flex size-8 shrink-0 items-center justify-center rounded-lg shadow-2xs"
+                    :class="getCategoryInfo(algo).bg"
+                  >
+                    <IconifyIcon
+                      :icon="getCategoryInfo(algo).icon"
+                      class="size-4"
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <h4
+                      class="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors"
+                    >
+                      {{ formatAlgorithmName(algo.algorithmId, algo.name) }}
+                    </h4>
+                    <span class="text-[10px] text-muted-foreground">
+                      {{ getCategoryInfo(algo).categoryLabel }}
+                    </span>
+                  </div>
+                </div>
+
+                <Tag
+                  color="warning"
+                  class="m-0 text-[10px] font-mono px-1.5 py-0 shrink-0"
+                >
+                  ⚡ 8 Units
                 </Tag>
               </div>
-              <div
-                v-if="
-                  formatAlgorithmDesc(
-                    currentAlgorithm.algorithmId,
-                    currentAlgorithm.description,
-                  )
-                "
-                class="text-xs text-muted-foreground"
+
+              <p
+                class="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2"
               >
                 {{
-                  formatAlgorithmDesc(
-                    currentAlgorithm.algorithmId,
-                    currentAlgorithm.description,
-                  )
+                  formatAlgorithmDesc(algo.algorithmId, algo.description) ||
+                  '边缘神经网络推理算子，低延迟高并发。'
                 }}
-              </div>
+              </p>
             </div>
-          </FormItem>
 
-          <!-- 采样帧率 (FPS) -->
-          <FormItem
-            :label="$t('resource.task.instance.analysisFps')"
-            required
-            class="mb-3"
+            <div
+              class="pt-2 border-t border-border/60 flex items-center justify-between text-[10px]"
+            >
+              <div
+                class="flex items-center gap-1.5 font-mono text-muted-foreground"
+              >
+                <Tag color="blue" class="m-0 text-[9px] px-1 py-0">
+                  {{ algo.activeVersion || 'v1.0.0' }}
+                </Tag>
+                <span>·</span>
+                <span class="text-emerald-600 dark:text-emerald-400">就绪</span>
+              </div>
+
+              <span
+                v-if="selectedAlgorithmId === algo.algorithmId"
+                class="text-primary font-medium text-xs flex items-center gap-1"
+              >
+                <IconifyIcon icon="lucide:check-circle" class="size-3.5" />
+                <span>已选中</span>
+              </span>
+              <span
+                v-else
+                class="text-muted-foreground group-hover:text-foreground"
+              >
+                点击选择
+              </span>
+            </div>
+          </div>
+
+          <div
+            v-if="filteredAlgorithmList.length === 0"
+            class="py-12 text-center text-xs text-muted-foreground"
           >
-            <InputNumber
+            未找到匹配的算法模型
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧 (小屏 12 列 / 大屏 7 列)：选定算法专属参数配置面板 -->
+      <div
+        class="col-span-12 lg:col-span-7 border border-border rounded-xl bg-card flex flex-col justify-between overflow-hidden shadow-xs min-h-[420px] lg:h-full"
+      >
+        <!-- 头部：所选模型基本信息 -->
+        <div
+          class="p-3 px-4 border-b border-border bg-muted/25 flex items-center justify-between shrink-0"
+        >
+          <div class="flex items-center gap-2.5">
+            <div
+              class="flex size-8 shrink-0 items-center justify-center rounded-lg"
+              :class="currentCategoryInfo.bg"
+            >
+              <IconifyIcon :icon="currentCategoryInfo.icon" class="size-4" />
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h4 class="text-xs font-semibold text-foreground">
+                  {{
+                    formatAlgorithmName(
+                      currentAlgorithm?.algorithmId,
+                      currentAlgorithm?.name,
+                    )
+                  }}
+                </h4>
+                <Tag
+                  v-if="currentAlgorithm?.activeVersion"
+                  color="blue"
+                  class="m-0 text-[10px] px-1 py-0"
+                >
+                  {{ currentAlgorithm.activeVersion }}
+                </Tag>
+              </div>
+              <span class="text-[10px] text-muted-foreground">
+                {{ currentCategoryInfo.categoryLabel }} · 推理参数配置
+              </span>
+            </div>
+          </div>
+
+          <Tag color="success" class="m-0 text-[10px] font-mono">
+            算力申请: +8 Units
+          </Tag>
+        </div>
+
+        <!-- 动态参数表单内容区 -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <!-- 模块 1: 采样分析帧率 -->
+          <div
+            class="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2"
+          >
+            <div class="flex items-center justify-between text-xs">
+              <span
+                class="font-medium text-foreground flex items-center gap-1.5"
+              >
+                <IconifyIcon
+                  icon="lucide:gauge"
+                  class="size-3.5 text-primary"
+                />
+                <span>{{ $t('resource.task.instance.analysisFps') }}</span>
+              </span>
+              <span class="font-mono font-bold text-primary">{{ analysisFps }} FPS</span>
+            </div>
+
+            <Slider
               v-model:value="analysisFps"
               :min="1"
               :max="maxFps"
-              :precision="0"
-              class="w-full"
-              :placeholder="$t('resource.task.instance.analysisFpsRequired')"
+              :marks="{ 5: '5', 10: '10', 15: '15', 25: '25' }"
+              class="my-2"
             />
-            <div class="text-muted-foreground mt-1 text-xs">
-              <span>{{
-                $t('resource.task.instance.fpsTiersHint', {
-                  tiers: fpsTiersDisplay,
-                })
-              }}</span>
-              <span v-if="maxFps" class="ml-2">
-                ({{ $t('resource.task.instance.maxFpsHint', { max: maxFps }) }})
+
+            <div class="flex items-center gap-2 pt-2">
+              <span class="text-xs text-muted-foreground font-mono">预设档位:</span>
+              <Radio.Group
+                v-model:value="analysisFps"
+                size="small"
+                button-style="solid"
+              >
+                <Radio.Button
+                  v-for="preset in [5, 10, 15, 25].filter((p) => p <= maxFps)"
+                  :key="preset"
+                  :value="preset"
+                >
+                  {{ preset }}fps
+                </Radio.Button>
+              </Radio.Group>
+            </div>
+          </div>
+
+          <!-- 模块 2: 模型专属动态参数 (SchemaForm 驱动) -->
+          <div
+            class="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2"
+          >
+            <div
+              class="flex items-center justify-between pb-2 border-b border-border text-xs"
+            >
+              <span
+                class="font-medium text-foreground flex items-center gap-1.5"
+              >
+                <IconifyIcon
+                  icon="lucide:sliders-horizontal"
+                  class="size-3.5 text-primary"
+                />
+                <span>模型推理定制参数</span>
+              </span>
+              <span class="font-mono text-[10px] text-muted-foreground">
+                {{ selectedAlgorithmId }}
               </span>
             </div>
-          </FormItem>
 
-          <!-- 运动检测门控 (Motion Gate) -->
-          <FormItem
-            :label="$t('resource.task.instance.motionGate')"
-            class="mb-3"
-          >
-            <div
-              class="flex flex-col gap-2 rounded-xl border border-border/80 bg-muted/20 p-3"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex flex-col">
-                  <span class="text-xs font-medium text-foreground">
-                    {{
-                      motionGateEnabled
-                        ? $t('system.common.enable')
-                        : $t('system.common.disable')
-                    }}
-                  </span>
-                  <span class="text-xs text-muted-foreground">
-                    {{ $t('resource.task.instance.motionGateHint') }}
-                  </span>
-                </div>
-                <Switch v-model:checked="motionGateEnabled" />
-              </div>
-
-              <div
-                v-if="motionGateEnabled"
-                class="mt-2 flex items-center justify-between border-t border-border/60 pt-2"
-              >
-                <div class="flex flex-col">
-                  <span class="text-xs font-medium text-foreground">
-                    {{ $t('resource.task.instance.motionGateKeepalive') }}
-                  </span>
-                  <span class="text-xs text-muted-foreground">
-                    {{ $t('resource.task.instance.motionGateKeepaliveHint') }}
-                  </span>
-                </div>
-                <InputNumber
-                  v-model:value="motionGateKeepaliveMs"
-                  :min="500"
-                  :max="30000"
-                  :step="500"
-                  :precision="0"
-                  class="w-32"
-                />
-              </div>
-            </div>
-          </FormItem>
-
-          <!-- 人脸 1:N 比对阈值 -->
-          <FormItem
-            v-if="isFaceRecognition"
-            :label="$t('resource.task.instance.faceSimilarityThreshold')"
-            class="mb-3"
-          >
-            <InputNumber
-              v-model:value="similarityThreshold"
-              :min="0"
-              :max="1"
-              :step="0.01"
-              :precision="2"
-              class="w-full"
-            />
-            <div class="text-muted-foreground mt-1 text-xs">
-              {{ $t('resource.task.instance.faceSimilarityThresholdHint') }}
-            </div>
-          </FormItem>
-
-          <!-- 算法参数配置 (SchemaForm 驱动) -->
-          <FormItem :label="$t('resource.task.instance.params')" class="mb-3">
-            <div
-              class="rounded-xl border border-border/80 bg-card p-3.5 shadow-2xs"
-            >
+            <div class="pt-2">
               <SchemaForm
                 ref="schemaFormRef"
                 v-model:value="paramsJson"
                 :schema="currentConfigSchema"
               />
             </div>
-          </FormItem>
+          </div>
 
-          <!-- 新建时是否立即启用 -->
-          <FormItem
-            v-if="!isEdit"
-            :label="$t('resource.task.instance.autoEnable')"
-            class="mb-1"
+          <!-- 模块 3: 人脸识别专属比对阈值 -->
+          <div
+            v-if="isFaceRecognition"
+            class="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2"
           >
-            <div class="flex items-center gap-2">
-              <Switch v-model:checked="autoEnable" />
-              <span class="text-xs text-muted-foreground">
-                {{
-                  autoEnable
-                    ? $t('resource.task.instance.autoEnableOn')
-                    : $t('resource.task.instance.autoEnableOff')
-                }}
+            <div class="flex items-center justify-between text-xs">
+              <span
+                class="font-medium text-foreground flex items-center gap-1.5"
+              >
+                <IconifyIcon
+                  icon="lucide:user-check"
+                  class="size-3.5 text-primary"
+                />
+                <span>{{
+                  $t('resource.task.instance.faceSimilarityThreshold')
+                }}</span>
               </span>
+              <span class="font-mono font-bold text-primary">{{
+                similarityThreshold
+              }}</span>
             </div>
-          </FormItem>
-        </Form>
-      </TabPane>
+            <Slider
+              v-model:value="similarityThreshold"
+              :min="0.1"
+              :max="0.99"
+              :step="0.01"
+              class="my-1.5"
+            />
+            <p class="text-[11px] text-muted-foreground">
+              {{ $t('resource.task.instance.faceSimilarityThresholdHint') }}
+            </p>
+          </div>
 
-      <!-- Tab 2: 区域与警戒线绘制 -->
-      <TabPane key="rules">
-        <template #tab>
-          <span class="flex items-center gap-1.5 px-1 font-medium">
-            <span>📐</span>
-            <span>{{ $t('resource.task.instance.tabRules') }}</span>
-            <Tag
-              v-if="rules.length > 0"
-              color="blue"
-              class="m-0 text-[10px] px-1 py-0"
+          <!-- 模块 4: 节能门控与调度使能 -->
+          <div class="grid grid-cols-2 gap-3">
+            <div
+              class="p-3 rounded-xl border border-border bg-muted/20 flex items-center justify-between"
             >
-              {{ rules.length }}
+              <div>
+                <span class="text-xs font-medium text-foreground block">MotionGate™ 门控</span>
+                <p class="text-[10px] text-muted-foreground mt-0.5">
+                  静止画面休眠节能
+                </p>
+              </div>
+              <Switch v-model:checked="motionGateEnabled" size="small" />
+            </div>
+
+            <div
+              v-if="!isEdit"
+              class="p-3 rounded-xl border border-border bg-muted/20 flex items-center justify-between"
+            >
+              <div>
+                <span class="text-xs font-medium text-foreground block">创建即调度</span>
+                <p class="text-[10px] text-muted-foreground mt-0.5">
+                  保存后立即投入运行
+                </p>
+              </div>
+              <Switch v-model:checked="autoEnable" size="small" />
+            </div>
+          </div>
+
+          <!-- 模块 5: 算力预检状态 -->
+          <Alert
+            type="info"
+            show-icon
+            message="边缘算力预检通过"
+            description="本次申请 8 Units，调度后算力负荷充足，无需排队。"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: 区域与警戒线绘制 (DetectionRuleEditor) -->
+    <div v-show="activeTab === 'rules'" class="pt-3 space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>当前生效目标:</span>
+          <span
+            v-if="activeTargetClasses.length > 0"
+            class="flex items-center gap-1 font-mono text-foreground font-medium"
+          >
+            <Tag
+              v-for="cls in activeTargetClasses"
+              :key="cls"
+              color="purple"
+              class="m-0 text-[10px]"
+            >
+              {{ formatTargetClass(cls) }}
             </Tag>
           </span>
-        </template>
-
-        <div class="pt-2 space-y-2.5">
-          <!-- 生效目标提示栏（仅在算法支持目标类别过滤配置时展示） -->
-          <div
-            v-if="hasTargetClasses"
-            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/20 px-3 py-2 text-xs"
-          >
-            <div class="flex flex-wrap items-center gap-1.5 overflow-hidden">
-              <span class="text-muted-foreground font-medium shrink-0">
-                {{ $t('resource.task.instance.currentTargets') }}:
-              </span>
-              <div
-                v-if="activeTargetClasses.length > 0"
-                class="flex flex-wrap items-center gap-1"
-              >
-                <span
-                  v-for="cls in activeTargetClasses.slice(0, 8)"
-                  :key="cls"
-                  class="inline-flex items-center rounded-md bg-background px-2 py-0.5 text-[11px] font-medium text-foreground border border-border/80 shadow-2xs"
-                >
-                  {{ formatTargetClass(cls) }}
-                </span>
-                <span
-                  v-if="activeTargetClasses.length > 8"
-                  class="text-[11px] text-muted-foreground font-mono"
-                >
-                  +{{ activeTargetClasses.length - 8 }}...
-                </span>
-              </div>
-              <span v-else class="text-muted-foreground font-medium">
-                {{ $t('resource.task.instance.allTargetsActive') }}
-              </span>
-            </div>
-
-            <Button
-              size="small"
-              type="link"
-              class="text-xs p-0 h-auto"
-              @click="activeTab = 'params'"
-            >
-              {{ $t('resource.task.instance.adjustTargets') }} →
-            </Button>
-          </div>
-
-          <!-- 检测规则绘制全景面板 -->
-          <div
-            class="rounded-xl border border-border/80 bg-card p-3 shadow-2xs"
-          >
-            <DetectionRuleEditor
-              ref="ruleEditorRef"
-              v-model:value="rules"
-              :camera-id="props.cameraId"
-              :open="visible && activeTab === 'rules'"
-            />
-          </div>
+          <span v-else class="text-muted-foreground italic text-[11px]">
+            全量目标 (全屏巡检)
+          </span>
         </div>
-      </TabPane>
-    </Tabs>
+        <Button
+          size="small"
+          type="link"
+          class="text-xs p-0 h-auto"
+          @click="activeTab = 'params'"
+        >
+          {{ $t('resource.task.instance.adjustTargets') }} →
+        </Button>
+      </div>
 
-    <!-- 底部导航与提交操作栏 -->
+      <div class="rounded-xl border border-border bg-card p-3 shadow-2xs">
+        <DetectionRuleEditor
+          ref="ruleEditorRef"
+          v-model:value="rules"
+          :camera-id="props.cameraId"
+          :open="visible && activeTab === 'rules'"
+        />
+      </div>
+    </div>
+
+    <!-- 弹窗底部操作栏 -->
     <template #footer>
       <div class="flex items-center justify-between">
         <div>
@@ -597,9 +847,3 @@ async function handleOk() {
     </template>
   </Modal>
 </template>
-
-<style scoped>
-:deep(.instance-form-tabs .ant-tabs-nav) {
-  margin-bottom: 8px;
-}
-</style>

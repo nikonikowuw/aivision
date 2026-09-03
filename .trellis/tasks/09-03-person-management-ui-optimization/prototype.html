@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>人员管理 - 现代 SaaS 轻拟态工作台</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              200: '#bfdbfe',
+              300: '#93c5fd',
+              400: '#60a5fa',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          },
+          boxShadow: {
+            // 轻量 boil 拟态多层阴影
+            'boil-sm': '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02), inset 0 1px 0 rgba(255,255,255,0.8)',
+            'boil-card': '0 10px 25px -3px rgba(15, 23, 42, 0.04), 0 4px 6px -4px rgba(15, 23, 42, 0.02), inset 0 1px 0 rgba(255,255,255,0.9)',
+            'boil-card-hover': '0 20px 30px -5px rgba(15, 23, 42, 0.07), 0 8px 10px -6px rgba(15, 23, 42, 0.03), inset 0 1px 0 rgba(255,255,255,1)',
+            'boil-btn-primary': '0 2px 6px rgba(37, 99, 235, 0.35), 0 1px 2px rgba(37, 99, 235, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.35)',
+            'boil-btn-default': '0 1px 2px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
+            'boil-inset': 'inset 0 2px 4px rgba(15, 23, 42, 0.05), 0 1px 0 rgba(255, 255, 255, 0.8)',
+            'boil-badge': '0 1px 2px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.7)',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      background-color: #f6f8fb;
+      /* 微妙的点状背景网格，赋予现代科技感 */
+      background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    
+    /* 自定义拟态平滑滚动条 */
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(241, 245, 249, 0.6);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.6);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* 头像局部裁切效果模拟 aligned 对齐人脸 */
+    .face-aligned {
+      object-fit: cover;
+      object-position: center 25%;
+    }
+
+    /* 轻拟态触感按钮下按动效 */
+    .btn-tactile:active {
+      transform: translateY(1px);
+    }
+
+    /* 样本卡片平滑重排/置顶过渡动画 */
+    .face-grid-move {
+      transition: all 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    .face-grid-enter-active,
+    .face-grid-leave-active {
+      transition: all 0.3s ease;
+    }
+    .face-grid-enter-from,
+    .face-grid-leave-to {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  </style>
+</head>
+<body class="text-slate-700 antialiased min-h-screen py-6 px-4 md:px-8">
+  <div id="app" class="max-w-[1560px] mx-auto space-y-5">
+
+    <!-- ========================================================================= -->
+    <!-- 1. 顶部统计指标卡片 (现代 SaaS + 轻拟态触感) -->
+    <!-- ========================================================================= -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- 卡片 1: 底库总人数 -->
+      <div class="bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-boil-card hover:shadow-boil-card-hover transition-all duration-300 relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">底库总人员数</div>
+            <div class="text-2xl font-bold text-slate-800 tracking-tight mt-1 flex items-baseline gap-1.5">
+              <span>{{ persons.length }}</span>
+              <span class="text-xs font-normal text-slate-400">/ 1,000 上限</span>
+            </div>
+          </div>
+          <div class="w-11 h-11 rounded-xl bg-gradient-to-b from-blue-50 to-blue-100/70 border border-blue-200/60 shadow-boil-badge text-brand-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <span>容量负载正常 ({{ ((persons.length / 1000) * 100).toFixed(1) }}%)</span>
+        </div>
+      </div>
+
+      <!-- 卡片 2: 有效建库率 -->
+      <div class="bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-boil-card hover:shadow-boil-card-hover transition-all duration-300 relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">有效建库率</div>
+            <div class="text-2xl font-bold text-emerald-600 tracking-tight mt-1 flex items-baseline gap-1.5">
+              <span>{{ readyRate }}%</span>
+              <span class="text-xs font-normal text-slate-400">已提取特征</span>
+            </div>
+          </div>
+          <div class="w-11 h-11 rounded-xl bg-gradient-to-b from-emerald-50 to-emerald-100/70 border border-emerald-200/60 shadow-boil-badge text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+          <span>已满足 1:N 识别检索基准</span>
+        </div>
+      </div>
+
+      <!-- 卡片 3: 待补录人员 (支持一键过滤) -->
+      <div class="bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-boil-card hover:shadow-boil-card-hover hover:border-amber-300/80 transition-all duration-300 relative overflow-hidden group cursor-pointer" @click="filterNoFace" title="点击一键筛选待补录人员">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[11px] font-semibold tracking-wide text-amber-600 uppercase flex items-center gap-1">
+              <span>待录入底库人员</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+            </div>
+            <div class="text-2xl font-bold text-amber-600 tracking-tight mt-1 flex items-baseline gap-1.5">
+              <span>{{ unreadyCount }}</span>
+              <span class="text-xs font-normal text-slate-400">人无特征图</span>
+            </div>
+          </div>
+          <div class="w-11 h-11 rounded-xl bg-gradient-to-b from-amber-50 to-amber-100/70 border border-amber-200/60 shadow-boil-badge text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center justify-between text-[11px] text-amber-600">
+          <span>点击快速定位待补录人员</span>
+          <span class="font-medium hover:underline flex items-center gap-0.5">筛选 →</span>
+        </div>
+      </div>
+
+      <!-- 卡片 4: 本地底库特征总数 -->
+      <div class="bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-boil-card hover:shadow-boil-card-hover transition-all duration-300 relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">本地特征样本总数</div>
+            <div class="text-2xl font-bold text-slate-800 tracking-tight mt-1 flex items-baseline gap-1.5">
+              <span>{{ totalFacesCount }}</span>
+              <span class="text-xs font-normal text-slate-400">条 512D 向量</span>
+            </div>
+          </div>
+          <div class="w-11 h-11 rounded-xl bg-gradient-to-b from-indigo-50 to-indigo-100/70 border border-indigo-200/60 shadow-boil-badge text-indigo-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+          <span>本地 C++ 推理引擎内存已装载</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 2. 查询表单区 (严格保持 Vben 5 水平行内对齐，融入轻拟态质感) -->
+    <!-- ========================================================================= -->
+    <div class="bg-white/95 backdrop-blur-md px-6 py-4 rounded-2xl border border-slate-200/80 shadow-boil-card">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-x-6 gap-y-3 items-center">
+        <!-- 人员标识 -->
+        <div class="md:col-span-4 flex items-center gap-3">
+          <label class="w-20 text-right text-xs font-medium text-slate-600 shrink-0">人员标识:</label>
+          <div class="relative flex-1">
+            <input v-model="searchId" type="text" placeholder="输入 ID / 工号模糊匹配"
+              class="w-full text-xs px-3.5 py-2 rounded-xl bg-slate-50/80 border border-slate-200/90 shadow-boil-inset text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all">
+          </div>
+        </div>
+
+        <!-- 人员姓名 -->
+        <div class="md:col-span-4 flex items-center gap-3">
+          <label class="w-20 text-right text-xs font-medium text-slate-600 shrink-0">人员姓名:</label>
+          <div class="relative flex-1">
+            <input v-model="searchName" type="text" placeholder="输入真实姓名检索"
+              class="w-full text-xs px-3.5 py-2 rounded-xl bg-slate-50/80 border border-slate-200/90 shadow-boil-inset text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all">
+          </div>
+        </div>
+
+        <!-- 查询/重置操作组 -->
+        <div class="md:col-span-4 flex items-center justify-end gap-2.5">
+          <button @click="resetSearch"
+            class="btn-tactile px-4 py-2 text-xs font-medium text-slate-600 bg-gradient-to-b from-white to-slate-50/80 border border-slate-200/90 shadow-boil-btn-default hover:bg-slate-50 rounded-xl transition flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            重置
+          </button>
+          
+          <button
+            class="btn-tactile px-5 py-2 text-xs font-medium text-white bg-gradient-to-b from-brand-500 to-brand-600 border border-brand-600/80 shadow-boil-btn-primary hover:from-brand-600 hover:to-brand-700 rounded-xl transition flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            查询
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 3. 表格主体容器 (现代 SaaS 悬浮卡片 + 微拟态质感) -->
+    <!-- ========================================================================= -->
+    <div class="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-boil-card overflow-hidden">
+      
+      <!-- 表格上方操作条 -->
+      <div class="px-6 py-4 border-b border-slate-100/90 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-b from-white to-slate-50/30">
+        <div class="flex items-center gap-3">
+          <button @click="openAddModal"
+            class="btn-tactile px-4 py-2 bg-gradient-to-b from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl text-xs font-medium shadow-boil-btn-primary transition flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            新增人员档案
+          </button>
+
+          <button v-if="selectedCount > 0"
+            class="btn-tactile px-3.5 py-2 bg-gradient-to-b from-red-50 to-red-100/60 border border-red-200 text-red-600 hover:bg-red-100/80 rounded-xl text-xs font-medium shadow-boil-btn-default transition flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            批量删除 ({{ selectedCount }})
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>共 <b class="text-slate-800">{{ filteredPersons.length }}</b> 位人员档案</span>
+        </div>
+      </div>
+
+      <!-- 数据表格 -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50/60 border-b border-slate-100 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              <th class="w-12 px-5 py-3.5 text-center">
+                <input type="checkbox" class="rounded-md border-slate-300 text-brand-600 focus:ring-brand-500/20">
+              </th>
+              <th class="w-14 px-3 py-3.5 text-center">序号</th>
+              <th class="px-5 py-3.5">人员标识 (ID)</th>
+              <th class="w-24 px-4 py-3.5 text-center">底库主图</th>
+              <th class="px-5 py-3.5">人员姓名</th>
+              <th class="w-48 px-5 py-3.5">样本配额与健康度</th>
+              <th class="px-5 py-3.5">更新时间</th>
+              <th class="w-64 px-5 py-3.5 text-right">业务操作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100/80 text-xs text-slate-700">
+            <tr v-for="(p, index) in filteredPersons" :key="p.personId" class="hover:bg-slate-50/70 transition-colors group">
+              <!-- 复选框 -->
+              <td class="px-5 py-3.5 text-center">
+                <input type="checkbox" class="rounded-md border-slate-300 text-brand-600 focus:ring-brand-500/20">
+              </td>
+
+              <!-- 序号 -->
+              <td class="px-3 py-3.5 text-center text-slate-400 font-mono text-[11px]">{{ index + 1 }}</td>
+
+              <!-- 人员标识 -->
+              <td class="px-5 py-3.5 font-mono font-medium text-slate-800">{{ p.personId }}</td>
+
+              <!-- 底库主图 (轻拟态头像：主图金标 vs 虚线警示槽) -->
+              <td class="px-4 py-3.5 text-center">
+                <div class="inline-block relative cursor-pointer" @click="openDrawer(p)" :title="p.primaryFaceUrl ? '当前主特征图 · 点击打开工作台可更换主图' : (p.faces.length > 0 ? '点击设置主特征图' : '尚未录入底库特征，点击快速录入')">
+                  <!-- 拥有主图正常展示 -->
+                  <div v-if="p.primaryFaceUrl"
+                    class="w-11 h-11 rounded-xl overflow-hidden border border-brand-300/80 p-0.5 bg-gradient-to-b from-white to-blue-50 shadow-boil-sm group-hover:scale-105 transition-transform">
+                    <img :src="p.primaryFaceUrl" class="w-full h-full rounded-lg face-aligned" alt="primary face">
+                  </div>
+                  
+                  <!-- 拥有样本但无主图 -->
+                  <div v-else-if="p.faces.length > 0"
+                    class="w-11 h-11 rounded-xl overflow-hidden border border-slate-200 p-0.5 bg-white shadow-boil-sm group-hover:scale-105 transition-transform">
+                    <img :src="p.faces[0].url" class="w-full h-full rounded-lg face-aligned" alt="face">
+                  </div>
+
+                  <!-- 未录入底库：轻拟态柔和凹陷警告槽 -->
+                  <div v-else
+                    class="w-11 h-11 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/50 shadow-boil-inset flex flex-col items-center justify-center text-amber-500 hover:bg-amber-100/50 transition group-hover:scale-105">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                  </div>
+
+                  <!-- 立体金属质感主图金标 -->
+                  <div v-if="p.primaryFaceUrl"
+                    class="absolute -top-1.5 -right-1.5 bg-gradient-to-b from-amber-300 to-amber-500 text-amber-950 font-bold rounded-full w-4 h-4 flex items-center justify-center text-[9px] shadow-sm border border-white"
+                    title="算法比对主特征图">
+                    ★
+                  </div>
+                </div>
+              </td>
+
+              <!-- 姓名 -->
+              <td class="px-5 py-3.5">
+                <div class="font-semibold text-slate-800 text-[13px]">{{ p.name }}</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">
+                  综合质量: <span :class="p.faces.length > 0 ? 'text-slate-600 font-medium' : 'text-slate-300'">{{ p.faces.length > 0 ? (p.faces[0].qualityScore.toFixed(1) + '分') : '-' }}</span>
+                </div>
+              </td>
+
+              <!-- 样本配额与质量 (轻拟态果冻胶囊进度条) -->
+              <td class="px-5 py-3.5">
+                <div class="flex items-center justify-between text-[11px] mb-1.5">
+                  <span class="font-medium" :class="p.faces.length === 0 ? 'text-amber-600 font-semibold' : 'text-slate-600'">
+                    {{ p.faces.length === 0 ? '待录入底库' : `${p.faces.length} / 10 张样本` }}
+                  </span>
+                  
+                  <span v-if="p.faces.length > 0"
+                    class="text-[10px] px-2 py-0.5 rounded-full font-medium shadow-boil-badge"
+                    :class="p.faces[0].qualityScore >= 75 ? 'bg-gradient-to-b from-emerald-50 to-emerald-100/80 text-emerald-700 border border-emerald-200/80' : 'bg-gradient-to-b from-blue-50 to-blue-100/80 text-brand-700 border border-brand-200/80'">
+                    {{ p.faces[0].qualityScore >= 75 ? '优级' : '良好' }}
+                  </span>
+                </div>
+                <!-- 拟态凹陷槽 + 发光胶囊进度条 -->
+                <div class="w-full bg-slate-100/90 rounded-full h-2 p-0.5 shadow-boil-inset overflow-hidden">
+                  <div class="h-full rounded-full transition-all duration-300 shadow-xs"
+                    :class="p.faces.length === 0 ? 'bg-amber-400 w-0' : (p.faces.length >= 8 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-brand-400 to-brand-600')"
+                    :style="{ width: `${(p.faces.length / 10) * 100}%` }">
+                  </div>
+                </div>
+              </td>
+
+              <!-- 更新时间 -->
+              <td class="px-5 py-3.5 text-slate-400 font-mono text-[11px]">{{ p.updatedAt }}</td>
+
+              <!-- 操作列 -->
+              <td class="px-5 py-3.5 text-right">
+                <div class="flex items-center justify-end gap-1.5">
+                  <!-- 识别记录一键联动按钮 -->
+                  <button @click="viewCaptureTracks(p)"
+                    class="btn-tactile px-2 py-1 text-brand-600 hover:text-brand-700 hover:bg-brand-50/70 rounded-lg font-medium text-[11px] transition flex items-center gap-1"
+                    title="在「智能记录 - 识别记录」中按此人 ID 过滤现场识别事件">
+                    <svg class="w-3.5 h-3.5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    识别记录
+                  </button>
+
+                  <span class="text-slate-200">|</span>
+
+                  <!-- 人脸管理 / 补录人脸 -->
+                  <button @click="openDrawer(p)"
+                    class="btn-tactile px-2.5 py-1 rounded-lg text-[11px] font-medium transition"
+                    :class="p.faces.length === 0 ? 'bg-gradient-to-b from-amber-50 to-amber-100/80 text-amber-700 border border-amber-200/80 shadow-boil-badge font-semibold hover:bg-amber-100' : 'text-brand-600 hover:text-brand-700 hover:bg-brand-50/70'">
+                    {{ p.faces.length === 0 ? '+ 补录人脸' : '人脸管理' }}
+                  </button>
+
+                  <span class="text-slate-200">|</span>
+
+                  <!-- 编辑 -->
+                  <button @click="openEditModal(p)"
+                    class="btn-tactile px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg text-[11px] transition">
+                    编辑
+                  </button>
+
+                  <!-- 删除 -->
+                  <button @click="deletePerson(p)"
+                    class="btn-tactile px-2 py-1 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg text-[11px] transition">
+                    删除
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 分页底栏 -->
+      <div class="px-6 py-3.5 border-t border-slate-100/90 flex items-center justify-between text-xs text-slate-500 bg-slate-50/40">
+        <div>显示第 1 至 {{ filteredPersons.length }} 条，共 {{ filteredPersons.length }} 条底库记录</div>
+        <div class="flex items-center gap-1.5">
+          <button class="px-3 py-1.5 border border-slate-200 bg-white rounded-lg hover:bg-slate-50 disabled:opacity-40 shadow-boil-btn-default transition" disabled>上一页</button>
+          <span class="px-3 py-1.5 bg-gradient-to-b from-brand-500 to-brand-600 text-white rounded-lg font-medium shadow-boil-btn-primary">1</span>
+          <button class="px-3 py-1.5 border border-slate-200 bg-white rounded-lg hover:bg-slate-50 disabled:opacity-40 shadow-boil-btn-default transition" disabled>下一页</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 4. 模态弹窗：一步到位新增人员 (AddPersonModal) -->
+    <!-- ========================================================================= -->
+    <div v-if="addModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+      <div class="bg-white rounded-3xl shadow-2xl border border-slate-200/90 w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <!-- 弹窗头部 -->
+        <div class="px-7 py-4.5 border-b border-slate-100/90 flex items-center justify-between bg-gradient-to-b from-white to-slate-50/50">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 tracking-tight">新增人员档案</h3>
+            <p class="text-xs text-slate-400 mt-0.5">录入基础信息的同时，可直接上传注册首张人脸特征</p>
+          </div>
+          <button @click="addModalOpen = false" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+
+        <!-- 弹窗主体 -->
+        <div class="p-7 grid grid-cols-1 md:grid-cols-12 gap-7">
+          <!-- 左侧：首图上传区 (5 列，轻拟态凹槽) -->
+          <div class="md:col-span-5 flex flex-col items-center">
+            <label class="block text-xs font-semibold text-slate-700 mb-2 self-start flex items-center gap-1">
+              <span>首张人脸底库照片</span>
+              <span class="text-[11px] font-normal text-slate-400">(推荐上传)</span>
+            </label>
+
+            <!-- 拟态卡槽 -->
+            <div class="w-48 h-48 rounded-2xl border-2 border-dashed border-slate-300 hover:border-brand-500/80 bg-slate-50/70 shadow-boil-inset transition-all relative flex flex-col items-center justify-center overflow-hidden cursor-pointer group"
+              @click="triggerSelectFace">
+              <!-- 已选图预览 -->
+              <template v-if="newPersonForm.facePreview">
+                <img :src="newPersonForm.facePreview" class="w-full h-full face-aligned rounded-xl" alt="preview">
+                
+                <!-- 显式主图标记徽章 -->
+                <div class="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-amber-950 text-[10px] font-bold shadow-boil-badge flex items-center gap-1 border border-white/80">
+                  <span>★</span>
+                  <span>首选特征主图</span>
+                </div>
+
+                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium">
+                  点击重新选择
+                </div>
+                <button @click.stop="clearNewFace" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 hover:bg-red-500 text-white flex items-center justify-center text-xs transition shadow">
+                  ×
+                </button>
+              </template>
+              <!-- 未选图占位 -->
+              <template v-else>
+                <div class="w-12 h-12 rounded-2xl bg-white border border-slate-200/80 shadow-boil-badge text-brand-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                </div>
+                <div class="text-xs font-medium text-slate-700">点击或拖拽人脸照片</div>
+                <div class="text-[11px] text-slate-400 mt-1">支持 JPG / PNG / WebP</div>
+                <div class="text-[10px] text-brand-600 mt-2 bg-brand-50 px-2.5 py-0.5 rounded-full font-medium border border-brand-200/60">建议正面免冠特写</div>
+              </template>
+            </div>
+
+            <!-- 示例快速体验 -->
+            <div class="mt-3 flex items-center gap-2 text-[11px] text-slate-400">
+              <span>预设样本:</span>
+              <button @click="pickSampleFace('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80')" class="text-brand-600 hover:underline">样本A</button>
+              <span>·</span>
+              <button @click="pickSampleFace('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80')" class="text-brand-600 hover:underline">样本B</button>
+            </div>
+          </div>
+
+          <!-- 右侧：基础信息 (7 列) -->
+          <div class="md:col-span-7 flex flex-col justify-between space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                人员标识 (Person ID / 工号) <span class="text-red-500">*</span>
+              </label>
+              <input v-model="newPersonForm.personId" type="text" placeholder="留空将由系统自动生成"
+                class="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-50/80 border border-slate-200/90 shadow-boil-inset text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all">
+              <p class="text-[11px] text-slate-400 mt-1">创建后作为底库与比对事件关联的主键，全局唯一。</p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                人员姓名 (Name) <span class="text-red-500">*</span>
+              </label>
+              <input v-model="newPersonForm.name" type="text" placeholder="请输入人员真实姓名"
+                class="w-full text-xs px-3.5 py-2.5 rounded-xl bg-slate-50/80 border border-slate-200/90 shadow-boil-inset text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all">
+            </div>
+
+            <!-- 轻拟态说明贴士卡片 -->
+            <div class="p-3.5 rounded-2xl bg-gradient-to-b from-blue-50/70 to-indigo-50/40 border border-blue-100 shadow-boil-sm text-[11px] text-slate-600 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="font-semibold text-brand-700 flex items-center gap-1.5">
+                  <svg class="w-3.5 h-3.5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span>底库主特征图设置</span>
+                </div>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-brand-100 text-brand-700 font-medium">默认开启</span>
+              </div>
+              <p class="text-slate-500 leading-relaxed">
+                上传的照片将<b>自动提取 512 维特征并直接设为该人员的「比对首选主图」</b>。建档成功后，亦可在「人脸样本工作台」中随时添加多角度样本并任意切换主图。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗底栏 -->
+        <div class="px-7 py-4 border-t border-slate-100/90 flex items-center justify-end gap-2.5 bg-gradient-to-b from-white to-slate-50/50">
+          <button @click="addModalOpen = false"
+            class="btn-tactile px-4 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 shadow-boil-btn-default hover:bg-slate-50 rounded-xl transition">
+            取消
+          </button>
+          
+          <button @click="submitAddPerson"
+            class="btn-tactile px-5 py-2 text-xs font-medium text-white bg-gradient-to-b from-brand-500 to-brand-600 border border-brand-600/80 shadow-boil-btn-primary hover:from-brand-600 hover:to-brand-700 rounded-xl transition flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            确认并录入底库
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 5. 抽屉：人脸样本工作台 (双列网格相片墙 + 轻拟态触感) -->
+    <!-- ========================================================================= -->
+    <div v-if="drawerOpen" class="fixed inset-0 z-50 overflow-hidden">
+      <div class="absolute inset-0 bg-slate-900/30 backdrop-blur-xs transition-opacity" @click="drawerOpen = false"></div>
+
+      <div class="fixed inset-y-0 right-0 max-w-full flex pl-10">
+        <div class="w-screen max-w-[820px] bg-[#f8fafc] shadow-2xl flex flex-col border-l border-slate-200/80">
+          
+          <!-- 抽屉头部 -->
+          <div class="px-7 py-4.5 border-b border-slate-200/80 bg-white flex items-center justify-between shadow-xs">
+            <div class="flex items-center gap-3.5">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-b from-brand-500 to-brand-600 text-white flex items-center justify-center font-bold text-sm shadow-boil-btn-primary">
+                {{ activePerson?.name?.[0] || '人' }}
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-base font-bold text-slate-900 tracking-tight">人脸样本工作台</h3>
+                  <span class="text-xs px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-mono border border-slate-200/60 shadow-boil-badge">{{ activePerson?.personId }}</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-0.5">当前人员: <b class="text-slate-800">{{ activePerson?.name }}</b> · 最多可关联 10 张不同角度或光照的人脸样本</p>
+              </div>
+            </div>
+
+            <button @click="drawerOpen = false" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+
+          <!-- 抽屉滚动区 -->
+          <div class="flex-1 overflow-y-auto p-7 space-y-5">
+            <!-- 配额指示卡片 -->
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-boil-sm flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="text-xs font-semibold text-slate-600">底库容量配额:</span>
+                <span class="text-xs font-bold px-2.5 py-0.5 rounded-full shadow-boil-badge"
+                  :class="activePerson?.faces.length === 10 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-brand-50 text-brand-700 border border-brand-200'">
+                  {{ activePerson?.faces.length }} / 10 张样本
+                </span>
+              </div>
+              <div class="text-[11px] text-slate-400">
+                主特征图将作为 1:N 比对的首选锚点
+              </div>
+            </div>
+
+            <!-- 多图批量上传区 -->
+            <div v-if="(activePerson?.faces.length || 0) < 10"
+              class="border-2 border-dashed border-brand-400/60 hover:border-brand-500 bg-white hover:bg-brand-50/20 rounded-2xl p-6 text-center shadow-boil-sm transition-all cursor-pointer group"
+              @click="simulateBatchUpload">
+              <div class="w-11 h-11 rounded-2xl bg-gradient-to-b from-blue-50 to-blue-100/70 border border-blue-200/70 text-brand-600 flex items-center justify-center mx-auto mb-2 shadow-boil-badge group-hover:scale-110 transition-transform">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+              </div>
+              <div class="text-xs font-bold text-slate-800">点击或将人脸照片拖拽至此处</div>
+              <div class="text-[11px] text-slate-400 mt-1">支持一次多选批量上传（单张不超过 10MB，自动人脸检测与 112×112 对齐）</div>
+              <div class="text-[10px] text-brand-600 font-medium mt-2">[点击快速模拟批量注册 2 张新样本]</div>
+            </div>
+            <div v-else class="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-700 flex items-center gap-2 shadow-boil-sm">
+              <svg class="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+              <span>底库样本已达 10 张上限。如需录入新特征，请先删除旧样本。</span>
+            </div>
+
+            <!-- 样本相片墙 (双列 Grid) -->
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>已注册人脸样本列表</span>
+                  <span class="text-slate-400 font-normal">({{ activePerson?.faces.length || 0 }})</span>
+                </h4>
+                <span class="text-[11px] text-slate-400">可在卡片内自由切换模式，点击图片查看灯箱大图</span>
+              </div>
+
+              <!-- 空状态 -->
+              <div v-if="!activePerson?.faces.length" class="p-10 text-center bg-white rounded-2xl border border-slate-200 shadow-boil-sm">
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2 shadow-boil-badge">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                </div>
+                <div class="text-xs font-medium text-slate-600">暂无已注册人脸样本</div>
+                <div class="text-[11px] text-slate-400 mt-1">请通过上方区域上传第一张底库照片</div>
+              </div>
+
+              <!-- 双列相片墙 Card Grid (支持置顶过渡动画) -->
+              <transition-group v-else name="face-grid" tag="div" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div v-for="(face, fIndex) in activePerson.faces" :key="face.faceId"
+                  class="rounded-2xl border transition-all duration-300 bg-white p-4 shadow-boil-card relative overflow-hidden flex flex-col justify-between group"
+                  :class="face.isPrimary ? 'border-brand-500 ring-2 ring-brand-500/25 bg-gradient-to-b from-blue-50/20 to-white' : 'border-slate-200/80 hover:border-slate-300 hover:shadow-boil-card-hover'">
+                  
+                  <!-- 卡片顶部：序号、主图单选标记与质量分 -->
+                  <div class="flex items-center justify-between mb-3">
+                    <!-- 主特征图单选交互胶囊 -->
+                    <div class="flex items-center gap-2">
+                      <!-- 序号徽章 -->
+                      <span class="text-[10px] font-mono px-1.5 py-0.5 rounded-md font-semibold"
+                        :class="face.isPrimary ? 'bg-amber-100 text-amber-900 border border-amber-300/80' : 'bg-slate-100 text-slate-500'">
+                        #{{ fIndex + 1 }}
+                      </span>
+
+                      <!-- 当前已是主图 -->
+                      <div v-if="face.isPrimary"
+                        class="text-[11px] px-3 py-1 rounded-full bg-gradient-to-b from-amber-300 to-amber-500 text-amber-950 font-bold flex items-center gap-1.5 shadow-boil-badge border border-amber-200 cursor-default"
+                        title="已置顶排在第 1 位，作为 1:N 特征检索的首选比对样本">
+                        <span class="text-xs">👑</span>
+                        <span>算法主特征图</span>
+                        <span class="text-[10px] bg-amber-600/20 px-1 py-0.2 rounded font-normal text-amber-900">置顶首位</span>
+                      </div>
+
+                      <!-- 非主图：提供清晰的单选触感按钮，点击即置顶 -->
+                      <button v-else @click="setPrimary(face)"
+                        class="btn-tactile text-[11px] px-2.5 py-1 rounded-full bg-slate-100/90 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-300 text-slate-500 border border-slate-200/80 transition flex items-center gap-1.5 font-medium shadow-boil-btn-default group/btn"
+                        title="点击将此样本设为算法首选主图，并自动置顶排序至首位">
+                        <span class="w-3 h-3 rounded-full border border-slate-400 group-hover/btn:border-brand-500 group-hover/btn:bg-brand-500/20 flex items-center justify-center text-[8px]"></span>
+                        <span>设为主图并置顶</span>
+                      </button>
+                    </div>
+
+                    <!-- 质量评分 Badge -->
+                    <div class="text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-boil-badge"
+                      :class="face.qualityScore >= 75 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-brand-700 border border-blue-200'">
+                      质量分 {{ face.qualityScore.toFixed(1) }}
+                    </div>
+                  </div>
+
+                  <!-- 卡片中部：图片与模式切换 -->
+                  <div class="flex items-center gap-3.5 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 shadow-boil-inset">
+                    <!-- 缩略图 (点击直接灯箱) -->
+                    <div class="w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-slate-200/90 bg-black/5 relative group cursor-zoom-in shadow-boil-sm"
+                      @click="openLightbox(face.url)">
+                      <img :src="face.url" class="w-full h-full" :class="face.mode === 'aligned' ? 'face-aligned' : 'object-contain'" alt="thumb">
+                      <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"></path></svg>
+                      </div>
+                    </div>
+
+                    <!-- 原位切换与元数据 -->
+                    <div class="flex-1 space-y-1.5 text-[11px]">
+                      <!-- 轻拟态胶囊分段单选 -->
+                      <div class="flex items-center bg-slate-200/80 p-0.5 rounded-lg shadow-boil-inset w-fit">
+                        <button @click="face.mode = 'aligned'"
+                          class="px-2 py-0.5 rounded-md text-[10px] font-medium transition"
+                          :class="face.mode === 'aligned' ? 'bg-white text-slate-800 shadow-boil-badge' : 'text-slate-500 hover:text-slate-800'">
+                          112×112 对齐
+                        </button>
+                        <button @click="face.mode = 'raw'"
+                          class="px-2 py-0.5 rounded-md text-[10px] font-medium transition"
+                          :class="face.mode === 'raw' ? 'bg-white text-slate-800 shadow-boil-badge' : 'text-slate-500 hover:text-slate-800'">
+                          原始抓拍图
+                        </button>
+                      </div>
+
+                      <div class="text-slate-500">检出置信度: <b class="text-slate-800">{{ (face.detectionScore * 100).toFixed(0) }}%</b></div>
+                      <div class="text-slate-500">图像规格: {{ face.imageSize }}</div>
+                      <div class="text-slate-400 font-mono text-[10px]">{{ face.createdAt }}</div>
+                    </div>
+                  </div>
+
+                  <!-- 卡片底栏 -->
+                  <div class="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <button @click="openLightbox(face.url)" class="text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                      全屏灯箱
+                    </button>
+
+                    <div class="flex items-center gap-2">
+                      <!-- 显式设为主特征并置顶动作 -->
+                      <button v-if="!face.isPrimary" @click="setPrimary(face)"
+                        class="btn-tactile text-amber-600 hover:text-amber-700 font-medium flex items-center gap-0.5 text-[11px] bg-amber-50 hover:bg-amber-100/70 px-2 py-0.5 rounded-md border border-amber-200/60 shadow-boil-badge transition">
+                        <span>👑</span>
+                        <span>设为主图并置顶</span>
+                      </button>
+
+                      <button @click="deleteFace(face)" class="text-red-500 hover:text-red-600 font-medium flex items-center gap-0.5 text-[11px] hover:underline">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        删除
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              </transition-group>
+            </div>
+
+          </div>
+
+          <!-- 抽屉底栏 -->
+          <div class="px-7 py-3.5 border-t border-slate-200/80 bg-white flex items-center justify-end">
+            <button @click="drawerOpen = false"
+              class="btn-tactile px-5 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-xl transition shadow-boil-btn-default">
+              关闭抽屉
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 6. 灯箱预览 (沉浸式全屏) -->
+    <!-- ========================================================================= -->
+    <div v-if="lightboxOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150" @click="lightboxOpen = false">
+      <div class="relative max-w-4xl max-h-[85vh] p-3" @click.stop>
+        <img :src="lightboxUrl" class="max-w-full max-h-[80vh] rounded-2xl shadow-2xl object-contain mx-auto border border-white/10" alt="lightbox">
+        <div class="absolute -top-10 right-0 flex items-center gap-3 text-white text-xs">
+          <span class="text-slate-300">滚轮缩放 · 拖拽平移</span>
+          <button @click="lightboxOpen = false" class="p-1.5 rounded-full bg-white/20 hover:bg-white/40 text-white transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 7. 业务联动模拟通知 Toast -->
+    <!-- ========================================================================= -->
+    <div v-if="toastMsg" class="fixed bottom-6 right-6 z-50 bg-slate-900/95 text-white px-4.5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3.5 border border-slate-800 animate-in slide-in-from-bottom-5 duration-200">
+      <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+      </div>
+      <div>
+        <div class="text-xs font-bold tracking-tight">{{ toastMsg.title }}</div>
+        <div class="text-[11px] text-slate-300 mt-0.5">{{ toastMsg.desc }}</div>
+      </div>
+      <button @click="toastMsg = null" class="text-slate-400 hover:text-white ml-2 text-sm font-bold">×</button>
+    </div>
+
+  </div>
+
+  <!-- Vue 交互逻辑脚本 -->
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        const persons = ref([
+          {
+            personId: 'P2025090101',
+            name: '张建国',
+            primaryFaceUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
+            updatedAt: '2025-09-02 14:20:11',
+            faces: [
+              {
+                faceId: 'F001',
+                url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
+                isPrimary: true,
+                qualityScore: 88.5,
+                detectionScore: 0.99,
+                imageSize: '1.2 MB',
+                mime: 'image/jpeg',
+                createdAt: '2025-09-02 14:20',
+                mode: 'aligned'
+              },
+              {
+                faceId: 'F002',
+                url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
+                isPrimary: false,
+                qualityScore: 68.2,
+                detectionScore: 0.94,
+                imageSize: '950 KB',
+                mime: 'image/png',
+                createdAt: '2025-09-02 14:22',
+                mode: 'aligned'
+              },
+              {
+                faceId: 'F003',
+                url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=80',
+                isPrimary: false,
+                qualityScore: 76.0,
+                detectionScore: 0.96,
+                imageSize: '1.1 MB',
+                mime: 'image/jpeg',
+                createdAt: '2025-09-02 14:25',
+                mode: 'aligned'
+              }
+            ]
+          },
+          {
+            personId: 'P2025090102',
+            name: '李丽华',
+            primaryFaceUrl: '',
+            updatedAt: '2025-09-02 15:10:00',
+            faces: []
+          },
+          {
+            personId: 'P2025090103',
+            name: '王强',
+            primaryFaceUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
+            updatedAt: '2025-09-01 11:32:45',
+            faces: Array.from({ length: 10 }).map((_, i) => ({
+              faceId: `F_WQ_${i}`,
+              url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
+              isPrimary: i === 0,
+              qualityScore: 82.0 - i * 1.5,
+              detectionScore: 0.98,
+              imageSize: '1.0 MB',
+              mime: 'image/jpeg',
+              createdAt: `2025-09-01 11:${30 + i}`,
+              mode: 'aligned'
+            }))
+          },
+          {
+            personId: 'P2025090104',
+            name: '陈晓敏',
+            primaryFaceUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+            updatedAt: '2025-09-02 09:15:20',
+            faces: [
+              {
+                faceId: 'F004',
+                url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+                isPrimary: true,
+                qualityScore: 92.4,
+                detectionScore: 0.99,
+                imageSize: '1.4 MB',
+                mime: 'image/jpeg',
+                createdAt: '2025-09-02 09:15',
+                mode: 'aligned'
+              }
+            ]
+          }
+        ]);
+
+        const searchId = ref('');
+        const searchName = ref('');
+        const statusFilter = ref('all');
+        const selectedCount = ref(0);
+
+        const filteredPersons = computed(() => {
+          return persons.value.filter(p => {
+            const matchId = !searchId.value || p.personId.toLowerCase().includes(searchId.value.toLowerCase());
+            const matchName = !searchName.value || p.name.includes(searchName.value);
+            const matchStatus = statusFilter.value === 'all' || 
+              (statusFilter.value === 'hasFace' && p.faces.length > 0) ||
+              (statusFilter.value === 'noFace' && p.faces.length === 0);
+            return matchId && matchName && matchStatus;
+          });
+        });
+
+        const readyRate = computed(() => {
+          if (!persons.value.length) return 0;
+          const readyCount = persons.value.filter(p => p.faces.length > 0).length;
+          return ((readyCount / persons.value.length) * 100).toFixed(1);
+        });
+
+        const unreadyCount = computed(() => {
+          return persons.value.filter(p => p.faces.length === 0).length;
+        });
+
+        const totalFacesCount = computed(() => {
+          return persons.value.reduce((sum, p) => sum + (p.faces ? p.faces.length : 0), 0);
+        });
+
+        function filterNoFace() {
+          statusFilter.value = 'noFace';
+          showToast('已筛选待录入人员', '仅展示尚未录入底库人脸的记录，点击行内「+ 补录人脸」可直接建库');
+        }
+
+        function resetSearch() {
+          searchId.value = '';
+          searchName.value = '';
+          statusFilter.value = 'all';
+        }
+
+        // 弹窗
+        const addModalOpen = ref(false);
+        const newPersonForm = ref({
+          personId: '',
+          name: '',
+          facePreview: ''
+        });
+
+        function openAddModal() {
+          newPersonForm.value = {
+            personId: `P${Date.now().toString().slice(-8)}`,
+            name: '',
+            facePreview: ''
+          };
+          addModalOpen.value = true;
+        }
+
+        function pickSampleFace(url) {
+          newPersonForm.value.facePreview = url;
+        }
+
+        function clearNewFace() {
+          newPersonForm.value.facePreview = '';
+        }
+
+        function triggerSelectFace() {
+          if (!newPersonForm.value.facePreview) {
+            pickSampleFace('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80');
+          }
+        }
+
+        function submitAddPerson() {
+          if (!newPersonForm.value.name.trim()) {
+            alert('请输入人员真实姓名');
+            return;
+          }
+
+          const hasFace = !!newPersonForm.value.facePreview;
+          const newP = {
+            personId: newPersonForm.value.personId || `P${Date.now().toString().slice(-8)}`,
+            name: newPersonForm.value.name.trim(),
+            primaryFaceUrl: newPersonForm.value.facePreview,
+            updatedAt: '刚刚',
+            faces: hasFace ? [
+              {
+                faceId: `F_${Date.now()}`,
+                url: newPersonForm.value.facePreview,
+                isPrimary: true,
+                qualityScore: 86.5,
+                detectionScore: 0.98,
+                imageSize: '1.2 MB',
+                mime: 'image/jpeg',
+                createdAt: '刚刚',
+                mode: 'aligned'
+              }
+            ] : []
+          };
+
+          persons.value.unshift(newP);
+          addModalOpen.value = false;
+
+          showToast('人员建档成功', `已录入 ${newP.name} (${newP.personId})${hasFace ? '，首张人脸主特征已就绪' : '（尚未录入人脸）'}`);
+        }
+
+        // 抽屉
+        const drawerOpen = ref(false);
+        const activePerson = ref(null);
+
+        function sortFacesWithPrimaryFirst(faces) {
+          if (!faces || !faces.length) return;
+          faces.sort((a, b) => {
+            if (a.isPrimary) return -1;
+            if (b.isPrimary) return 1;
+            return 0;
+          });
+        }
+
+        function openDrawer(person) {
+          activePerson.value = person;
+          // 确保主图始终排在首位 (第 1 张)
+          if (activePerson.value?.faces) {
+            sortFacesWithPrimaryFirst(activePerson.value.faces);
+          }
+          drawerOpen.value = true;
+        }
+
+        function setPrimary(face) {
+          if (!activePerson.value || !activePerson.value.faces) return;
+          
+          // 1. 更新标记
+          activePerson.value.faces.forEach(f => {
+            f.isPrimary = f.faceId === face.faceId;
+          });
+          activePerson.value.primaryFaceUrl = face.url;
+
+          // 2. 核心交互重构：将选中的主图自动排序并平滑置顶到第 1 位
+          const currentIndex = activePerson.value.faces.findIndex(f => f.faceId === face.faceId);
+          if (currentIndex > 0) {
+            const [selectedFace] = activePerson.value.faces.splice(currentIndex, 1);
+            activePerson.value.faces.unshift(selectedFace);
+          }
+
+          showToast('主特征已置顶', `已将该人脸设为 ${activePerson.value.name} 的算法主图，并自动排序至首位 (#1)`);
+        }
+
+        function deleteFace(face) {
+          if (!activePerson.value) return;
+          activePerson.value.faces = activePerson.value.faces.filter(f => f.faceId !== face.faceId);
+          if (face.isPrimary) {
+            if (activePerson.value.faces.length > 0) {
+              // 自动将剩余的第一张提升为主图
+              activePerson.value.faces[0].isPrimary = true;
+              activePerson.value.primaryFaceUrl = activePerson.value.faces[0].url;
+              showToast('主特征顺延', `原主图已删除，已自动将第 1 张样本提升为主图`);
+            } else {
+              activePerson.value.primaryFaceUrl = '';
+            }
+          }
+        }
+
+        function simulateBatchUpload() {
+          if (!activePerson.value) return;
+          if (activePerson.value.faces.length >= 10) return;
+
+          const sampleUrls = [
+            'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=80',
+            'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80'
+          ];
+
+          sampleUrls.forEach((url, i) => {
+            if (activePerson.value.faces.length < 10) {
+              const isFirst = activePerson.value.faces.length === 0;
+              activePerson.value.faces.push({
+                faceId: `F_${Date.now()}_${i}`,
+                url,
+                isPrimary: isFirst,
+                qualityScore: 80 + Math.random() * 14,
+                detectionScore: 0.96 + Math.random() * 0.03,
+                imageSize: '1.1 MB',
+                mime: 'image/jpeg',
+                createdAt: '刚刚',
+                mode: 'aligned'
+              });
+              if (isFirst) {
+                activePerson.value.primaryFaceUrl = url;
+              }
+            }
+          });
+
+          // 保持主图置顶在首位
+          sortFacesWithPrimaryFirst(activePerson.value.faces);
+
+          showToast('批量注册成功', `已在本地推理引擎中完成 2 张新人脸特征提取与对齐`);
+        }
+
+        // 灯箱
+        const lightboxOpen = ref(false);
+        const lightboxUrl = ref('');
+
+        function openLightbox(url) {
+          lightboxUrl.value = url;
+          lightboxOpen.value = true;
+        }
+
+        // Toast
+        const toastMsg = ref(null);
+
+        function showToast(title, desc) {
+          toastMsg.value = { title, desc };
+          setTimeout(() => {
+            if (toastMsg.value?.title === title) {
+              toastMsg.value = null;
+            }
+          }, 3500);
+        }
+
+        function viewCaptureTracks(p) {
+          showToast(
+            '正在联动「识别记录」',
+            `已跳转至 /record/face 路由，自动带入过滤条件 人员ID=${p.personId}`
+          );
+        }
+
+        function openEditModal(p) {
+          const newName = prompt('修改人员姓名:', p.name);
+          if (newName && newName.trim()) {
+            p.name = newName.trim();
+          }
+        }
+
+        function deletePerson(p) {
+          if (confirm(`确定要删除人员 ${p.name} (${p.personId}) 吗？`)) {
+            persons.value = persons.value.filter(x => x.personId !== p.personId);
+            showToast('已删除档案', `已从底库移除人员 ${p.name}`);
+          }
+        }
+
+        return {
+          persons,
+          filteredPersons,
+          searchId,
+          searchName,
+          statusFilter,
+          selectedCount,
+          readyRate,
+          unreadyCount,
+          totalFacesCount,
+          filterNoFace,
+          resetSearch,
+          // modal
+          addModalOpen,
+          newPersonForm,
+          openAddModal,
+          pickSampleFace,
+          clearNewFace,
+          triggerSelectFace,
+          submitAddPerson,
+          // drawer
+          drawerOpen,
+          activePerson,
+          openDrawer,
+          setPrimary,
+          deleteFace,
+          simulateBatchUpload,
+          // lightbox
+          lightboxOpen,
+          lightboxUrl,
+          openLightbox,
+          // actions
+          viewCaptureTracks,
+          openEditModal,
+          deletePerson,
+          toastMsg
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

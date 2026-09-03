@@ -6,6 +6,8 @@
     "delete": "删除摄像头",
     "name": "名称",
     "nameRequired": "请输入摄像头名称",
+    "cameraId": "摄像头编号",
+    "copyId": "复制编号",
     "address": "RTSP 地址",
     "addressPlaceholder": "支持粘贴完整 RTSP URL（自动拆分用户名密码）或仅填写流地址",
     "addressRequired": "请输入 RTSP 地址",

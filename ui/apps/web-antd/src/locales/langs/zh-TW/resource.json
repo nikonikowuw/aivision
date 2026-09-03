@@ -6,6 +6,8 @@
     "delete": "刪除攝影機",
     "name": "名稱",
     "nameRequired": "請輸入攝影機名稱",
+    "cameraId": "攝影機編號",
+    "copyId": "複製編號",
     "address": "RTSP 位址",
     "addressPlaceholder": "支援貼上完整 RTSP URL（自動拆分帳號密碼）或僅填寫串流位址",
     "addressRequired": "請輸入 RTSP 位址",

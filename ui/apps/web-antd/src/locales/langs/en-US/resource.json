@@ -6,6 +6,8 @@
     "delete": "Delete Camera",
     "name": "Name",
     "nameRequired": "Please enter camera name",
+    "cameraId": "Camera ID",
+    "copyId": "Copy ID",
     "address": "RTSP Address",
     "addressPlaceholder": "Paste full RTSP URL (auto-extracts credentials) or stream address",
     "addressRequired": "Please enter RTSP address",

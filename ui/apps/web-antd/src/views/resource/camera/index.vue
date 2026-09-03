@@ -40,6 +40,7 @@ type CameraFormValues = {
 };
 
 const currentEditId = ref<null | number>(null);
+const currentEditCameraId = ref('');
 const selectedCameras = ref<CameraApi.CameraItem[]>([]);
 const probeResult = ref<CameraApi.ProbeResult | null>(null);
 const probing = ref(false);
@@ -212,6 +213,12 @@ const gridOptions: VxeTableGridOptions<CameraApi.CameraItem> = {
     },
     { field: 'name', title: $t('resource.camera.name'), width: 140 },
     {
+      field: 'cameraId',
+      title: $t('resource.camera.cameraId'),
+      minWidth: 160,
+      slots: { default: 'cameraId' },
+    },
+    {
       field: 'rtspUrl',
       title: $t('resource.camera.rtspUrl'),
       minWidth: 240,
@@ -289,6 +296,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
 
 function handleAdd() {
   currentEditId.value = null;
+  currentEditCameraId.value = '';
   probeResult.value = null;
   formAddress.value = '';
   formUsername.value = '';
@@ -307,6 +315,7 @@ function handleAdd() {
 
 function handleEdit(row: CameraApi.CameraItem) {
   currentEditId.value = row.id;
+  currentEditCameraId.value = row.cameraId;
   probeResult.value = null;
   formApi.reset();
   const parts = parseRtspUrl(row.rtspUrl);
@@ -460,6 +469,22 @@ async function handleDelete(row: CameraApi.CameraItem) {
         </Button>
       </template>
 
+      <template #cameraId="{ row }">
+        <Tooltip :title="row.cameraId">
+          <span class="max-w-44 truncate font-mono text-xs">{{
+            row.cameraId
+          }}</span>
+        </Tooltip>
+        <Button
+          type="link"
+          size="small"
+          class="ml-1"
+          @click="copyToClipboard(row.cameraId)"
+        >
+          {{ $t('resource.camera.copyId') }}
+        </Button>
+      </template>
+
       <template #rtspUrl="{ row }">
         <Tooltip :title="row.rtspUrl">
           <span class="max-w-56 truncate font-mono text-xs">{{
@@ -535,6 +560,26 @@ async function handleDelete(row: CameraApi.CameraItem) {
 
     <CameraModal>
       <div class="pt-2">
+        <div
+          v-if="currentEditCameraId"
+          class="mb-3 flex items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3.5 py-2 text-xs"
+        >
+          <span class="text-muted-foreground">{{
+            $t('resource.camera.cameraId')
+          }}</span>
+          <div class="flex items-center gap-1.5 font-mono text-foreground/90">
+            <span>{{ currentEditCameraId }}</span>
+            <Button
+              type="link"
+              size="small"
+              class="h-auto p-0 text-xs"
+              @click="copyToClipboard(currentEditCameraId)"
+            >
+              {{ $t('resource.camera.copyId') }}
+            </Button>
+          </div>
+        </div>
+
         <Form />
 
         <!-- RTSP 最终提交预览与测活区域 -->
